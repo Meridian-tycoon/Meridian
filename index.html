@@ -162,6 +162,8 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
 .ph-calc{width:100%;box-sizing:border-box;background:#ffffff14;border:1px solid #ffffff22;border-radius:10px;color:#fff;font:600 15px var(--mono);padding:10px;margin-bottom:8px}
 .ph-homebar{display:block;margin:7px auto 1px;width:84px;height:5px;border-radius:3px;background:#5b6470;border:0;cursor:pointer;padding:0}
 #phone .bar i{display:block;height:100%}
+.ph-seg{display:flex;gap:4px;margin:0 0 10px}.ph-seg button{flex:1;background:#ffffff14;color:#cbd5e1;border:0;border-radius:999px;padding:6px 0;font:600 11px var(--body);cursor:pointer}.ph-seg button[aria-pressed="true"]{background:#eef1f4;color:#111418}
+.ph-rides{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}.ph-rides button{flex:1 1 30%;background:#ffffff1a;color:#eef1f4;border:0;border-radius:8px;padding:5px 4px;font:600 10.5px var(--body);cursor:pointer}.ph-rides small{display:block;font-weight:400;color:#93a0ad;font-size:9.5px}.ph-rides button:disabled{opacity:.4}
 .welcome{background:var(--ink);color:var(--panel);padding:10px 12px;border-radius:4px;font-size:13px;margin-bottom:10px}
 </style>
 </head>
@@ -324,6 +326,10 @@ function draw(){applyView();
     ctx.fillStyle=C.acc;if(v.type==="truck")ctx.fillRect(x-4,y-3,8,6);else if(v.type==="ship"){ctx.beginPath();ctx.moveTo(x-6,y-2);ctx.lineTo(x+6,y-2);ctx.lineTo(x+3,y+3);ctx.lineTo(x-3,y+3);ctx.fill()}
     else{ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.fill()}}
   if(typeof drawStorms==="function")drawStorms(ctx,C);
+  {const tp=typeof tripPos==="function"?tripPos(Date.now()):null,pl=tp||S.loc;if(pl&&visible(pl.lon,pl.lat)){const [px,py]=proj([pl.lon,pl.lat]);
+    if(tp&&!S.trip.local){ctx.beginPath();path({type:"LineString",coordinates:[[S.trip.from.lon,S.trip.from.lat],[S.trip.to.lon,S.trip.to.lat]]});ctx.setLineDash([2,5]);ctx.strokeStyle=C.ink;ctx.globalAlpha=.6;ctx.lineWidth=1.5;ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}
+    ctx.beginPath();ctx.arc(px,py,7,0,7);ctx.fillStyle="#be185d";ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#fff";ctx.stroke();
+    ctx.fillStyle="#fff";ctx.font="700 8px sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(tp&&S.trip.mode==="plane"?"✈":"YOU".slice(0,1),px,py+.5);ctx.textAlign="start"}}
   // cities on the near side only
   ctx.textBaseline="middle";
   for(const c of CITIES){if(!visible(c.lon,c.lat)){c.sx=c.sy=-1e4;continue}const [x,y]=proj([c.lon,c.lat]);c.sx=x;c.sy=y;
@@ -708,7 +714,7 @@ const jobsIn=c=>JOBS.filter(j=>!j.ok||j.ok(c));
 const wage=(j,c)=>Math.round(j.w*COL(c)*100)/100;
 const homeRent=(h,c)=>Math.round(h.r*COL(c)*PRICE[c.size]*100)/100;
 const homeBuy=(h,c)=>Math.round(h.buy*PRICE[c.size]*PRICE[c.size]);
-function lifeIncome(){let v=0;if(S.job)v+=wage(JK[S.job.k],CITIES[S.job.city])*(typeof wageMult==="function"?wageMult():1);if(S.home&&!S.home.own)v-=homeRent(HK[S.home.k],CITIES[S.home.city]);return v}
+function lifeIncome(){let v=0;if(S.job&&!S.trip&&S.loc&&S.loc.city===S.job.city)v+=wage(JK[S.job.k],CITIES[S.job.city])*(typeof wageMult==="function"?wageMult():1);if(S.home&&!S.home.own)v-=homeRent(HK[S.home.k],CITIES[S.home.city]);return v}
 function lifeAssets(){return S.home&&S.home.own?homeBuy(HK[S.home.k],CITIES[S.home.city])*.9:0}
 function hireChance(j){return Math.min(.95,.6+(S.home&&S.home.k!=="room"?.1:0)+Math.min(.25,(S.exp-j.exp)*.01))}
 function checkApp(){const a=S.app;if(!a||Date.now()<a.t)return;const j=JK[a.k],c=CITIES[a.city];S.app=null;
@@ -1046,8 +1052,9 @@ const DECAY={h:1,f:5,m:3};
 function runNeeds(hours){const N=S.need;let left=hours;
   while(left>1e-6){const h=Math.min(.25,left);left-=h;
     for(const [k] of NEEDS){let d=-DECAY[k];if(k==="h"){if(N.f<=0)d-=4;if(N.m<=0)d-=1}
-      if(S.home&&N[k]<HOMECAP)N[k]=Math.min(HOMECAP,N[k]+15*h);   // home refills toward 85
-      else N[k]=Math.max(S.home?HOMECAP:0,N[k]+d*h)}                // above 85 (or homeless) it decays
+      const hm=S.home&&(typeof atHomeNow!=="function"||atHomeNow());
+      if(hm&&N[k]<HOMECAP)N[k]=Math.min(HOMECAP,N[k]+15*h);   // home refills toward 85
+      else N[k]=Math.max(hm?HOMECAP:0,N[k]+d*h*(S.home&&!hm?.5:1))}                // above 85 (or homeless) it decays
     if(N.h<=0)hospital()}}
 function hospital(){const c=CITIES[(S.home||{city:0}).city],bill=Math.round(500*COL(c));S.cash-=bill;S.need.h=40;
   let lost="";if(S.job&&Math.random()<.5){lost=" You lost your job while you recovered.";S.job=null}
@@ -1109,6 +1116,9 @@ const BIZTAG={cart:"Cart",kiosk:"Café",shop:"Shop",rest:"Diner",apt:"Apts",offi
 function pinIcon(e){let [col,txt]=PIN[e.cls]||["#333","•"];if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
   return L.divIcon({className:"mpin",html:`<span style="background:${col}">${txt}</span>`,iconSize:null,iconAnchor:[18,30]})}
 function renderPins(){if(!layer)return;layer.clearLayers();ensurePositions();
+  if(S.loc&&stCity&&S.loc.city===stCity.id){const tp=tripPos(Date.now()),pl=tp&&S.trip.local?tp:S.loc;L.marker([pl.lat,pl.lon],{icon:L.divIcon({className:"mpin",html:'<span style="background:#be185d">You</span>',iconSize:null,iconAnchor:[18,30]}),zIndexOffset:1000}).addTo(layer)}
+  if(stCity&&hasAirport(stCity)){const a=airportPos(stCity);L.marker([a.lat,a.lon],{icon:L.divIcon({className:"mpin",html:'<span style="background:#334155">Airport</span>',iconSize:null,iconAnchor:[18,30]})}).addTo(layer)}
+  if(stCity){const a=stationPos(stCity);L.marker([a.lat,a.lon],{icon:L.divIcon({className:"mpin",html:'<span style="background:#334155">Station</span>',iconSize:null,iconAnchor:[18,30]})}).addTo(layer)}
   for(const e of entities()){const p=S.pos[e.key];if(!p)continue;
     const m=L.marker([p.lat,p.lon],{icon:pinIcon(e),title:e.label}).addTo(layer);
     m.bindTooltip(`<b>${e.label}</b>${e.sub?" · "+e.sub:""}<br>${p.addr||e.c.name}`,{direction:"top",offset:[0,-28]});
@@ -1405,7 +1415,7 @@ new MutationObserver(()=>{if(!sheet.firstElementChild||sheet.firstElementChild.c
 const hourOf=t=>Math.floor(t/DAYMS);
 function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);
-  runFleet(now);const g=totals().inc*dt/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);
+  if(typeof runTrip==="function")runTrip(now);runFleet(now);const g=totals().inc*dt/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
@@ -1414,7 +1424,7 @@ function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
 let saveT=0;
 setInterval(()=>{accrue();checkApp();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
-  $("#clk").title="Next market update";$("#clk").textContent="next update "+Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0");
+  $("#clk").title="Where you are";$("#clk").textContent=S.trip?(S.trip.local?"on the way":(S.trip.mode==="plane"?"flying to ":"travelling to ")+CITIES[S.trip.to.city].name)+" · "+fmtDur(S.trip.arr-Date.now()):"in "+CITIES[S.loc.city].name;
   if(sel&&mode==="city"&&saveT%5===0){if(tab==="biz")refreshButtons();else if(tab!=="hq"&&!shipForm&&!(document.activeElement&&/^(SELECT|INPUT)$/.test(document.activeElement.tagName)))renderSheet()}
   if(S.fleet.some(v=>v.arr))draw()},1000);
 function refreshButtons(){sheet.querySelectorAll("button.buy").forEach(b=>{const m=b.textContent.match(/\$([\d.,]+)([KMB]?)/);
@@ -1439,7 +1449,7 @@ const ICO={
  market:'<path d="M4 19V9 M10 19V5 M16 19v-7 M22 19H2"/>',
  travel:'<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["wallet","Wallet","#0f766e"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Places","#15803d"],["calc","Calc","#334155"]];
+const APPS=[["wallet","Wallet","#0f766e"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 function phPlace(){const el=PH.el,w=el.offsetWidth,h=el.offsetHeight,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
@@ -1468,8 +1478,7 @@ function appHtml(k){const {inc,nw}=totals();
     return (act.length?act.map(s=>`<div class="ph-card storm"><b>Storm near ${near(s)}</b><span>ends in ${fmtDur(s.end-now)}</span></div>`).join(""):`<div class="ph-card"><b>Clear skies</b><span>No storms anywhere right now.</span></div>`)+
       (up?`<div class="ph-card"><b>Next storm</b><span>${new Date(up.start).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})} · ${((up.end-up.start)/3600000).toFixed(1)} h</span></div>`:"")}
   if(k==="market"){const l=S.lst||[];return l.length?`<div class="ph-list">${l.map(x=>`<div><b>${G[x.g][0]} · ${CITIES[x.city].name}</b>${x.q<1e-6?"Sold out":gq(x.q)+" left at "+fmt(x.p)} · ${gq(x.sold||0)} sold</div>`).join("")}</div>`:`<p class="ph-sub">No listings. Post them from a city's Depot tab (needs an HQ).</p>`}
-  if(k==="travel"){const ids=new Set([...Object.keys(S.own),...Object.keys(S.hq).filter(i=>S.hq[i]),...S.sites.map(s=>String(s.city)),...(S.home?[String(S.home.city)]:[])]);
-    const list=[...ids].map(i=>CITIES[+i]);return list.length?`<div class="ph-list">${list.map(c=>`<button data-ph="go" data-c="${c.id}">${c.name}<small>${S.home&&S.home.city===c.id?"Home":""}${S.hq[c.id]?" · HQ":""}</small></button>`).join("")}</div>`:`<p class="ph-sub">Places you own or live in show up here.</p>`}
+  if(k==="travel")return travelApp();
   if(k==="calc")return `<input class="ph-calc" id="phc" inputmode="decimal" placeholder="e.g. 1500*12-300" aria-label="Calculator"><div class="ph-big" id="phr" style="font-size:22px">0</div><p class="ph-sub">Type a sum. + − × ÷ and brackets work.</p>`;
   return ""}
 const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);return `<button class="ph-item" data-ph="buyitem" data-k="${it.k}" ${S.cash<p?"disabled":""}><span>${it.n}<small>${NEEDS.filter(([q])=>it[q]).map(([q,n])=>(it[q]>0?"+":"")+it[q]+" "+n.toLowerCase()).join(", ")}</small></span><b>${fmt(p)}</b></button>`};
@@ -1489,8 +1498,77 @@ PH.el.addEventListener("input",e=>{if(e.target.id!=="phc")return;const v=e.targe
   window.addEventListener("pointerup",e=>{if(!st||e.pointerId!==st.id)return;st=null;PH.el.classList.remove("dragging");
     if(PH.dragged){if(!PH.open){const w=PH.el.offsetWidth;PH.x=PH.x+w/2<innerWidth/2?4:innerWidth-w-4;phPlace()}phSave();setTimeout(()=>PH.dragged=false,0)}})})();
 window.addEventListener("resize",phPlace);
-setInterval(()=>{trackNews();if(!PH.open||[null,"wallet","needs","job","weather"].includes(PH.app))phRender()},2000);
+setInterval(()=>{trackNews();if(!PH.open||[null,"wallet","needs","job","weather"].includes(PH.app)||(PH.app==="travel"&&S.trip))phRender()},2000);
 trackNews();phRender();
+
+/* ---------- travel: you are somewhere. Fly, take the train or bus, drive, or grab a taxi ---------- */
+const hasAirport=c=>c.size>=2;
+const airportPos=c=>autoPos("airport:"+c.id,c,14,24);
+const stationPos=c=>autoPos("station:"+c.id,c,.3,1.2);
+const CARS=[{k:"compact",n:"Used compact",p:6500,f:1,fuel:.12},{k:"sedan",n:"Sedan",p:24000,f:1.1,fuel:.14},{k:"suv",n:"SUV",p:38000,f:1.1,fuel:.19},{k:"sports",n:"Sports car",p:95000,f:1.45,fuel:.24}];
+const CK=Object.fromEntries(CARS.map(c=>[c.k,c]));
+if(!S.loc){const id=S.home?S.home.city:(Object.keys(S.own)[0]!=null?+Object.keys(S.own)[0]:0),c=CITIES[id];S.loc={city:c.id,lat:c.lat,lon:c.lon}}
+const here=()=>CITIES[S.loc.city];
+const traveling=()=>!!S.trip;
+const kmBetween=(a,b)=>d3.geoDistance([a.lon,a.lat],[b.lon,b.lat])*6371;
+/* intercity options: price ($) and real-time minutes */
+function cityOptions(from,to){const km=kmBetween(from,to),same=landmass(from)===landmass(to),o=[];
+  if(hasAirport(from)&&hasAirport(to))o.push({m:"plane",n:"Flight",price:Math.round(90+.11*km),min:2+km/1000,note:"Economy, airport to airport"});
+  if(same&&km<=2500)o.push({m:"train",n:"Train",price:Math.round(15+.09*km),min:1+km/300,note:"City centre to city centre"});
+  if(same&&km<=4000)o.push({m:"bus",n:"Coach bus",price:Math.round(8+.05*km),min:1+km/180,note:"Cheapest way overland"});
+  if(same&&S.car)o.push({m:"car",n:"Drive your "+CK[S.car.k].n.toLowerCase(),price:Math.round(km*CK[S.car.k].fuel),min:km/(200*CK[S.car.k].f),note:"Fuel only"});
+  return{km,o}}
+/* within a city: walk, bus, taxi, your car */
+function rideOptions(from,to){const km=Math.hypot((to.lat-from.lat)*111,(to.lon-from.lon)*111*Math.cos(from.lat*Math.PI/180)),o=[];
+  if(km<4)o.push({m:"walk",n:"Walk",price:0,sec:km*60});
+  o.push({m:"cbus",n:"City bus",price:3.25,sec:30+km*15});
+  o.push({m:"taxi",n:"Taxi",price:+(4+1.9*km).toFixed(2),sec:15+km*8});
+  if(S.car)o.push({m:"drive",n:"Your car",price:+(km*CK[S.car.k].fuel).toFixed(2),sec:10+km*7/CK[S.car.k].f});
+  return{km,o}}
+function startTrip(dest,opt,local){if(S.cash<opt.price){toast(`You need ${fmt(opt.price)} for that`);return false}
+  S.cash-=opt.price;const dur=(local?opt.sec*1000:opt.min*60000);
+  const toPt=local?dest:(opt.m==="plane"?airportPos(dest):opt.m==="car"?dest:stationPos(dest));
+  S.trip={mode:opt.m,n:opt.n,from:{...S.loc},to:{city:dest.city!=null?dest.city:dest.id,lat:toPt.lat,lon:toPt.lon,label:dest.label||dest.name},dep:Date.now(),arr:Date.now()+dur,local:!!local};
+  S.log.unshift(local?`${opt.n} to ${S.trip.to.label}`:`${opt.n} to ${dest.name} · ${fmtDur(dur).replace(" min","m")} · ${fmt(opt.price)}`);S.log=S.log.slice(0,3);save();hud();draw();return true}
+function runTrip(now){const t=S.trip;if(!t||now<t.arr)return;S.loc={city:t.to.city,lat:t.to.lat,lon:t.to.lon};S.trip=null;
+  S.log.unshift(t.local?`Arrived at ${t.to.label}`:`Landed in ${CITIES[t.to.city].name}`.replace("Landed",t.mode==="plane"?"Landed":"Arrived"));S.log=S.log.slice(0,3);
+  if(!t.local)toast(`Welcome to ${CITIES[t.to.city].name}`);save();hud();draw();if(typeof inStreet!=="undefined"&&inStreet)renderPins()}
+function tripPos(now){const t=S.trip;if(!t)return null;const u=Math.min(1,(now-t.dep)/(t.arr-t.dep));const g=d3.geoInterpolate([t.from.lon,t.from.lat],[t.to.lon,t.to.lat])(u);return{lon:g[0],lat:g[1],u}}
+/* you have to be there in person to buy or rent somewhere */
+let tvDest=null,tvTab="go";
+window.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest(typeof PLACE_SEL!=="undefined"?PLACE_SEL:"[data-buy]");if(!b||!sel||b.disabled||!sheet.contains(b))return;
+  if(typeof bypass!=="undefined"&&bypass)return;
+  const c=sel;if(!traveling()&&S.loc.city===c.id)return;
+  e.stopImmediatePropagation();e.preventDefault();
+  toast(traveling()?"You're still travelling. Wait until you arrive.":`You're in ${here().name}. Travel to ${c.name} to buy there.`);
+  if(!traveling()){tvDest=c.id;tvTab="go";PH.open=true;PH.app="travel";phSave();phRender()}},true);
+/* ---------- phone travel app ---------- */
+function travelApp(){const now=Date.now(),t=S.trip;let h="";
+  if(t){const u=Math.min(1,(now-t.dep)/(t.arr-t.dep));return `<div class="ph-card storm"><b>${t.n} → ${t.to.label||CITIES[t.to.city].name}</b><span>Arrives in ${fmtDur(t.arr-now)}</span>
+    <div class="bar" style="height:6px;grid-column:auto;margin-top:6px"><i style="width:${u*100}%;background:#6ee7c8"></i></div></div><p class="ph-sub">You can't buy or work while travelling. Your businesses keep running.</p>`}
+  h+=`<div class="ph-sub" style="margin-top:-4px">You are in <b style="color:#fff">${here().name}</b>${S.job&&S.job.city!==S.loc.city?" · away from work":""}</div>
+    <div class="ph-seg">${[["go","Cities"],["ride","Ride"],["garage","Garage"]].map(([k,n])=>`<button data-ph="tvtab" data-k="${k}" aria-pressed="${tvTab===k}">${n}</button>`).join("")}</div>`;
+  if(tvTab==="go"){const dests=CITIES.filter(c=>c.id!==S.loc.city);
+    h+=`<select class="ph-calc" id="tvsel" style="font-size:13px"><option value="">Choose a destination…</option>${dests.map(c=>`<option value="${c.id}" ${tvDest===c.id?"selected":""}>${c.name}${!hasAirport(c)?" (no airport)":""}</option>`).join("")}</select>`;
+    if(tvDest!=null&&tvDest!==S.loc.city){const d=CITIES[tvDest],{km,o}=cityOptions(here(),d);
+      h+=`<p class="ph-sub">${Math.round(km).toLocaleString()} km${!hasAirport(here())?` · ${here().name} has no airport`:""}${!hasAirport(d)?` · ${d.name} has no airport`:""}</p>`;
+      h+=o.length?o.map((x,i)=>`<button class="ph-item" data-ph="book" data-i="${i}" ${S.cash<x.price?"disabled":""}><span>${x.n}<small>${x.note} · ${fmtDur(x.min*60000)}</small></span><b>${fmt(x.price)}</b></button>`).join(""):`<p class="ph-sub">No direct route. Get to a city with an airport first.</p>`}}
+  else if(tvTab==="ride"){const c=here(),spots=[{label:"Airport",...airportPos(c),hide:!hasAirport(c)},{label:"Central station",...stationPos(c)},{label:"City centre",lat:c.lat,lon:c.lon}];
+    for(const e of entities())if(e.c.id===c.id&&S.pos[e.key])spots.push({label:e.label,lat:S.pos[e.key].lat,lon:S.pos[e.key].lon});
+    h+=`<p class="ph-sub">Getting around ${c.name}</p>`+spots.filter(x=>!x.hide).map((x,i)=>{const {km,o}=rideOptions(S.loc,x);return `<div class="ph-card"><b>${x.label}</b><span>${km.toFixed(1)} km away</span><div class="ph-rides">${o.map((r,j)=>`<button data-ph="ride" data-i="${i}" data-j="${j}" ${S.cash<r.price?"disabled":""}>${r.n}<small>${r.price?fmt(r.price):"free"} · ${Math.max(1,Math.round(r.sec))}s</small></button>`).join("")}</div></div>`}).join("");
+    PH.spots=spots.filter(x=>!x.hide)}
+  else{h+=S.car?`<div class="ph-card"><b>Your ${CK[S.car.k].n}</b><span>Fuel ${fmt(CK[S.car.k].fuel)}/km · ${Math.round((CK[S.car.k].f-1)*100)}% faster</span></div><button class="ph-item" data-ph="sellcar"><span>Sell car<small>Get back 60%</small></span><b>${fmt(CK[S.car.k].p*.6)}</b></button>`:"";
+    h+=CARS.filter(c=>!S.car||c.k!==S.car.k).map(c=>`<button class="ph-item" data-ph="buycar" data-k="${c.k}" ${S.cash<c.p?"disabled":""}><span>${c.n}<small>${c.f>1?Math.round((c.f-1)*100)+"% faster · ":""}${fmt(c.fuel)}/km fuel</small></span><b>${fmt(c.p)}</b></button>`).join("")+`<p class="ph-sub">A car replaces taxis in town and lets you drive between cities on the same continent.</p>`}
+  return h}
+PH.el.addEventListener("change",e=>{if(e.target.id==="tvsel"){tvDest=e.target.value===""?null:+e.target.value;phRender()}});
+PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;
+  if(a==="tvtab"){tvTab=b.dataset.k;phRender()}
+  else if(a==="book"){const d=CITIES[tvDest],{o}=cityOptions(here(),d);if(startTrip(d,o[+b.dataset.i],false)){tvDest=null;phRender()}}
+  else if(a==="ride"){const x=PH.spots[+b.dataset.i],{o}=rideOptions(S.loc,x);startTrip({...x,city:S.loc.city},o[+b.dataset.j],true);phRender()}
+  else if(a==="buycar"){const c=CK[b.dataset.k];if(S.cash<c.p)return;if(S.car)S.cash+=CK[S.car.k].p*.6;S.cash-=c.p;S.car={k:c.k};toast(`You bought a ${c.n.toLowerCase()}`);save();hud();phRender()}
+  else if(a==="sellcar"){S.cash+=CK[S.car.k].p*.6;S.car=null;toast("Car sold");save();hud();phRender()}},true);
+
+const atHomeNow=()=>!!(S.home&&!S.trip&&S.loc.city===S.home.city);
 
 /* ---------- misc ---------- */
 let tt;function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(tt);tt=setTimeout(()=>t.classList.remove("on"),1800)}
