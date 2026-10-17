@@ -319,6 +319,13 @@ cv.addEventListener("wheel",e=>{e.preventDefault();V.k=Math.max(.8,Math.min(30,V
 cv.addEventListener("click",e=>{if(dragMoved)return;const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
   let best=null,bd=26*26;for(const c of CITIES){const d=(c.sx-x)**2+(c.sy-y)**2;if(d<bd){bd=d;best=c}}
   if(best)openCity(best)});
+/* idle spin: after 15 s without input, a zoomed-out globe slowly turns on its own */
+let lastInput=Date.now(),idleRaf=0,idleT=0;
+["pointerdown","wheel","keydown","touchstart"].forEach(t=>window.addEventListener(t,()=>{lastInput=Date.now()},{passive:true,capture:true}));
+function idleSpin(t){const ok=Date.now()-lastInput>15000&&V.k<=1.6&&!flying&&!ptrs.size&&!(typeof inStreet!=="undefined"&&inStreet)&&document.visibilityState==="visible";
+  if(ok){const dt=idleT?Math.min(.1,(t-idleT)/1000):0;V.lam+=dt*4;V.phi+=(-25-V.phi)*Math.min(1,dt*.3);draw()}
+  idleT=t;idleRaf=requestAnimationFrame(idleSpin)}
+if(!matchMedia("(prefers-reduced-motion: reduce)").matches)idleRaf=requestAnimationFrame(idleSpin);
 /* glide the globe so a city faces you */
 let flying=false;
 function rotateTo(c,k,done){const l0=V.lam,p0=V.phi,k0=V.k;let l1=-c.lon;while(l1-l0>180)l1-=360;while(l1-l0<-180)l1+=360;const p1=Math.max(-80,Math.min(80,-c.lat));
