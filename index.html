@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf5">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Meridian Tycoon</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -113,6 +116,17 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
 #nav button[aria-current="true"]{color:var(--accent)}
 .grab{position:sticky;top:0;z-index:3;display:flex;justify-content:center;align-items:center;height:20px;margin:0 calc(-1*max(16px,env(safe-area-inset-left,0px))) 0;background:var(--panel);cursor:grab;touch-action:none;border:0;width:calc(100% + 2*max(16px,env(safe-area-inset-left,0px)));padding:0}
 .grab::before{content:"";width:40px;height:5px;border-radius:3px;background:var(--line)}
+#street{position:absolute;inset:0;z-index:1;background:var(--sea)}
+#sheet{z-index:4}
+.chip{font:600 12px var(--body);background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:7px 12px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+#stbar{position:absolute;z-index:3;top:10px;left:max(12px,env(safe-area-inset-left,0px));display:flex;gap:6px}
+#tostreet{position:absolute;z-index:3;right:max(12px,env(safe-area-inset-right,0px));top:10px;background:var(--ink);color:var(--panel);border-color:var(--ink)}
+#placebar{position:absolute;z-index:3;left:12px;right:12px;bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;justify-content:space-between;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:13px}
+#placebar span{color:var(--muted)}
+.mpin{background:none;border:0}
+.mpin span{display:inline-block;transform:translate(-50%,-100%);margin-left:18px;margin-top:30px;color:#fff;font:700 10.5px var(--mono);padding:4px 7px;border-radius:7px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);white-space:nowrap;position:relative}
+.mpin span::after{content:"";position:absolute;left:50%;bottom:-7px;margin-left:-5px;border:5px solid transparent;border-top-color:#fff}
+.leaflet-container{font-family:var(--body)}
 .welcome{background:var(--ink);color:var(--panel);padding:10px 12px;border-radius:4px;font-size:13px;margin-bottom:10px}
 </style>
 </head>
@@ -130,6 +144,10 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
   <div id="mapwrap">
     <canvas id="map"></canvas>
     <div id="ticker"></div>
+    <div id="street" hidden></div>
+    <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button></div>
+    <div id="placebar" hidden></div>
+    <button id="tostreet" class="chip" hidden>View streets</button>
     <div id="hint">Drag to spin the globe · pinch or scroll to zoom · tap a city</div>
     <div id="toast"></div>
     <aside id="sheet" aria-live="polite"></aside>
@@ -199,7 +217,7 @@ let SLOT=1;try{SLOT=+localStorage.getItem(SLOTKEY)||1}catch(e){}
 const KEY=slotKey(SLOT);
 let S={cash:0,day:1,own:{},events:{},log:[],hist:[],goals:[],mgr:{},speed:1,debt:0,rivals:null,last:Date.now(),earned:0}; // own[cityId][bizKey]=level
 try{const raw=localStorage.getItem(KEY);if(raw)S=Object.assign(S,JSON.parse(raw))}catch(e){}
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const save=()=>{try{if(typeof ensurePositions==="function")ensurePositions();localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 
 const cost=(b,c)=>Math.round(b.cost*PRICE[c.size]);
 const upCost=(b,c,lv)=>Math.round(cost(b,c)*0.7*Math.pow(1.6,lv-1));
@@ -292,12 +310,12 @@ cv.addEventListener("pointermove",e=>{const p=ptrs.get(e.pointerId);if(!p)return
   if(ptrs.size===1){if(Math.abs(dx)+Math.abs(dy)>2)dragMoved=true;const f=degPerPx();V.lam+=dx*f;V.phi-=dy*f;clampPhi();
     const t=performance.now(),dt=Math.max(8,t-lastMove);V.vl=dx*f/dt*16;V.vp=-dy*f/dt*16;lastMove=t;draw()}
   p.x=e.clientX;p.y=e.clientY;
-  if(ptrs.size===2&&pinch0){dragMoved=true;const [a,b]=[...ptrs.values()];V.k=Math.max(.8,Math.min(30,pinch0.k*Math.hypot(a.x-b.x,a.y-b.y)/pinch0.d));draw()}});
+  if(ptrs.size===2&&pinch0){dragMoved=true;const [a,b]=[...ptrs.values()];V.k=Math.max(.8,Math.min(30,pinch0.k*Math.hypot(a.x-b.x,a.y-b.y)/pinch0.d));draw();if(typeof maybeStreet==="function"&&V.k>=9){ptrs.clear();pinch0=null;maybeStreet()}}});
 function spin(){V.vl*=.94;V.vp*=.94;V.lam+=V.vl;V.phi+=V.vp;clampPhi();draw();if(Math.abs(V.vl)+Math.abs(V.vp)>.02)spinRaf=requestAnimationFrame(spin)}
 const endPtr=e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch0=null;
   if(!ptrs.size&&dragMoved&&!reduce&&performance.now()-lastMove<80&&Math.abs(V.vl)+Math.abs(V.vp)>.05){cancelAnimationFrame(spinRaf);spinRaf=requestAnimationFrame(spin)}};
 cv.addEventListener("pointerup",endPtr);cv.addEventListener("pointercancel",endPtr);
-cv.addEventListener("wheel",e=>{e.preventDefault();V.k=Math.max(.8,Math.min(30,V.k*Math.exp(-e.deltaY*.0015)));draw()},{passive:false});
+cv.addEventListener("wheel",e=>{e.preventDefault();V.k=Math.max(.8,Math.min(30,V.k*Math.exp(-e.deltaY*.0015)));draw();if(typeof maybeStreet==="function")maybeStreet()},{passive:false});
 cv.addEventListener("click",e=>{if(dragMoved)return;const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
   let best=null,bd=26*26;for(const c of CITIES){const d=(c.sx-x)**2+(c.sy-y)**2;if(d<bd){bd=d;best=c}}
   if(best)openCity(best)});
@@ -1004,6 +1022,95 @@ function needsHtml(c){const N=S.need,wm=wageMult();
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-need]");if(!b||!sel)return;const it=ITEMS.find(x=>x.k===b.dataset.need),p=itemPrice(it,sel);if(S.cash<p)return;
   S.cash-=p;for(const [k] of NEEDS)if(it[k])S.need[k]=Math.max(0,Math.min(100,S.need[k]+it[k]));toast(`${it.n}: ${NEEDS.filter(([k])=>it[k]).map(([k,n])=>n+" "+Math.round(S.need[k])+"%").join(", ")}`);commit()});
 
+/* ---------- street view: real OpenStreetMap streets, every property is a pin you placed ---------- */
+S.pos=S.pos||{};
+const HAS_STREET=!!window.L;
+const KM_LAT=1/111;
+const hash01=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return ((h>>>0)%100000)/100000};
+function autoPos(key,c,rmin,rmax){const a=hash01(key+"a")*Math.PI*2,r=rmin+hash01(key+"r")*(rmax-rmin);
+  return{lat:c.lat+Math.sin(a)*r*KM_LAT,lon:c.lon+Math.cos(a)*r*KM_LAT/Math.cos(c.lat*Math.PI/180),auto:1}}
+/* everything you own that belongs on the map */
+function entities(){const out=[];
+  for(const id in S.own){const c=CITIES[id];for(const b of BIZ)if(S.own[id][b.k])out.push({key:`biz:${id}:${b.k}`,c,label:b.n,cls:"biz",tab:"biz",r:[.3,2.5],sub:"Lv "+S.own[id][b.k]})}
+  for(const pr of S.props||[])out.push({key:`prop:${pr.id}`,c:CITIES[pr.city],label:PK[pr.k].n,cls:"prop",tab:"biz",r:[.4,3],sub:pr.occ?"Rented":"Vacant"});
+  for(const s of S.sites){const z=zoneOf(s)||"farm";out.push({key:`site:${s.id}`,c:CITIES[s.city],label:siteOp(s)?OP[s.op].n:(ZONE[z]||{n:"Land"}).n,cls:"site-"+z,tab:"ind",r:z==="farm"?[6,14]:z==="mine"?[5,12]:[2.5,6],sub:LAND[s.size][1]+" ha"})}
+  for(const id in S.hq)if(S.hq[id])out.push({key:`hq:${id}`,c:CITIES[id],label:"Headquarters",cls:"hq",tab:"hq",r:[0,.8]});
+  for(const id in S.wh)if(S.wh[id]!=null)out.push({key:`wh:${id}`,c:CITIES[id],label:"Warehouse",cls:"wh",tab:"wh",r:[2,5]});
+  if(S.home)out.push({key:"home",c:CITIES[S.home.city],label:HK[S.home.k].n,cls:"home",tab:"life",r:[1,4],sub:"Your home"});
+  return out}
+let pendingPos=null;
+function ensurePositions(){for(const e of entities()){const p=S.pos[e.key];
+  if(p&&p.city===e.c.id)continue;
+  if(pendingPos&&pendingPos.city===e.c.id){S.pos[e.key]={...pendingPos};pendingPos=null}
+  else S.pos[e.key]={...autoPos(e.key,e.c,e.r[0],e.r[1]),city:e.c.id}}}
+/* ---------- the Leaflet map ---------- */
+let LM=null,inStreet=false,stCity=null,layer=null,tempMark=null;
+const stEl=$("#street"),stBar=$("#stbar"),placeBar=$("#placebar");
+function initStreet(){if(LM||!HAS_STREET)return;
+  LM=L.map(stEl,{zoomControl:false,attributionControl:true,worldCopyJump:true,minZoom:3,maxZoom:19});
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(LM);
+  L.control.zoom({position:"bottomright"}).addTo(LM);
+  layer=L.layerGroup().addTo(LM);
+  LM.on("click",e=>{if(placing)pickSpot(e.latlng)});
+  LM.on("zoomend",()=>{if(!placing&&LM.getZoom()<9)leaveStreet()});
+  LM.on("moveend",()=>{const ce=LM.getCenter();let best=null,bd=1e9;for(const c of CITIES){const d=Math.hypot(c.lat-ce.lat,(c.lon-ce.lng)*Math.cos(c.lat*Math.PI/180));if(d<bd){bd=d;best=c}}
+    if(best&&best!==stCity&&bd<.6){stCity=best;$("#stcity").textContent=best.name;renderPins()}})}
+function enterStreet(c,zoom){if(!HAS_STREET)return false;stCity=c;inStreet=true;stEl.hidden=false;stBar.hidden=false;$("#hint").hidden=true;
+  initStreet();LM.invalidateSize();LM.setView([c.lat,c.lon],zoom||14,{animate:false});$("#stcity").textContent=c.name;renderPins();return true}
+function leaveStreet(){if(placing)cancelPlace();inStreet=false;stEl.hidden=true;stBar.hidden=true;
+  if(stCity){V.lam=-stCity.lon;V.phi=Math.max(-80,Math.min(80,-stCity.lat));V.k=8}draw()}
+const PIN={biz:["#c2410c","Shop"],prop:["#7c3aed","Rent"],"site-farm":["#4d7c0f","Farm"],"site-mine":["#78716c","Mine"],"site-ind":["#0e7490","Ind"],hq:["#1d2a2b","HQ"],wh:["#a16207","Depot"],home:["#be185d","Home"]};
+const BIZTAG={cart:"Cart",kiosk:"Café",shop:"Shop",rest:"Diner",apt:"Apts",office:"Office",hotel:"Hotel",casino:"Casino"};
+function pinIcon(e){let [col,txt]=PIN[e.cls]||["#333","•"];if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
+  return L.divIcon({className:"mpin",html:`<span style="background:${col}">${txt}</span>`,iconSize:null,iconAnchor:[18,30]})}
+function renderPins(){if(!layer)return;layer.clearLayers();ensurePositions();
+  for(const e of entities()){const p=S.pos[e.key];if(!p)continue;
+    const m=L.marker([p.lat,p.lon],{icon:pinIcon(e),title:e.label}).addTo(layer);
+    m.bindTooltip(`<b>${e.label}</b>${e.sub?" · "+e.sub:""}<br>${p.addr||e.c.name}`,{direction:"top",offset:[0,-28]});
+    m.on("click",()=>{tab=e.tab;openCity(e.c)})}
+  // rival branches in this city
+  if(stCity)S.rivals.forEach((rv,i)=>{if(!rv.cities.includes(stCity.id))return;const p=autoPos("rival"+i+":"+stCity.id,stCity,.4,2.2);
+    L.marker([p.lat,p.lon],{icon:L.divIcon({className:"mpin",html:`<span style="background:${RIVALS[i].col}">${RIVALS[i].n.split(" ")[0]}</span>`,iconSize:null,iconAnchor:[18,30]}),title:RIVALS[i].n}).addTo(layer).bindTooltip(`${RIVALS[i].n} branch`,{direction:"top",offset:[0,-28]})})}
+/* zooming far into the globe drops you onto the streets of the city in front of you */
+function maybeStreet(){if(!HAS_STREET||inStreet||V.k<9)return;const [cx,cy]=proj.translate();let best=null,bd=90*90;
+  for(const c of CITIES){if(c.sx<-1e3)continue;const d=(c.sx-cx)**2+(c.sy-cy)**2;if(d<bd){bd=d;best=c}}
+  if(best){enterStreet(best,13);V.k=8}}
+/* ---------- placing a purchase on the map ---------- */
+const PLACE_SEL='[data-buy],[data-rent],[data-act="land"],[data-act="leaseland"],[data-act="wh"],[data-prop="buy"],[data-hq="open"],[data-life="rent"],[data-life="buy"]';
+let placing=null,bypass=false;
+sheet.addEventListener("click",e=>{if(!HAS_STREET||bypass)return;const b=e.target.closest(PLACE_SEL);if(!b||b.disabled||b.dataset.arm||!sel)return;
+  e.stopImmediatePropagation();e.preventDefault();
+  const attrs=[...b.attributes].filter(a=>a.name.startsWith("data-")).map(a=>`[${a.name}="${a.value}"]`).join("");
+  const row=b.closest(".row"),label=(row&&row.querySelector(".n")?row.querySelector(".n").childNodes[0].textContent:"property").trim();
+  placing={sel:attrs,city:sel,label,mode,tab};
+  sheet.classList.remove("open","full");enterStreet(sel,15);
+  placeBar.hidden=false;placeBar.innerHTML=`<div><b>Place your ${label}</b><br><span>Tap the map where it should go in ${sel.name}.</span></div><button class="buy up" id="plcancel">Cancel</button>`;
+  $("#plcancel").onclick=cancelPlace},true);
+async function pickSpot(ll){const c=placing.city;
+  const km=Math.hypot((ll.lat-c.lat)/KM_LAT,(ll.lng-c.lon)*Math.cos(c.lat*Math.PI/180)/KM_LAT);
+  if(km>40){toast(`That's outside ${c.name}. Pick a spot within about 40 km of the city.`);return}
+  if(tempMark)tempMark.remove();tempMark=L.marker(ll,{icon:L.divIcon({className:"mpin",html:'<span style="background:var(--accent)">Here</span>',iconSize:null,iconAnchor:[18,30]})}).addTo(LM);
+  placeBar.innerHTML=`<div><b>${placing.label}</b><br><span id="pladdr">Looking up the address…</span></div><span style="display:flex;gap:6px"><button class="buy up" id="plcancel">Cancel</button><button class="buy" id="plok">Place here</button></span>`;
+  $("#plcancel").onclick=cancelPlace;const spot={lat:ll.lat,lon:ll.lng,city:c.id,addr:""};
+  $("#plok").onclick=()=>confirmPlace(spot);
+  const a=await lookupAddr(ll.lat,ll.lng);spot.addr=a;const el=$("#pladdr");if(el)el.textContent=a||`${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}`}
+let lastGeo=0;
+async function lookupAddr(lat,lon){const wait=Math.max(0,1100-(Date.now()-lastGeo));if(wait)await new Promise(r=>setTimeout(r,wait));lastGeo=Date.now();
+  try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=${lat}&lon=${lon}`,{headers:{"Accept-Language":"en"}});const j=await r.json();const a=j.address||{};
+    const street=[a.house_number,a.road||a.pedestrian||a.footway||a.path].filter(Boolean).join(" ");
+    return [street||a.neighbourhood||a.hamlet||a.village,a.suburb||a.city_district||a.town||a.city].filter(Boolean).join(", ")||j.display_name||""}catch(e){return ""}}
+function confirmPlace(spot){const p=placing;placing=null;placeBar.hidden=true;if(tempMark){tempMark.remove();tempMark=null}
+  mode=p.mode;tab=p.tab;sel=p.city;renderSheet();sheet.classList.add("open");
+  const b=sheet.querySelector(p.sel);if(!b||b.disabled){toast("Couldn't complete that purchase");return}
+  pendingPos=spot;bypass=true;try{b.click()}finally{bypass=false}
+  if(pendingPos&&!b.dataset.arm)pendingPos=null;           // nothing was bought (e.g. not enough cash)
+  ensurePositions();save();renderPins();
+  const kept=Object.values(S.pos).some(q=>q.lat===spot.lat&&q.lon===spot.lon);if(kept)toast(`${p.label} placed${spot.addr?" at "+spot.addr:""}`)}
+function cancelPlace(){if(!placing)return;const p=placing;placing=null;placeBar.hidden=true;if(tempMark){tempMark.remove();tempMark=null}
+  mode=p.mode;tab=p.tab;sel=p.city;renderSheet();sheet.classList.add("open")}
+$("#stback").onclick=leaveStreet;
+$("#stcityb").onclick=()=>{if(stCity){openCity(stCity)}};
+
 /* ---------- economy tick ---------- */
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
 let pops=[]; // floating income labels
@@ -1175,8 +1282,9 @@ function hud(){const nb=document.querySelectorAll('#needs i');["h","f","m"].forE
   const tk=$("#ticker");if(S.log.length){const html=`<button id="tkb" aria-expanded="${!!tickOpen}" title="Show recent news">${S.log[0]}</button>`+(tickOpen?S.log.slice(1).map(l=>`<div>${l}</div>`).join(""):"");if(tk.innerHTML!==html)tk.innerHTML=html}}
 let tickOpen=false;$("#ticker").addEventListener("click",e=>{if(e.target.closest("#tkb")){tickOpen=!tickOpen;hud()}});
 /* bottom navigation + sheet handle */
-$("#mapbtn").onclick=()=>closeSheet();
-function navSync(){const open=sheet.classList.contains("open");const cur=!open?"map":mode==="pf"?"pf":mode==="rs"?"rs":mode==="sv"?"sv":"map";
+$("#mapbtn").onclick=()=>{closeSheet();if(typeof inStreet!=="undefined"&&inStreet)leaveStreet()};
+$("#tostreet").onclick=()=>{if(sel){const c=sel;sheet.classList.remove("full");enterStreet(c,14);navSync()}};
+function navSync(){const tsb=$("#tostreet");if(tsb)tsb.hidden=!(typeof HAS_STREET!=="undefined"&&HAS_STREET&&!inStreet&&mode==="city"&&sel&&sheet.classList.contains("open"));const open=sheet.classList.contains("open");const cur=!open?"map":mode==="pf"?"pf":mode==="rs"?"rs":mode==="sv"?"sv":"map";
   document.querySelectorAll("#nav button").forEach(b=>b.setAttribute("aria-current",String(b.dataset.nav===cur)));
   if(open)$("#hint").hidden=true}
 new MutationObserver(navSync).observe(sheet,{attributes:true,attributeFilter:["class"]});
