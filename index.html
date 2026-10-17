@@ -127,6 +127,7 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
 .mpin span{display:inline-block;transform:translate(-50%,-100%);margin-left:18px;margin-top:30px;color:#fff;font:700 10.5px var(--mono);padding:4px 7px;border-radius:7px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);white-space:nowrap;position:relative}
 .mpin span::after{content:"";position:absolute;left:50%;bottom:-7px;margin-left:-5px;border:5px solid transparent;border-top-color:#fff}
 .leaflet-container{font-family:var(--body)}
+#wx{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none}
 .welcome{background:var(--ink);color:var(--panel);padding:10px 12px;border-radius:4px;font-size:13px;margin-bottom:10px}
 </style>
 </head>
@@ -145,6 +146,7 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
     <canvas id="map"></canvas>
     <div id="ticker"></div>
     <div id="street" hidden></div>
+    <canvas id="wx" hidden></canvas>
     <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button></div>
     <div id="placebar" hidden></div>
     <button id="tostreet" class="chip" hidden>View streets</button>
@@ -221,7 +223,7 @@ const save=()=>{try{if(typeof ensurePositions==="function")ensurePositions();loc
 
 const cost=(b,c)=>Math.round(b.cost*PRICE[c.size]);
 const upCost=(b,c,lv)=>Math.round(cost(b,c)*0.7*Math.pow(1.6,lv-1));
-function evMult(c){const e=S.events[c.id];return e?e.m:1}
+function evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="function"?stormMult(c):1)}
 /* rival companies */
 const RIVALS=[{n:"Halcyon Group",col:"#7c3aed"},{n:"Ironbridge Co.",col:"#b45309"},{n:"Sable & Finch",col:"#0369a1"}];
 if(!S.rivals)S.rivals=RIVALS.map((r,i)=>({nw:40000+i*25000,cities:[[3,13,40],[29,36,11],[14,31,23]][i]}));
@@ -286,6 +288,7 @@ function draw(){applyView();
     const g=d3.geoInterpolate([a.lon,a.lat],[b.lon,b.lat])(t);if(!visible(g[0],g[1]))continue;const [x,y]=proj(g);
     ctx.fillStyle=C.acc;if(v.type==="truck")ctx.fillRect(x-4,y-3,8,6);else if(v.type==="ship"){ctx.beginPath();ctx.moveTo(x-6,y-2);ctx.lineTo(x+6,y-2);ctx.lineTo(x+3,y+3);ctx.lineTo(x-3,y+3);ctx.fill()}
     else{ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.fill()}}
+  if(typeof drawStorms==="function")drawStorms(ctx,C);
   // cities on the near side only
   ctx.textBaseline="middle";
   for(const c of CITIES){if(!visible(c.lon,c.lat)){c.sx=c.sy=-1e4;continue}const [x,y]=proj([c.lon,c.lat]);c.sx=x;c.sy=y;
@@ -339,7 +342,7 @@ const sheet=$("#sheet");
 function openCity(c){const fresh=mode!=="city"||sel!==c;mode="city";if(sel!==c)shipForm=null;sel=c;renderSheet();if(fresh)sheet.scrollTop=0;sheet.classList.add("open");draw()}
 function closeSheet(){sel=null;sheet.classList.remove("open","full");draw()}
 function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.contains("open"))renderResearch();return}if(mode==="pf"){if(sheet.classList.contains("open"))renderPortfolio();return}if(!sel)return;const c=sel,o=S.own[c.id]||{},ev=S.events[c.id];if(tab==="life"){renderLife(c);return}if(tab==="hq"){renderHQ(c);return}if(tab!=="biz"){renderInd(c);return}
-  let h=`<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}</h2>
+  let h=`<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}${typeof stormAt==="function"&&stormAt(c)?`<span class="tag bust">STORM</span>`:""}</h2>
     <p>${c.country} · market size ${"●".repeat(c.size)}${"○".repeat(5-c.size)}</p></div>
     <button class="x" id="cls" aria-label="Close">×</button></div>
     <div class="meta"><div><span>Land price </span>×${PRICE[c.size]}</div><div><span>Demand </span>×${(DEMAND[c.size]*evMult(c)*compMult(c)).toFixed(2)}</div><div><span>Yours </span>${fmt(cityProfit(c))}/hr</div></div>`+tabsHtml();
@@ -547,7 +550,7 @@ const gq=n=>n>=1e4?(n/1e3).toFixed(1)+"K":n>=100?Math.round(n).toLocaleString():
 /* ---------- industry + warehouse tabs ---------- */
 let tab=S.job||nOwnedSafe()?"biz":"life",shipForm=null;function nOwnedSafe(){for(const id in S.own)if(Object.keys(S.own[id]).length)return true;return false}
 function tabsHtml(){return `<div class="tabs" role="tablist">${[["life","Life"],["hq","HQ"],["biz","Business"],["ind","Land"],["wh","Depot"]].map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")}</div>`}
-function cityHead(c){const ev=S.events[c.id];return `<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}</h2>
+function cityHead(c){const ev=S.events[c.id];return `<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}${typeof stormAt==="function"&&stormAt(c)?`<span class="tag bust">STORM</span>`:""}</h2>
   <p>${c.country} · market size ${"●".repeat(c.size)}${"○".repeat(5-c.size)}</p></div><button class="x" id="cls" aria-label="Close">×</button></div>`}
 function opLabel(o){const f=x=>Object.entries(x||{}).map(([g,q])=>`${q} ${G[g][0].toLowerCase()}`).join(" + ");return (o.in?f(o.in)+" → ":"")+(o.rp?o.rp+" research points":f(o.out))+" per ha/hr"}
 function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.sites.filter(s=>s.city===c.id);
@@ -1117,6 +1120,66 @@ function cancelPlace(){if(!placing)return;const p=placing;placing=null;placeBar.
   mode=p.mode;tab=p.tab;sel=p.city;renderSheet();sheet.classList.add("open")}
 $("#stback").onclick=leaveStreet;
 $("#stcityb").onclick=()=>{if(stCity){openCity(stCity)}};
+
+/* ---------- weather: two storms a week, 4–6 hours each, drifting across the planet ---------- */
+const WEEK=7*24*3600000;
+function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const WX_TEST=/[?&]wxtest/.test(location.search);
+function stormsOfWeek(w){const r=rng(w*7919+13),out=[];
+  const a=r()*.45,b=.5+r()*.45;                                        // one in each half of the week
+  for(const f of [a,b]){const start=w*WEEK+f*WEEK,dur=(4+r()*2)*3600000,lat=-45+r()*100,lon=-180+r()*360,
+    hd=r()*Math.PI*2,spd=12+r()*18;                                       // drift heading and km/h
+    out.push({id:w+"-"+f.toFixed(3),start,end:start+dur,lat,lon,hd,spd,rad:5+r()*4,spin:r()<.5?1:-1})}
+  return out}
+function activeStorms(now){now=now||Date.now();const w=Math.floor(now/WEEK);
+  const list=[...stormsOfWeek(w-1),...stormsOfWeek(w)].filter(s=>now>=s.start&&now<s.end);
+  if(WX_TEST){const c=CITIES[0];list.push({id:"test",start:now-3600000,end:now+3600000*3,lat:c.lat-1,lon:c.lon-1.5,hd:.6,spd:20,rad:6,spin:1})}
+  return list}
+function stormCenter(s,now){const h=((now||Date.now())-s.start)/3600000,km=h*s.spd;
+  const lat=s.lat+Math.cos(s.hd)*km/111,lon=s.lon+Math.sin(s.hd)*km/(111*Math.max(.2,Math.cos(s.lat*Math.PI/180)));return[((lon+540)%360)-180,Math.max(-80,Math.min(80,lat))]}
+function stormAt(c,now){for(const s of activeStorms(now)){const ce=stormCenter(s,now);if(d3.geoDistance(ce,[c.lon,c.lat])*180/Math.PI<s.rad)return s}return null}
+const stormMult=c=>stormAt(c)?.85:1;
+/* draw clouds, spiral bands and lightning on the globe */
+const flashes=[];
+function drawStorms(ctx,C){const now=Date.now(),t=performance.now()/1000;
+  for(const s of activeStorms(now)){const ce=stormCenter(s,now);const life=Math.min(1,(now-s.start)/1.2e6,(s.end-now)/1.2e6);  // fade in/out over 20 min
+    ctx.save();ctx.globalAlpha=.8*life;ctx.beginPath();path(d3.geoCircle().center(ce).radius(s.rad)());ctx.fillStyle="rgba(60,72,88,.6)";ctx.fill();ctx.beginPath();path(d3.geoCircle().center(ce).radius(s.rad*.6)());ctx.fillStyle="rgba(45,55,70,.5)";ctx.fill();ctx.restore();
+    if(!visible(ce[0],ce[1]))continue;
+    const [x,y]=proj(ce),R=proj.scale()*Math.sin(s.rad*Math.PI/180);
+    ctx.save();ctx.translate(x,y);ctx.rotate(t*.25*s.spin);ctx.globalAlpha=.95*life;
+    for(let arm=0;arm<4;arm++){ctx.rotate(Math.PI/2);ctx.beginPath();
+      for(let k=0;k<=40;k++){const u=k/40,ang=u*2.6*s.spin,rr=R*(.12+u*.95);ctx.lineTo(Math.cos(ang)*rr,Math.sin(ang)*rr)}
+      ctx.strokeStyle="rgba(245,248,252,.92)";ctx.lineWidth=Math.max(3,R*.2);ctx.shadowColor="rgba(0,0,0,.35)";ctx.shadowBlur=6;ctx.lineCap="round";ctx.stroke()}
+    ctx.beginPath();ctx.arc(0,0,R*.13,0,7);ctx.fillStyle="rgba(40,48,58,.9)";ctx.fill();ctx.restore();
+    if(Math.random()<.06*life)flashes.push({x:x+(Math.random()-.5)*R*1.2,y:y+(Math.random()-.5)*R*1.2,t:t,s:Math.max(10,R*.35)})}
+  for(let i=flashes.length-1;i>=0;i--){const f=flashes[i],a=1-(t-f.t)/.35;if(a<=0){flashes.splice(i,1);continue}
+    ctx.save();ctx.globalAlpha=a;ctx.strokeStyle="#fff7c2";ctx.lineWidth=2;ctx.shadowColor="#fff3a0";ctx.shadowBlur=12;ctx.beginPath();let px=f.x,py=f.y-f.s;ctx.moveTo(px,py);
+    for(let k=0;k<4;k++){px+=(Math.random()-.5)*f.s*.5;py+=f.s*.5;ctx.lineTo(px,py)}ctx.stroke();ctx.restore()}}
+/* keep storms animated while one is on screen */
+let wxRaf=0,wxLast=0;
+function wxLoop(t){if(activeStorms().length&&!(typeof inStreet!=="undefined"&&inStreet)&&document.visibilityState==="visible"&&t-wxLast>50){wxLast=t;draw()}
+  if(typeof inStreet!=="undefined"&&inStreet)drawRain(t);wxRaf=requestAnimationFrame(wxLoop)}
+wxRaf=requestAnimationFrame(wxLoop);
+/* rain over the street map when the city is under a storm */
+const wxCv=$("#wx"),wctx=wxCv.getContext("2d");let drops=[],rainOn=false,boltT=0;
+function drawRain(t){const st=stCity&&stormAt(stCity);const W2=wxCv.clientWidth,H2=wxCv.clientHeight,d=Math.min(2,devicePixelRatio||1);
+  if(!st){if(rainOn){wctx.clearRect(0,0,wxCv.width,wxCv.height);rainOn=false;wxCv.hidden=true}return}
+  if(!rainOn){rainOn=true;wxCv.hidden=false}
+  if(wxCv.width!==W2*d||wxCv.height!==H2*d){wxCv.width=W2*d;wxCv.height=H2*d;drops=[]}
+  wctx.setTransform(d,0,0,d,0,0);wctx.clearRect(0,0,W2,H2);
+  wctx.fillStyle="rgba(25,35,50,.38)";wctx.fillRect(0,0,W2,H2);
+  const n=Math.round(W2*H2/1100);while(drops.length<n)drops.push({x:Math.random()*W2,y:Math.random()*H2,v:9+Math.random()*7,l:10+Math.random()*12});
+  wctx.strokeStyle="rgba(225,235,248,.8)";wctx.lineWidth=1.6;wctx.beginPath();
+  for(const p of drops){p.x-=p.v*.25;p.y+=p.v;if(p.y>H2){p.y=-p.l;p.x=Math.random()*(W2+60)}if(p.x<-20)p.x=W2+10;wctx.moveTo(p.x,p.y);wctx.lineTo(p.x+p.l*.25,p.y-p.l)}wctx.stroke();
+  if(t-boltT>2500&&Math.random()<.01){boltT=t}
+  const fa=1-(t-boltT)/220;if(fa>0){wctx.fillStyle=`rgba(255,255,240,${.45*fa})`;wctx.fillRect(0,0,W2,H2)}}
+/* announce storms over places you own */
+let wxSeen={};try{wxSeen=JSON.parse(localStorage.getItem("meridian-wx")||"{}")}catch(e){}
+function wxNews(){for(const s of activeStorms()){if(wxSeen[s.id])continue;wxSeen[s.id]=1;try{localStorage.setItem("meridian-wx",JSON.stringify(wxSeen))}catch(e){}
+  const ce=stormCenter(s),near=CITIES.filter(c=>d3.geoDistance(ce,[c.lon,c.lat])*180/Math.PI<s.rad+3).sort((a,b)=>b.size-a.size)[0];
+  S.log.unshift(`Storm system forming${near?" near "+near.name:" over open ocean"} · ${Math.round((s.end-Date.now())/3600000)}h`);S.log=S.log.slice(0,3);hud()}}
+setInterval(wxNews,30000);setTimeout(wxNews,2000);
+if(WX_TEST)window.__wx={stormAt,activeStorms,stormCenter,get city(){return stCity},get inStreet(){return inStreet}};
 
 /* ---------- economy tick ---------- */
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
