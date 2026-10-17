@@ -266,16 +266,18 @@ const cost=(b,c)=>Math.round(b.cost*PRICE[c.size]);
 const upCost=(b,c,lv)=>Math.round(cost(b,c)*0.7*Math.pow(1.6,lv-1));
 function evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="function"?stormMult(c):1)}
 /* rival companies */
-const RIVALS=[{n:"Halcyon Group",col:"#7c3aed"},{n:"Ironbridge Co.",col:"#b45309"},{n:"Sable & Finch",col:"#0369a1"}];
-if(!S.rivals)S.rivals=RIVALS.map((r,i)=>({nw:40000+i*25000,cities:[[3,13,40],[29,36,11],[14,31,23]][i]}));
+const RIVALS=[{n:"Halcyon Group",col:"#7c3aed"},{n:"Ironbridge Co.",col:"#b45309"},{n:"Sable & Finch",col:"#0369a1"},
+ {n:"Northwind Holdings",col:"#be123c"},{n:"Kestrel Partners",col:"#047857"},{n:"Orchid Capital",col:"#a21caf"},{n:"Granite & Rowe",col:"#57534e"},{n:"Solano Group",col:"#ca8a04"}];
+const RIVAL_START=[[3,13,40],[29,36,11],[14,31,23],[0,5,19],[33,35,9],[27,15,45],[16,22,25],[37,8,4]];
+if(!S.rivals)S.rivals=[];while(S.rivals.length<RIVALS.length){const i=S.rivals.length;S.rivals.push({nw:40000+i*30000,cities:RIVAL_START[i].slice()})}
 const rivalsIn=c=>S.rivals.reduce((n,r)=>n+(r.cities.includes(c.id)?1:0),0);
-const compMult=c=>1-0.15*rivalsIn(c);
+const compMult=c=>Math.max(.4,1-0.13*rivalsIn(c));
 const buyoutCost=c=>Math.round(30000*PRICE[c.size]*(1+S.day/40));
 const mgrCost=c=>Math.round(20000*PRICE[c.size]);
 const bonus=(b,c)=>b.k==="hotel"&&c.size>=4?1.3:b.k==="apt"&&c.size<=2?1.25:1;
 const USE={cart:{burgers:2},kiosk:{bread:3},shop:{bread:4,tools:1},rest:{burgers:5,beef:3},office:{electronics:.5},hotel:{bread:8,electronics:.5}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
-function profit(b,c,lv){return Math.round(b.gross*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(1+0.55*(lv-1))-b.up*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.3*(lv-1)))}
+function profit(b,c,lv){return Math.round(b.gross*.85*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(1+0.55*(lv-1))-b.up*1.15*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.3*(lv-1)))}
 function cityProfit(c){const o=S.own[c.id]||{};let t=0;for(const b of BIZ)if(o[b.k])t+=profit(b,c,o[b.k]);return t}
 /* renting: anything you don't own pays hourly rent (value / 40 per hour, so buying pays for itself in under 2 days of rent) */
 const RENT=1/40,FIT=.2;
@@ -287,7 +289,7 @@ function totals(){let inc=0,assets=0;
   for(const c of CITIES){const o=S.own[c.id];if(!o)continue;
     for(const b of BIZ){const lv=o[b.k];if(!lv)continue;inc+=profit(b,c,lv);
       let v=isLeased(c,b.k)?cost(b,c)*FIT:cost(b,c);for(let l=1;l<lv;l++)v+=upCost(b,c,l);assets+=v*0.75}}
-  const interest=Math.round(S.debt*0.002);
+  const interest=Math.round(S.debt*0.003);
   const upk=typeof indUpkeep==="function"?indUpkeep():0;assets+=typeof indAssets==="function"?indAssets():0;
   const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
   return{inc:inc-interest-upk-rent,interest,upk,rent,nw:S.cash+assets-S.debt}}
@@ -707,7 +709,23 @@ const JOBS=[
  {k:"clerk",n:"Office clerk",w:20,exp:15,d:"Data entry and filing.",ok:c=>c.size>=3},
  {k:"trucker",n:"Truck driver",w:22,exp:20,d:"Regional freight runs."},
  {k:"supervisor",n:"Shift supervisor",w:28,exp:40,d:"Run a team of twelve."},
- {k:"manager",n:"Operations manager",w:38,exp:80,d:"Budgets, staffing and logistics.",ok:c=>c.size>=3}];
+ {k:"manager",n:"Operations manager",w:38,exp:80,d:"Budgets, staffing and logistics.",ok:c=>c.size>=3},
+ {k:"barista",n:"Barista",w:11,exp:0,d:"Early shifts, espresso and small talk."},
+ {k:"retail",n:"Retail associate",w:12,exp:0,d:"Stocking shelves and helping customers.",ok:c=>c.size>=2},
+ {k:"cook",n:"Line cook",w:14,exp:3,d:"Fast-paced kitchen work."},
+ {k:"callcentre",n:"Call centre agent",w:15,exp:4,d:"Headset on, eight hours of calls.",ok:c=>c.size>=3},
+ {k:"construction",n:"Construction worker",w:21,exp:6,d:"Heavy work on new builds."},
+ {k:"dock",n:"Dock worker",w:23,exp:10,d:"Loading container ships at the port.",ok:c=>c.size>=3},
+ {k:"teller",n:"Bank teller",w:18,exp:12,d:"Counting cash and opening accounts.",ok:c=>c.size>=3},
+ {k:"mechanic",n:"Mechanic",w:24,exp:18,d:"Engines, brakes and oil changes."},
+ {k:"electrician",n:"Electrician",w:31,exp:35,d:"Licensed trade work. In demand everywhere."},
+ {k:"nurse",n:"Registered nurse",w:36,exp:50,d:"Twelve-hour hospital shifts.",ok:c=>c.size>=2},
+ {k:"chef",n:"Head chef",w:34,exp:60,d:"Run a restaurant kitchen.",ok:c=>c.size>=3},
+ {k:"realtor",n:"Real estate agent",w:30,exp:45,d:"Showings, open houses and commissions.",ok:c=>c.size>=3},
+ {k:"accountant",n:"Accountant",w:42,exp:90,d:"Books, audits and tax season.",ok:c=>c.size>=3},
+ {k:"engineer",n:"Software engineer",w:58,exp:140,d:"Build apps for a tech firm.",ok:c=>c.size>=4},
+ {k:"pilot",n:"Airline pilot",w:72,exp:200,d:"Fly passengers around the world.",ok:c=>c.size>=4},
+ {k:"director",n:"Company director",w:95,exp:300,d:"Run a division of a large firm.",ok:c=>c.size>=5}];
 const JK=Object.fromEntries(JOBS.map(j=>[j.k,j]));
 const HOMES=[
  {k:"room",n:"Shared room",r:3,buy:0,d:"A room in a shared flat. Cheapest way to get an address."},
@@ -720,7 +738,7 @@ const homeRent=(h,c)=>Math.round(h.r*COL(c)*PRICE[c.size]*100)/100;
 const homeBuy=(h,c)=>Math.round(h.buy*PRICE[c.size]*PRICE[c.size]);
 function lifeIncome(){let v=0;if(S.job&&!S.trip&&S.loc&&S.loc.city===S.job.city)v+=wage(JK[S.job.k],CITIES[S.job.city])*(typeof wageMult==="function"?wageMult():1);if(S.home&&!S.home.own)v-=homeRent(HK[S.home.k],CITIES[S.home.city]);return v}
 function lifeAssets(){return S.home&&S.home.own?homeBuy(HK[S.home.k],CITIES[S.home.city])*.9:0}
-function hireChance(j){return Math.min(.95,.6+(S.home&&S.home.k!=="room"?.1:0)+Math.min(.25,(S.exp-j.exp)*.01))}
+function hireChance(j){return Math.min(.9,.48+(S.home&&S.home.k!=="room"?.1:0)+Math.min(.25,(S.exp-j.exp)*.01))}
 function checkApp(){const a=S.app;if(!a||Date.now()<a.t)return;const j=JK[a.k],c=CITIES[a.city];S.app=null;
   if(Math.random()<a.p){S.job={k:a.k,city:a.city,since:Date.now()};S.log.unshift(`Hired: ${j.n} in ${c.name}, ${fmt(wage(j,c))}/hr`);toast(`You got the job: ${j.n}!`)}
   else{S.log.unshift(`${c.name}: the ${j.n.toLowerCase()} job went to someone else. Apply again.`);toast("Application turned down")}
@@ -761,7 +779,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-life]");if(!b
 
 /* ---------- HQ, business registration and taxes ---------- */
 S.hq=S.hq||{};S.reg=S.reg||{};S.bonus=S.bonus||{};
-const TAXDAYS=7,TAXP=TAXDAYS*24*DAYMS,TAX_REG=.15,TAX_UNREG=.35;
+const TAXDAYS=7,TAXP=TAXDAYS*24*DAYMS,TAX_REG=.2,TAX_UNREG=.4;
 if(!S.tax)S.tax={start:Date.now(),reg:0,unreg:0,paid:0};
 const hqCost=c=>Math.round(25000*PRICE[c.size]);
 const hqUpkeep=c=>Math.round(40*PRICE[c.size]);
@@ -1052,7 +1070,7 @@ const ITEMS=[
  {k:"clinic",n:"Clinic visit",p:120,h:50,cat:"Health"}];
 const itemPrice=(it,c)=>Math.round(it.p*COL(c)*100)/100;
 /* decay per hour without a home; a home pulls each need back up to 85% */
-const DECAY={h:1,f:5,m:3};
+const DECAY={h:1.2,f:6,m:4};
 function runNeeds(hours){const N=S.need;let left=hours;
   while(left>1e-6){const h=Math.min(.25,left);left-=h;
     for(const [k] of NEEDS){let d=-DECAY[k];if(k==="h"){if(N.f<=0)d-=4;if(N.m<=0)d-=1}
@@ -1235,13 +1253,16 @@ if(WX_TEST)window.__wx={stormAt,activeStorms,stormCenter,get city(){return stCit
 let pops=[]; // floating income labels
 function simDay(quiet){const{nw}=totals();S.day++;driftPrices();
   audits(quiet);simProps(quiet);
+  for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||Math.random()>.004)continue;
+    const kinds=[["Break-in at your",.04],["Equipment breakdown at your",.03],["Health inspection fine at your",.02],["Customer lawsuit against your",.06]],[t,f]=kinds[Math.floor(Math.random()*kinds.length)];
+    const loss=Math.round(cost(b,c)*f*(S.mgr[c.id]?.6:1));S.cash-=loss;if(!quiet){S.log.unshift(`${t} ${b.n.toLowerCase()} in ${c.name}: −${fmt(loss)}`);S.log=S.log.slice(0,3)}}}
   for(const id in S.iev){if(--S.iev[id].d<=0)delete S.iev[id]}
   if(Math.random()<1-Math.pow(.99,1/24)){const pool=S.sites.length&&Math.random()<.6?[...new Set(S.sites.map(x=>x.city))]:CITIES.map(c=>c.id);const id=pool[Math.floor(Math.random()*pool.length)];
     if(!S.iev[id]){const ks=Object.keys(IEV),t=ks[Math.floor(Math.random()*ks.length)];S.iev[id]={t,d:2+Math.floor(Math.random()*5)};
       if(!quiet&&S.sites.some(x=>x.city==id)){S.log.unshift(`${IEV[t].n} in ${CITIES[id].name} (${S.iev[id].d}h)`);S.log=S.log.slice(0,3)}}}
   if(!quiet)for(const c of CITIES){const p=S.own[c.id]?cityProfit(c):0;if(p)pops.push({c,v:p,t:performance.now()})}
   S.rivals.forEach((r,i)=>{r.nw=Math.round(r.nw*(1.012+Math.random()*.02)+2000);
-    if(Math.random()<.12&&r.cities.length<4+Math.floor(r.nw/150000)){const opts=CITIES.filter(c=>!r.cities.includes(c.id));const c=opts[Math.floor(Math.random()*opts.length)];
+    if(Math.random()<.18&&r.cities.length<5+Math.floor(r.nw/120000)){const mine=CITIES.filter(c=>S.own[c.id]&&!r.cities.includes(c.id));const opts=mine.length&&Math.random()<.4?mine:CITIES.filter(c=>!r.cities.includes(c.id));const c=opts[Math.floor(Math.random()*opts.length)];
       r.cities.push(c.id);if(!quiet&&S.own[c.id]){S.log.unshift(`${RIVALS[i].n} opened in your city ${c.name}`);S.log=S.log.slice(0,3)}}});
   S.hist.push(Math.round(nw));if(S.hist.length>60)S.hist.shift();
   for(const id in S.events){if(--S.events[id].d<=0)delete S.events[id]}
@@ -1311,8 +1332,8 @@ function renderPortfolio(){const{inc,nw}=totals();
   h+=`<div class="sec">Leaderboard</div><div class="list">`+board.map((b,i)=>`<div class="row"><div class="n" style="${b.me?"color:var(--own)":""}">${i+1}. <span style="display:inline-block;width:9px;height:9px;background:${b.col};margin:0 6px 0 2px"></span>${b.n}</div>
     <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
   const lim=loanLimit();
-  h+=`<div class="sec">Bank · 0.2% interest per hour</div><div class="list">
-    <div class="row"><div class="n">Loan balance <b style="font-family:var(--mono)">${fmt(S.debt)}</b></div><div class="d">${S.debt?`Costs you ${fmt(Math.round(S.debt*.002))} an hour in interest.`:"No debt. You can borrow up to "+fmt(lim)+"."}</div>
+  h+=`<div class="sec">Bank · 0.3% interest per hour</div><div class="list">
+    <div class="row"><div class="n">Loan balance <b style="font-family:var(--mono)">${fmt(S.debt)}</b></div><div class="d">${S.debt?`Costs you ${fmt(Math.round(S.debt*.003))} an hour in interest.`:"No debt. You can borrow up to "+fmt(lim)+"."}</div>
     <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2;flex-wrap:wrap;justify-content:end">
       <button class="buy up" id="borrow" ${lim-S.debt<1000?"disabled":""}>Borrow ${fmt(loanStep())}</button>
       <button class="buy" id="repay" ${!S.debt||S.cash<=0?"disabled":""}>Repay ${fmt(Math.min(S.debt,Math.max(0,S.cash)))}</button></span></div></div>`;
