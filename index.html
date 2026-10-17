@@ -1586,7 +1586,7 @@ const LAWS={
   tariff:{n:"Import tariffs",v:["None","Low","High"],e:["Free trade","Retail profit −3%, land output value +4%","Retail profit −7%, land output value +9%"]},
   grant:{n:"Small-business grants",v:["Off","On"],e:["No support","Carts, kiosks and corner shops earn +10%"]}};
 const RETAIL=["cart","kiosk","shop","rest"],SMALL=["cart","kiosk","shop"];
-const ELECT=4*24*DAYMS; // elections every 4 real days per country
+const ELECT=90*DAYMS; // elections every 3 game months (90 game days = 90 real hours)
 const COUNTRIES=[...new Set(CITIES.map(c=>c.country))];
 const ctyCities=n=>CITIES.filter(c=>c.country===n);
 const ctyScale=n=>ctyCities(n).reduce((a,c)=>a+c.size,0);
@@ -1598,11 +1598,12 @@ const law=(c,k)=>gov(c.country).laws[k];
 function lawBan(c,b){return b.k==="casino"&&law(c,"casino")===1}
 function lawMult(c,b){let m=[1.06,1,.9][law(c,"wage")];
   if(RETAIL.includes(b.k))m*=[1,.97,.93][law(c,"tariff")];
-  if(SMALL.includes(b.k)&&law(c,"grant"))m*=1.1;return m}
+  if(SMALL.includes(b.k)&&law(c,"grant"))m*=1.1;
+  const g=gov(c.country);if(g.strike>Date.now())m*=.7;return m*warMult(c)}
 const taxRateC=c=>[.1,.15,.2,.25,.3][law(c,"tax")];
 const rentLaw=c=>law(c,"rent")?.85:1;
 const jobLaw=c=>[.9,1,1.15][law(c,"wage")];
-const siteLaw=c=>[1,1.04,1.09][law(c,"tariff")];
+const siteLaw=c=>[1,1.04,1.09][law(c,"tariff")]*[1,1,1.05,1.1,1.2][warLvl(c.country)];
 const lobbyCost=n=>Math.round(6000*ctyScale(n)*(1+((S.lobbied||0)*.15)));
 const donUnit=n=>Math.round(2000*ctyScale(n));
 function logGov(m){S.log.unshift("Politics: "+m);S.log=S.log.slice(0,3)}
@@ -1612,7 +1613,11 @@ function govHour(quiet){const now=Date.now();
     g.appr=Math.max(5,Math.min(95,g.appr+(Math.random()-.52)*4));
     if(Math.random()<.06){const diff=Object.keys(LAWS).filter(k=>g.laws[k]!==pl[k]);
       if(diff.length){const k=diff[Math.floor(Math.random()*diff.length)];g.laws[k]+=Math.sign(pl[k]-g.laws[k]);if(!quiet&&ownsIn(n))logGov(`${n} changes ${LAWS[k].n.toLowerCase()} to ${LAWS[k].v[g.laws[k]]}`)}}
-    if(now>=g.next)election(n,quiet)}}
+    if(g.laws.wage===0&&g.appr<40&&!(g.strike>now)&&Math.random()<.04){g.strike=now+(6+Math.random()*6)*DAYMS;if(!quiet&&ownsIn(n))logGov(`General strike in ${n}: businesses earn 30% less for a while`)}
+    if(g.ctrl){if(g.contract){const v=contractPay(n);S.cash+=v;S.earned=(S.earned||0)+v}
+      if(Math.random()<.004+(g.contract?.006:0))exposed(n,quiet)}
+    if(now>=g.next)election(n,quiet)}
+  warHour(quiet)}
 function ownsIn(n){return ctyCities(n).some(c=>S.own[c.id]||S.hq&&S.hq[c.id]||S.sites.some(s=>s.city===c.id)||(S.props||[]).some(p=>p.city===c.id))}
 function election(n,quiet){const g=gov(n),ks=Object.keys(PARTIES);
   const w=ks.map(k=>(k===g.party?g.appr:(100-g.appr)/3)*(1+Math.log10(1+(g.don[k]||0)/donUnit(n))*.6));
@@ -1620,6 +1625,8 @@ function election(n,quiet){const g=gov(n),ks=Object.keys(PARTIES);
   const pct=Math.round(w[ks.indexOf(win)]/w.reduce((a,b)=>a+b,0)*100);
   const backed=Object.keys(g.don).sort((a,b)=>g.don[b]-g.don[a])[0];
   g.favor=backed===win?Math.min(.25,Math.log10(1+g.don[win]/donUnit(n))*.15):0;
+  const wasCtrl=g.ctrl;g.ctrl=backed===win&&g.don[win]>=ctrlNeed(n);if(!g.ctrl)g.contract=0;
+  if(!quiet&&g.ctrl)logGov(`You now control the government of ${n}`);else if(!quiet&&wasCtrl)logGov(`You lost control of ${n}`);
   const changed=win!==g.party;g.party=win;g.appr=changed?55+Math.random()*15:Math.min(90,g.appr+5);g.don={};
   g.next=g.next+ELECT>Date.now()?g.next+ELECT:Date.now()+ELECT;
   if(changed){const pl=PARTIES[win].pl,diff=Object.keys(LAWS).filter(k=>g.laws[k]!==pl[k]);if(diff.length){const k=diff[0];g.laws[k]=pl[k]}}
@@ -1633,25 +1640,71 @@ function lobby(c,k,dir){const n=c.country,g=gov(n),cost=lobbyCost(n),pl=PARTIES[
 function govHtml(c){const n=c.country,g=gov(n),P=PARTIES[g.party];let h=cityHead(c)+tabsHtml();
   h+=`<div class="sec">Government of ${n}</div><div class="list"><div class="row"><div class="n"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${P.col};margin-right:6px"></span>${P.n}</div>
     <div class="d">${P.d} Approval ${Math.round(g.appr)}% · next election in ${fmtDur(g.next-Date.now()).replace(/^(\d+)h/,(m,x)=>x>=48?Math.floor(x/24)+"d "+(x%24)+"h":m)}${g.favor?` · you have their ear (+${Math.round(g.favor*100)}% lobbying)`:""}</div></div></div>`;
+  if(g.strike>Date.now())h+=`<p class="d" style="color:#c33;font-size:13px;margin:6px 0">⚠ General strike: businesses earn 30% less for ${fmtDur(g.strike-Date.now())}.</p>`;
+  h+=conflictHtml(n);
+  if(g.ctrl){h+=`<div class="sec">You control this government</div><div class="list"><div class="row"><div class="n">Puppet government</div><div class="d">Set any law for ${fmt(donUnit(n))} with no vote. Control lasts until the next election; fund the party again to keep it. Each hour there's a small chance a journalist exposes you.</div></div>
+    <div class="row"><div class="n">State contract ${g.contract?"<b>ACTIVE</b>":""}</div><div class="d">Pays you ${fmt(contractPay(n))} an hour from public money, but more than doubles the exposure risk.</div><button class="buy" data-gov="contract" data-fixed="1">${g.contract?"Cancel":"Award to yourself"}</button></div></div>`}
   h+=`<div class="sec">Laws</div><div class="list">`;
   for(const k in LAWS){const L=LAWS[k],v=g.laws[k],want=PARTIES[g.party].pl[k],cost=lobbyCost(n);
-    const btn=(d,lbl)=>`<button class="buy" data-gov="lobby" data-k="${k}" data-dir="${d}" data-fixed="1" ${S.cash<cost?"disabled":""}>${lbl} ${L.v[v+d]}</button>`;
+    const btn=(d,lbl)=>g.ctrl?`<button class="buy" data-gov="set" data-k="${k}" data-dir="${d}" data-fixed="1" ${S.cash<donUnit(n)?"disabled":""}>Set ${L.v[v+d]}</button>`:`<button class="buy" data-gov="lobby" data-k="${k}" data-dir="${d}" data-fixed="1" ${S.cash<cost?"disabled":""}>${lbl} ${L.v[v+d]}</button>`;
     h+=`<div class="row"><div class="n">${L.n} <b>${L.v[v]}</b>${v!==want?`<span class="tag" style="border:1px solid var(--line)">gov wants ${L.v[want]}</span>`:""}</div>
       <div class="d">${L.e[v]}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${v>0?btn(-1,"↓"):""}${v<L.v.length-1?btn(1,"↑"):""}</div></div>`}
   h+=`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Lobbying costs ${fmt(lobbyCost(n))} per attempt. Bills that match the ruling party's platform pass more often. There's a scandal risk, higher if you have no HQ in ${n}. Each lobby raises the price of the next one.</p>`;
   h+=`<div class="sec">Fund a party</div><div class="list">`;
   for(const k in PARTIES){const p=PARTIES[k],d=g.don[k]||0,u=donUnit(n);
     h+=`<div class="row"><div class="n"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${p.col};margin-right:6px"></span>${p.n}${k===g.party?' <span class="tag" style="border:1px solid var(--line)">IN POWER</span>':""}</div>
-      <div class="d">${p.d}${d?` You've given ${fmt(d)} this cycle.`:""}</div><button class="buy" data-gov="don" data-p="${k}" data-fixed="1" ${S.cash<u?"disabled":""}>Donate ${fmt(u)}</button></div>`}
+      <div class="d">${p.d}${d?` You've given ${fmt(d)} this cycle.`:""}</div><div style="display:flex;gap:6px"><button class="buy" data-gov="don" data-p="${k}" data-m="1" data-fixed="1" ${S.cash<u?"disabled":""}>${fmt(u)}</button><button class="buy" data-gov="don" data-p="${k}" data-m="10" data-fixed="1" ${S.cash<u*10?"disabled":""}>${fmt(u*10)}</button></div></div>`}
+  {const top=Object.keys(g.don).sort((a,b)=>g.don[b]-g.don[a])[0],need=ctrlNeed(n),have=top?g.don[top]:0;
+    h+=`</div><div class="meta" style="margin-top:6px"><div><span>Control the next government </span>${top?`${PARTIES[top].n} ${fmt(have)} / ${fmt(need)}`:`give ${fmt(need)} to one party`}</div></div><div style="height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:4px 0"><div style="height:100%;width:${Math.min(100,have/need*100)}%;background:var(--own)"></div></div><div>`}
   h+=`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Donations raise a party's odds at the next election. If the party you funded most wins, lobbying gets easier for their whole term.</p>`;
   sheet.innerHTML=h}
-function govSummary(){const ns=COUNTRIES.filter(ownsIn);if(!ns.length)return"";
-  return `<div class="sec">Governments</div><div class="list">`+ns.map(n=>{const g=gov(n),p=PARTIES[g.party],c=ctyCities(n)[0];
+function govSummary(){const ns=COUNTRIES.filter(ownsIn);if(!ns.length)return conflictHtml(null);
+  return conflictHtml(null)+`<div class="sec">Governments</div><div class="list">`+ns.map(n=>{const g=gov(n),p=PARTIES[g.party],c=ctyCities(n)[0];
     return `<div class="row link" data-go="${c.id}"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${p.col};margin-right:6px"></span>${n}</div><div class="d">${p.n} · tax ${LAWS.tax.v[g.laws.tax]} · min wage ${LAWS.wage.v[g.laws.wage].toLowerCase()}${g.laws.casino?" · casinos banned":""}${g.laws.rent?" · rent control":""}</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`}
-sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b||!sel)return;const c=sel;
-  if(b.dataset.gov==="lobby")lobby(c,b.dataset.k,+b.dataset.dir);
-  else{const g=gov(c.country),u=donUnit(c.country);if(S.cash<u)return;S.cash-=u;g.don[b.dataset.p]=(g.don[b.dataset.p]||0)+u;toast(`Donated ${fmt(u)} to ${PARTIES[b.dataset.p].n}`)}
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)return;if(!sel&&/peace|stoke/.test(b.dataset.gov)){warAct(+b.dataset.w,b.dataset.gov);hud();renderSheet();return}if(!sel)return;const c=sel;
+  const g=gov(c.country),a=b.dataset.gov;
+  if(a==="lobby")lobby(c,b.dataset.k,+b.dataset.dir);
+  else if(a==="set"){const u=donUnit(c.country);if(S.cash<u||!g.ctrl)return;S.cash-=u;g.laws[b.dataset.k]+=+b.dataset.dir;logGov(`${c.country} decrees ${LAWS[b.dataset.k].n.toLowerCase()}: ${LAWS[b.dataset.k].v[g.laws[b.dataset.k]]}`);toast("Law changed")}
+  else if(a==="contract"){g.contract=g.contract?0:1;toast(g.contract?"Contract awarded":"Contract cancelled")}
+  else if(a==="peace"||a==="stoke")warAct(+b.dataset.w,a);
+  else{const u=donUnit(c.country)*(+b.dataset.m||1);if(S.cash<u)return;S.cash-=u;g.don[b.dataset.p]=(g.don[b.dataset.p]||0)+u;toast(`Donated ${fmt(u)} to ${PARTIES[b.dataset.p].n}`)}
   hud();renderSheet()});
+/* ---------- government control & global conflicts ---------- */
+const ctrlNeed=n=>donUnit(n)*25;
+const contractPay=n=>Math.round(1200*ctyScale(n));
+function exposed(n,quiet){const g=gov(n),fine=donUnit(n)*30;S.cash-=fine;g.ctrl=false;g.contract=0;g.appr=Math.max(5,g.appr-25);
+  logGov(`Exposed! Your control of ${n}'s government leaks to the press. Fined ${fmt(fine)}`);if(!quiet)toast(`Scandal in ${n}: fined ${fmt(fine)}`)}
+const WARL=["Calm","Tension","Sanctions","Border clashes","War"],WARC=["#3a9","#b9961c","#e07a2a","#d84a4a","#9b1111"];
+const cap=n=>ctyCities(n).sort((a,b)=>b.size-a.size)[0];
+function warLvl(n){let m=0;for(const w of S.wars||[])if(w.a===n||w.b===n)m=Math.max(m,w.l);return m}
+const warMult=c=>[1,.97,.9,.8,.6][warLvl(c.country)];
+const warCost=w=>Math.round(3000*(ctyScale(w.a)+ctyScale(w.b))*(1+w.l));
+const tension=()=>Math.min(100,Math.round((S.wars||[]).reduce((a,w)=>a+w.l*w.l,0)/Math.max(1,COUNTRIES.length)*25));
+function warHour(quiet){S.wars=S.wars||[];const ws=S.wars;
+  if(ws.length<6&&Math.random()<.05){const a=COUNTRIES[Math.floor(Math.random()*COUNTRIES.length)];
+    const near=COUNTRIES.filter(b=>b!==a&&kmBetween(cap(a),cap(b))<5000&&!ws.some(w=>(w.a===a&&w.b===b)||(w.a===b&&w.b===a)));
+    if(near.length){const b=near[Math.floor(Math.random()*near.length)];ws.push({id:(S.wid=(S.wid||0)+1),a,b,l:1});if(!quiet)logGov(`Tension rising between ${a} and ${b}`)}}
+  const glob=tension();
+  for(const w of ws){const up=.05+glob/800,dn=w.l>=4?.05:.07,r=Math.random();
+    if(r<up&&w.l<4){w.l++;if(!quiet)logGov(`${w.a}–${w.b}: escalates to ${WARL[w.l].toLowerCase()}`);
+      if(w.l===4)for(const n of [w.a,w.b])gov(n).appr=Math.min(90,gov(n).appr+10)}
+    else if(r>1-dn){w.l--;if(!quiet)logGov(w.l?`${w.a}–${w.b}: de-escalates to ${WARL[w.l].toLowerCase()}`:`${w.a} and ${w.b} sign a peace deal`)}
+    if(w.l>=4)for(const n of [w.a,w.b])for(const c of ctyCities(n)){const o=S.own[c.id];if(!o||Math.random()>.03)continue;
+      const ks=Object.keys(o),k=ks[Math.floor(Math.random()*ks.length)];if(--o[k]<=0)delete o[k];if(!Object.keys(o).length)delete S.own[c.id];
+      if(!quiet)logGov(`Fighting in ${c.name} damaged your ${BIZ.find(x=>x.k===k).n.toLowerCase()}`)}}
+  S.wars=ws.filter(w=>w.l>0)}
+function warAct(id,a){const w=(S.wars||[]).find(x=>x.id===id);if(!w)return;const cst=warCost(w);if(S.cash<cst){toast(`Need ${fmt(cst)}`);return}S.cash-=cst;
+  if(a==="peace"){if(Math.random()<.55){w.l--;logGov(`Talks you funded ease ${w.a}–${w.b} to ${WARL[w.l].toLowerCase()}`);toast("Talks worked")}else toast("Talks collapsed")}
+  else{if(Math.random()<.12){const f=cst*3;S.cash-=f;logGov(`Arms dealing exposed: fined ${fmt(f)}`);toast(`Caught! Fined ${fmt(f)}`);return}
+    S.cash+=cst*1.6;if(w.l<4&&Math.random()<.6){w.l++;logGov(`${w.a}–${w.b} escalates to ${WARL[w.l].toLowerCase()}`)}toast(`Arms sold: +${fmt(cst*.6)} profit`)}
+  S.wars=S.wars.filter(x=>x.l>0)}
+function conflictHtml(n){const ws=(S.wars||[]).filter(w=>!n||w.a===n||w.b===n).sort((a,b)=>b.l-a.l);
+  if(!ws.length)return n?"":`<div class="sec">World conflicts</div><p class="d" style="color:var(--muted);font-size:13px">The world is calm. For now.</p>`;
+  let h=`<div class="sec">${n?"Conflicts":"World conflicts · global tension "+tension()+"%"}</div><div class="list">`;
+  for(const w of ws){const c=warCost(w);h+=`<div class="row"><div class="n">${w.a} – ${w.b} <span class="tag" style="background:${WARC[w.l]};color:#fff">${WARL[w.l].toUpperCase()}</span></div>
+    <div class="d">${["","Markets jittery: −3% profit","Sanctions: −10% profit, land output +5%","Clashes: −20% profit, land output +10%","War: −40% profit, land output +20%, businesses can be damaged, no travel in"][w.l]}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="buy" data-gov="peace" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="buy" data-gov="stoke" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Sell arms ${fmt(c)}</button></div></div>`}
+  return h+`</div>`}
 let saveT=0;
 setInterval(()=>{accrue();checkApp();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -1756,7 +1809,7 @@ function rideOptions(from,to){const km=Math.hypot((to.lat-from.lat)*111,(to.lon-
   o.push({m:"taxi",n:"Taxi",price:+(4+1.9*km).toFixed(2),sec:15+km*8});
   if(S.car)o.push({m:"drive",n:"Your car",price:+(km*CK[S.car.k].fuel).toFixed(2),sec:10+km*7/CK[S.car.k].f});
   return{km,o}}
-function startTrip(dest,opt,local){if(S.cash<opt.price){toast(`You need ${fmt(opt.price)} for that`);return false}
+function startTrip(dest,opt,local){if(!local&&dest&&dest.city!=null&&warLvl(CITIES[dest.city].country)>=4){toast(`${CITIES[dest.city].country} is at war: transport there is suspended`);return false}if(S.cash<opt.price){toast(`You need ${fmt(opt.price)} for that`);return false}
   S.cash-=opt.price;const dur=(local?opt.sec*1000:opt.min*60000);
   const toPt=local?dest:(opt.m==="plane"?airportPos(dest):opt.m==="car"?dest:stationPos(dest));
   S.trip={mode:opt.m,n:opt.n,from:{...S.loc},to:{city:dest.city!=null?dest.city:dest.id,lat:toPt.lat,lon:toPt.lon,label:dest.label||dest.name},dep:Date.now(),arr:Date.now()+dur,local:!!local};
