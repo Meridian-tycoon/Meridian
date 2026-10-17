@@ -131,6 +131,8 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
 #street .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.55)}
 #street .leaflet-control-attribution{background:rgba(13,20,24,.75);color:#9aa7b1}#street .leaflet-control-attribution a{color:#7dd3c0}
 #street .leaflet-bar a{background:#1b2429;color:#e5ebef;border-color:#2c373d}
+#amb{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none}
+#street[hidden]~#amb{display:none}
 #wx{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none}
 #phone{position:fixed;z-index:20;left:0;top:0;width:248px;height:min(470px,calc(100vh - 140px));background:#111418;border-radius:30px;padding:8px;box-shadow:0 18px 40px rgba(0,0,0,.35),0 0 0 1.5px #2b3138 inset;display:flex;flex-direction:column;color:#eef1f4;touch-action:none;transition:width .2s,height .2s,border-radius .2s}
 #phone.dragging{transition:none;opacity:.92}
@@ -189,6 +191,7 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
     <canvas id="map"></canvas>
     <div id="ticker"></div>
     <div id="street" hidden></div>
+    <canvas id="amb"></canvas>
     <canvas id="wx" hidden></canvas>
     <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button></div>
     <div id="placebar" hidden></div>
@@ -335,6 +338,7 @@ function draw(){applyView();
     const g=d3.geoInterpolate([a.lon,a.lat],[b.lon,b.lat])(t);if(!visible(g[0],g[1]))continue;const [x,y]=proj(g);
     ctx.fillStyle=C.acc;if(v.type==="truck")ctx.fillRect(x-4,y-3,8,6);else if(v.type==="ship"){ctx.beginPath();ctx.moveTo(x-6,y-2);ctx.lineTo(x+6,y-2);ctx.lineTo(x+3,y+3);ctx.lineTo(x-3,y+3);ctx.fill()}
     else{ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.fill()}}
+  if(typeof drawNight==="function"){drawNight(ctx);drawTraffic(ctx,C)}
   if(typeof drawStorms==="function")drawStorms(ctx,C);
   {const tp=typeof tripPos==="function"?tripPos(Date.now()):null,pl=tp||S.loc;if(pl&&visible(pl.lon,pl.lat)){const [px,py]=proj([pl.lon,pl.lat]);
     if(tp&&!S.trip.local){ctx.beginPath();path({type:"LineString",coordinates:[[S.trip.from.lon,S.trip.from.lat],[S.trip.to.lon,S.trip.to.lat]]});ctx.setLineDash([2,5]);ctx.strokeStyle=C.ink;ctx.globalAlpha=.6;ctx.lineWidth=1.5;ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}
@@ -353,7 +357,7 @@ function draw(){applyView();
     if(sel===c){ctx.beginPath();ctx.arc(x,y,r+9,0,7);ctx.strokeStyle=C.acc;ctx.lineWidth=2.5;ctx.stroke()}
     if(V.k>1.8||c.size>=5||owned){ctx.font=(owned?"600 ":"")+"12px Figtree, system-ui, sans-serif";ctx.fillStyle=owned?C.own:C.ink;
       const cp=cityProfit(c)+S.sites.filter(st=>st.city===c.id&&siteOp(st)).reduce((a,st)=>a+siteEst(st),0);ctx.fillText(c.name+(owned&&cp?"  "+fmt(cp)+"/hr":""),x+r+4,y)}}
-  ctx.globalAlpha=1}
+  ctx.globalAlpha=1;if(typeof drawCityLights==="function")drawCityLights(ctx)}
 /* drag to spin (with momentum), pinch or scroll to zoom, tap a city */
 const ptrs=new Map();let dragMoved=false,pinch0=null,lastMove=0,spinRaf=0;
 const degPerPx=()=>180/Math.PI/proj.scale();
@@ -1314,6 +1318,60 @@ if((S.ver||1)<2){for(const id in S.own)for(const b of BIZ)if(S.own[id][b.k]){con
 
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-crew],[data-pause]");if(!b||!sel)return;const s=S.sites.find(x=>x.id===+(b.dataset.crew||b.dataset.pause));if(!s)return;
   if(b.dataset.crew){s.crew=!s.crew;toast(s.crew?"Crew hired. Wages start now.":"Crew let go. It only produces while you're here.")}else{s.paused=!s.paused;toast(s.paused?"Production paused":"Production resumed")}commit()});
+/* ---------- a living world: day and night, air and sea traffic, street customers, world news ---------- */
+function sunPoint(now){const d=new Date(now),doy=(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())-Date.UTC(d.getUTCFullYear(),0,0))/864e5;
+  const dec=-23.44*Math.cos(2*Math.PI/365*(doy+10)),h=d.getUTCHours()+d.getUTCMinutes()/60;return[(12-h)*15,dec]}
+const isNight=(lon,lat,now)=>{const s=sunPoint(now);return d3.geoDistance([lon,lat],s)>Math.PI/2+.02};
+function drawNight(ctx){const s=sunPoint(Date.now()),anti=[s[0]+180,-s[1]];
+  ctx.save();ctx.beginPath();path(d3.geoCircle().center(anti).radius(96)());ctx.fillStyle="rgba(8,14,40,.16)";ctx.fill();
+  ctx.beginPath();path(d3.geoCircle().center(anti).radius(90)());ctx.fillStyle="rgba(8,14,40,.26)";ctx.fill();ctx.restore()}
+function drawCityLights(ctx){const now=Date.now(),t=now/1000;
+  for(const c of CITIES){if(c.sx<-1e3||!isNight(c.lon,c.lat,now))continue;const r=3+c.size*2.2,tw=.75+.25*Math.sin(t*1.7+c.id);
+    const g=ctx.createRadialGradient(c.sx,c.sy,0,c.sx,c.sy,r*2.4);g.addColorStop(0,`rgba(255,214,140,${.55*tw})`);g.addColorStop(1,"rgba(255,200,120,0)");
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(c.sx,c.sy,r*2.4,0,7);ctx.fill()}}
+/* NPC flights between big cities and cargo ships on ocean lanes, on fixed loops so they're always somewhere */
+const BIG=CITIES.filter(c=>c.size>=4);
+const ROUTES=[];{const r=rng(424242);for(let i=0;i<28;i++){const a=BIG[Math.floor(r()*BIG.length)];let b=BIG[Math.floor(r()*BIG.length)];if(a===b)continue;
+  const km=d3.geoDistance([a.lon,a.lat],[b.lon,b.lat])*6371;ROUTES.push({a,b,per:40+km/120,ph:r()})}}
+const LANES=[["New York","London"],["Los Angeles","Tokyo"],["Shanghai","Singapore"],["Singapore","Dubai"],["Dubai","Rotterdam"],["São Paulo","Lagos"],["Houston","Rotterdam"],["Sydney","Shanghai"],["Mumbai","Cairo"],["Vancouver","Shanghai"],["Buenos Aires","Johannesburg"],["Miami","Lagos"]]
+  .map(([x,y],i)=>{const a=CITIES.find(c=>c.name===x)||CITIES.find(c=>c.name==="Amsterdam"),b=CITIES.find(c=>c.name===y)||CITIES.find(c=>c.name==="Amsterdam");return{a,b,per:260+i*17,ph:(i*.137)%1}});
+function drawTraffic(ctx,C){const t=Date.now()/1000;ctx.save();
+  for(const L of LANES){const u=((t/L.per+L.ph)%1),ping=u<.5?u*2:2-u*2;const g=d3.geoInterpolate([L.a.lon,L.a.lat],[L.b.lon,L.b.lat])(ping);if(!visible(g[0],g[1]))continue;
+    const [x,y]=proj(g);ctx.fillStyle="rgba(30,58,95,.85)";ctx.fillRect(x-3,y-1.5,6,3);ctx.fillStyle="rgba(255,255,255,.5)";ctx.fillRect(x-4,y+1.5,8,1)}
+  for(const R of ROUTES){const u=(t/R.per+R.ph)%1;const ip=d3.geoInterpolate([R.a.lon,R.a.lat],[R.b.lon,R.b.lat]);const g=ip(u),g0=ip(Math.max(0,u-.06));
+    if(!visible(g[0],g[1]))continue;const [x,y]=proj(g);
+    if(visible(g0[0],g0[1])){ctx.beginPath();path({type:"LineString",coordinates:[g0,g]});ctx.strokeStyle="rgba(255,255,255,.55)";ctx.lineWidth=1.2;ctx.stroke()}
+    const p2=proj(ip(Math.min(1,u+.01))),ang=Math.atan2(p2[1]-y,p2[0]-x);ctx.translate(x,y);ctx.rotate(ang);ctx.fillStyle=C.ink;ctx.beginPath();ctx.moveTo(5,0);ctx.lineTo(-4,-3);ctx.lineTo(-2,0);ctx.lineTo(-4,3);ctx.closePath();ctx.fill();ctx.setTransform(dpr,0,0,dpr,0,0)}
+  ctx.restore()}
+/* keep the globe moving gently while it's on screen */
+let ambLast=0;
+function ambLoop(t){if(!(typeof inStreet!=="undefined"&&inStreet)&&document.visibilityState==="visible"&&t-ambLast>66&&!ptrs.size){ambLast=t;draw()}
+  if(typeof inStreet!=="undefined"&&inStreet)drawStreetLife(t);requestAnimationFrame(ambLoop)}
+requestAnimationFrame(ambLoop);
+/* street view: customers walking into your open businesses, coins when they buy */
+const amb=$("#amb"),actx=amb.getContext("2d");let walkers=[],pops2=[],lastSpawn=0;
+function drawStreetLife(t){if(!LM||!stCity){return}const W2=amb.clientWidth,H2=amb.clientHeight,d=Math.min(2,devicePixelRatio||1);
+  if(amb.width!==W2*d||amb.height!==H2*d){amb.width=W2*d;amb.height=H2*d}actx.setTransform(d,0,0,d,0,0);actx.clearRect(0,0,W2,H2);
+  const shops=[];for(const b of BIZ){const lv=(S.own[stCity.id]||{})[b.k];if(!lv)continue;const p=S.pos[`biz:${stCity.id}:${b.k}`];if(p&&opFactor(stCity,b)>.01)shops.push({b,lv,p})}
+  if(shops.length&&t-lastSpawn>420){lastSpawn=t;const sh=shops[Math.floor(Math.random()*shops.length)],pt=LM.latLngToContainerPoint([sh.p.lat,sh.p.lon]),a=Math.random()*Math.PI*2,dist=60+Math.random()*90;
+    walkers.push({x:pt.x+Math.cos(a)*dist,y:pt.y+Math.sin(a)*dist,sh,t0:t,dur:3500+Math.random()*2500,col:["#f472b6","#60a5fa","#fbbf24","#34d399","#e5e7eb"][Math.floor(Math.random()*5)]})}
+  for(let i=walkers.length-1;i>=0;i--){const w=walkers[i],pt=LM.latLngToContainerPoint([w.sh.p.lat,w.sh.p.lon]),u=(t-w.t0)/w.dur;
+    if(u>=1){walkers.splice(i,1);const per=profit(w.sh.b,stCity,w.sh.lv)/Math.max(1,useRate(w.sh.b,w.sh.lv)||40);pops2.push({x:pt.x,y:pt.y-30,t0:t,v:Math.max(1,per)});continue}
+    const x=w.x+(pt.x-w.x)*u,y=w.y+(pt.y-w.y)*u+Math.sin(u*40)*1.2;actx.globalAlpha=Math.min(1,u*4,(1-u)*6);actx.fillStyle=w.col;actx.beginPath();actx.arc(x,y,3.2,0,7);actx.fill();actx.strokeStyle="rgba(0,0,0,.5)";actx.lineWidth=1;actx.stroke()}
+  for(let i=pops2.length-1;i>=0;i--){const p=pops2[i],u=(t-p.t0)/1200;if(u>=1){pops2.splice(i,1);continue}
+    actx.globalAlpha=1-u;actx.font="700 12px var(--mono),monospace";actx.textAlign="center";actx.fillStyle="#6ee7b7";actx.fillText("+$"+(p.v<10?p.v.toFixed(2):Math.round(p.v)),p.x,p.y-u*26)}
+  actx.globalAlpha=1}
+/* world news */
+const NEWSPOOL=[c=>`${c.name}: tourism up this week, restaurants report long lines`,c=>`Fuel prices climb; delivery costs rising in ${c.name}`,c=>`${c.name} city council approves new transit line`,
+  c=>`Heat wave in ${c.name} sends ice cream and coffee sales soaring`,c=>`Housing shortage in ${c.name}: rents expected to rise`,c=>`Port strike rumours in ${c.name} rattle shippers`,
+  c=>`${c.name} hosts an international trade fair this weekend`,c=>`Startup boom in ${c.name} fills office towers`,c=>`${c.name} farmers expect a strong harvest`,c=>`Steel demand surges as ${c.name} builds new bridges`];
+function worldNews(){const r=Math.random();let msg;
+  if(r<.35&&S.rivals.length){const i=Math.floor(Math.random()*S.rivals.length),rv=S.rivals[i];const c=CITIES[rv.cities[Math.floor(Math.random()*rv.cities.length)]];
+    msg=[`${RIVALS[i].n} posts record quarter, worth ${fmt(rv.nw)}`,`${RIVALS[i].n} is hiring aggressively in ${c.name}`,`Analysts say ${RIVALS[i].n} is eyeing new markets`][Math.floor(Math.random()*3)]}
+  else{const c=CITIES[Math.floor(Math.random()*CITIES.length)];msg=NEWSPOOL[Math.floor(Math.random()*NEWSPOOL.length)](c)}
+  S.log.unshift("World: "+msg);S.log=S.log.slice(0,3);hud()}
+setInterval(worldNews,4*60000);setTimeout(worldNews,20000);
+
 /* ---------- economy tick ---------- */
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
 let pops=[]; // floating income labels
