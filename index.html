@@ -284,7 +284,7 @@ const bonus=(b,c)=>b.k==="hotel"&&c.size>=4?1.3:b.k==="apt"&&c.size<=2?1.25:1;
 const USE={cart:{burgers:2},kiosk:{bread:3},shop:{bread:4,tools:1},rest:{burgers:5,beef:3},office:{electronics:.5},hotel:{bread:8,electronics:.5}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
-function profit(b,c,lv){return Math.round(b.gross*.85*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(1+0.55*(lv-1))-b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&b.k!=="apt"&&b.k!=="office"?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.3*(lv-1)))}
+function profit(b,c,lv){if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(1+0.55*(lv-1))-b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&b.k!=="apt"&&b.k!=="office"?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.3*(lv-1)))}
 function cityProfit(c){const o=S.own[c.id]||{};let t=0;for(const b of BIZ)if(o[b.k])t+=profit(b,c,o[b.k]);return t}
 /* renting: anything you don't own pays hourly rent (value / 40 per hour, so buying pays for itself in under 2 days of rent) */
 const RENT=1/40,FIT=.2;
@@ -403,7 +403,7 @@ function rotateTo(c,k,done){const l0=V.lam,p0=V.phi,k0=V.k;let l1=-c.lon;while(l
 const sheet=$("#sheet");
 function openCity(c){const fresh=mode!=="city"||sel!==c;mode="city";if(sel!==c)shipForm=null;sel=c;renderSheet();if(fresh)sheet.scrollTop=0;sheet.classList.add("open");draw()}
 function closeSheet(){sel=null;sheet.classList.remove("open","full");draw()}
-function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.contains("open"))renderResearch();return}if(mode==="pf"){if(sheet.classList.contains("open"))renderPortfolio();return}if(!sel)return;const c=sel,o=S.own[c.id]||{},ev=S.events[c.id];if(tab==="life"){renderLife(c);return}if(tab==="hq"){renderHQ(c);return}if(tab!=="biz"){renderInd(c);return}
+function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.contains("open"))renderResearch();return}if(mode==="pf"){if(sheet.classList.contains("open"))renderPortfolio();return}if(!sel)return;const c=sel,o=S.own[c.id]||{},ev=S.events[c.id];if(tab==="life"){renderLife(c);return}if(tab==="hq"){renderHQ(c);return}if(tab==="gov"){govHtml(c);return}if(tab!=="biz"){renderInd(c);return}
   let h=`<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}${typeof stormAt==="function"&&stormAt(c)?`<span class="tag bust">STORM</span>`:""}</h2>
     <p>${c.country} · market size ${"●".repeat(c.size)}${"○".repeat(5-c.size)}</p></div>
     <button class="x" id="cls" aria-label="Close">×</button></div>
@@ -452,7 +452,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
   const hb=$("#hire");if(hb)hb.onclick=()=>{const mc=mgrCost(c);if(S.cash<mc)return;S.cash-=mc;S.mgr[c.id]=1;toast(`Manager hired in ${c.name}`);commit()};
   const sa=$("#sellall");if(sa)sa.onclick=()=>{if(sa.dataset.arm){sellAll(c)}else{sa.dataset.arm=1;sa.textContent="Tap again to confirm sale"}};
 }
-function buy(c,k){const b=BIZ.find(x=>x.k===k),p=cost(b,c);if(S.cash<p)return;setTimeout(()=>{if(SUP[k])toast("Order stock to start selling. Hire staff so it runs without you.")},1900);if(b.co&&!hasHQ(c)){toast("Casinos need an HQ in this city");return}if(S.lease[c.id])delete S.lease[c.id][k];
+function buy(c,k){const b=BIZ.find(x=>x.k===k),p=cost(b,c);if(S.cash<p)return;setTimeout(()=>{if(SUP[k])toast("Order stock to start selling. Hire staff so it runs without you.")},1900);if(b.co&&!hasHQ(c)){toast("Casinos need an HQ in this city");return}if(lawBan(c,b)){toast(`Gambling is banned in ${c.country}`);return}if(S.lease[c.id])delete S.lease[c.id][k];
   S.cash-=p;(S.own[c.id]=S.own[c.id]||{})[k]=1;toast(`Opened ${b.n} in ${c.name}`);commit()}
 function upgrade(c,k){const b=BIZ.find(x=>x.k===k),lv=S.own[c.id][k],p=upCost(b,c,lv);if(S.cash<p||lv>=MAXLV)return;
   S.cash-=p;S.own[c.id][k]=lv+1;toast(`${b.n} in ${c.name} → Lv ${lv+1}`);commit()}
@@ -604,7 +604,7 @@ function driftPrices(){for(const c of CITIES){const p=S.px[c.id]=S.px[c.id]||{};
 const depth=(c,g)=>(G[g][2]==="raw"?3000:G[g][2]==="mid"?800:400)*(.5+.3*c.size);
 function govOK(c){return hasTech("govlic")&&c.size>=4}
 function sellGood(c,g,q){if(G[g][2]==="gov"){if(g==="launches")S.sats+=q;return G[g][1]*q}const p=S.px[c.id]=S.px[c.id]||{},m0=p[g]||1,m1=Math.max(.4,m0*Math.exp(-q/depth(c,g)));
-  const v=G[g][1]*cityF(c,g)*(m0+m1)/2*q;p[g]=m1;if(typeof mFill==="function")mFill(c,g,q);return v}
+  const v=G[g][1]*cityF(c,g)*(m0+m1)/2*q;p[g]=m1;if(typeof mFill==="function")mFill(c,g,q);return v*(typeof siteLaw==="function"?siteLaw(c):1)}
 function buyGood(c,g,q){const p=S.px[c.id]=S.px[c.id]||{},m0=p[g]||1,m1=Math.min(1.6,m0*Math.exp(q/depth(c,g)));const v=G[g][1]*cityF(c,g)*(m0+m1)/2*q*1.15;return{v,commit:()=>p[g]=m1}}
 const distKm=(a,b)=>d3.geoDistance([a.lon,a.lat],[b.lon,b.lat])*6371;
 const fmtDur=ms=>{const m=Math.max(0,Math.round(ms/60000));return m>=60?Math.floor(m/60)+"h "+String(m%60).padStart(2,"0")+"m":m+" min"};
@@ -612,7 +612,7 @@ const gq=n=>n>=1e4?(n/1e3).toFixed(1)+"K":n>=100?Math.round(n).toLocaleString():
 
 /* ---------- industry + warehouse tabs ---------- */
 let tab=S.job||nOwnedSafe()?"biz":"life",shipForm=null;function nOwnedSafe(){for(const id in S.own)if(Object.keys(S.own[id]).length)return true;return false}
-function tabsHtml(){return `<div class="tabs" role="tablist">${[["life","Life"],["hq","HQ"],["biz","Business"],["ind","Land"],["wh","Depot"]].map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")}</div>`}
+function tabsHtml(){return `<div class="tabs" role="tablist">${[["life","Life"],["hq","HQ"],["biz","Business"],["ind","Land"],["wh","Depot"],["gov","Gov"]].map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")}</div>`}
 function cityHead(c){const ev=S.events[c.id];return `<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}${typeof stormAt==="function"&&stormAt(c)?`<span class="tag bust">STORM</span>`:""}</h2>
   <p>${c.country} · market size ${"●".repeat(c.size)}${"○".repeat(5-c.size)}</p></div><button class="x" id="cls" aria-label="Close">×</button></div>`}
 function opLabel(o){const f=x=>Object.entries(x||{}).map(([g,q])=>`${q} ${G[g][0].toLowerCase()}`).join(" + ");return (o.in?f(o.in)+" → ":"")+(o.rp?o.rp+" research points":f(o.out))+" per ha/hr"}
@@ -752,7 +752,7 @@ const jobsIn=c=>JOBS.filter(j=>!j.ok||j.ok(c));
 const wage=(j,c)=>Math.round(j.w*COL(c)*100)/100;
 const homeRent=(h,c)=>Math.round(h.r*COL(c)*PRICE[c.size]*100)/100;
 const homeBuy=(h,c)=>Math.round(h.buy*PRICE[c.size]*PRICE[c.size]);
-function lifeIncome(){let v=0;if(S.job&&!S.trip&&S.loc&&S.loc.city===S.job.city)v+=wage(JK[S.job.k],CITIES[S.job.city])*(typeof wageMult==="function"?wageMult():1);if(S.home&&!S.home.own)v-=homeRent(HK[S.home.k],CITIES[S.home.city]);return v}
+function lifeIncome(){let v=0;if(S.job&&!S.trip&&S.loc&&S.loc.city===S.job.city)v+=wage(JK[S.job.k],CITIES[S.job.city])*(typeof jobLaw==="function"?jobLaw(CITIES[S.job.city]):1)*(typeof wageMult==="function"?wageMult():1);if(S.home&&!S.home.own)v-=homeRent(HK[S.home.k],CITIES[S.home.city]);return v}
 function lifeAssets(){return S.home&&S.home.own?homeBuy(HK[S.home.k],CITIES[S.home.city])*.9:0}
 function hireChance(j){return Math.min(.9,.48+(S.home&&S.home.k!=="room"?.1:0)+Math.min(.25,(S.exp-j.exp)*.01))}
 function checkApp(){const a=S.app;if(!a||Date.now()<a.t)return;const j=JK[a.k],c=CITIES[a.city];S.app=null;
@@ -808,9 +808,10 @@ const siteStaff=s=>{const o=siteOp(s);if(!o)return 0;const ha=LAND[s.size][1];re
 const bizStaff=(k,lv)=>Math.ceil(STAFF[k]*(1+.5*(lv-1)));
 function hqTotalUpkeep(){let u=0;for(const id in S.hq)if(S.hq[id])u+=hqUpkeep(CITIES[id]);return u}
 /* split this hour's taxable profit into registered vs unregistered */
-function taxableRates(){let reg=0,un=0;for(const pr of S.props||[]){if(!pr.occ)continue;if(S.hq[pr.city])reg+=askRent(pr);else un+=askRent(pr)}
-  for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv)continue;const p=Math.max(0,profit(b,c,lv));if(bizReg(c,b.k))reg+=p;else un+=p}}
-  for(const s of S.sites){const p=Math.max(0,siteEst(s));if(s.reg)reg+=p;else un+=p}
+function taxableRates(){let reg=0,un=0;const wr=c=>taxRateC(c)/TAX_REG,wu=c=>(taxRateC(c)+.2)/TAX_UNREG;
+  for(const pr of S.props||[]){if(!pr.occ)continue;const c=CITIES[pr.city],v=askRent(pr)*rentLaw(c);if(S.hq[pr.city])reg+=v*wr(c);else un+=v*wu(c)}
+  for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv)continue;const p=Math.max(0,profit(b,c,lv));if(bizReg(c,b.k))reg+=p*wr(c);else un+=p*wu(c)}}
+  for(const s of S.sites){const c=CITIES[s.city],p=Math.max(0,siteEst(s));if(s.reg)reg+=p*wr(c);else un+=p*wu(c)}
   return{reg,un}}
 function runTax(hours,now){const r=taxableRates();S.tax.reg+=r.reg*hours;S.tax.unreg+=r.un*hours;
   while(now>=S.tax.start+TAXP){const due=Math.round(S.tax.reg*TAX_REG+S.tax.unreg*TAX_UNREG);S.cash-=due;S.tax.paid=(S.tax.paid||0)+due;
@@ -825,7 +826,7 @@ function audits(quiet){for(const c of CITIES){let v=0,n=0;const o=S.own[c.id]||{
 function renderHQ(c){let h=cityHead(c);const o=S.own[c.id]||{},sites=S.sites.filter(s=>s.city===c.id);
   h+=`<div class="meta"><div><span>Tax year ends in </span>${fmtDur(S.tax.start+TAXP-Date.now()).replace(/^(\d+)h/,(m,x)=>x>=48?Math.floor(x/24)+"d "+(x%24)+"h":m)}</div><div><span>Owed so far </span>${fmt(taxOwed())}</div></div>`+tabsHtml();
   if(!hasHQ(c)){h+=`<div class="sec">Open a headquarters in ${c.name}</div><div class="list"><div class="row"><div class="n">City HQ</div>
-    <div class="d">Lets you register businesses and land here, manage employees, and see every registered business you own. Registered assets pay ${TAX_REG*100}% tax each tax year (every ${TAXDAYS} days); unregistered ones pay ${TAX_UNREG*100}% and risk audit fines. Upkeep ${fmt(hqUpkeep(c))}/hr.</div>
+    <div class="d">Lets you register businesses and land here, manage employees, and see every registered business you own. Registered assets here pay ${Math.round(taxRateC(c)*100)}% tax each tax year (every ${TAXDAYS} days); unregistered ones pay ${Math.round(taxRateC(c)*100)+20}% and risk audit fines. Upkeep ${fmt(hqUpkeep(c))}/hr.</div>
     <button class="buy" data-hq="open" ${S.cash<hqCost(c)?"disabled":""}>Open ${fmt(hqCost(c))}</button></div></div>`;
     const un=BIZ.filter(b=>o[b.k]&&!bizReg(c,b.k)).length+sites.filter(s=>!s.reg).length;
     if(un)h+=`<p class="d" style="color:var(--bad);font-size:13px;padding:8px 0">You have ${un} unregistered asset${un>1?"s":""} here.</p>`;
@@ -876,7 +877,7 @@ const mktRent=(pr)=>{const P=PK[pr.k],c=CITIES[pr.city];return Math.round(P.rent
 const askRent=pr=>Math.round(mktRent(pr)*pr.pct/100);
 const fillP=pct=>pct<=60?.9:pct<=75?.45:pct<=100?.15:.04;
 const leaveP=pct=>pct<=75?.005:pct<=100?.015:.06;
-function propIncome(){return S.props.reduce((a,pr)=>a+(pr.occ?askRent(pr):0),0)}
+function propIncome(){return S.props.reduce((a,pr)=>a+(pr.occ?askRent(pr)*(typeof rentLaw==="function"?rentLaw(CITIES[pr.city]):1):0),0)}
 function propAssets(){return S.props.reduce((a,pr)=>{const P=PK[pr.k],c=CITIES[pr.city];return a+propCost(P,c)*.8+(pr.furn?P.furn*PRICE[c.size]*.5:0)},0)}
 function simProps(quiet){for(const pr of S.props){const c=CITIES[pr.city],P=PK[pr.k];
   if(!pr.occ){if(Math.random()<fillP(pr.pct)){pr.occ=1;if(!quiet){S.log.unshift(`New tenant: ${P.n} in ${c.name} at ${fmt(askRent(pr))}/hr`);S.log=S.log.slice(0,3)}}}
@@ -1453,6 +1454,7 @@ function renderPortfolio(){const{inc,nw}=totals();
     <div class="d">${n} business${n>1?"es":""} · <b>${fmt(cityProfit(c))}</b>/hr</div><span style="font-family:var(--mono);color:var(--muted)">›</span></div>`}
   h+=`</div><div class="sec">Find a city</div><input id="q" type="search" placeholder="Tokyo, Lagos, Montréal…" value="${query}" autocomplete="off"><div class="list" id="qres"></div>`;
   const board=[{n:"You",col:"var(--own)",nw,me:1},...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:r.nw,c:r.cities.length}))].sort((a,b)=>b.nw-a.nw);
+  h+=govSummary();
   h+=`<div class="sec">Leaderboard</div><div class="list">`+board.map((b,i)=>`<div class="row"><div class="n" style="${b.me?"color:var(--own)":""}">${i+1}. <span style="display:inline-block;width:9px;height:9px;background:${b.col};margin:0 6px 0 2px"></span>${b.n}</div>
     <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
   const lim=loanLimit();
@@ -1568,8 +1570,88 @@ function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
-  if(n>0){for(let i=0;i<n-1;i++)simDay(true);S.hour=h;endDay()}
+  if(n>0){for(let i=0;i<n-1;i++){simDay(true);if(i<48)govHour(true)}govHour(false);S.hour=h;endDay()}
   return g+sold}
+/* ---------- governments & laws ---------- */
+const PARTIES={
+  lab:{n:"Workers' Party",col:"#d64545",d:"Higher taxes and wages, tenant protections, wary of gambling.",pl:{tax:3,wage:2,rent:1,casino:1,tariff:1,grant:1}},
+  lib:{n:"Liberal Alliance",col:"#e0a526",d:"Centrist. Moderate taxes, small-business grants.",pl:{tax:2,wage:1,rent:0,casino:0,tariff:0,grant:1}},
+  con:{n:"Conservatives",col:"#3a6fd8",d:"Low taxes, light regulation, free trade.",pl:{tax:0,wage:0,rent:0,casino:0,tariff:0,grant:0}},
+  pop:{n:"National Front",col:"#7b4bc4",d:"Populist. High tariffs, cheap labour, bans casinos.",pl:{tax:1,wage:0,rent:1,casino:1,tariff:2,grant:0}}};
+const LAWS={
+  tax:{n:"Corporate tax",v:["10%","15%","20%","25%","30%"],e:["Registered assets taxed 10%","Registered assets taxed 15%","Registered assets taxed 20%","Registered assets taxed 25%","Registered assets taxed 30%"]},
+  wage:{n:"Minimum wage",v:["Low","Standard","High"],e:["Business profit +6%, job pay −10%","No effect","Business profit −10%, job pay +15%"]},
+  rent:{n:"Rent control",v:["Off","On"],e:["Landlords set any rent","Rental income −15%"]},
+  casino:{n:"Gambling",v:["Legal","Banned"],e:["Casinos operate normally","Casinos are shut: no income, can't open new ones"]},
+  tariff:{n:"Import tariffs",v:["None","Low","High"],e:["Free trade","Retail profit −3%, land output value +4%","Retail profit −7%, land output value +9%"]},
+  grant:{n:"Small-business grants",v:["Off","On"],e:["No support","Carts, kiosks and corner shops earn +10%"]}};
+const RETAIL=["cart","kiosk","shop","rest"],SMALL=["cart","kiosk","shop"];
+const ELECT=4*24*DAYMS; // elections every 4 real days per country
+const COUNTRIES=[...new Set(CITIES.map(c=>c.country))];
+const ctyCities=n=>CITIES.filter(c=>c.country===n);
+const ctyScale=n=>ctyCities(n).reduce((a,c)=>a+c.size,0);
+const hashS=s=>[...s].reduce((a,ch)=>(a*31+ch.charCodeAt(0))>>>0,7);
+function gov(n){S.gov=S.gov||{};let g=S.gov[n];if(g)return g;const h=hashS(n),pk=Object.keys(PARTIES)[h%4],p=PARTIES[pk].pl;
+  const laws={};for(const k in LAWS)laws[k]=p[k];
+  return S.gov[n]={party:pk,appr:45+h%25,next:Date.now()+ELECT*(.25+((h>>3)%75)/100),laws,don:{},favor:0}}
+const law=(c,k)=>gov(c.country).laws[k];
+function lawBan(c,b){return b.k==="casino"&&law(c,"casino")===1}
+function lawMult(c,b){let m=[1.06,1,.9][law(c,"wage")];
+  if(RETAIL.includes(b.k))m*=[1,.97,.93][law(c,"tariff")];
+  if(SMALL.includes(b.k)&&law(c,"grant"))m*=1.1;return m}
+const taxRateC=c=>[.1,.15,.2,.25,.3][law(c,"tax")];
+const rentLaw=c=>law(c,"rent")?.85:1;
+const jobLaw=c=>[.9,1,1.15][law(c,"wage")];
+const siteLaw=c=>[1,1.04,1.09][law(c,"tariff")];
+const lobbyCost=n=>Math.round(6000*ctyScale(n)*(1+((S.lobbied||0)*.15)));
+const donUnit=n=>Math.round(2000*ctyScale(n));
+function logGov(m){S.log.unshift("Politics: "+m);S.log=S.log.slice(0,3)}
+/* who you hurt or help: approval drifts, parties enact their platform, elections are held */
+function govHour(quiet){const now=Date.now();
+  for(const n of COUNTRIES){const g=gov(n),pl=PARTIES[g.party].pl;
+    g.appr=Math.max(5,Math.min(95,g.appr+(Math.random()-.52)*4));
+    if(Math.random()<.06){const diff=Object.keys(LAWS).filter(k=>g.laws[k]!==pl[k]);
+      if(diff.length){const k=diff[Math.floor(Math.random()*diff.length)];g.laws[k]+=Math.sign(pl[k]-g.laws[k]);if(!quiet&&ownsIn(n))logGov(`${n} changes ${LAWS[k].n.toLowerCase()} to ${LAWS[k].v[g.laws[k]]}`)}}
+    if(now>=g.next)election(n,quiet)}}
+function ownsIn(n){return ctyCities(n).some(c=>S.own[c.id]||S.hq&&S.hq[c.id]||S.sites.some(s=>s.city===c.id)||(S.props||[]).some(p=>p.city===c.id))}
+function election(n,quiet){const g=gov(n),ks=Object.keys(PARTIES);
+  const w=ks.map(k=>(k===g.party?g.appr:(100-g.appr)/3)*(1+Math.log10(1+(g.don[k]||0)/donUnit(n))*.6));
+  let r=Math.random()*w.reduce((a,b)=>a+b,0),win=ks[0];for(let i=0;i<ks.length;i++){r-=w[i];if(r<=0){win=ks[i];break}}
+  const pct=Math.round(w[ks.indexOf(win)]/w.reduce((a,b)=>a+b,0)*100);
+  const backed=Object.keys(g.don).sort((a,b)=>g.don[b]-g.don[a])[0];
+  g.favor=backed===win?Math.min(.25,Math.log10(1+g.don[win]/donUnit(n))*.15):0;
+  const changed=win!==g.party;g.party=win;g.appr=changed?55+Math.random()*15:Math.min(90,g.appr+5);g.don={};
+  g.next=g.next+ELECT>Date.now()?g.next+ELECT:Date.now()+ELECT;
+  if(changed){const pl=PARTIES[win].pl,diff=Object.keys(LAWS).filter(k=>g.laws[k]!==pl[k]);if(diff.length){const k=diff[0];g.laws[k]=pl[k]}}
+  if(!quiet&&(ownsIn(n)||backed))logGov(`${PARTIES[win].n} ${changed?"wins":"re-elected in"} ${n}${changed?" election":""} with ${pct}%`)}
+function lobby(c,k,dir){const n=c.country,g=gov(n),cost=lobbyCost(n),pl=PARTIES[g.party].pl[k];
+  if(S.cash<cost){toast(`Need ${fmt(cost)} to lobby`);return}S.cash-=cost;S.lobbied=(S.lobbied||0)+1;
+  const toward=Math.sign(pl-g.laws[k])===dir;let ch=(toward?.65:.3)+g.favor+(hasHQ(c)?.05:0);
+  if(Math.random()<.08+(S.hq&&ctyCities(n).some(x=>S.hq[x.id])?0:.07)){const fine=cost*2;S.cash-=fine;g.appr=Math.max(5,g.appr-6);logGov(`Lobbying scandal in ${n}: fined ${fmt(fine)}`);toast(`Scandal! Fined ${fmt(fine)}`);return}
+  if(Math.random()<ch){g.laws[k]+=dir;logGov(`${n} passes your bill: ${LAWS[k].n.toLowerCase()} now ${LAWS[k].v[g.laws[k]]}`);toast("Bill passed")}
+  else toast("Bill failed to pass")}
+function govHtml(c){const n=c.country,g=gov(n),P=PARTIES[g.party];let h=cityHead(c)+tabsHtml();
+  h+=`<div class="sec">Government of ${n}</div><div class="list"><div class="row"><div class="n"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${P.col};margin-right:6px"></span>${P.n}</div>
+    <div class="d">${P.d} Approval ${Math.round(g.appr)}% · next election in ${fmtDur(g.next-Date.now()).replace(/^(\d+)h/,(m,x)=>x>=48?Math.floor(x/24)+"d "+(x%24)+"h":m)}${g.favor?` · you have their ear (+${Math.round(g.favor*100)}% lobbying)`:""}</div></div></div>`;
+  h+=`<div class="sec">Laws</div><div class="list">`;
+  for(const k in LAWS){const L=LAWS[k],v=g.laws[k],want=PARTIES[g.party].pl[k],cost=lobbyCost(n);
+    const btn=(d,lbl)=>`<button class="buy" data-gov="lobby" data-k="${k}" data-dir="${d}" data-fixed="1" ${S.cash<cost?"disabled":""}>${lbl} ${L.v[v+d]}</button>`;
+    h+=`<div class="row"><div class="n">${L.n} <b>${L.v[v]}</b>${v!==want?`<span class="tag" style="border:1px solid var(--line)">gov wants ${L.v[want]}</span>`:""}</div>
+      <div class="d">${L.e[v]}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${v>0?btn(-1,"↓"):""}${v<L.v.length-1?btn(1,"↑"):""}</div></div>`}
+  h+=`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Lobbying costs ${fmt(lobbyCost(n))} per attempt. Bills that match the ruling party's platform pass more often. There's a scandal risk, higher if you have no HQ in ${n}. Each lobby raises the price of the next one.</p>`;
+  h+=`<div class="sec">Fund a party</div><div class="list">`;
+  for(const k in PARTIES){const p=PARTIES[k],d=g.don[k]||0,u=donUnit(n);
+    h+=`<div class="row"><div class="n"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${p.col};margin-right:6px"></span>${p.n}${k===g.party?' <span class="tag" style="border:1px solid var(--line)">IN POWER</span>':""}</div>
+      <div class="d">${p.d}${d?` You've given ${fmt(d)} this cycle.`:""}</div><button class="buy" data-gov="don" data-p="${k}" data-fixed="1" ${S.cash<u?"disabled":""}>Donate ${fmt(u)}</button></div>`}
+  h+=`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Donations raise a party's odds at the next election. If the party you funded most wins, lobbying gets easier for their whole term.</p>`;
+  sheet.innerHTML=h}
+function govSummary(){const ns=COUNTRIES.filter(ownsIn);if(!ns.length)return"";
+  return `<div class="sec">Governments</div><div class="list">`+ns.map(n=>{const g=gov(n),p=PARTIES[g.party],c=ctyCities(n)[0];
+    return `<div class="row link" data-go="${c.id}"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${p.col};margin-right:6px"></span>${n}</div><div class="d">${p.n} · tax ${LAWS.tax.v[g.laws.tax]} · min wage ${LAWS.wage.v[g.laws.wage].toLowerCase()}${g.laws.casino?" · casinos banned":""}${g.laws.rent?" · rent control":""}</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`}
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b||!sel)return;const c=sel;
+  if(b.dataset.gov==="lobby")lobby(c,b.dataset.k,+b.dataset.dir);
+  else{const g=gov(c.country),u=donUnit(c.country);if(S.cash<u)return;S.cash-=u;g.don[b.dataset.p]=(g.don[b.dataset.p]||0)+u;toast(`Donated ${fmt(u)} to ${PARTIES[b.dataset.p].n}`)}
+  hud();renderSheet()});
 let saveT=0;
 setInterval(()=>{accrue();checkApp();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
