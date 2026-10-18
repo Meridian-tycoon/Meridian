@@ -296,10 +296,10 @@ function totals(){let inc=0,assets=0;
   for(const c of CITIES){const o=S.own[c.id];if(!o)continue;
     for(const b of BIZ){const lv=o[b.k];if(!lv)continue;inc+=profit(b,c,lv);
       let v=isLeased(c,b.k)?cost(b,c)*FIT:cost(b,c);for(let l=1;l<lv;l++)v+=upCost(b,c,l);assets+=v*0.75}}
-  const interest=Math.round(S.debt*0.003);
+  const interest=typeof bankPayHr==="function"?Math.round(bankPayHr()):Math.round(S.debt*0.003);
   const upk=typeof indUpkeep==="function"?indUpkeep():0;assets+=typeof indAssets==="function"?indAssets():0;
   const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
-  return{inc:inc-interest-upk-rent,interest,upk,rent,nw:S.cash+assets-S.debt}}
+  return{inc:inc-(typeof bankPayHr==="function"?0:interest)-upk-rent,interest,upk,rent,nw:S.cash+assets-S.debt}}
 
 /* ---------- map: a 3D globe you can spin 360° in any direction ---------- */
 const cv=$("#map"),ctx=cv.getContext("2d");
@@ -1498,12 +1498,7 @@ function renderPortfolio(){const{inc,nw}=totals();
   h+=govSummary();
   h+=`<div class="sec">Leaderboard</div><div class="list">`+board.map((b,i)=>`<div class="row"><div class="n" style="${b.me?"color:var(--own)":""}">${i+1}. <span style="display:inline-block;width:9px;height:9px;background:${b.col};margin:0 6px 0 2px"></span>${b.n}</div>
     <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
-  const lim=loanLimit();
-  h+=`<div class="sec">Bank · 0.3% interest per hour</div><div class="list">
-    <div class="row"><div class="n">Loan balance <b style="font-family:var(--mono)">${fmt(S.debt)}</b></div><div class="d">${S.debt?`Costs you ${fmt(Math.round(S.debt*.003))} an hour in interest.`:"No debt. You can borrow up to "+fmt(lim)+"."}</div>
-    <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2;flex-wrap:wrap;justify-content:end">
-      <button class="buy up" id="borrow" ${lim-S.debt<1000?"disabled":""}>Borrow ${fmt(loanStep())}</button>
-      <button class="buy" id="repay" ${!S.debt||S.cash<=0?"disabled":""}>Repay ${fmt(Math.min(S.debt,Math.max(0,S.cash)))}</button></span></div></div>`;
+  h+=bankHtml();
   if(S.lst.length)h+=`<div class="sec">Market listings</div><div class="list">`+S.lst.map(l=>{const c=CITIES[l.city],L=mLevel(c,l.g);return `<div class="row link" data-go="${c.id}"><div class="n">${G[l.g][0]} · ${c.name}</div><div class="d">${l.q<1e-6?"Sold out":gq(l.q)+" left at "+fmt(l.p)} · ${gq(l.sold||0)} sold · stock ${Math.round(L*100)}%</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`;
   h+=`<div class="sec">Taxes · every ${TAXDAYS} days</div><div class="list"><div class="row"><div class="n">Owed this tax year <b style="font-family:var(--mono)">${fmt(taxOwed())}</b></div>
     <div class="d">Due in ${fmtDur(S.tax.start+TAXP-Date.now())} · registered ${TAX_REG*100}%, unregistered ${TAX_UNREG*100}% plus audit risk · ${Object.keys(S.hq).filter(k=>S.hq[k]).length} HQs · ${fmt(S.tax.paid||0)} paid all-time</div><span></span></div></div>`;
@@ -1518,8 +1513,6 @@ function renderPortfolio(){const{inc,nw}=totals();
   h+=`</div><div class="foot"><button id="reset">Start a new game</button></div>`;
   sheet.innerHTML=h;
   $("#cls").onclick=closeSheet;
-  $("#borrow").onclick=()=>{const a=loanStep();if(a<1000)return;S.debt+=a;S.cash+=a;toast(`Borrowed ${fmt(a)}`);commit()};
-  $("#repay").onclick=()=>{const a=Math.min(S.debt,Math.max(0,S.cash));S.debt-=a;S.cash-=a;toast(`Repaid ${fmt(a)}`);commit()};
   sheet.querySelectorAll("[data-go]").forEach(r=>r.onclick=()=>flyTo(CITIES[r.dataset.go]));
   const q=$("#q");q.oninput=()=>{query=q.value;searchRes()};searchRes();
   const rs=$("#reset");rs.onclick=()=>{if(rs.dataset.arm){try{localStorage.removeItem(KEY)}catch(e){}location.reload()}else{rs.dataset.arm=1;rs.textContent="Tap again to erase everything"}};
@@ -1607,11 +1600,11 @@ new MutationObserver(()=>{if(!sheet.firstElementChild||sheet.firstElementChild.c
 const hourOf=t=>Math.floor(t/DAYMS);
 function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);
-  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(dt/DAYMS);runFleet(now);const g=totals().inc*dt/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);
+  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(dt/DAYMS);runFleet(now);const g=totals().inc*dt/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
-  if(n>0){for(let i=0;i<n-1;i++){simDay(true);if(i<48)govHour(true)}govHour(false);S.hour=h;endDay()}
+  if(n>0){for(let i=0;i<n-1;i++){simDay(true);if(i<48)govHour(true);bankHour(true);cardCover()}govHour(false);bankHour(false);cardCover();S.debt=bankDebt();S.hour=h;endDay()}
   return g+sold}
 /* ---------- governments & laws ---------- */
 const PARTIES={
@@ -1746,6 +1739,90 @@ function conflictHtml(n){const ws=(S.wars||[]).filter(w=>!n||w.a===n||w.b===n).s
     <div class="d">${["","Markets jittery: −3% profit","Sanctions: −10% profit, land output +5%","Clashes: −20% profit, land output +10%","War: −40% profit, land output +20%, businesses can be damaged, no travel in"][w.l]}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="buy" data-gov="peace" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="buy" data-gov="stoke" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Sell arms ${fmt(c)}</button></div></div>`}
   return h+`</div>`}
+/* ---------- bank: credit score, loans, credit card ---------- */
+S.bank=S.bank||{lates:[],ontime:0,inq:[],loans:[],card:null,first:0,hist:[],lid:1};
+if(S.debt>0&&!S.bank.loans.length&&!S.bank.migrated){S.bank.loans.push({id:S.bank.lid++,type:"personal",bal:S.debt,rate:.003,pay:Math.max(10,S.debt/48),left:48,miss:0,start:Date.now()});S.bank.first=S.bank.first||Date.now()}
+S.bank.migrated=1;
+const B=()=>S.bank;
+const hrsAgo=t=>(Date.now()-t)/DAYMS;
+function creditFactors(){const b=B(),now=Date.now();
+  const lateW=b.lates.reduce((a,t)=>a+Math.exp(-hrsAgo(t)/240),0);
+  const ph=Math.max(0,1-lateW*.15)*(.6+.4*Math.min(1,b.ontime/40));
+  const util=b.card&&b.card.lim?b.card.bal/b.card.lim:null;
+  const ut=util==null?.7:Math.max(0,1-util/.9);
+  const age=b.first?Math.min(1,hrsAgo(b.first)/300):0;
+  const inq=b.inq.filter(t=>hrsAgo(t)<48).length,iq=Math.max(0,1-inq*.15);
+  const mix=((b.card?1:0)+(b.loans.length||b.ontime>10?1:0))/2;
+  const debt=bankDebt(),inc=Math.max(1,incomeHr()),dti=Math.max(0,1-debt/(inc*400));
+  return{ph,ut,util,age,iq,inq,mix,dti,lateW}}
+function creditScore(){const f=creditFactors();return Math.round(300+550*(.33*f.ph+.25*f.ut+.14*f.age+.08*f.iq+.08*f.mix+.12*f.dti))}
+const scoreBand=s=>s>=800?["Exceptional","#15803d"]:s>=740?["Very good","#4d9f2a"]:s>=670?["Good","#a3a01c"]:s>=580?["Fair","#d97706"]:["Poor","#c2410c"];
+const loanRate=(s,type)=>(s>=800?.0008:s>=740?.0012:s>=670?.002:s>=580?.0035:.006)*(type==="business"?.8:1);
+const cardRate=s=>s>=740?.003:s>=670?.004:s>=580?.005:.007;
+function incomeHr(){let v=0;if(S.job)v+=wage(JK[S.job.k],CITIES[S.job.city]);for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(lv)v+=Math.max(0,profit(b,c,lv))}}return v}
+function bizAssets(){let a=0;for(const id in S.own)for(const b of BIZ){const lv=S.own[id][b.k];if(lv)a+=cost(b,CITIES[id])*lv}return a}
+function bankDebt(){const b=B();return b.loans.reduce((a,l)=>a+l.bal,0)+(b.card?b.card.bal:0)}
+const amort=(P,r,n)=>r?P*r/(1-Math.pow(1+r,-n)):P/n;
+const LOANT={personal:{n:"Personal loan",term:48,min:550,d:"Unsecured. Based on your income and credit."},
+  business:{n:"Business loan",term:168,min:620,d:"For companies with an HQ. Based on your business assets."},
+  mortgage:{n:"Mortgage",term:336,min:600,d:"Secured by your home. Lowest rates, longest term."}};
+function loanMax(type){const s=creditScore(),inc=incomeHr(),m=s>=740?1.3:s>=670?1:s>=580?.6:.3;
+  if(type==="personal")return Math.round(inc*120*m/100)*100;
+  if(type==="business")return Object.values(S.hq||{}).some(Boolean)?Math.round(bizAssets()*.6*m/1000)*1000:0;
+  if(type==="mortgage")return S.home&&S.home.own?Math.round(homeBuy(HK[S.home.k],CITIES[S.home.city])*.8/100)*100:0;return 0}
+const owedOn=type=>B().loans.filter(l=>l.type===type).reduce((a,l)=>a+l.bal,0);
+function applyLoan(type,amt){const b=B(),s=creditScore(),T=LOANT[type];b.inq.push(Date.now());
+  if(s<T.min){toast(`Denied: needs a ${T.min}+ credit score`);return}
+  const room=loanMax(type)-owedOn(type);if(amt>room){toast(`Denied: you can borrow up to ${fmt(Math.max(0,room))}`);return}
+  const r=loanRate(s,type)*(type==="mortgage"?.6:1);b.loans.push({id:b.lid++,type,bal:amt,rate:r,pay:amort(amt,r,T.term),left:T.term,miss:0,start:Date.now()});
+  b.first=b.first||Date.now();S.cash+=amt;toast(`Approved: ${fmt(amt)} at ${(r*100).toFixed(2)}%/hr`);logBank(`${T.n} approved: ${fmt(amt)}`)}
+function applyCard(){const b=B(),s=creditScore();b.inq.push(Date.now());
+  if(s<520){toast("Card denied: credit score too low");return}
+  const lim=Math.max(500,Math.round((incomeHr()*40*(s>=740?2:s>=670?1.4:s>=580?1:.5))/100)*100);
+  b.card={lim,bal:0,stmt:0,due:Date.now()+24*DAYMS,paidStmt:true,rate:cardRate(s)};b.first=b.first||Date.now();toast(`Card approved: ${fmt(lim)} limit`);logBank(`Credit card approved with a ${fmt(lim)} limit`)}
+function logBank(m){S.log.unshift("Bank: "+m);S.log=S.log.slice(0,3)}
+/* card covers any shortfall automatically, like overdraft protection */
+function cardCover(){const c=B().card;if(!c||S.cash>=0)return;const d=Math.min(-S.cash,c.lim-c.bal);if(d>0){c.bal+=d;S.cash+=d}}
+function bankHour(quiet){const b=B();
+  for(const l of b.loans){l.bal*=1+l.rate;const due=Math.min(l.pay,l.bal);
+    if(S.cash>=due){S.cash-=due;l.bal-=due;l.miss=0;b.ontime++;l.left--}
+    else{l.miss++;l.bal+=Math.max(5,due*.05);b.lates.push(Date.now());if(!quiet)logBank(`Missed a ${LOANT[l.type].n.toLowerCase()} payment (late fee charged)`);
+      if(l.miss>=3&&!l.coll){l.coll=1;l.rate*=1.5;l.bal*=1.1;b.lates.push(Date.now(),Date.now());if(!quiet)logBank(`${LOANT[l.type].n} sent to collections`)}}}
+  b.loans=b.loans.filter(l=>l.bal>.5);
+  const c=b.card;if(c){if(!c.paidStmt)c.bal+=Math.min(c.bal,c.stmt)*c.rate;
+    if(Date.now()>=c.due){const min=Math.min(c.bal,Math.max(25,c.bal*.03));
+      if(c.bal>0){if(S.cash>=min){S.cash-=min;c.bal-=min;b.ontime++}else{c.bal+=35;b.lates.push(Date.now());if(!quiet)logBank("Missed your credit card minimum payment ($35 fee)")}}
+      c.stmt=c.bal;c.paidStmt=c.bal<=0;c.due+=24*DAYMS;if(c.due<Date.now())c.due=Date.now()+24*DAYMS}}
+  b.lates=b.lates.filter(t=>hrsAgo(t)<720);b.inq=b.inq.filter(t=>hrsAgo(t)<168);
+  b.hist.push(creditScore());b.hist=b.hist.slice(-96)}
+const bankPayHr=()=>B().loans.reduce((a,l)=>a+Math.min(l.pay,l.bal),0);
+function repayLoan(id,all){const l=B().loans.find(x=>x.id===id);if(!l)return;const v=Math.min(all?l.bal:l.pay*5,l.bal,Math.max(0,S.cash));if(v<=0)return;S.cash-=v;l.bal-=v;
+  if(l.bal<=.5){B().loans=B().loans.filter(x=>x!==l);B().ontime+=3;toast(`${LOANT[l.type].n} paid off!`)}else{l.left=Math.max(1,Math.ceil(Math.log(1/(1-l.bal*l.rate/l.pay))/Math.log(1+l.rate))||l.left);toast(`Paid ${fmt(v)}`)}}
+function payCard(all){const c=B().card;if(!c)return;const v=Math.min(all?c.bal:Math.max(25,c.bal*.03),c.bal,Math.max(0,S.cash));if(v<=0)return;S.cash-=v;c.bal-=v;c.stmt=Math.max(0,c.stmt-v);if(c.stmt<=0)c.paidStmt=true;toast(`Paid ${fmt(v)} on your card`)}
+function scoreSpark(){const h=B().hist;if(h.length<2)return"";const w=280,ht=40,mn=Math.min(...h)-5,mx=Math.max(...h)+5;
+  return `<svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:40px;display:block"><polyline fill="none" stroke="var(--own)" stroke-width="2" points="${h.map((v,i)=>`${i/(h.length-1)*w},${ht-(v-mn)/(mx-mn)*ht}`).join(" ")}"/></svg>`}
+function bankHtml(){const b=B(),s=creditScore(),[band,col]=scoreBand(s),f=creditFactors();
+  const fac=(n,v,t)=>`<div><span>${n}</span><b style="color:${v>.75?"var(--good)":v>.45?"#d97706":"var(--bad)"}">${t}</b></div>`;
+  let h=`<div class="sec">Bank · credit score</div><div class="list"><div class="row"><div class="n"><span style="font-family:var(--mono);font-size:28px;font-weight:700;color:${col}">${s}</span> <span class="tag" style="background:${col};color:#fff">${band.toUpperCase()}</span></div>
+    <div class="d">300–850. Updates every game hour.${scoreSpark()}<div class="ph-rows" style="margin-top:6px">${fac("Payment history",f.ph,`${b.ontime} on time · ${b.lates.length} late`)}${fac("Card utilization",f.ut,f.util==null?"no card":Math.round(f.util*100)+"%")}${fac("Credit age",f.age,b.first?fmtDur(Date.now()-b.first):"none")}${fac("Hard inquiries",f.iq,`${f.inq} in 48 h`)}${fac("Credit mix",f.mix,`${(b.card?1:0)+(b.loans.length?1:0)} types`)}${fac("Debt to income",f.dti,fmt(bankDebt()))}</div></div></div></div>`;
+  h+=`<div class="sec">Credit card</div><div class="list">`;
+  if(b.card){const c=b.card;h+=`<div class="row"><div class="n">Meridian Card <b style="font-family:var(--mono)">${fmt(c.bal)}</b> / ${fmt(c.lim)}</div>
+    <div class="d">${(c.rate*100).toFixed(2)}%/hr interest on unpaid statement balances. Statement ${fmt(c.stmt)} · min due ${fmt(Math.min(c.bal,Math.max(25,c.bal*.03)))} in ${fmtDur(c.due-Date.now())}. Covers you automatically if your cash goes negative. Keep it under 30% for your score.</div>
+    <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2;flex-direction:column"><button class="buy" data-bank="cardall" data-fixed="1" ${!c.bal||S.cash<=0?"disabled":""}>Pay ${fmt(Math.min(c.bal,Math.max(0,S.cash)))}</button><button class="buy up" data-bank="adv" data-fixed="1" ${c.lim-c.bal<100?"disabled":""}>Cash advance ${fmt(Math.min(c.lim-c.bal,Math.round(c.lim/4)))}</button></span></div>`}
+  else h+=`<div class="row"><div class="n">Meridian Card</div><div class="d">Needs a 520+ score. Limit depends on your income and score. Applying is a hard inquiry.</div><button class="buy" data-bank="card" data-fixed="1">Apply</button></div>`;
+  h+=`</div><div class="sec">Loans · payments ${fmt(bankPayHr())}/hr, taken automatically</div><div class="list">`;
+  for(const l of b.loans)h+=`<div class="row"><div class="n">${LOANT[l.type].n} <b style="font-family:var(--mono)">${fmt(l.bal)}</b>${l.coll?'<span class="tag bust">COLLECTIONS</span>':l.miss?'<span class="tag bust">LATE</span>':""}</div>
+    <div class="d">${(l.rate*100).toFixed(2)}%/hr · ${fmt(l.pay)}/hr · about ${Math.max(1,Math.round(l.left))} h left</div>
+    <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2;flex-direction:column"><button class="buy" data-bank="payall" data-id="${l.id}" data-fixed="1" ${S.cash<=0?"disabled":""}>Pay off ${fmt(Math.min(l.bal,Math.max(0,S.cash)))}</button></span></div>`;
+  for(const k in LOANT){const T=LOANT[k],room=Math.max(0,loanMax(k)-owedOn(k)),r=loanRate(s,k)*(k==="mortgage"?.6:1);
+    const opts=[.25,.5,1].map(x=>Math.round(room*x/100)*100).filter((v,i,a)=>v>=500&&a.indexOf(v)===i);
+    h+=`<div class="row"><div class="n">${T.n}</div><div class="d">${T.d} ${T.term} h term · ${s<T.min?`<b>needs ${T.min}+ score</b>`:`${(r*100).toFixed(2)}%/hr · up to ${fmt(room)}`}</div>
+      <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2;flex-direction:column">${s>=T.min?opts.map(v=>`<button class="buy up" data-bank="loan" data-t="${k}" data-a="${v}" data-fixed="1">${fmt(v)}</button>`).join(""):""}</span></div>`}
+  return h+`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Miss 3 payments in a row and a loan goes to collections: 1.5× the rate, a 10% penalty and a big score hit. Every application is a hard inquiry.</p>`}
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-bank]");if(!b)return;const a=b.dataset.bank;
+  if(a==="card")applyCard();else if(a==="loan")applyLoan(b.dataset.t,+b.dataset.a);else if(a==="payall")repayLoan(+b.dataset.id,true);
+  else if(a==="cardall")payCard(true);else if(a==="adv"){const c=B().card,v=Math.min(c.lim-c.bal,Math.round(c.lim/4));c.bal+=v*1.05;S.cash+=v;c.paidStmt=false;toast(`Cash advance ${fmt(v)} (5% fee)`)}
+  S.debt=bankDebt();save();hud();renderSheet()});
 let saveT=0;
 setInterval(()=>{accrue();checkApp();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -1764,7 +1841,7 @@ try{Object.assign(PH,JSON.parse(localStorage.getItem("meridian-phone")||"{}"),{e
 const phSave=()=>{try{localStorage.setItem("meridian-phone",JSON.stringify({open:PH.open,x:PH.x,y:PH.y}))}catch(e){}};
 let lastLog="";
 function trackNews(){const l=S.log[0];if(l&&l!==lastLog){lastLog=l;if(!S.news.length||S.news[0].t!==l){S.news.unshift({t:l,at:Date.now()});S.news=S.news.slice(0,40)}}}
-const ICO={
+const ICO={bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,
  wallet:'<path d="M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z M3 7l12-3v3 M16 13.5h2"/>',
  news:'<path d="M4 5h13v14H6a2 2 0 0 1-2-2z M17 9h3v8a2 2 0 0 1-2 2 M7 9h7 M7 12h7 M7 15h5"/>',
  needs:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -1774,7 +1851,7 @@ const ICO={
  market:'<path d="M4 19V9 M10 19V5 M16 19v-7 M22 19H2"/>',
  travel:'<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["wallet","Wallet","#0f766e"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"]];
+const APPS=[["wallet","Wallet","#0f766e"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 function phPlace(){const el=PH.el,w=el.offsetWidth,h=el.offsetHeight,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
@@ -1789,6 +1866,7 @@ function phRender(){const el=PH.el;el.classList.toggle("folded",!PH.open);
   el.innerHTML=`<div class="ph-top" data-drag><span class="ph-grip"></span><span class="ph-carrier">Meridian ${S.need&&needMin()<25?"· low":"· 5G"}</span><button data-ph="fold" aria-label="Fold phone away">–</button></div>
     <div class="ph-screen">${body}</div><button class="ph-homebar" data-ph="home" aria-label="Home screen"></button>`;phPlace()}
 function appHtml(k){const {inc,nw}=totals();
+  if(k==="bank"){const sc=creditScore(),[bd,col]=scoreBand(sc),c=B().card;return `<div class="ph-big" style="color:${col}">${sc}</div><div class="ph-sub">credit score · ${bd}</div>${scoreSpark()}<div class="ph-rows"><div><span>Card</span><b>${c?fmt(c.bal)+" / "+fmt(c.lim):"none"}</b></div><div><span>Loans</span><b>${fmt(B().loans.reduce((a,l)=>a+l.bal,0))}</b></div><div><span>Payments</span><b>${fmt(bankPayHr())}/hr</b></div>${c?`<div><span>Card due</span><b>${fmtDur(c.due-Date.now())}</b></div>`:""}</div><button class="buy" data-ph="gobank" style="width:100%;margin-top:8px">Open bank</button>`}
   if(k==="wallet")return `<div class="ph-big">${fmt(S.cash)}</div><div class="ph-sub">cash on hand</div>
     <div class="ph-rows"><div><span>Income</span><b style="color:${inc<0?"var(--bad)":"var(--good)"}">${fmt(inc)}/hr</b></div><div><span>Net worth</span><b>${fmt(nw)}</b></div><div><span>Loan</span><b>${fmt(S.debt)}</b></div><div><span>Taxes owed</span><b>${fmt(taxOwed())}</b></div><div><span>Wages</span><b>${S.job?fmt(wage(JK[S.job.k],CITIES[S.job.city])*wageMult())+"/hr":"—"}</b></div></div>
     ${S.debt&&S.cash>0?`<button class="buy" data-ph="repay" style="width:100%;margin-top:8px">Repay ${fmt(Math.min(S.debt,S.cash))}</button>`:""}`;
@@ -1810,7 +1888,8 @@ const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);ret
 PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;
   if(a==="unfold"){PH.open=true;PH.app=null}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="app"){PH.app=b.dataset.k}
   else if(a==="buyitem"){const it=ITEMS.find(x=>x.k===b.dataset.k),p=itemPrice(it,CITIES[(S.home||{city:0}).city]);if(S.cash<p)return;S.cash-=p;for(const [q] of NEEDS)if(it[q])S.need[q]=Math.max(0,Math.min(100,S.need[q]+it[q]));toast(`${it.n} delivered`);save();hud()}
-  else if(a==="repay"){const v=Math.min(S.debt,Math.max(0,S.cash));S.debt-=v;S.cash-=v;toast(`Repaid ${fmt(v)}`);save();hud()}
+  else if(a==="repay"){if(B().card&&B().card.bal)payCard(true);else if(B().loans[0])repayLoan(B().loans[0].id,true);S.debt=bankDebt();save();hud()}
+  else if(a==="gobank"){openPortfolio();setTimeout(()=>{const x=[...sheet.querySelectorAll(".sec")].find(e=>/credit score/.test(e.textContent));if(x)x.scrollIntoView()},50);PH.open=false}
   else if(a==="gojob"){const c=CITIES[(S.home||S.job||{city:0}).city];tab="life";flyTo(c);PH.open=false}
   else if(a==="go"){flyTo(CITIES[+b.dataset.c]);PH.open=false}
   phSave();phRender()});
