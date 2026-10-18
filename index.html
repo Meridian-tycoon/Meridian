@@ -742,6 +742,44 @@ const JOBS=[
  {k:"engineer",n:"Software engineer",w:58,exp:140,d:"Build apps for a tech firm.",ok:c=>c.size>=4},
  {k:"pilot",n:"Airline pilot",w:72,exp:200,d:"Fly passengers around the world.",ok:c=>c.size>=4},
  {k:"director",n:"Company director",w:95,exp:300,d:"Run a division of a large firm.",ok:c=>c.size>=5}];
+JOBS.push({k:"datasci",n:"Data scientist",w:76,exp:120,d:"Models, dashboards and machine learning.",ok:c=>c.size>=4},
+ {k:"banker",n:"Investment banker",w:110,exp:180,d:"Mergers, IPOs and very long nights.",ok:c=>c.size>=5},
+ {k:"teacher",n:"Teacher",w:27,exp:10,d:"A classroom of thirty kids.",ok:c=>c.size>=2},
+ {k:"doctor",n:"Doctor",w:120,exp:150,d:"Diagnose, treat, repeat.",ok:c=>c.size>=3});
+/* ---------- education ---------- */
+const EDU=[
+ {k:"hs",n:"High school diploma",t:"Diploma",h:8,c:400,d:"Night classes. The minimum most office jobs ask for."},
+ {k:"food",n:"Food handler certificate",t:"Certificate",h:2,c:150,d:"Safe food prep and hygiene."},
+ {k:"seclic",n:"Security guard licence",t:"Licence",h:3,c:300,d:"Required to work security."},
+ {k:"cdl",n:"Commercial driver's licence",t:"Licence",h:6,c:2500,d:"Drive trucks and buses."},
+ {k:"trade",n:"Trade certificate",t:"Certificate",h:18,c:6000,req:"hs",d:"Electrical and mechanical apprenticeship."},
+ {k:"bed",n:"Bachelor of Education",t:"Bachelor's",h:40,c:22000,req:"hs",uni:1,d:"Become a licensed teacher."},
+ {k:"bba",n:"Bachelor of Business",t:"Bachelor's",h:48,c:30000,req:"hs",uni:1,d:"Accounting, management and finance."},
+ {k:"bsn",n:"Bachelor of Nursing",t:"Bachelor's",h:48,c:32000,req:"hs",uni:1,d:"Clinical training for registered nurses."},
+ {k:"bcs",n:"Bachelor of Computer Science",t:"Bachelor's",h:48,c:34000,req:"hs",uni:1,d:"Programming, algorithms and systems."},
+ {k:"mba",n:"MBA",t:"Master's",h:60,c:75000,req:"bba",uni:1,d:"The executive track."},
+ {k:"msc",n:"Master of Data Science",t:"Master's",h:60,c:60000,req:"bcs",uni:1,d:"Statistics and machine learning."},
+ {k:"md",n:"Doctor of Medicine",t:"Doctorate",h:120,c:160000,req:"bsn",uni:1,d:"Medical school. Long and expensive."},
+ {k:"atpl",n:"Airline pilot licence",t:"Licence",h:50,c:90000,req:"hs",d:"Flight school and 1,500 logged hours."}];
+const EK=Object.fromEntries(EDU.map(e=>[e.k,e]));
+const JREQ={clerk:["hs"],teller:["hs"],callcentre:["hs"],supervisor:["hs"],realtor:["hs"],security:["seclic"],cook:["food"],chef:["food","hs"],trucker:["cdl"],
+  electrician:["trade"],mechanic:["trade"],teacher:["bed"],nurse:["bsn"],accountant:["bba"],manager:["bba"],engineer:["bcs"],datasci:["msc"],banker:["mba"],director:["mba"],doctor:["md"],pilot:["atpl"]};
+S.edu=S.edu||{have:{},cur:null};
+const hasEdu=k=>!!S.edu.have[k];
+const missing=j=>(JREQ[j.k]||[]).filter(k=>!hasEdu(k));
+const eduCost=(e,c)=>Math.round(e.c*COL(c));
+const uniCity=c=>c.size>=3;
+function runEdu(){const e=S.edu.cur;if(!e||Date.now()<e.end)return;S.edu.have[e.k]=Date.now();S.edu.cur=null;S.log.unshift(`Graduated: ${EK[e.k].n}`);S.log=S.log.slice(0,3);toast(`You earned your ${EK[e.k].n}!`)}
+function eduHtml(c){const E=S.edu;let h=`<div class="sec">Education</div><div class="list">`;
+  if(E.cur){const e=EK[E.cur.k],pct=Math.min(100,(1-(E.cur.end-Date.now())/(e.h*DAYMS))*100);
+    h+=`<div class="row"><div class="n">Studying: ${e.n}</div><div class="d">Done in ${fmtDur(E.cur.end-Date.now())}. You can keep working while you study.<div style="height:6px;background:var(--line);border-radius:3px;margin-top:6px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--own)"></div></div></div><button class="buy up" data-life="drop">Drop out</button></div>`}
+  const got=EDU.filter(e=>hasEdu(e.k));if(got.length)h+=`<div class="row"><div class="n">Your credentials</div><div class="d">${got.map(e=>e.n).join(" · ")}</div><span></span></div>`;
+  const here=S.loc&&S.loc.city===c.id&&!S.trip;
+  for(const e of EDU){if(hasEdu(e.k)||(E.cur&&E.cur.k===e.k))continue;const pre=e.req&&!hasEdu(e.req),noUni=e.uni&&!uniCity(c),p=eduCost(e,c);
+    const why=pre?`Needs ${EK[e.req].n}.`:noUni?"No university here (size 3+ cities).":!here?`Be in ${c.name} to enroll.`:E.cur?"Finish your current program first.":"";
+    h+=`<div class="row" style="${pre||noUni?"opacity:.55":""}"><div class="n">${e.n} <span class="tag" style="border:1px solid var(--line)">${e.t}</span></div><div class="d">${e.d} ${e.h} h · <b>${fmt(p)}</b>${why?` · ${why}`:""}</div>
+      <button class="buy up" data-life="enroll" data-e="${e.k}" ${why||S.cash<p?"disabled":""}>Enroll</button></div>`}
+  return h+`</div>`}
 const JK=Object.fromEntries(JOBS.map(j=>[j.k,j]));
 const HOMES=[
  {k:"room",n:"Shared room",r:3,buy:0,d:"A room in a shared flat. Cheapest way to get an address."},
@@ -754,8 +792,8 @@ const homeRent=(h,c)=>Math.round(h.r*COL(c)*PRICE[c.size]*100)/100;
 const homeBuy=(h,c)=>Math.round(h.buy*PRICE[c.size]*PRICE[c.size]);
 function lifeIncome(){let v=0;if(S.job&&!S.trip&&S.loc&&S.loc.city===S.job.city)v+=wage(JK[S.job.k],CITIES[S.job.city])*(typeof jobLaw==="function"?jobLaw(CITIES[S.job.city]):1)*(typeof wageMult==="function"?wageMult():1);if(S.home&&!S.home.own)v-=homeRent(HK[S.home.k],CITIES[S.home.city]);return v}
 function lifeAssets(){return S.home&&S.home.own?homeBuy(HK[S.home.k],CITIES[S.home.city])*.9:0}
-function hireChance(j){return Math.min(.95,.65+(S.home&&S.home.k!=="room"?.1:0)+Math.min(.25,(S.exp-j.exp)*.01))}
-function checkApp(){const a=S.app;if(!a||Date.now()<a.t)return;const j=JK[a.k],c=CITIES[a.city];S.app=null;
+function hireChance(j){const lvl=EDU.filter(e=>hasEdu(e.k)&&/Bachelor|Master|Doctor/.test(e.t)).length;return Math.min(.95,.65+Math.min(.1,lvl*.04)+(S.home&&S.home.k!=="room"?.1:0)+Math.min(.25,(S.exp-j.exp)*.01))}
+function checkApp(){runEdu();const a=S.app;if(!a||Date.now()<a.t)return;const j=JK[a.k],c=CITIES[a.city];S.app=null;
   if(Math.random()<a.p){S.job={k:a.k,city:a.city,since:Date.now()};S.log.unshift(`Hired: ${j.n} in ${c.name}, ${fmt(wage(j,c))}/hr`);toast(`You got the job: ${j.n}!`)}
   else{S.log.unshift(`${c.name}: the ${j.n.toLowerCase()} job went to someone else. Apply again.`);toast("Application turned down")}
   S.log=S.log.slice(0,3);save();hud();renderSheet()}
@@ -776,11 +814,12 @@ function renderLife(c){let h=cityHead(c);const hm=S.home,jb=S.job;
   else if(S.app){const j=JK[S.app.k];h+=`<div class="row"><div class="n">Application sent: ${j.n}</div><div class="d">${CITIES[S.app.city].name} · reply in ${fmtDur(Math.max(60000,S.app.t-Date.now())).replace("1 min","under a minute")}</div><span></span></div>`}
   else h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:8px 0">Unemployed.${hm?"":" You need a home before you can apply."}</p>`;
   h+=`</div><div class="sec">Jobs in ${c.name}</div><div class="list">`;
-  for(const j of jobsIn(c)){const w=wage(j,c),locked=S.exp<j.exp,here=hm&&hm.city===c.id,cur=jb&&jb.k===j.k&&jb.city===c.id;
+  for(const j of jobsIn(c)){const w=wage(j,c),miss=missing(j),locked=S.exp<j.exp||miss.length>0,here=hm&&hm.city===c.id,cur=jb&&jb.k===j.k&&jb.city===c.id;
     h+=`<div class="row" style="${locked?"opacity:.55":""}"><div class="n">${j.n} <span style="font-family:var(--mono);font-weight:600">${fmt(w)}/hr</span></div>
-    <div class="d">${j.d}${j.exp?` Needs ${j.exp} h experience.`:" No experience needed."}${!locked&&here&&!cur?` ${Math.round(hireChance(j)*100)}% chance.`:""}</div>
+    <div class="d">${j.d}${j.exp?` Needs ${j.exp} h experience.`:" No experience needed."}${(JREQ[j.k]||[]).length?` Requires: ${JREQ[j.k].map(k=>(hasEdu(k)?"✓ ":"✗ ")+EK[k].n).join(", ")}.`:""}${!locked&&here&&!cur?` ${Math.round(hireChance(j)*100)}% chance.`:""}</div>
     ${cur?'<span class="tag boom" style="grid-row:1/3;grid-column:2">Current</span>':`<button class="buy${jb?" up":""}" data-life="apply" data-j="${j.k}" ${locked||!here||S.app?"disabled":""}>${jb?"Switch":"Apply"}</button>`}</div>`}
   h+=`</div>`;if(!hm||hm.city!==c.id)h+=`<p class="d" style="font-size:12px;color:var(--muted);padding:6px 0">${hm?"Move here to apply for these jobs.":"Rent a home here to apply."}</p>`;
+  h+=eduHtml(c);
   sheet.innerHTML=h;$("#cls").onclick=closeSheet}
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-life]");if(!b||!sel)return;const c=sel,a=b.dataset.life;
   if(a==="rent"||a==="buy"){const H=HK[b.dataset.h],p=a==="buy"?homeBuy(H,c):0;if(S.cash<p)return;
@@ -788,8 +827,10 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-life]");if(!b
     if(S.home&&S.home.own){S.cash+=homeBuy(HK[S.home.k],CITIES[S.home.city])*.9;toast("Sold your old home")}
     S.cash-=p;S.home={city:c.id,k:H.k,own:a==="buy"};toast(a==="buy"?`Bought a ${H.n.toLowerCase()} in ${c.name}`:`Moved into a ${H.n.toLowerCase()} in ${c.name}`)}
   else if(a==="buyhome"){const H=HK[S.home.k],p=homeBuy(H,c);if(S.cash<p)return;S.cash-=p;S.home.own=true;toast("You own your home now. No more rent.")}
-  else if(a==="apply"){const j=JK[b.dataset.j];if(S.exp<j.exp||!S.home||S.home.city!==c.id||S.app)return;
+  else if(a==="apply"){const j=JK[b.dataset.j];if(S.exp<j.exp||missing(j).length||!S.home||S.home.city!==c.id||S.app)return;
     S.app={k:j.k,city:c.id,t:Date.now()+90000,p:hireChance(j)};toast("Application sent. You'll hear back in about a minute and a half.")}
+  else if(a==="enroll"){const e=EK[b.dataset.e],p=eduCost(e,c);if(S.cash<p||S.edu.cur||(e.req&&!hasEdu(e.req))||(e.uni&&!uniCity(c)))return;S.cash-=p;S.edu.cur={k:e.k,end:Date.now()+e.h*DAYMS};toast(`Enrolled in ${e.n}`)}
+  else if(a==="drop"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}S.edu.cur=null;toast("You dropped out. No refund.")}
   else if(a==="quit"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}S.job=null;toast("You quit")}
   else return;save();hud();renderSheet()});
 
