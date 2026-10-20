@@ -123,6 +123,9 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
 #tostreet{position:absolute;z-index:3;right:max(12px,env(safe-area-inset-right,0px));top:10px;background:var(--ink);color:var(--panel);border-color:var(--ink)}
 #placebar{position:absolute;z-index:3;left:12px;right:12px;bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;justify-content:space-between;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:13px}
 #placebar span{color:var(--muted)}
+.mpin.sale span{background:#16a34a;border-style:dashed}.mpin.sale.deal span{background:#ca8a04}
+#placebar.offer{z-index:4;flex-wrap:wrap}#placebar.offer>div{flex:1 1 100%}#placebar.offer>span{flex:1 1 100%;justify-content:flex-end}#placebar .tag{color:#fff}
+#placebar .ofd{font-size:12px;color:var(--muted);margin-top:2px}#placebar .ofd b{color:var(--ink)}
 .mpin{background:none;border:0}
 .mpin span{display:inline-block;transform:translate(-50%,-100%);margin-left:18px;margin-top:30px;color:#fff;font:700 10.5px var(--mono);padding:4px 7px;border-radius:7px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);white-space:nowrap;position:relative}
 .mpin span::after{content:"";position:absolute;left:50%;bottom:-7px;margin-left:-5px;border:5px solid transparent;border-top-color:#fff}
@@ -1248,20 +1251,20 @@ function ensurePositions(){for(const e of entities()){const p=S.pos[e.key];
   if(pendingPos&&pendingPos.city===e.c.id){S.pos[e.key]={...pendingPos};pendingPos=null}
   else S.pos[e.key]={...autoPos(e.key,e.c,e.r[0],e.r[1]),city:e.c.id}}}
 /* ---------- the Leaflet map ---------- */
-let LM=null,inStreet=false,stCity=null,layer=null,tempMark=null;
+let LM=null,inStreet=false,stCity=null,layer=null,tempMark=null,offer=null;
 const stEl=$("#street"),stBar=$("#stbar"),placeBar=$("#placebar");
 function initStreet(){if(LM||!HAS_STREET)return;
   LM=L.map(stEl,{zoomControl:false,attributionControl:true,worldCopyJump:true,minZoom:3,maxZoom:19});
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(LM);
   L.control.zoom({position:"bottomright"}).addTo(LM);
   layer=L.layerGroup().addTo(LM);
-  LM.on("click",e=>{if(placing)pickSpot(e.latlng)});
+  LM.on("click",e=>{if(placing)pickSpot(e.latlng);else if(offer)closeOffer()});
   LM.on("zoomend",()=>{if(!placing&&LM.getZoom()<9)leaveStreet()});
   LM.on("moveend",()=>{const ce=LM.getCenter();let best=null,bd=1e9;for(const c of CITIES){const d=Math.hypot(c.lat-ce.lat,(c.lon-ce.lng)*Math.cos(c.lat*Math.PI/180));if(d<bd){bd=d;best=c}}
     if(best&&best!==stCity&&bd<.6){stCity=best;$("#stcity").textContent=best.name;renderPins()}})}
 function enterStreet(c,zoom){if(!HAS_STREET)return false;stCity=c;inStreet=true;stEl.hidden=false;stBar.hidden=false;$("#hint").hidden=true;
   initStreet();LM.invalidateSize();LM.setView([c.lat,c.lon],zoom||14,{animate:false});$("#stcity").textContent=c.name;renderPins();return true}
-function leaveStreet(){if(placing)cancelPlace();inStreet=false;stEl.hidden=true;stBar.hidden=true;
+function leaveStreet(){if(placing)cancelPlace();if(offer)closeOffer();inStreet=false;stEl.hidden=true;stBar.hidden=true;
   if(stCity){V.lam=-stCity.lon;V.phi=Math.max(-80,Math.min(80,-stCity.lat));V.k=8}draw()}
 const PIN={biz:["#c2410c","Shop"],prop:["#7c3aed","Rent"],"site-farm":["#4d7c0f","Farm"],"site-mine":["#78716c","Mine"],"site-ind":["#0e7490","Ind"],hq:["#1d2a2b","HQ"],wh:["#a16207","Depot"],home:["#be185d","Home"]};
 const BIZTAG={cart:"Cart",kiosk:"Café",shop:"Shop",rest:"Diner",apt:"Apts",office:"Office",hotel:"Hotel",casino:"Casino"};
@@ -1277,7 +1280,8 @@ function renderPins(){if(!layer)return;layer.clearLayers();ensurePositions();
     m.on("click",()=>{tab=e.tab;openCity(e.c)})}
   // rival branches in this city
   if(stCity)S.rivals.forEach((rv,i)=>{if(!rv.cities.includes(stCity.id))return;const p=autoPos("rival"+i+":"+stCity.id,stCity,.4,2.2);
-    L.marker([p.lat,p.lon],{icon:L.divIcon({className:"mpin",html:`<span style="background:${RIVALS[i].col}">${RIVALS[i].n.split(" ")[0]}</span>`,iconSize:null,iconAnchor:[18,30]}),title:RIVALS[i].n}).addTo(layer).bindTooltip(`${RIVALS[i].n} branch`,{direction:"top",offset:[0,-28]})})}
+    L.marker([p.lat,p.lon],{icon:L.divIcon({className:"mpin",html:`<span style="background:${RIVALS[i].col}">${RIVALS[i].n.split(" ")[0]}</span>`,iconSize:null,iconAnchor:[18,30]}),title:RIVALS[i].n}).addTo(layer).bindTooltip(`${RIVALS[i].n} branch`,{direction:"top",offset:[0,-28]})});
+  if(stCity&&!placing)renderListings(stCity)}
 /* zooming far into the globe drops you onto the streets of the city in front of you */
 function maybeStreet(fx,fy,geo){if(!HAS_STREET||inStreet||V.k<7)return;if(fx==null){[fx,fy]=proj.translate()}
   let best=null,bd=150*150;
@@ -1291,7 +1295,7 @@ sheet.addEventListener("click",e=>{if(!HAS_STREET||bypass)return;const b=e.targe
   e.stopImmediatePropagation();e.preventDefault();
   const attrs=[...b.attributes].filter(a=>a.name.startsWith("data-")).map(a=>`[${a.name}="${a.value}"]`).join("");
   const row=b.closest(".row"),label=(row&&row.querySelector(".n")?row.querySelector(".n").childNodes[0].textContent:"property").trim();
-  placing={sel:attrs,city:sel,label,mode,tab};
+  if(offer)closeOffer();placing={sel:attrs,city:sel,label,mode,tab};
   sheet.classList.remove("open","full");enterStreet(sel,15);
   placeBar.hidden=false;placeBar.innerHTML=`<div><b>Place your ${label}</b><br><span>Tap the map where it should go in ${sel.name}.</span></div><button class="buy up" id="plcancel">Cancel</button>`;
   $("#plcancel").onclick=cancelPlace},true);
@@ -1317,6 +1321,33 @@ function confirmPlace(spot){const p=placing;placing=null;placeBar.hidden=true;if
   const kept=Object.values(S.pos).some(q=>q.lat===spot.lat&&q.lon===spot.lon);if(kept)toast(`${p.label} placed${spot.addr?" at "+spot.addr:""}`)}
 function cancelPlace(){if(!placing)return;const p=placing;placing=null;placeBar.hidden=true;if(tempMark){tempMark.remove();tempMark=null}
   mode=p.mode;tab=p.tab;sel=p.city;renderSheet();sheet.classList.add("open")}
+/* ---------- for-sale rental listings on the streets: tap a pin, buy it on the spot ---------- */
+/* each city has a few listings that change every game day; some are priced below market */
+function listings(c){const day=Math.floor(Date.now()/DAYMS),n=3+(c.size>=4?2:c.size>=2?1:0),out=[];S.sold=S.sold||{};
+  for(let i=0;i<n;i++){const id=`ls:${c.id}:${day}:${i}`;if(S.sold[id])continue;
+    const P=PROPS[Math.floor(hash01(id+"k")*PROPS.length)],m=.82+hash01(id+"m")*.33,pos=autoPos(id,c,.3,3.2);
+    out.push({id,c,P,price:Math.round(propCost(P,c)*m),deal:m<.92,lat:pos.lat,lon:pos.lon})}
+  return out}
+function renderListings(c){for(const o of listings(c)){
+  const m=L.marker([o.lat,o.lon],{icon:L.divIcon({className:"mpin sale"+(o.deal?" deal":""),html:`<span>${o.deal?"Deal":"For sale"}</span>`,iconSize:null,iconAnchor:[18,30]}),title:o.P.n+" for sale"}).addTo(layer);
+  m.bindTooltip(`<b>${o.P.n}</b> · ${fmt(o.price)}`,{direction:"top",offset:[0,-28]});
+  m.on("click",()=>openOffer(o))}}
+async function openOffer(o){offer=o;const c=o.c,P=o.P,rent=Math.round(P.rent*PRICE[c.size]*DEMAND[c.size]),list=propCost(P,c),pct=Math.round((1-o.price/list)*100);
+  if(tempMark)tempMark.remove();tempMark=null;
+  placeBar.hidden=false;placeBar.classList.add("offer");placeBar.innerHTML=`<div><b>${P.n} for sale</b>${pct>0?` <span class="tag boom">${pct}% below market</span>`:pct<0?` <span class="tag bust">${-pct}% over market</span>`:""}
+    <div class="ofd" id="ofaddr">${o.addr||"Looking up the address…"}</div>
+    <div class="ofd">Price <b>${fmt(o.price)}</b> · market rent <b>${fmt(rent)}</b>/hr${P.furn?` (${fmt(rent*1.25)} furnished)`:""}</div></div>
+    <span style="display:flex;gap:6px"><button class="buy up" id="ofno">Close</button><button class="buy" id="ofbuy" ${S.cash<o.price?"disabled":""}>Buy</button></span>`;
+  $("#ofno").onclick=closeOffer;$("#ofbuy").onclick=()=>buyListing(o);
+  if(o.addr==null){o.addr="";const a=await lookupAddr(o.lat,o.lon);o.addr=a;if(offer===o){const el=$("#ofaddr");if(el)el.textContent=a||c.name}}}
+function closeOffer(){offer=null;placeBar.hidden=true;placeBar.classList.remove("offer")}
+function buyListing(o){if(S.sold&&S.sold[o.id])return closeOffer();if(S.cash<o.price){toast(`You need ${fmt(o.price)} for this ${o.P.n.toLowerCase()}`);return}
+  S.cash-=o.price;S.sold=S.sold||{};S.sold[o.id]=1;
+  for(const k in S.sold)if(!k.includes(":"+Math.floor(Date.now()/DAYMS)+":"))delete S.sold[k];  // forget old days' listings
+  const pr={id:S.nid++,city:o.c.id,k:o.P.k,pct:75,occ:0,furn:0};S.props.push(pr);
+  S.pos[`prop:${pr.id}`]={lat:o.lat,lon:o.lon,city:o.c.id,addr:o.addr||""};
+  closeOffer();save();hud();renderPins();if(sheet.classList.contains("open")&&sel)renderSheet();
+  toast(`Bought ${/^[aeiou]/i.test(o.P.n)?"an":"a"} ${o.P.n.toLowerCase()}${o.addr?" at "+o.addr:" in "+o.c.name} for ${fmt(o.price)}. Listed at 75% of market.`)}
 $("#stback").onclick=leaveStreet;
 $("#stcityb").onclick=()=>{if(stCity){openCity(stCity)}};
 
