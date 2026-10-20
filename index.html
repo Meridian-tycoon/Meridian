@@ -715,7 +715,9 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
         <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2"><button class="buy up" data-act="buy" data-g="${g}" data-q="10" ${S.cash<p*10?"disabled":""}>+10</button><button class="buy" data-act="buy" data-g="${g}" data-q="100" ${S.cash<p*100||!hasHQ(c)?"disabled":""}>+100</button></span></div>`}
       h+=`</div>`;
       const here=S.fleet.filter(v=>v.city===c.id&&!v.arr),incoming=S.fleet.filter(v=>v.arr&&v.dest===c.id);
-      h+=`<div class="sec">Fleet parked here</div><div class="list">`;
+      h+=hireHtml(c)+supHtml(c);
+      if(S.hired.some(x=>x.from===c.id||x.to===c.id))h+=`<div class="sec">Hired shipments</div><div class="list">`+S.hired.filter(x=>x.from===c.id||x.to===c.id).map(x=>`<div class="row"><div class="n">${RIVALS[x.ri].n}: ${gq(x.q)} ${G[x.g][0].toLowerCase()}</div><div class="d">${CITIES[x.from].name} → ${CITIES[x.to].name} · arrives in ${fmtDur(x.arr-Date.now())}</div><span></span></div>`).join("")+`</div>`;
+      h+=`<div class="sec">Your own fleet · parked here</div><div class="list">`;
       if(!here.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">No vehicles here.</p>`;
       for(const v of here){const V=VEH[v.type];
         h+=v.route?`<div class="row"><div class="n">${V.n} #${v.id} <span class="tag boom">ROUTE</span></div><div class="d">Waiting to load ${G[v.route.g][0].toLowerCase()} for ${CITIES[v.route.to].name}</div><button class="buy up" data-act="stoproute" data-id="${v.id}">Stop route</button></div>`:`<div class="row"><div class="n">${V.n} #${v.id}</div><div class="d">Carries ${V.cap} units · ${V.spd} km/h</div><button class="buy" data-act="ship" data-id="${v.id}">${shipForm===v.id?"Cancel":"Send"}</button></div>`;
@@ -1402,8 +1404,8 @@ function runShops(h){
   for(const id in S.own){const c=CITIES[id];if(!S.mgr[c.id])continue;for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||!SUP[b.k])continue;const key=bkey(c,b.k);
     if(!S.auto2[key]||S.orders.some(o=>o.key===key))continue;const r=useRate(b,lv);if((S.stock[key]||0)>=r*2)continue;
     const q=Math.round(r*6),cost=q*unitCost(b,c)*1.1;if(S.cash<cost)continue;S.cash-=cost;S.orders.push({key,q,arr:now+ORDER_MIN*60000,auto:1})}}}
-function orderStock(c,b,q){const cost=q*unitCost(b,c);if(S.cash<cost){toast(`That order costs ${fmt(cost)}`);return}
-  S.cash-=cost;S.orders.push({key:bkey(c,b.k),q,arr:Date.now()+ORDER_MIN*60000});toast(`Ordered ${q.toLocaleString()} ${SUP[b.k].u}. Delivery in ${ORDER_MIN} min.`)}
+function orderStock(c,b,q){const own=supMode()==="own"&&(S.own[c.id]||{}).trucking,cost=q*unitCost(b,c)*(own?1:1.06);if(S.cash<cost){toast(`That order costs ${fmt(cost)}`);return}
+  S.cash-=cost;S.orders.push({key:bkey(c,b.k),q,arr:Date.now()+ORDER_MIN*60000*(own?.5:1)});toast(`Ordered ${q.toLocaleString()} ${SUP[b.k].u}. ${own?"Your trucks deliver":"Carrier delivers"} in ${own?ORDER_MIN/2:ORDER_MIN} min.`)}
 function opsHtml(c,b,lv){const key=bkey(c,b.k),st=isStaffed(c,b.k),staff=bizStaff(b.k,lv),sup=SUP[b.k],r=useRate(b,lv);
   const pend=S.orders.filter(o=>o.key===key),opf=opFactor(c,b);
   const runs=st?"Run by your staff":(b.k==="apt"||b.k==="office")?"Tenants pay rent":present(c)?"You're running it yourself (60% speed)":"Closed: no staff and you're not here";
@@ -1670,7 +1672,7 @@ new MutationObserver(()=>{if(!sheet.firstElementChild||sheet.firstElementChild.c
 const hourOf=t=>Math.floor(t/DAYMS);
 function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);
-  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(dt/DAYMS);runFleet(now);const g=totals().inc*dt/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function")runLogi();if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
+  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(dt/DAYMS);runFleet(now);const g=totals().inc*dt/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now)}if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
@@ -2010,6 +2012,40 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-logi]");if(!b
   if(a==="take")acceptOffer(+b.dataset.id);else if(a==="auto")l.auto=!l.auto;
   else if(a==="up"){const k=b.dataset.k,c=luCost(k);if(S.cash<c)return;if(k==="trucks"){if(l.trucks>=LU.trucks.max)return;l.trucks++}else{if(lvl(k)>=LU[k].max)return;l.up[k]=lvl(k)+1}S.cash-=c;toast(`Bought ${LU[k].n.toLowerCase()}`)}
   save();hud();renderSheet()});
+/* ---------- hire an AI logistics company instead of using your own network ---------- */
+const CARR=i=>{const h=hashS(RIVALS[i].n);return{rate:.0035*(.8+(h%50)/100),spd:.8+((h>>4)%60)/100,rel:.92+((h>>9)%8)/100}};
+function carrierQuote(i,c,d,q){const C=CARR(i),km=distKm(c,d),sea=landmass(c)!==landmass(d),base=sea?VEH.ship.spd*1.3:VEH.truck.spd;
+  return{km,sea,price:Math.max(150,Math.round(km*q*C.rate*(sea?.7:1)*(1-Math.min(.2,(L().rep[i]||0)*.004)))),ms:Math.max(5*60000,km/(base*C.spd)*DAYMS),rel:C.rel}}
+S.hired=S.hired||[];
+function runHired(now){for(const h of S.hired.filter(x=>now>=x.arr)){const d=CITIES[h.to];ensureWh(d);
+    if(h.lost){S.log.unshift(`${RIVALS[h.ri].n} lost your ${G[h.g][0].toLowerCase()} shipment. Refunded ${fmt(h.price)}`);S.cash+=h.price}
+    else{S.inv[d.id][h.g]=(S.inv[d.id][h.g]||0)+h.q;S.log.unshift(`${RIVALS[h.ri].n} delivered ${gq(h.q)} ${G[h.g][0].toLowerCase()} to ${d.name}`)}S.log=S.log.slice(0,3)}
+  S.hired=S.hired.filter(x=>now<x.arr)}
+let hireF={g:"",d:"",q:0};
+function hireHtml(c){const inv=S.inv[c.id]||{},goods=GK.filter(g=>inv[g]>=1),ds=CITIES.filter(d=>d!==c&&hasWh(d));
+  let h=`<div class="sec">Hire a logistics company</div>`;
+  if(!goods.length||!ds.length)return h+`<p class="d" style="color:var(--muted);font-size:13px">${!ds.length?"Open a warehouse in another city to ship there.":"Nothing in this warehouse to ship."} Rival carriers can move your goods anywhere, even overseas, without you owning any vehicles.</p>`;
+  if(!goods.includes(hireF.g))hireF.g=goods[0];if(!ds.some(d=>d.id==hireF.d))hireF.d=ds[0].id;const d=CITIES[hireF.d],q=Math.max(1,Math.min(inv[hireF.g]||0,hireF.q||inv[hireF.g]));
+  const sel=`width:100%;font:inherit;padding:6px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px`;
+  h+=`<div style="display:grid;gap:8px;padding:6px 0;font-size:13px"><label>Cargo <select data-hf="g" style="${sel}">${goods.map(g=>`<option value="${g}" ${g===hireF.g?"selected":""}>${G[g][0]} (${gq(inv[g])} here)</option>`).join("")}</select></label>
+    <label>Destination <select data-hf="d" style="${sel}">${ds.map(x=>`<option value="${x.id}" ${x.id==hireF.d?"selected":""}>${x.name} · ${Math.round(distKm(c,x)).toLocaleString()} km</option>`).join("")}</select></label>
+    <label>Quantity <input data-hf="q" type="number" min="1" max="${Math.floor(inv[hireF.g])}" value="${Math.floor(q)}" style="${sel}"></label></div><div class="list">`;
+  S.rivals.forEach((rv,i)=>{const Q=carrierQuote(i,c,d,q);
+    h+=`<div class="row"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${RIVALS[i].col};margin-right:6px"></span>${RIVALS[i].n} <span style="font-family:var(--mono)">${fmt(Q.price)}</span></div>
+      <div class="d">${Q.sea?"🚢 by sea":"🚚 by road"} · ${fmtDur(Q.ms)} · ${Math.round(Q.rel*100)}% reliable${L().rep[i]?" · loyalty discount":""}</div>
+      <button class="buy" data-hire="${i}" data-fixed="1" ${S.cash<Q.price?"disabled":""}>Hire</button></div>`});
+  return h+`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Lost shipments are refunded. What you pay goes to that rival's company.</p>`}
+sheet.addEventListener("change",e=>{const f=e.target.closest("[data-hf]");if(!f)return;hireF[f.dataset.hf]=f.dataset.hf==="q"?+f.value:f.value;if(f.dataset.hf==="g")hireF.q=0;renderSheet()});
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-hire]");if(!b||!sel)return;const c=sel,i=+b.dataset.hire,inv=S.inv[c.id]||{},q=Math.max(1,Math.min(inv[hireF.g]||0,hireF.q||inv[hireF.g]));
+  const d=CITIES[hireF.d],Q=carrierQuote(i,c,d,q);if(S.cash<Q.price||!(inv[hireF.g]>=1))return;S.cash-=Q.price;inv[hireF.g]-=q;if(inv[hireF.g]<1e-6)delete inv[hireF.g];
+  S.rivals[i].nw+=Q.price;S.hired.push({ri:i,from:c.id,to:d.id,g:hireF.g,q,price:Q.price,dep:Date.now(),arr:Date.now()+Q.ms,lost:Math.random()>Q.rel});
+  toast(`${RIVALS[i].n} is shipping it: arrives in ${fmtDur(Q.ms)}`);hireF.q=0;save();hud();renderSheet()});
+/* supplier deliveries for shops: through your own network or a hired carrier */
+const supMode=()=>S.supMode||"hire";
+function supHtml(c){const own=!!(S.own[c.id]||{}).trucking;return `<div class="sec">Supplier deliveries</div><div class="list"><div class="row"><div class="n">${supMode()==="own"?"Your own network":"Hired carrier"}</div>
+  <div class="d">${supMode()==="own"?(own?"Your trucking company here delivers stock orders in half the time, free.":"You have no trucking company here, so orders fall back to a hired carrier."):"A carrier delivers stock orders for a 6% fee."}</div>
+  <button class="buy up" data-supm="1" data-fixed="1">Use ${supMode()==="own"?"hired carrier":"own network"}</button></div></div>`}
+sheet.addEventListener("click",e=>{if(!e.target.closest("[data-supm]"))return;S.supMode=supMode()==="own"?"hire":"own";toast(S.supMode==="own"?"Using your own logistics network":"Using a hired carrier");save();renderSheet()});
 let saveT=0;
 setInterval(()=>{accrue();checkApp();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
