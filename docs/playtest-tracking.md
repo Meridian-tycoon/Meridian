@@ -26,6 +26,13 @@ Reports go out every 3 game days, on milestones, and whenever the tester taps **
    Or just send the pre-filled link to Claude and it will fill this in for you.
 7. Ship it. Testers will see the opt-in card the next time they open the game.
 
+## Single-question form (current setup)
+
+The live form has a single short-answer question (`entry.661861787`), set as `PLAYTEST.one`. Each report arrives as one line like
+`tester=Bob | tid=k3j9x2 | slot=1 | day=7 | cash=50000 | networth=120000 | … | event=auto | ver=pt1`.
+To split it into columns in the Sheet, use **Data → Split text to columns** with the custom separator ` | `, or `=SPLIT(B2," | ")`.
+If you later add the separate questions, fill in `f` and the game sends both.
+
 ## Before the form is set up
 
 The Playtesting section still works: **Send progress now** copies a text summary that testers can paste to you in a message.
