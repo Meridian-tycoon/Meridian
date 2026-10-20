@@ -302,13 +302,15 @@ const BIZ=[
  {k:"port",n:"Seaport",d:"Company-only: needs an HQ in a size 3+ city. Container terminals and cruise berths. Your ships from here sail 20% faster.",cost:6000000,gross:340000,up:120000,co:1,tr:1},
  {k:"airline",n:"Airline",d:"Company-only: needs an HQ. A fleet of jets based here. Every flight you take is half price.",cost:8000000,gross:430000,up:160000,co:1,tr:1},
  {k:"airport",n:"International airport",d:"Company-only: needs an HQ and an airport city. Landing fees from every flight. +20% with your airline based here.",cost:15000000,gross:760000,up:270000,co:1,tr:1},
- {k:"casino",n:"Casino",d:"Company-only: needs an HQ here, and only opens in big (size 5) cities. Huge takings, huge payroll.",cost:6000000,gross:380000,up:120000,co:1,big:1}
+ {k:"casino",n:"Casino",d:"Company-only: needs an HQ here, and only opens in big (size 5) cities or Montréal. Huge takings, huge payroll.",cost:6000000,gross:380000,up:120000,co:1,big:1}
 ];
 const MAXLV=5;
 /* big cities: size 5 only (10 of the 63 cities). Businesses flagged big:1 can only be opened there. */
 const BIGCITY=5,isBigCity=c=>c.size>=BIGCITY;
+/* extra cities that allow big:1 businesses (casinos) despite being smaller than BIGCITY */
+const CASINO_CITIES=["Montréal"],bigOK=c=>isBigCity(c)||CASINO_CITIES.includes(c.name);
 /* why a business can't be opened in a city ("" if it can). Used by every buy/rent path. */
-function bizBlock(b,c){if(b.big&&!isBigCity(c))return `${b.n}s only open in big cities (size ${BIGCITY}, e.g. ${CITIES.filter(isBigCity).slice(0,3).map(x=>x.name).join(", ")})`;
+function bizBlock(b,c){if(b.big&&!bigOK(c))return `${b.n}s only open in big cities (size ${BIGCITY}, e.g. ${CITIES.filter(isBigCity).slice(0,3).map(x=>x.name).join(", ")}) or in ${CASINO_CITIES.join(", ")}`;
   if(b.co&&!hasHQ(c))return `${b.n}s need an HQ in this city`;if(lawBan(c,b))return `Gambling is banned in ${c.country}`;
   if(b.k==="airport"&&!hasAirport(c))return `${c.name} has no airport site`;if(b.k==="port"&&c.size<3)return "Seaports need a size 3+ city";return ""}
 
@@ -499,7 +501,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
       <div class="d">Buy out their local branch to win back customers.</div><button class="buy up" data-bo="${i}" ${S.cash<bc?"disabled":""}>Buy out ${fmt(bc)}</button></div>`;
     h+=`</div>`}
   h+=`<div class="sec">Open a business</div><div class="list">`;
-  for(const b of avail){const k=cost(b,c),blk=bizBlock(b,c),lock=b.big&&!isBigCity(c),p=potential(b,c,1),pay=p>0?Math.ceil(k/p):null;
+  for(const b of avail){const k=cost(b,c),blk=bizBlock(b,c),lock=b.big&&!bigOK(c),p=potential(b,c,1),pay=p>0?Math.ceil(k/p):null;
     h+=`<div class="row"${lock?' style="opacity:.6"':""}><div class="n">${lock?"🔒 ":""}${b.n}</div>
     <div class="d">${b.d} ${lock?"":`<b style="color:${p<0?"var(--bad)":"var(--ink)"}">${fmt(p)}</b>/hr${pay?` · pays back in ${pay<48?pay+" h":(pay/24).toFixed(1)+" days"}`:" · loses money here"}`}${blk?`<br><b style="color:var(--bad)">${lock?"Locked: ":""}${blk}.</b>`:""}</div>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-buy="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k||blk?"disabled":""}>${lock?"Locked":"Buy "+fmt(k)}</button>${lock?"":`<button class="buy up" data-rent="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k*FIT||blk?"disabled":""}>Rent · ${fmt(k*FIT)} + ${fmt(bizRent(b,c))}/hr</button>`}</span></div>`}
