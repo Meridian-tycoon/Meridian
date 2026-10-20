@@ -208,7 +208,12 @@ button.buy:not(.up):not(:disabled){background:linear-gradient(180deg,color-mix(i
 #rankup>div{background:var(--panel);border-radius:22px;padding:26px 28px;text-align:center;max-width:300px;animation:pop .45s cubic-bezier(.2,.9,.3,1.4) both;box-shadow:0 20px 60px rgba(0,0,0,.35)}
 #rankup .em{font-size:54px;line-height:1}#rankup h3{font-family:var(--display);font-size:26px;margin:8px 0 4px}#rankup p{color:var(--muted);margin:0 0 14px;font-size:14px}
 @keyframes fade{from{opacity:0}}@keyframes pop{from{opacity:0;transform:scale(.6) rotate(-4deg)}}
-@media (prefers-reduced-motion:reduce){#sheet.enter .row,#sheet.enter .sec,#daily,#rankup>div{animation:none}}
+#ptask{position:fixed;inset:0;z-index:9997;display:grid;place-items:center;background:rgba(0,0,0,.45);animation:fade .25s both;padding:16px}
+#ptask>div{background:var(--panel);color:var(--ink);border-radius:22px;padding:22px 22px 16px;text-align:center;width:100%;max-width:320px;box-sizing:border-box;animation:pop .45s cubic-bezier(.2,.9,.3,1.4) both;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+#ptask .em{font-size:44px;line-height:1}#ptask h3{font-family:var(--display);font-size:22px;margin:8px 0 6px}#ptask p{color:var(--muted);margin:0 0 12px;font-size:13.5px;line-height:1.45}
+#ptask input{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);margin-bottom:10px}
+#ptask #ptno{all:unset;cursor:pointer;display:block;width:100%;padding:10px 0 2px;font-size:13px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){#sheet.enter .row,#sheet.enter .sec,#daily,#rankup>div,#ptask,#ptask>div{animation:none}}
 </style>
 </head>
 <body>
@@ -321,6 +326,14 @@ let SLOT=1;try{SLOT=+localStorage.getItem(SLOTKEY)||1}catch(e){}
 const KEY=slotKey(SLOT);
 let S={cash:0,day:1,own:{},events:{},log:[],hist:[],goals:[],mgr:{},speed:1,debt:0,rivals:null,last:Date.now(),earned:0}; // own[cityId][bizKey]=level
 try{const raw=localStorage.getItem(KEY);if(raw)S=Object.assign(S,JSON.parse(raw))}catch(e){}
+/* playtest progress reports (opt-in). Fill in to switch on: form = Google Form "formResponse" URL, f = each field's "entry.NNN" id (empty ids are skipped). */
+const PLAYTEST={form:"", // Google Form "formResponse" URL, e.g. https://docs.google.com/forms/d/e/XXXX/formResponse
+  every:3, // auto-report every N game days
+  f:{tester:"",tid:"",slot:"",day:"",cash:"",networth:"",earned:"",cities:"",businesses:"",goals:"",debt:"",event:"",ver:""}}; // each value is a Google Form field id like "entry.123456"
+const PTKEY="meridian-playtest",PTVER="pt1";
+const PTP={on:false,name:"",id:"",asked:false,lastDay:0};try{Object.assign(PTP,JSON.parse(localStorage.getItem(PTKEY)||"{}"))}catch(e){}
+if(!PTP.id)PTP.id=Math.random().toString(36).slice(2,8);
+const ptSave=()=>{try{localStorage.setItem(PTKEY,JSON.stringify(PTP))}catch(e){}};ptSave();
 const save=()=>{try{if(typeof ensurePositions==="function")ensurePositions();localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 
 const cost=(b,c)=>Math.round(b.cost*1.3*PRICE[c.size]);
@@ -1574,7 +1587,7 @@ const GOALS=[
  {id:"g10",n:"Billionaire",d:"Reach $1B net worth",t:1e9,v:()=>totals().nw,r:0}
 ];
 function checkGoals(){for(const g of GOALS){if(S.goals.includes(g.id))continue;if(g.v()>=g.t){S.goals.push(g.id);S.cash+=g.r;
-  toast(`Goal: ${g.n}${g.r?` · +${fmt(g.r)}`:""}`);S.log.unshift(`Goal reached: ${g.n}`);S.log=S.log.slice(0,3)}}}
+  toast(`Goal: ${g.n}${g.r?` · +${fmt(g.r)}`:""}`);S.log.unshift(`Goal reached: ${g.n}`);S.log=S.log.slice(0,3);try{ptEvent("goal: "+g.n)}catch(e){}}}}
 
 const adCost=c=>Math.round(6000*PRICE[c.size]+Math.max(0,cityProfit(c))*1.5);
 function upgradePlan(c){const o={...S.own[c.id]};let cash=S.cash,cost=0,gain=0;const steps=[];
@@ -1622,11 +1635,12 @@ function renderPortfolio(){const{inc,nw}=totals();
   for(const g of GOALS){const done=S.goals.includes(g.id),p=Math.min(1,Math.max(0,g.v()/g.t));
     h+=`<div class="goal${done?" done":""}"><div class="n">${done?"✓ ":""}${g.n}</div><div style="font-family:var(--mono);font-size:12px">${g.r?"+"+fmt(g.r):"🏆"}</div>
     <div class="d">${g.d}</div><div></div>${done?"":`<div class="bar"><i style="width:${(p*100).toFixed(0)}%"></i></div>`}</div>`}
-  h+=`</div><div class="foot"><button id="reset">Start a new game</button></div>`;
+  h+=`</div>`+ptHtml()+`<div class="foot"><button id="reset">Start a new game</button></div>`;
   sheet.innerHTML=h;
   $("#cls").onclick=closeSheet;
   sheet.querySelectorAll("[data-go]").forEach(r=>r.onclick=()=>flyTo(CITIES[r.dataset.go]));
   const q=$("#q");q.oninput=()=>{query=q.value;searchRes()};searchRes();
+  ptWire();
   const rs=$("#reset");rs.onclick=()=>{if(rs.dataset.arm){try{localStorage.removeItem(KEY)}catch(e){}location.reload()}else{rs.dataset.arm=1;rs.textContent="Tap again to erase everything"}};
 }
 function searchRes(){const box=$("#qres");if(!box)return;const s=query.trim().toLowerCase();
@@ -2192,8 +2206,42 @@ function mktApp(){const m=MK();
   h+=`<div class="ph-list">`+list.map(a=>{const p=m.px[a.s],ch=(p/m.open[a.s]-1)*100,col=ch>=0?"#22c55e":"#ef4444",hd=m.hold[a.s];
     return `<button data-ph="mksel" data-k="${a.s}" style="all:unset;display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;width:100%;cursor:pointer;padding:2px 0"><span><b>${a.s}</b><small style="display:block">${hd?fq(hd.q)+" · "+fmt(hd.q*p):a.n}</small></span>${sparkS(m.h[a.s].slice(-30),col)}<span style="text-align:right;font-family:var(--mono)">${fp(p)}<small style="display:block;color:${col}">${ch>=0?"+":""}${ch.toFixed(2)}%</small></span></button>`}).join("")+`</div>`;
   return h}
+/* ---------- playtest progress reports: opt-in, sent to a Google Form (config: PLAYTEST near the state section) ---------- */
+const ptOK=()=>!!PLAYTEST.form;
+const ptEsc=t=>String(t).replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
+function ptSnap(ev){const{nw}=totals();let biz=0;for(const k in S.own)for(const b in S.own[k])if(S.own[k][b]>0)biz++;
+  return{tester:PTP.name||"anon",tid:PTP.id,slot:SLOT,day:S.day,cash:Math.round(S.cash),networth:Math.round(nw),earned:Math.round(S.earned||0),
+    cities:nCities(),businesses:biz,goals:`${S.goals.length}/${GOALS.length}`,debt:Math.round(S.debt||0),event:ev,ver:PTVER}}
+function ptPost(sn){if(!ptOK())return;try{const q=new URLSearchParams();for(const k in PLAYTEST.f)if(PLAYTEST.f[k]&&sn[k]!=null)q.append(PLAYTEST.f[k],String(sn[k]));
+  fetch(PLAYTEST.form,{method:"POST",mode:"no-cors",body:q}).catch(()=>{})}catch(e){}}
+let ptLast=0,ptPend=null,ptTimer=0;
+function ptEvent(ev){if(!ptOK()||!PTP.on)return;try{ptPend=ptSnap(ev)}catch(e){return}const w=ptLast+30000-Date.now();
+  if(w<=0){ptLast=Date.now();ptPost(ptPend);ptPend=null}else if(!ptTimer)ptTimer=setTimeout(()=>{ptTimer=0;if(ptPend){ptLast=Date.now();ptPost(ptPend);ptPend=null}},w)}
+let ptCities=nCities(),ptDebt=(S.debt||0)>0;
+function ptTick(){try{const nc=nCities(),hasD=(S.debt||0)>0;
+  if(PTP.on&&ptOK()){if(S.day<PTP.lastDay||!PTP.lastDay){PTP.lastDay=S.day;ptSave()}
+    if(nc>ptCities)ptEvent("new city");if(hasD&&!ptDebt)ptEvent("first loan");
+    if(S.day>=PTP.lastDay+Math.max(1,PLAYTEST.every|0)){PTP.lastDay=S.day;ptSave();ptEvent("auto")}}
+  ptCities=nc;if(hasD)ptDebt=true}catch(e){}}
+function ptText(sn){return `Meridian playtest (${sn.ver}) · ${sn.tester} [${sn.tid}] · slot ${sn.slot}\nDay ${sn.day} · cash ${fmt(sn.cash)} · net worth ${fmt(sn.networth)} · earned ${fmt(sn.earned)}\n${sn.cities} cities · ${sn.businesses} businesses · goals ${sn.goals} · debt ${fmt(sn.debt)}`}
+function ptHtml(){const st=!ptOK()?"Not set up yet":PTP.on?`On as ${ptEsc(PTP.name||"anon")}`:"Off";
+  return `<div class="sec">Playtesting</div><div class="list"><div class="row"><div class="n">Progress reports: ${st}</div><div class="d">${ptOK()?"Shares only your nickname and game numbers with the developer.":"Reporting isn't set up in this build. \"Send progress now\" copies a summary you can paste to the developer."}</div>${ptOK()?`<button class="buy" id="pttog" data-fixed="1">${PTP.on?"Turn off":"Turn on"}</button>`:"<span></span>"}</div>
+    <div style="display:flex;gap:8px;padding:10px 0;flex-wrap:wrap"><input id="ptname" maxlength="24" value="${ptEsc(PTP.name)}" placeholder="Your nickname" autocomplete="off" style="flex:1;min-width:140px;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink)"><button class="buy" id="ptsend" data-fixed="1">Send progress now</button></div></div>`}
+function ptCopy(t){const fb=()=>{try{prompt("Copy this and send it to the developer:",t)}catch(e){}};
+  try{if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(()=>toast("Progress copied — paste it to the developer"),fb);else fb()}catch(e){fb()}}
+function ptWire(){const n=$("#ptname"),tg=$("#pttog"),sd=$("#ptsend");if(!n)return;
+  n.onchange=()=>{PTP.name=n.value.trim().slice(0,24);ptSave()};
+  if(tg)tg.onclick=()=>{PTP.name=n.value.trim().slice(0,24);PTP.on=!PTP.on;PTP.asked=true;if(PTP.on)PTP.lastDay=S.day;ptSave();toast(PTP.on?"Playtest reports on, thanks!":"Playtest reports off");renderSheet()};
+  sd.onclick=()=>{PTP.name=n.value.trim().slice(0,24);ptSave();const sn=ptSnap("manual");if(ptOK()){ptLast=Date.now();ptPost(sn);toast("Progress sent, thanks!")}else ptCopy(ptText(sn))}}
+function ptAsk(){if(!ptOK()||PTP.asked||document.getElementById("ptask"))return;const d=document.createElement("div");d.id="ptask";
+  d.innerHTML=`<div role="dialog" aria-label="Help test Meridian"><div class="em">🧪</div><h3>Help test Meridian?</h3><p>Share your progress with the developer. Only your nickname and game numbers are sent, nothing else. You can turn this off anytime in Your empire.</p>
+    <input id="ptaskn" maxlength="24" placeholder="Your nickname" autocomplete="off" value="${ptEsc(PTP.name)}"><button class="buy" id="ptyes" style="width:100%">Share my progress</button><button id="ptno">No thanks</button></div>`;
+  document.body.appendChild(d);
+  const done=on=>{PTP.asked=true;PTP.on=on;if(on){PTP.name=$("#ptaskn").value.trim().slice(0,24);PTP.lastDay=S.day}ptSave();d.remove();if(on){toast("Thanks! Progress reports are on");ptEvent("opt-in")}if(mode==="pf")renderSheet()};
+  $("#ptyes").onclick=()=>done(true);$("#ptno").onclick=()=>done(false)}
+setTimeout(ptAsk,2500);
 let saveT=0;
-setInterval(()=>{if(saveT%10===0)accrue();checkApp();if(++saveT%5===0){save();checkGoals()}hud();
+setInterval(()=>{if(saveT%10===0)accrue();checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
   $("#clk").title="Where you are";$("#clk").textContent=jailed()?"in prison · "+fmtDur(S.jail.until-Date.now()):S.trip?(S.trip.local?"on the way":(S.trip.mode==="plane"?"flying to ":"travelling to ")+CITIES[S.trip.to.city].name)+" · "+fmtDur(S.trip.arr-Date.now()):"in "+CITIES[S.loc.city].name;
   if(mode==="pf"&&saveT%5===0&&sheet.classList.contains("open")&&!(document.activeElement&&/^(SELECT|INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}
