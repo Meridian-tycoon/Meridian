@@ -351,12 +351,15 @@ const buyoutCost=c=>Math.round(30000*PRICE[c.size]*(1+S.day/40));
 const mgrCost=c=>Math.round(20000*PRICE[c.size]);
 const bonus=(b,c)=>b.k==="airport"&&(S.own[c.id]||{}).airline?1.2:b.k==="airport"||b.k==="airline"?(c.size>=5?1.25:c.size<=2?.8:1):b.k==="hotel"&&c.size>=4?1.3:b.k==="apt"&&c.size<=2?1.25:1;
 /* Variety menus for carts and restaurants: gross x g, supplies used x u, switch fee = sw x price */
-const MENUS={cart:[{id:"hot",n:"Classic hot dogs",g:1,u:1,d:"Cheap, steady, the default."},{id:"taco",n:"Tacos",g:1.1,u:1.2,d:"Sells more, uses more fillings."},{id:"burg",n:"Gourmet burgers",g:1.18,u:1.4,d:"Big tickets; shines in booms and big cities (+6%).",big:.06},{id:"vegan",n:"Vegan bowls",g:.92,u:.72,d:"Lean on supplies, slightly lower sales."}],
-  rest:[{id:"diner",n:"Diner classics",g:1,u:1,d:"Reliable, the default."},{id:"steak",n:"Steakhouse",g:1.12,u:1.3,d:"Pricey plates, heavy on ingredients."},{id:"pizza",n:"Pizzeria",g:.9,u:.7,d:"Cheap dough, lower tickets."},{id:"fine",n:"Fine dining",g:1.2,u:1.5,d:"Top prices; best in big cities (+6%).",big:.06}]};
+const MENUS={cart:[{id:"hot",n:"Classic hot dogs",g:1,u:1,d:"Cheap and steady. The default."},{id:"taco",n:"Tacos",g:1.02,u:1.1,small:.14,d:"Street favourite: +14% sales in small towns (size 1-2)."},{id:"burg",n:"Gourmet burgers",g:1.06,u:1.35,big:.14,d:"Big tickets: +14% sales in big cities and real booms."},{id:"vegan",n:"Vegan bowls",g:.9,u:.72,slump:.3,d:"Lean on supplies; holds up in slumps (+30%)."}],
+  rest:[{id:"diner",n:"Diner classics",g:1,u:1,d:"Reliable. The default."},{id:"steak",n:"Steakhouse",g:1.05,u:1.25,slump:.2,d:"Loyal regulars: +5% sales, +20% more in slumps."},{id:"pizza",n:"Pizzeria",g:.93,u:.65,slump:.3,d:"Cheap dough; holds up in slumps (+30%)."},{id:"fine",n:"Fine dining",g:1.04,u:1.4,big:.16,d:"Top prices: +16% sales in big cities and real booms."}]};
 const MENU_SW=.05; // switching menus costs 5% of the business price
-function menuOf(c,k){const m=MENUS[k];if(!m||!c)return null;const id=(S.menu||{})[c.id+":"+k];return m.find(x=>x.id===id)||m[0]}
-function menuG(c,b){const m=menuOf(c,b.k);if(!m)return 1;return m.g+(m.big&&((typeof isBigCity==="function"&&isBigCity(c))||(S.events&&S.events[c.id]&&S.events[c.id].m>1))?m.big:0)}
+let menuOv=null;   // {key:id} temporary override used to preview other menus
+function menuOf(c,k){const m=MENUS[k];if(!m||!c)return null;const key=c.id+":"+k,id=menuOv&&menuOv[key]||(S.menu||{})[key];return m.find(x=>x.id===id)||m[0]}
+function menuG(c,b){const m=menuOf(c,b.k);if(!m)return 1;const e=S.events&&S.events[c.id],boom=e&&e.m>=1.5,slump=e&&e.m<1;  // ads are m:1.4, real booms 1.6
+  return m.g+(m.small&&c.size<=2?m.small:0)+(m.big&&(c.size>=5||boom)?m.big:0)+(m.slump&&slump?m.slump:0)}
 function menuU(c,b){const m=menuOf(c,b.k);return m?m.u:1}
+function menuNet(c,b,lv,id){menuOv={[c.id+":"+b.k]:id};try{return profit(b,c,lv)-useRate(b,lv,c)*unitCost(b,c)}finally{menuOv=null}}
 const USE={cart:{burgers:2},kiosk:{bread:3},shop:{bread:4,tools:1},rest:{burgers:5,beef:3},office:{electronics:.5},hotel:{bread:8,electronics:.5}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
@@ -538,7 +541,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
   sheet.querySelectorAll("[data-up]").forEach(btn=>btn.onclick=()=>upgrade(c,btn.dataset.up));
   sheet.querySelectorAll("[data-menu]").forEach(btn=>btn.onclick=()=>{const [k,id]=btn.dataset.menu.split("|"),b=BIZ.find(x=>x.k===k),m=(MENUS[k]||[]).find(x=>x.id===id);if(!b||!m||menuOf(c,k).id===id)return;
     const fee=Math.round(cost(b,c)*MENU_SW);if(S.cash<fee){toast(`Switching menus costs ${fmt(fee)}`);return}
-    S.cash-=fee;S.menu=S.menu||{};S.menu[bkey(c,k)]=id;toast(`${b.n} now serves ${m.n} (${fmt(fee)} refit).`);renderSheet()});
+    S.cash-=fee;S.menu=S.menu||{};S.menu[bkey(c,k)]=id;toast(`${b.n} now serves ${m.n} (${fmt(fee)} refit).`);commit()});
   const ad=$("#ads");if(ad)ad.onclick=()=>{const k=adCost(c);if(S.cash<k)return;S.cash-=k;S.events[c.id]={m:1.4,d:5};toast(`Ads running in ${c.name} for 5 hours`);commit()};
   const ua=$("#upall");if(ua)ua.onclick=()=>{const pl=upgradePlan(c);for(const [k] of pl.steps){const b=BIZ.find(x=>x.k===k);S.cash-=upCost(b,c,S.own[c.id][k]);S.own[c.id][k]++}toast(`${pl.n} upgrades done in ${c.name}`);commit()};
   sheet.querySelectorAll("[data-bo]").forEach(btn=>btn.onclick=()=>{const i=+btn.dataset.bo,k=buyoutCost(c);if(S.cash<k)return;S.cash-=k;
@@ -552,7 +555,7 @@ function upgrade(c,k){const b=BIZ.find(x=>x.k===k),lv=S.own[c.id][k],p=upCost(b,
   S.cash-=p;S.own[c.id][k]=lv+1;toast(`${b.n} in ${c.name} → Lv ${lv+1}`);commit()}
 function sellAll(c){const o=S.own[c.id];let v=0;for(const b of BIZ){const lv=o[b.k];if(!lv)continue;let x=isLeased(c,b.k)?cost(b,c)*FIT:cost(b,c);for(let l=1;l<lv;l++)x+=upCost(b,c,l);v+=x*.75}
   if(S.mgr[c.id])v+=mgrCost(c)*.5;
-  S.cash+=Math.round(v);delete S.own[c.id];delete S.mgr[c.id];delete S.lease[c.id];toast(`Sold ${c.name} for ${fmt(v)}`);commit()}
+  S.cash+=Math.round(v);delete S.own[c.id];delete S.mgr[c.id];if(S.menu)for(const k in MENUS)delete S.menu[bkey(c,k)];delete S.lease[c.id];toast(`Sold ${c.name} for ${fmt(v)}`);commit()}
 function commit(){checkGoals();save();renderSheet();hud();draw()}
 
 /* ---------- industry: land, farms, mines, factories, warehouses, fleet ---------- */
@@ -1471,7 +1474,7 @@ function runShops(h){
 function orderStock(c,b,q){const own=supMode()==="own"&&(S.own[c.id]||{}).trucking,cost=q*unitCost(b,c)*(own?1:1.06);if(S.cash<cost){toast(`That order costs ${fmt(cost)}`);return}
   S.cash-=cost;S.orders.push({key:bkey(c,b.k),q,arr:Date.now()+ORDER_MIN*60000*(own?.5:1)});toast(`Ordered ${q.toLocaleString()} ${SUP[b.k].u}. ${own?"Your trucks deliver":"Carrier delivers"} in ${own?ORDER_MIN/2:ORDER_MIN} min.`)}
 function menuHtml(c,b,lv){if(!MENUS[b.k])return "";const cur=menuOf(c,b.k),fee=Math.round(cost(b,c)*MENU_SW),base=SUP[b.k].r*(1+.55*(lv-1));
-  return `<div class="ops"><div class="ops-l"><b>🍽️ Menu</b>: ${cur.n} · ${fmt(profit(b,c,lv))}/hr<br><span style="color:var(--muted)">Switching costs ${fmt(fee)}. Sales x, supplies x per hour:</span>`+MENUS[b.k].map(m=>`<br><button class="buy" style="margin-top:4px;width:100%;text-align:left" data-menu="${b.k}|${m.id}" ${m.id===cur.id||S.cash<fee?"disabled":""}>${m.id===cur.id?"✓ ":""}${m.n}: sales ×${m.g.toFixed(2)}, ${Math.round(base*m.u)} ${SUP[b.k].u}/h${m.big?` (+${m.big*100}% big city/boom)`:""}<br><small>${m.d}</small></button>`).join("")+`</div></div>`}
+  return `<div class="ops"><div class="ops-l"><b>🍽️ Menu</b>: ${cur.n}<br><span style="color:var(--muted)">Switching costs ${fmt(fee)}. Net = sales minus supplies, per hour, here and now:</span>`+MENUS[b.k].map(m=>`<br><button class="buy" style="margin-top:4px;width:100%;text-align:left" data-menu="${b.k}|${m.id}" ${m.id===cur.id||S.cash<fee?"disabled":""}>${m.id===cur.id?"✓ ":""}${m.n}: <b>${fmt(menuNet(c,b,lv,m.id))}/hr net</b> · ${Math.round(base*m.u)} ${SUP[b.k].u}/h<br><small>${m.d}</small></button>`).join("")+`</div></div>`}
 /* AI advisor tips for food carts: local, rule-based, no network */
 function cartTips(c,b,lv){try{const key=bkey(c,b.k),st=isStaffed(c,b.k),r=useRate(b,lv,c),have=stockOf(c,b.k),hrs=r?have/(r*(st?1:selfRate)):0,pend=S.orders.some(o=>o.key===key),p=profit(b,c,lv),t=[];
   if(have<=0&&!pend)t.push("Out of stock: the cart sells nothing until you order more servings.");
@@ -1876,7 +1879,7 @@ function warHour(quiet){S.wars=S.wars||[];const ws=S.wars;
       if(w.l===4)for(const n of [w.a,w.b])gov(n).appr=Math.min(90,gov(n).appr+10)}
     else if(r>1-dn){w.l--;if(!quiet)logGov(w.l?`${w.a}–${w.b}: de-escalates to ${WARL[w.l].toLowerCase()}`:`${w.a} and ${w.b} sign a peace deal`)}
     if(w.l>=4)for(const n of [w.a,w.b])for(const c of ctyCities(n)){const o=S.own[c.id];if(!o||Math.random()>.03)continue;
-      const ks=Object.keys(o),k=ks[Math.floor(Math.random()*ks.length)];if(--o[k]<=0)delete o[k];if(!Object.keys(o).length)delete S.own[c.id];
+      const ks=Object.keys(o),k=ks[Math.floor(Math.random()*ks.length)];if(--o[k]<=0){delete o[k];if(S.menu)delete S.menu[bkey(c,k)]}if(!Object.keys(o).length)delete S.own[c.id];
       if(!quiet)logGov(`Fighting in ${c.name} damaged your ${BIZ.find(x=>x.k===k).n.toLowerCase()}`)}}
   S.wars=ws.filter(w=>w.l>0)}
 function warAct(id,a){const w=(S.wars||[]).find(x=>x.id===id);if(!w)return;const cst=warCost(w);if(S.cash<cst){toast(`Need ${fmt(cst)}`);return}S.cash-=cst;
