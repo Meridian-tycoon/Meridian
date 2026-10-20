@@ -324,7 +324,7 @@ const CASINO_CITIES=["Montréal"],bigOK=c=>isBigCity(c)||CASINO_CITIES.includes(
 /* why a business can't be opened in a city ("" if it can). Used by every buy/rent path. */
 const CARTS=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie"],CART_MAX=5,isCart=k=>CARTS.includes(k);
 const cartCount=c=>CARTS.filter(k=>(S.own[c.id]||{})[k]).length,licCost=c=>5000*Math.max(1,c.size||1);
-function bizBlock(b,c){if(b.big&&!bigOK(c))return `${b.n}s only open in big cities (size ${BIGCITY}, e.g. ${CITIES.filter(isBigCity).slice(0,3).map(x=>x.name).join(", ")}) or in ${CASINO_CITIES.join(", ")}`;
+function bizBlock(b,c){if(b.cx!=null&&b.cx!==c.id)return `${b.n} is your own brand from ${(CITIES[b.cx]||{}).name}; it only trades there`;if(b.big&&!bigOK(c))return `${b.n}s only open in big cities (size ${BIGCITY}, e.g. ${CITIES.filter(isBigCity).slice(0,3).map(x=>x.name).join(", ")}) or in ${CASINO_CITIES.join(", ")}`;
   if(b.co&&!hasHQ(c))return `${b.n}s need an HQ in this city`;if(lawBan(c,b))return `Gambling is banned in ${c.country}`;
   if(isCart(b.k)&&!S.lic?.[c.id]&&!(S.own[c.id]||{})[b.k]&&cartCount(c)>=CART_MAX)return `${CART_MAX} carts max — buy a street vendor license`;
   if(b.k==="airport"&&!hasAirport(c))return `${c.name} has no airport site`;if(b.k==="port"&&c.size<3)return "Seaports need a size 3+ city";return ""}
@@ -514,7 +514,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
     <p>${c.country} · market size ${"●".repeat(c.size)}${"○".repeat(5-c.size)}</p></div>
     <button class="x" id="cls" aria-label="Close">×</button></div>
     <div class="meta"><div><span>Land price </span>×${PRICE[c.size]}</div><div><span>Demand </span>×${(DEMAND[c.size]*evMult(c)*compMult(c)).toFixed(2)}</div><div><span>Yours </span>${fmt(cityProfit(c))}/hr</div></div>`+tabsHtml();
-  const mine=BIZ.filter(b=>o[b.k]),avail=BIZ.filter(b=>!o[b.k]);
+  const mine=BIZ.filter(b=>o[b.k]),avail=BIZ.filter(b=>!o[b.k]&&(b.cx==null||b.cx===c.id));
   if(mine.length){h+=`<div class="sec">Your businesses here</div><div class="list">`;
     for(const b of mine){const lv=o[b.k],p=profit(b,c,lv);const uc=upCost(b,c,lv);
       h+=`<div class="row"><div class="n">${b.n} <span class="tag" style="border:1px solid var(--line)">Lv ${lv}</span>${isLeased(c,b.k)?`<span class="tag" style="border:1px solid var(--line)">Rented · ${fmt(bizRent(b,c))}/hr</span>`:""}${bizReg(c,b.k)?"":`<span class="tag bust">Unregistered</span>`}</div>
@@ -539,12 +539,12 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
   h+=`<div class="sec">Open a business</div><div class="list">`;
   if(!S.lic?.[c.id]&&cartCount(c)>=CART_MAX){const lc=licCost(c);h+=`<div class="row"><div class="n">Street vendor license</div><div class="d">You run ${CART_MAX} carts here, the limit without a license. One-time fee, lets you run every cart type in ${c.name}.</div><button class="buy" id="buylic" ${S.cash<lc?"disabled":""}>License ${fmt(lc)}</button></div>`}
   else if(S.lic?.[c.id])h+=`<p class="d" style="color:var(--muted);padding:4px 0">✓ Street vendor license held in ${c.name} — no cart limit.</p>`;
-  for(const b of avail){const k=cost(b,c),blk=bizBlock(b,c),lock=b.big&&!bigOK(c),p=potential(b,c,1),pn=p-(SUP[b.k]?useRate(b,1,c)*unitCost(b,c):0),pay=p>0?Math.ceil(k/p):null;
+  for(const b of avail){const k=cost(b,c),blk=bizBlock(b,c),lock=b.big&&!bigOK(c),p=potential(b,c,1),pn=p-(SUP[b.k]?useRate(b,1,c)*unitCost(b,c):0),pay=pn>0?Math.ceil(k/pn):null;
     h+=`<div class="row"${lock?' style="opacity:.6"':""}><div class="n">${lock?"🔒 ":""}${b.n}</div>
-    <div class="d">${b.d} ${lock?"":`<b style="color:${p<0?"var(--bad)":"var(--ink)"}">${fmt(p)}</b>/hr${pay?` · pays back in ${pay<48?pay+" h":(pay/24).toFixed(1)+" days"}`:" · loses money here"}`}${blk?`<br><b style="color:var(--bad)">${lock?"Locked: ":""}${blk}.</b>`:""}${!lock&&!blk&&bizRent(b,c)>pn?`<br><small style="color:var(--bad)">⚠ Renting: rent exceeds profit after stock costs</small>`:""}</div>
+    <div class="d">${b.d} ${lock?"":`<b style="color:${p<0?"var(--bad)":"var(--ink)"}">${fmt(p)}</b>/hr${pay?` · pays back in ${pay<48?pay+" h":(pay/24).toFixed(1)+" days"}`:p>0?" · never pays back after stock costs":" · loses money here"}`}${blk?`<br><b style="color:var(--bad)">${lock?"Locked: ":""}${blk}.</b>`:""}${!lock&&!blk&&bizRent(b,c)>pn?`<br><small style="color:var(--bad)">⚠ Renting: rent exceeds profit after stock costs</small>`:""}</div>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-buy="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k||blk?"disabled":""}>${lock?"Locked":"Buy "+fmt(k)}</button>${lock?"":`<button class="buy up" data-rent="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k*FIT||blk?"disabled":""} ${!blk&&bizRent(b,c)>pn?'title="Rent exceeds profit after stock costs" style="border-color:var(--bust,#c0392b)"':""}>Rent · ${fmt(k*FIT)} + ${fmt(bizRent(b,c))}/hr${!blk&&bizRent(b,c)>pn?" ⚠":""}</button>`}</span></div>`}
   if(!avail.length)h+=`<p class="d" style="color:var(--muted);padding:10px 0">You own every business type in ${c.name}.</p>`;
-  h+=`</div>`+propsHtml(c)+`<div class="foot">${mine.length?`<button id="sellall">Sell everything here (75%)</button>`:""}</div>`;
+  h+=`</div>`+cbHtml(c)+propsHtml(c)+`<div class="foot">${mine.length?`<button id="sellall">Sell everything here (75%)</button>`:""}</div>`;
   sheet.innerHTML=h;
   $("#cls").onclick=closeSheet;
   sheet.querySelectorAll("[data-buy]").forEach(btn=>btn.onclick=()=>buy(c,btn.dataset.buy));
@@ -1513,10 +1513,12 @@ function opsHtml(c,b,lv){const key=bkey(c,b.k),st=isStaffed(c,b.k),staff=bizStaf
   h+=`</div><div class="ops-b">`;
   if(sup){const q1=Math.round(r*2),q2=Math.round(r*8);h+=`<button class="buy up" data-ops="order" data-k="${b.k}" data-q="${q1}">+${q1.toLocaleString()} · ${fmt(q1*unitCost(b,c))}</button><button class="buy up" data-ops="order" data-k="${b.k}" data-q="${q2}">+${q2.toLocaleString()} · ${fmt(q2*unitCost(b,c))}</button>`}
   if(b.k!=="apt"&&b.k!=="office")h+=`<button class="buy${st?" up":""}" data-ops="staff" data-k="${b.k}">${st?`Let ${staff} staff go`:`Hire ${staff} staff`}</button>`;
+  if(sup&&b.cx!=null){const sur=Math.max(0,Math.floor(stockOf(c,b.k)-r*4)),all=Math.floor(stockOf(c,b.k)),px=unitCost(b,c)*CB_OUT;h+=`<button class="buy up" data-fixed="1" data-ops="shipout" data-k="${b.k}" data-q="${sur}" ${sur<1?"disabled":""}>Ship out surplus ${sur.toLocaleString()} · +${fmtC(sur*px)}</button><button class="buy up" data-fixed="1" data-ops="shipout" data-k="${b.k}" data-q="${all}" ${all<1?"disabled":""}>Ship out all · +${fmtC(all*px)}</button>`}
   if(sup)h+=S.mgr[c.id]?`<label class="ops-t"><input type="checkbox" data-ops="auto" data-k="${b.k}" ${S.auto2[key]?"checked":""}> Manager auto-restocks</label>`:`<span class="ops-t" style="color:var(--muted)">Hire a city manager to auto-restock</span>`;
   return h+`</div></div>`}
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-ops]");if(!b||!sel||b.tagName==="INPUT")return;const c=sel,B=BIZ.find(x=>x.k===b.dataset.k),a=b.dataset.ops;
   if(a==="order")orderStock(c,B,+b.dataset.q);
+  else if(a==="shipout")shipOut(c,B,+b.dataset.q);
   else if(a==="staff"){const key=bkey(c,B.k);if(S.staff[key]){delete S.staff[key];toast("Staff let go. It only opens while you're here now.")}else{S.staff[key]=1;toast(`Hired ${bizStaff(B.k,S.own[c.id][B.k])} staff. Wages start now.`)}}
   else return;commit()});
 sheet.addEventListener("change",e=>{const t=e.target;if(t.dataset.ops!=="auto"||!sel)return;const key=bkey(sel,t.dataset.k);S.auto2[key]=t.checked;save();toast(t.checked?"Manager will keep it stocked (+10% supplier fee)":"Auto-restock off")});
@@ -1769,9 +1771,11 @@ new MutationObserver(()=>{if(!sheet.firstElementChild||sheet.firstElementChild.c
     if(dy<-40)sheet.classList.add("full");else if(dy>60){if(sheet.classList.contains("full"))sheet.classList.remove("full");else closeSheet()}});
   sheet.addEventListener("pointercancel",()=>{y0=null;sheet.style.transform=""})})();
 const hourOf=t=>Math.floor(t/DAYMS);
+/* business sales trickle in every second; accrue() settles any remainder via the same clock, so nothing is counted twice */
+function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=totals().inc*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
 function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);
-  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(dt/DAYMS);runFleet(now);const g=totals().inc*dt/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
+  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(dt/DAYMS);runFleet(now);const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
@@ -2159,7 +2163,7 @@ const UGJ=[
 const GANGS=[["Los Cuervos","#dc2626"],["Iron Saints","#2563eb"],["The Velvet","#9333ea"],["Northside Kings","#ca8a04"]];
 function UG(){return S.ug=S.ug||{heat:0,rep:0,gang:null,cd:{},turf:{},t:Date.now(),earned:0}}
 function ugTick(){const u=UG(),now=Date.now(),h=(now-u.t)/DAYMS;u.t=now;
-  u.heat=Math.max(0,u.heat-h*6);
+  u.heat=Math.max(0,u.heat-h*50);
   if(u.gang&&u.gang.own){let inc=0;for(const id in u.turf){const c=CITIES[id];inc+=40*c.size*COL(c)*u.turf[id]}const v=inc*h;S.cash+=v;u.earned+=v;u.heat=Math.min(100,u.heat+h*Object.keys(u.turf).length*.8);
     if(Math.random()<h*.08&&Object.keys(u.turf).length){const ids=Object.keys(u.turf),id=ids[Math.floor(Math.random()*ids.length)],enemy=GANGS[Math.floor(Math.random()*GANGS.length)][0];
       if(Math.random()<u.gang.m/(u.gang.m+8)){u.rep+=3;ugLog(`Your crew fought off ${enemy} in ${CITIES[id].name}`)}else{delete u.turf[id];u.gang.m=Math.max(1,u.gang.m-2);ugLog(`${enemy} took your turf in ${CITIES[id].name}`)}}}}
@@ -2184,8 +2188,8 @@ function ugAct(a,x){const u=UG(),c=ugCity();
   else if(a==="recruit"){const p=Math.round(3000*Math.pow(1.12,u.gang.m));if(S.cash<p)return;S.cash-=p;u.gang.m++;u.heat=Math.min(100,u.heat+2);toast(`${u.gang.m} members`)}
   else if(a==="turf"){const need=3+c.size*2;if(u.gang.m<need){toast(`Needs ${need} members for ${c.name}`);return}if(Math.random()<.7){u.turf[c.id]=(u.turf[c.id]||0)+1;u.heat=Math.min(100,u.heat+10);u.rep+=4;toast(`You run ${c.name} now`)}else{u.gang.m=Math.max(1,u.gang.m-2);u.heat=Math.min(100,u.heat+15);toast("Turf war lost: 2 members down")}}}
 function ugApp(){const u=UG(),c=ugCity(),now=Date.now(),hc=u.heat>66?"#ef4444":u.heat>33?"#f59e0b":"#22c55e";
-  let h=`<div class="ph-sub">${c.name} · street rep ${u.rep}</div><div style="height:8px;background:#ffffff22;border-radius:4px;overflow:hidden;margin:6px 0 2px"><div id="ugbar" style="height:100%;width:${u.heat}%;background:${hc}"></div></div><div class="ph-sub" id="ugheat">Heat ${Math.round(u.heat)}% · cools ~6%/hr · the higher it is, the likelier an arrest</div>`;
-  if(u.gang){const cv=ugCover();h+=`<div class="ph-sub" style="color:${u.gang.col}">Gang cover: −${Math.round((1-cv.heat)*100)}% heat, +${Math.round(cv.ok*100)}% success</div>`}
+  let h=`<div class="ph-sub">${c.name} · street rep ${u.rep}</div><div style="height:8px;background:#ffffff22;border-radius:4px;overflow:hidden;margin:6px 0 2px"><div id="ugbar" style="height:100%;width:${u.heat}%;background:${hc}"></div></div><div class="ph-sub" id="ugheat">Heat ${Math.round(u.heat)}% · cools 25% / 30 min · the higher it is, the likelier an arrest</div>`;
+  if(u.gang){const cv=ugCover();h+=`<div class="ph-sub" style="color:var(--good)">Gang cover: −${Math.round((1-cv.heat)*100)}% heat, +${Math.round(cv.ok*100)}% success</div>`}
   h+=`<div class="ph-list" style="margin-top:8px">`;for(const j of UGJ){const cd=Math.max(0,(u.cd[j.k]||0)-now),lock=(j.rep&&u.rep<j.rep)||(j.gang&&(!u.gang||u.gang.m<j.gang));
     h+=`<div><b>${j.n}</b> <span style="float:right;font-family:var(--mono)">~${fmt(ugPay(j))}</span><small style="display:block">${j.d} ${Math.round(ugOk(j)*100)}% odds · +${Math.round(ugHeat(j)*10)/10}% heat${j.rep?` · ${j.rep} rep`:""}</small>
       <button class="buy" data-ph="ug" data-k="${j.k}" style="width:100%;margin-top:4px" ${cd||lock?"disabled":""}>${cd?"Lie low "+Math.ceil(cd/1000)+"s":lock?"Locked":"Do it"}</button></div>`}
@@ -2201,7 +2205,7 @@ function ugApp(){const u=UG(),c=ugCity(),now=Date.now(),hc=u.heat>66?"#ef4444":u
 /* live-update the Underground app in place (no re-render, so scrolling never jumps) */
 setInterval(()=>{if(!PH.open||PH.app!=="ug")return;const u=UG(),now=Date.now(),el=PH.el;
   const bar=el.querySelector("#ugbar");if(bar){bar.style.width=u.heat+"%";bar.style.background=u.heat>66?"#ef4444":u.heat>33?"#f59e0b":"#22c55e"}
-  const ht=el.querySelector("#ugheat");if(ht)ht.textContent=`Heat ${Math.round(u.heat)}% · cools ~6%/hr · the higher it is, the likelier an arrest`;
+  const ht=el.querySelector("#ugheat");if(ht)ht.textContent=`Heat ${Math.round(u.heat)}% · cools 25% / 30 min · the higher it is, the likelier an arrest`;
   el.querySelectorAll('[data-ph="ug"]').forEach(b=>{const j=UGJ.find(x=>x.k===b.dataset.k),cd=Math.max(0,(u.cd[j.k]||0)-now),lock=(j.rep&&u.rep<j.rep)||(j.gang&&(!u.gang||u.gang.m<j.gang));
     const t=cd?"Lie low "+Math.ceil(cd/1000)+"s":lock?"Locked":"Do it";if(b.textContent!==t)b.textContent=t;b.disabled=!!(cd||lock)})},1000);
 /* owner shortcut: open the game with ?release to walk out of prison */
@@ -2295,8 +2299,35 @@ function ptAsk(){if(!ptOK()||PTP.asked||document.getElementById("ptask"))return;
   const done=on=>{PTP.asked=true;PTP.on=on;if(on){PTP.name=$("#ptaskn").value.trim().slice(0,24);PTP.lastDay=S.day}ptSave();d.remove();if(on){toast("Thanks! Progress reports are on");ptEvent("opt-in")}if(mode==="pf")renderSheet()};
   $("#ptyes").onclick=()=>done(true);$("#ptno").onclick=()=>done(false)}
 setTimeout(ptAsk,2500);
+/* ---------- custom businesses: player-made brands built on a stock-using template, with stock in/out logistics ---------- */
+// S.cbiz=[{k,n,e,t,sz,city}]: each becomes a BIZ+SUP+STAFF entry tied to one city (b.cx). Stock in = normal supplier orders; stock out = ship surplus to wholesale.
+S.cbiz=Array.isArray(S.cbiz)?S.cbiz:[];
+const CB_SIZE={s:{n:"Small",m:.6},m:{n:"Standard",m:1},l:{n:"Large",m:1.8}},CB_FEE=.25,CB_MIN=2000,CB_MAX=3,CB_OUT=.8;
+const fmtC=v=>Math.abs(v)<100?"$"+v.toFixed(2):fmt(v);
+const cbFee=(t,sz,c)=>Math.max(CB_MIN,Math.round(BIZ.find(x=>x.k===t).cost*CB_SIZE[sz].m*CB_FEE*PRICE[c.size]));
+function cbReg(d){const t=BIZ.find(x=>x.k===d.t),m=(CB_SIZE[d.sz]||CB_SIZE.m).m;if(!t||!SUP[d.t]||BIZ.some(x=>x.k===d.k))return;
+  BIZ.push({k:d.k,n:(d.e?d.e+" ":"")+d.n,d:`Your own ${CB_SIZE[d.sz].n.toLowerCase()} brand, run like a ${t.n.toLowerCase()}. Sells only while it has stock.`,cost:Math.round(t.cost*m),gross:Math.round(t.gross*m),up:Math.round(t.up*m),cx:d.city});
+  SUP[d.k]=Object.assign({},SUP[d.t],{r:Math.round(SUP[d.t].r*m)});STAFF[d.k]=Math.max(1,Math.round(STAFF[d.t]*m))}
+S.cbiz.forEach(cbReg);
+let cbForm={n:"",e:"🏪",t:"shop",sz:"m"};
+function shipOut(c,b,q){q=Math.min(Math.floor(stockOf(c,b.k)),q);if(!(q>0))return;const g=q*unitCost(b,c)*CB_OUT;S.stock[bkey(c,b.k)]-=q;S.cash+=g;toast(`Shipped out ${q.toLocaleString()} ${SUP[b.k].u} for ${fmtC(g)}`)}
+function cbHtml(c){const mine=S.cbiz.filter(d=>d.city===c.id),tpl=Object.keys(SUP).filter(k=>BIZ.some(x=>x.k===k&&x.cx==null));if(!tpl.includes(cbForm.t))cbForm.t=tpl[0];
+  const fee=cbFee(cbForm.t,cbForm.sz,c),full=mine.length>=CB_MAX,esc=v=>String(v).replace(/[&<>"]/g,ch=>"&#"+ch.charCodeAt(0)+";");
+  return `<div class="sec">Create custom business</div><div class="list"><div class="row" style="display:block"><div class="d">Start your own brand in ${c.name}. It copies a template's economics, then appears under "Open a business" here to buy or rent. It only sells while stocked: order stock in, ship surplus out at ${Math.round(CB_OUT*100)}% of cost. ${mine.length}/${CB_MAX} brands here.</div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"><input id="cb-e" maxlength="2" value="${esc(cbForm.e)}" style="width:3em;font-size:16px" aria-label="Icon"><input id="cb-n" maxlength="24" placeholder="Name" value="${esc(cbForm.n)}" style="flex:1;min-width:8em;font-size:16px" aria-label="Name">
+  <select id="cb-t" aria-label="Template">${tpl.map(k=>`<option value="${k}" ${k===cbForm.t?"selected":""}>Like a ${BIZ.find(x=>x.k===k).n}</option>`).join("")}</select>
+  <select id="cb-sz" aria-label="Size">${Object.entries(CB_SIZE).map(([k,v])=>`<option value="${k}" ${k===cbForm.sz?"selected":""}>${v.n} (×${v.m})</option>`).join("")}</select>
+  <button class="buy" id="cb-go" data-fixed="1" ${full||S.cash<fee?"disabled":""}>${full?"Limit reached":"Create · "+fmt(fee)}</button></div></div></div>`}
+sheet.addEventListener("input",e=>{const id=e.target.id;if(id==="cb-n")cbForm.n=e.target.value;else if(id==="cb-e")cbForm.e=e.target.value});
+sheet.addEventListener("change",e=>{const id=e.target.id;if(id==="cb-t"||id==="cb-sz"){cbForm[id==="cb-t"?"t":"sz"]=e.target.value;renderSheet()}});
+sheet.addEventListener("click",e=>{if(!e.target.closest("#cb-go")||!sel)return;const c=sel,n=cbForm.n.replace(/[<>&"]/g,"").trim().slice(0,24);if(!n){toast("Give your business a name");return}
+  if(S.cbiz.filter(d=>d.city===c.id).length>=CB_MAX){toast(`Max ${CB_MAX} custom brands per city`);return}if(BIZ.some(b=>b.n.replace(/^\S+ /,"")===n||b.n===n)){toast("That name is taken");return}
+  const fee=cbFee(cbForm.t,cbForm.sz,c);if(S.cash<fee){toast(`Creating it costs ${fmt(fee)}`);return}
+  const d={k:"cx"+(S.nid++),n,e:[...cbForm.e.replace(/[<>&"]/g,"").trim()].slice(0,2).join(""),t:cbForm.t,sz:cbForm.sz,city:c.id};S.cash-=fee;S.cbiz.push(d);cbReg(d);cbForm.n="";
+  toast(`${n} is ready. Buy or rent it below, then order stock.`);commit()});
+
 let saveT=0;
-setInterval(()=>{if(saveT%10===0)accrue();checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
+setInterval(()=>{if(saveT%10===0)accrue();else saleTick(Date.now());checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
   $("#clk").title="Where you are";$("#clk").textContent=jailed()?"in prison · "+fmtDur(S.jail.until-Date.now()):S.trip?(S.trip.local?"on the way":(S.trip.mode==="plane"?"flying to ":"travelling to ")+CITIES[S.trip.to.city].name)+" · "+fmtDur(S.trip.arr-Date.now()):"in "+CITIES[S.loc.city].name;
   if(mode==="pf"&&saveT%5===0&&sheet.classList.contains("open")&&!(document.activeElement&&/^(SELECT|INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}
