@@ -294,7 +294,7 @@ const BIZ=[
  {k:"prison",n:"Private prison",d:"Company-only: needs an HQ here. Earns more where policing is strict.",cost:2600000,gross:160000,up:56000,co:1},
  {k:"taxico",n:"Taxi company",d:"A fleet of 30 cabs. Your own taxi rides here are half price.",cost:45000,gross:4200,up:1500,tr:1},
  {k:"busline",n:"Bus line",d:"City and coach routes. Half-price buses for you, here and from here.",cost:160000,gross:11500,up:4200,tr:1},
- {k:"trucking",n:"Trucking company",d:"Regional freight. Your own trucks from here run 25% faster.",cost:300000,gross:21000,up:7600,tr:1},
+ {k:"trucking",n:"Trucking company",d:"Regional freight. Your own trucks from here run 25% faster, and rivals hire you to haul their cargo (see Empire → Logistics).",cost:300000,gross:21000,up:7600,tr:1},
  {k:"rail",n:"Railway",d:"Company-only: needs an HQ. Passenger and freight lines. Half-price trains from here.",cost:4200000,gross:245000,up:88000,co:1,tr:1},
  {k:"port",n:"Seaport",d:"Company-only: needs an HQ in a size 3+ city. Container terminals and cruise berths. Your ships from here sail 20% faster.",cost:6000000,gross:340000,up:120000,co:1,tr:1},
  {k:"airline",n:"Airline",d:"Company-only: needs an HQ. A fleet of jets based here. Every flight you take is half price.",cost:8000000,gross:430000,up:160000,co:1,tr:1},
@@ -1565,7 +1565,7 @@ function renderPortfolio(){const{inc,nw}=totals();
     <div class="d">${n} business${n>1?"es":""} · <b>${fmt(cityProfit(c))}</b>/hr</div><span style="font-family:var(--mono);color:var(--muted)">›</span></div>`}
   h+=`</div><div class="sec">Find a city</div><input id="q" type="search" placeholder="Tokyo, Lagos, Montréal…" value="${query}" autocomplete="off"><div class="list" id="qres"></div>`;
   const board=[{n:"You",col:"var(--own)",nw,me:1},...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:r.nw,c:r.cities.length}))].sort((a,b)=>b.nw-a.nw);
-  h+=govSummary();
+  h+=logiHtml();h+=govSummary();
   h+=`<div class="sec">Leaderboard</div><div class="list">`+board.map((b,i)=>`<div class="row"><div class="n" style="${b.me?"color:var(--own)":""}">${i+1}. <span style="display:inline-block;width:9px;height:9px;background:${b.col};margin:0 6px 0 2px"></span>${b.n}</div>
     <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
   h+=bankHtml();
@@ -1670,7 +1670,7 @@ new MutationObserver(()=>{if(!sheet.firstElementChild||sheet.firstElementChild.c
 const hourOf=t=>Math.floor(t/DAYMS);
 function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);
-  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(dt/DAYMS);runFleet(now);const g=totals().inc*dt/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
+  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(dt/DAYMS);runFleet(now);const g=totals().inc*dt/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function")runLogi();if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
@@ -1962,10 +1962,59 @@ document.addEventListener("pointerdown",e=>{const b=e.target.closest("button.buy
 let _enterKey="";function sheetEnter(){const k=mode+":"+(sel?sel.id:"")+":"+tab;if(k===_enterKey)return;_enterKey=k;sheet.classList.remove("enter");void sheet.offsetWidth;sheet.classList.add("enter");clearTimeout(sheetEnter.t);sheetEnter.t=setTimeout(()=>sheet.classList.remove("enter"),900)}
 new MutationObserver(()=>{if(sheet.classList.contains("open"))sheetEnter();else _enterKey=""}).observe(sheet,{childList:true,attributes:true,attributeFilter:["class"]});
 setInterval(dailyCheck,30000);setTimeout(dailyCheck,1500);
+/* ---------- logistics contracts for rival companies ---------- */
+const LU={trucks:{n:"Buy a truck",d:"+1 truck in your contract fleet.",base:40000,g:1.35,max:40},
+  trailer:{n:"Bigger trailers",d:"+25% cargo per truck, so every contract pays 25% more.",base:120000,g:2.2,max:4},
+  engine:{n:"Engine tuning",d:"Trucks deliver 15% faster per level.",base:90000,g:2,max:4},
+  depot:{n:"Depot expansion",d:"+2 contract offers on the board.",base:150000,g:2,max:4},
+  dispatch:{n:"Dispatch software",d:"Automatically accepts the best offers when trucks are free.",base:250000,g:1,max:1}};
+function L(){return S.logi=S.logi||{trucks:2,up:{},offers:[],jobs:[],rep:{},done:0,earned:0,nid:1,last:0,auto:true}}
+const lvl=k=>L().up[k]||0;
+const luCost=k=>{const u=LU[k],n=k==="trucks"?L().trucks-2:lvl(k);return Math.round(u.base*Math.pow(u.g,n))};
+const hubs=()=>CITIES.filter(c=>(S.own[c.id]||{}).trucking);
+const freeTrucks=()=>L().trucks-L().jobs.length;
+const repOf=i=>L().rep[i]||0;
+function makeOffer(){const H=hubs();if(!H.length||!S.rivals||!S.rivals.length)return null;const from=H[Math.floor(Math.random()*H.length)];
+  const near=CITIES.filter(c=>c!==from&&distKm(from,c)<3500&&distKm(from,c)>150);if(!near.length)return null;const to=near[Math.floor(Math.random()*near.length)];
+  const ri=Math.floor(Math.random()*S.rivals.length),km=distKm(from,to),tons=Math.round(20+Math.random()*40);
+  const lvTr=(S.own[from.id]||{}).trucking||1;
+  const pay=Math.round(km*tons*.05*(1+.25*lvl("trailer"))*(1+repOf(ri)*.02)*(1+.1*(lvTr-1))*(.8+Math.random()*.5)*PRICE[from.size]);
+  const g=["electronics","steel","bread","tools","beef","fuel","furniture","medicine"][Math.floor(Math.random()*8)];
+  return{id:L().nid++,ri,from:from.id,to:to.id,km,tons,g,pay,exp:Date.now()+(20+Math.random()*40)*60000}}
+const jobDur=o=>Math.max(8*60000,o.km/VEH.truck.spd*DAYMS/4/Math.pow(1.15,lvl("engine")));
+function acceptOffer(id,quiet){const l=L(),o=l.offers.find(x=>x.id===id);if(!o||freeTrucks()<1)return false;
+  l.offers=l.offers.filter(x=>x!==o);const d=jobDur(o)*(Math.random()<.08?1.4:1);l.jobs.push({...o,dep:Date.now(),arr:Date.now()+d});
+  if(!quiet)toast(`Contract accepted: ${CITIES[o.from].name} → ${CITIES[o.to].name}`);return true}
+function runLogi(){const l=L(),now=Date.now();if(!hubs().length)return;
+  for(const j of l.jobs.filter(j=>now>=j.arr)){S.cash+=j.pay;S.earned=(S.earned||0)+j.pay;l.earned+=j.pay;l.done++;l.rep[j.ri]=Math.min(50,repOf(j.ri)+1);
+    S.log.unshift(`Logistics: delivered ${j.tons} t of ${j.g} for ${RIVALS[j.ri].n}, +${fmt(j.pay)}`);S.log=S.log.slice(0,3)}
+  l.jobs=l.jobs.filter(j=>now<j.arr);l.offers=l.offers.filter(o=>o.exp>now);
+  const slots=4+2*lvl("depot");if(now-l.last>90000&&l.offers.length<slots){l.last=now;const o=makeOffer();if(o)l.offers.push(o)}
+  if(lvl("dispatch")&&l.auto)while(freeTrucks()>0&&l.offers.length){const best=[...l.offers].sort((a,b)=>b.pay/jobDur(b)-a.pay/jobDur(a))[0];acceptOffer(best.id,true)}}
+function logiHtml(){const l=L(),H=hubs();let h=`<div class="sec">Logistics · freight for rivals</div>`;
+  if(!H.length)return h+`<p class="d" style="color:var(--muted);font-size:13px">Open a <b>Trucking company</b> in any city to start hauling freight for rival companies. Higher trucking levels pay more.</p>`;
+  h+=`<div class="meta"><div><span>Trucks </span>${l.jobs.length}/${l.trucks} busy</div><div><span>Delivered </span>${l.done} · ${fmt(l.earned)}</div></div>`;
+  h+=`<div class="list">`;for(const j of l.jobs){const p=Math.min(100,(Date.now()-j.dep)/(j.arr-j.dep)*100);
+    h+=`<div class="row"><div class="n">🚚 ${CITIES[j.from].name} → ${CITIES[j.to].name} <span style="font-family:var(--mono);color:var(--good)">${fmt(j.pay)}</span></div><div class="d">${j.tons} t ${j.g} for <b style="color:${RIVALS[j.ri].col}">${RIVALS[j.ri].n}</b> · arrives in ${fmtDur(j.arr-Date.now())}<div style="height:5px;background:var(--line);border-radius:3px;margin-top:5px;overflow:hidden"><div style="height:100%;width:${p}%;background:var(--own)"></div></div></div><span></span></div>`}
+  h+=`</div><div class="sec">Contract board${lvl("dispatch")?` · <button class="buy up" data-logi="auto" data-fixed="1" style="min-width:0;min-height:26px;padding:3px 8px;font-size:11px">Auto-dispatch ${l.auto?"ON":"OFF"}</button>`:""}</div><div class="list">`;
+  if(!l.offers.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:8px 0">New offers arrive every minute and a half.</p>`;
+  for(const o of [...l.offers].sort((a,b)=>b.pay-a.pay))h+=`<div class="row"><div class="n">${CITIES[o.from].name} → ${CITIES[o.to].name} <span style="font-family:var(--mono);font-weight:600">${fmt(o.pay)}</span></div>
+    <div class="d"><b style="color:${RIVALS[o.ri].col}">${RIVALS[o.ri].n}</b> · ${o.tons} t ${o.g} · ${Math.round(o.km)} km · about ${fmtDur(jobDur(o))} · expires in ${fmtDur(o.exp-Date.now())}${repOf(o.ri)?` · rep +${repOf(o.ri)*2}%`:""}</div>
+    <button class="buy" data-logi="take" data-id="${o.id}" data-fixed="1" ${freeTrucks()<1?"disabled":""}>${freeTrucks()<1?"No trucks":"Accept"}</button></div>`;
+  h+=`</div><div class="sec">Fleet upgrades</div><div class="list">`;
+  for(const k in LU){const u=LU[k],n=k==="trucks"?l.trucks:lvl(k),max=k==="trucks"?u.max:u.max,done=n>=max,c=luCost(k);
+    h+=`<div class="row"><div class="n">${u.n} <span class="tag" style="border:1px solid var(--line)">${k==="trucks"?n+" trucks":"Lv "+n+"/"+max}</span></div><div class="d">${u.d}</div>
+      <button class="buy up" data-logi="up" data-k="${k}" data-fixed="1" ${done||S.cash<c?"disabled":""}>${done?"Maxed":fmt(c)}</button></div>`}
+  return h+`</div>`}
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-logi]");if(!b)return;const l=L(),a=b.dataset.logi;
+  if(a==="take")acceptOffer(+b.dataset.id);else if(a==="auto")l.auto=!l.auto;
+  else if(a==="up"){const k=b.dataset.k,c=luCost(k);if(S.cash<c)return;if(k==="trucks"){if(l.trucks>=LU.trucks.max)return;l.trucks++}else{if(lvl(k)>=LU[k].max)return;l.up[k]=lvl(k)+1}S.cash-=c;toast(`Bought ${LU[k].n.toLowerCase()}`)}
+  save();hud();renderSheet()});
 let saveT=0;
 setInterval(()=>{accrue();checkApp();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
   $("#clk").title="Where you are";$("#clk").textContent=jailed()?"in prison · "+fmtDur(S.jail.until-Date.now()):S.trip?(S.trip.local?"on the way":(S.trip.mode==="plane"?"flying to ":"travelling to ")+CITIES[S.trip.to.city].name)+" · "+fmtDur(S.trip.arr-Date.now()):"in "+CITIES[S.loc.city].name;
+  if(mode==="pf"&&saveT%5===0&&sheet.classList.contains("open")&&!(document.activeElement&&/^(SELECT|INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}
   if(sel&&mode==="city"&&saveT%5===0){if(tab==="biz")refreshButtons();else if(tab!=="hq"&&!shipForm&&!(document.activeElement&&/^(SELECT|INPUT)$/.test(document.activeElement.tagName)))renderSheet()}
   if(S.fleet.some(v=>v.arr))draw()},1000);
 function refreshButtons(){sheet.querySelectorAll("button.buy").forEach(b=>{const m=b.textContent.match(/\$([\d.,]+)([KMB]?)/);
