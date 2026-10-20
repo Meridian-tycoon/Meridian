@@ -1775,7 +1775,7 @@ const hourOf=t=>Math.floor(t/DAYMS);
 function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=totals().inc*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
 function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);
-  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(dt/DAYMS);runFleet(now);const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
+  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runFleet(now);const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
@@ -2041,10 +2041,11 @@ function confetti(n=40,x=innerWidth/2,y=innerHeight/2){if(matchMedia("(prefers-r
     const a=Math.random()*Math.PI*2,v=120+Math.random()*260,dx=Math.cos(a)*v,dy=Math.sin(a)*v-200;
     d.animate([{transform:"translate(0,0) rotate(0)",opacity:1},{transform:`translate(${dx}px,${dy+500}px) rotate(${Math.random()*900}deg)`,opacity:0}],{duration:1100+Math.random()*700,easing:"cubic-bezier(.2,.6,.4,1)"}).onfinish=()=>d.remove()}}
 let _cashShown=null,_cashRaf=0;
-function tweenCash(){const el=$("#cash"),to=S.cash;if(_cashShown==null)_cashShown=to;const from=_cashShown;if(Math.abs(to-from)<.5){el.textContent=fmt(to);_cashShown=to;return}
+const cashFmt=v=>Math.abs(v)<1e6?(v<0?"-$":"$")+Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):fmt(v);
+function tweenCash(){const el=$("#cash"),to=S.cash;if(_cashShown==null)_cashShown=to;const from=_cashShown;if(Math.abs(to-from)<.005){el.textContent=cashFmt(to);_cashShown=to;return}
   const big=Math.abs(to-from)>Math.max(50,Math.abs(from)*.002);if(big){el.classList.remove("up","down");el.classList.add(to>from?"up":"down");clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove("up","down"),450)}
   cancelAnimationFrame(_cashRaf);const t0=performance.now(),dur=big?500:200;
-  const step=t=>{const u=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-u,3);_cashShown=from+(to-from)*e;el.textContent=fmt(_cashShown);if(u<1)_cashRaf=requestAnimationFrame(step)};_cashRaf=requestAnimationFrame(step)}
+  const step=t=>{const u=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-u,3);_cashShown=from+(to-from)*e;el.textContent=cashFmt(_cashShown);if(u<1)_cashRaf=requestAnimationFrame(step)};_cashRaf=requestAnimationFrame(step)}
 function rankHud(nw){const i=rankOf(nw),r=RANKS[i],nx=RANKS[i+1],p=nx?Math.max(0,Math.min(1,(nw-r[2])/(nx[2]-r[2]))):1;
   const h=`<i>${i+1}</i>${r[0]} ${r[1]}<span class="rb"><u style="width:${(p*100).toFixed(0)}%"></u></span>`;const el=$("#rank");if(el.innerHTML!==h)el.innerHTML=h;
   el.title=nx?`Next: ${nx[1]} at ${fmt(nx[2])} net worth`:"Top rank!";
@@ -2328,7 +2329,7 @@ sheet.addEventListener("click",e=>{if(!e.target.closest("#cb-go")||!sel)return;c
   toast(`${n} is ready. Buy or rent it below, then order stock.`);commit()});
 
 let saveT=0;
-setInterval(()=>{if(saveT%10===0)accrue();else saleTick(Date.now());checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
+setInterval(()=>{if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
   $("#clk").title="Where you are";$("#clk").textContent=jailed()?"in prison · "+fmtDur(S.jail.until-Date.now()):S.trip?(S.trip.local?"on the way":(S.trip.mode==="plane"?"flying to ":"travelling to ")+CITIES[S.trip.to.city].name)+" · "+fmtDur(S.trip.arr-Date.now()):"in "+CITIES[S.loc.city].name;
   if(mode==="pf"&&saveT%5===0&&sheet.classList.contains("open")&&!(document.activeElement&&/^(SELECT|INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}
