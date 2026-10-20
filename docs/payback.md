@@ -123,6 +123,23 @@ Each level adds a fixed amount of profit (+55% of takings, +30% of upkeep), but 
 
 **Fixed:** `RENT` 1/40 → 1/60 (index.html:369). Leases now profit whenever payback is under 60 days. Size 5 (base profit, staffed, no stock): casino −$83k → **+$34k/day**, prison −$50k → +$0.3k, office −$2.7k → +$9k, airport −$144k → +$148k. Still losing: railway (−$13k size 5) and seaport (−$20k size 5), airline/airport in size ≤2 cities, and stocked shops/restaurants in big cities. For these the Rent button now says "· rent exceeds profit" with a red border (index.html:531, compares `bizRent` to Lv1 `profit`; skipped on blocked rows). Old saves pay the new rate automatically.
 
+**Follow-up 2026-10-20:** transport hubs (`tr`: railway, seaport, airline, airport) now pay `min(price/60, 80% of baseline Lv1 profit)` (`rentBase`/`bizRent`, index.html:381-383). Leasing nets at least 20% of baseline profit in every city size; buying keeps 100% and still pays back in 1.6–3.4 real days. Lv1 staffed, no rivals, net per hour (= per game day):
+
+| Business | Size | Profit | Rent before | Net before | Rent after | Net after |
+|---|---|---|---|---|---|---|
+| Railway | 4 | 123.7k | 122.9k | +0.8k | 99.0k | +24.7k |
+| Railway | 5 | 151.0k | 163.8k | −12.8k | 120.8k | +30.2k |
+| Seaport | 4 | 175.0k | 175.5k | −0.6k | 140.0k | +35.0k |
+| Seaport | 5 | 214.0k | 234.0k | −20.0k | 171.2k | +42.8k |
+| Airline | 1 | 94.3k | 104.0k | −9.7k | 75.4k | +18.9k |
+| Airline | 2 | 101.3k | 138.7k | −37.3k | 81.1k | +20.3k |
+| Airline | 4 | 208.5k | 234.0k | −25.5k | 166.8k | +41.7k |
+| Airport | 1 | 175.5k | 195.0k | −19.5k | 140.4k | +35.1k |
+| Airport | 2 | 190.9k | 260.0k | −69.1k | 152.7k | +38.2k |
+| Airport | 4 | 388.3k | 438.8k | −50.4k | 310.7k | +77.7k |
+
+Size 1–3 rail/port and size-5 airline/airport were already profitable and are unchanged (cap doesn't bite there except a small cut at size 3). The Rent warning now compares rent with Lv1 profit **minus hourly stock cost** (`useRate(b,1,c) × unitCost`) for stocked businesses (index.html:542, 545), so leased shops, restaurants and carts that lose money after supplies get flagged.
+
 
 Rent is `price/40` per hour, so any lease with a payback above 40 days runs at a loss. In a size-5 city that covers most things: casino **−$83k/day**, railway −$95k, seaport −$137k, airport −$144k, prison −$50k, office −$2.7k, restaurant −$1.9k. Only the hotel (+$10k), apartments (+$1.2k) and food cart (+$25) make anything. The rent button is offered without any warning, and these leases still cost 20% of the price upfront. Rent is also flat by level, so an upgraded lease does improve over time. A leased Lv1 casino never does.
 
