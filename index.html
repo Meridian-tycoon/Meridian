@@ -1504,6 +1504,8 @@ const bkey=(c,k)=>c.id+":"+k;
 const isStaffed=(c,k)=>!!S.staff[bkey(c,k)];
 // tenant-run types (apartments/offices) and custom brands built on them need no staff
 function tenantRun(k){const b=BIZ.find(x=>x.k===k),t=b&&b.t||k;return t==="apt"||t==="office"}
+// owns type k here, directly or as a custom brand built on that template (boolean, so no stacking)
+function hasT(o,k){if(!o)return false;if(o[k])return true;for(const x in o)if(o[x]){const b=BIZ.find(y=>y.k===x);if(b&&b.t===k)return true}return false}
 const present=c=>!!(S.loc&&!S.trip&&S.loc.city===c.id);
 const useRate=(b,lv,c)=>SUP[b.k]?SUP[b.k].r*(1+.55*(lv-1))*(c?menuU(c,b):1):0;  // units per hour at full speed
 const unitCost=(b,c)=>SUP[b.k].c*PRICE[c.size];
@@ -1625,7 +1627,7 @@ function simDay(quiet){const{nw}=totals();S.day++;driftPrices();
   audits(quiet);simProps(quiet);
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||Math.random()>.004)continue;
     const kinds=[["Break-in at your",.04],["Equipment breakdown at your",.03],["Health inspection fine at your",.02],["Customer lawsuit against your",.06]],[t,f]=kinds[Math.floor(Math.random()*kinds.length)];
-    const o2=S.own[id];if(t.startsWith("Break-in")&&o2.secfirm&&Math.random()<.7)continue;if(t.startsWith("Customer lawsuit")&&o2.lawfirm)continue;
+    const o2=S.own[id];if(t.startsWith("Break-in")&&hasT(o2,"secfirm")&&Math.random()<.7)continue;if(t.startsWith("Customer lawsuit")&&hasT(o2,"lawfirm"))continue;
     const loss=Math.round(cost(b,c)*f*(S.mgr[c.id]?.6:1));S.cash-=loss;if(!quiet){S.log.unshift(`${t} ${b.n.toLowerCase()} in ${c.name}: −${fmt(loss)}`);S.log=S.log.slice(0,3)}}}
   for(const id in S.iev){if(--S.iev[id].d<=0)delete S.iev[id]}
   if(Math.random()<1-Math.pow(.99,1/24)){const pool=S.sites.length&&Math.random()<.6?[...new Set(S.sites.map(x=>x.city))]:CITIES.map(c=>c.id);const id=pool[Math.floor(Math.random()*pool.length)];
@@ -1809,7 +1811,7 @@ const hourOf=t=>Math.floor(t/DAYMS);
 function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=totals().inc*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
 function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);
-  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runFleet(now);const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
+  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runFleet(now);const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}if(S.gig&&S.gig.ride)gigState();if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
@@ -2037,7 +2039,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-bank]");if(!b
 S.rec=S.rec||[];
 const POLMULT=[.6,1,1.6];
 function jailed(){return S.jail&&Date.now()<S.jail.until}
-function ownsAny(k){for(const id in S.own)if(S.own[id][k])return true;return false}
+function ownsAny(k){for(const id in S.own)if(hasT(S.own[id],k))return true;return false}
 function arrest(reason,sev,c,quiet){c=c||CITIES[(S.loc||{city:0}).city];const pol=law(c,"police")??1;
   if(Math.random()>[.35,.55,.8][pol])return false;
   let h=sev*POLMULT[pol]*(ownsAny("lawfirm")?.5:1);if(jailed())h+=(S.jail.until-Date.now())/DAYMS;
@@ -2055,11 +2057,19 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-jail]");if(!b
   save();hud();renderSheet()});
 /* ---------- click-to-earn gigs ---------- */
 const fmtc=v=>v<100?"$"+v.toFixed(2):fmt(v);
-const GIGS=[{n:"Flyers",v:"Hand out flyer",p:.25,u:0},{n:"Deliveries",v:"Deliver order",p:.6,u:300},{n:"Rideshare",v:"Give a ride",p:1.4,u:1500},{n:"Freelance",v:"Ship a task",p:3,u:5000}];
+const GIGS=[{n:"Flyers",v:"Hand out flyer",p:.25,u:0},{n:"Deliveries",v:"Deliver order",p:.6,u:300},{n:"Courier",v:"Run a parcel",p:1.4,u:1500},{n:"Freelance",v:"Ship a task",p:3,u:5000}];
 function gigState(){const g=S.gig=S.gig||{i:0,taps:0,combo:0,last:0,en:100,today:0,day:0,t:Date.now()};
-  const now=Date.now();g.en=Math.min(100,g.en+(now-g.t)/1000*.5);g.t=now;if(now-g.last>1500)g.combo=0;const d=Math.floor(now/(24*DAYMS));if(d!==g.day){g.day=d;g.today=0}return g}
+  const now=Date.now();if(g.ride&&now>=g.ride.end){const v=g.ride.pay;g.ride=null;g.rides=(g.rides||0)+1;S.cash+=v;S.earned=(S.earned||0)+v;g.today+=v;toast("Ride complete · +"+fmtc(v))}g.en=Math.min(100,g.en+(now-g.t)/1000*.5);g.t=now;if(now-g.last>1500)g.combo=0;const d=Math.floor(now/(24*DAYMS));if(d!==g.day){g.day=d;g.today=0}return g}
 function gigPay(){const g=gigState(),c=CITIES[(S.loc||{city:0}).city];if(jailed())return .1;
   return Math.round(GIGS[g.i].p*COL(c)*(1+Math.min(1,g.combo/50))*(g.en<10?.3:1)*(1+Math.min(.5,(S.exp||0)*.002))*100)/100}
+/* rideshare: car owners only; one ride at a time on a timer so it can't be autoclicked */
+const RIDE_MS=8000,RIDE_EN=6,RIDE_TIER={compact:1,sedan:1.15,suv:1.25,sports:1.5};
+function ridePay(){const c=CITIES[(S.loc||{city:0}).city];return S.car?Math.round(12*COL(c)*(RIDE_TIER[S.car.k]||1)*(1+Math.min(.5,(S.exp||0)*.002))*100)/100:0}
+function rideStart(){const g=gigState();if(!S.car||g.ride||jailed())return;if(g.en<RIDE_EN){toast("Too tired to drive, rest a bit");return}
+  g.en-=RIDE_EN;g.ride={end:Date.now()+RIDE_MS,pay:ridePay()};setTimeout(()=>{gigState();save();hud();phRender()},RIDE_MS+60);phRender()}
+function rideHtml(){const g=gigState();if(jailed())return "";if(!S.car)return `<div class="ph-card" style="margin-top:8px;opacity:.7"><b>🔒 Rideshare</b><span>Buy a car to drive</span></div>`;
+  if(g.ride){const left=Math.max(0,g.ride.end-Date.now());return `<div class="ph-card" style="margin-top:8px"><b>🚗 Driving a passenger… +${fmtc(g.ride.pay)}</b><div style="height:8px;border-radius:4px;background:#fff3;overflow:hidden;margin-top:6px"><div style="height:100%;background:#22c55e;width:${100-left/RIDE_MS*100}%;animation:rideBar ${left}ms linear forwards"></div></div></div><style>@keyframes rideBar{to{width:100%}}</style>`}
+  return `<button data-ph="ridego" style="width:100%;margin-top:8px;padding:12px;border:0;border-radius:14px;background:#15803d;color:#fff;font:inherit;font-weight:700;cursor:pointer;touch-action:manipulation" ${g.en<RIDE_EN?"disabled":""}>🚗 Rideshare · Accept ride<br><span style="font-size:13px;font-weight:600;opacity:.9">+${fmtc(ridePay())} · ${RIDE_MS/1000}s · −${RIDE_EN} energy · ${CK[S.car.k].n}</span></button>`}
 function gigTap(btn){const g=gigState(),now=Date.now();if(now-g.last<60)return;const v=gigPay();
   g.combo=now-g.last<1500?g.combo+1:1;g.last=now;g.taps++;g.en=Math.max(0,g.en-1.2);S.cash+=v;S.earned=(S.earned||0)+v;g.today+=v;
   if(S.need&&g.taps%40===0)S.need.m=Math.max(0,S.need.m-1);
@@ -2222,9 +2232,13 @@ function ugAct(a,x){const u=UG(),c=ugCity();
   else if(a==="leave"){u.gang=null;u.turf={};toast("You walked away from the gang life")}
   else if(a==="recruit"){const p=Math.round(3000*Math.pow(1.12,u.gang.m));if(S.cash<p)return;S.cash-=p;u.gang.m++;u.heat=Math.min(100,u.heat+2);toast(`${u.gang.m} members`)}
   else if(a==="turf"){const need=3+c.size*2;if(u.gang.m<need){toast(`Needs ${need} members for ${c.name}`);return}if(Math.random()<.7){u.turf[c.id]=(u.turf[c.id]||0)+1;u.heat=Math.min(100,u.heat+10);u.rep+=4;toast(`You run ${c.name} now`)}else{u.gang.m=Math.max(1,u.gang.m-2);u.heat=Math.min(100,u.heat+15);toast("Turf war lost: 2 members down")}}}
+/* heat countdown: heat cools 50 per game day (DAYMS); show time to clear and to drop under the next risk band */
+function ugHeatTxt(u){const t=d=>{const s=Math.ceil(Math.max(0,d)/50*DAYMS/1000),m=Math.floor(s/60);return (m>=60?Math.floor(m/60)+"h ":"")+(m%60)+"m "+String(s%60).padStart(2,"0")+"s"},h=Math.max(0,u.heat-(Date.now()-(u.t||Date.now()))/DAYMS*50);if(h<.5)return"Heat 0% · all clear";
+  let s=`Heat ${Math.round(h)}% · clear in ${t(h)}`;if(h>66)s+=` · high arrest risk drops in ${t(h-66)}`;else if(h>33)s+=` · arrest risk eases in ${t(h-33)}`;
+  return s+" · the higher it is, the likelier an arrest"}
 function ugApp(){const u=UG(),c=ugCity(),now=Date.now(),hc=u.heat>66?"#ef4444":u.heat>33?"#f59e0b":"#22c55e";
-  let h=`<div class="ph-sub">${c.name} · street rep ${u.rep}</div><div style="height:8px;background:#ffffff22;border-radius:4px;overflow:hidden;margin:6px 0 2px"><div id="ugbar" style="height:100%;width:${u.heat}%;background:${hc}"></div></div><div class="ph-sub" id="ugheat">Heat ${Math.round(u.heat)}% · cools 25% / 30 min · the higher it is, the likelier an arrest</div>`;
-  if(u.gang){const cv=ugCover();h+=`<div class="ph-sub" style="color:var(--good)">Gang cover: −${Math.round((1-cv.heat)*100)}% heat, +${Math.round(cv.ok*100)}% success</div>`}
+  let h=`<div class="ph-sub">${c.name} · street rep ${u.rep}</div><div style="height:8px;background:#ffffff22;border-radius:4px;overflow:hidden;margin:6px 0 2px"><div id="ugbar" style="height:100%;width:${u.heat}%;background:${hc}"></div></div><div class="ph-sub" id="ugheat">${ugHeatTxt(u)}</div>`;
+  if(u.gang){const cv=ugCover();h+=`<div class="ph-sub" style="color:#22c55e">Gang cover: −${Math.round((1-cv.heat)*100)}% heat, +${Math.round(cv.ok*100)}% success</div>`}
   h+=`<div class="ph-list" style="margin-top:8px">`;for(const j of UGJ){const cd=Math.max(0,(u.cd[j.k]||0)-now),lock=(j.rep&&u.rep<j.rep)||(j.gang&&(!u.gang||u.gang.m<j.gang));
     h+=`<div><b>${j.n}</b> <span style="float:right;font-family:var(--mono)">~${fmt(ugPay(j))}</span><small style="display:block">${j.d} ${Math.round(ugOk(j)*100)}% odds · +${Math.round(ugHeat(j)*10)/10}% heat${j.rep?` · ${j.rep} rep`:""}</small>
       <button class="buy" data-ph="ug" data-k="${j.k}" style="width:100%;margin-top:4px" ${cd||lock?"disabled":""}>${cd?"Lie low "+Math.ceil(cd/1000)+"s":lock?"Locked":"Do it"}</button></div>`}
@@ -2240,7 +2254,7 @@ function ugApp(){const u=UG(),c=ugCity(),now=Date.now(),hc=u.heat>66?"#ef4444":u
 /* live-update the Underground app in place (no re-render, so scrolling never jumps) */
 setInterval(()=>{if(!PH.open||PH.app!=="ug")return;const u=UG(),now=Date.now(),el=PH.el;
   const bar=el.querySelector("#ugbar");if(bar){bar.style.width=u.heat+"%";bar.style.background=u.heat>66?"#ef4444":u.heat>33?"#f59e0b":"#22c55e"}
-  const ht=el.querySelector("#ugheat");if(ht)ht.textContent=`Heat ${Math.round(u.heat)}% · cools 25% / 30 min · the higher it is, the likelier an arrest`;
+  const ht=el.querySelector("#ugheat");if(ht)ht.textContent=ugHeatTxt(u);
   el.querySelectorAll('[data-ph="ug"]').forEach(b=>{const j=UGJ.find(x=>x.k===b.dataset.k),cd=Math.max(0,(u.cd[j.k]||0)-now),lock=(j.rep&&u.rep<j.rep)||(j.gang&&(!u.gang||u.gang.m<j.gang));
     const t=cd?"Lie low "+Math.ceil(cd/1000)+"s":lock?"Locked":"Do it";if(b.textContent!==t)b.textContent=t;b.disabled=!!(cd||lock)})},1000);
 /* owner shortcut: open the game with ?release to walk out of prison */
@@ -2348,7 +2362,7 @@ function cbEcon(t,sz,st){const m=(CB_SIZE[sz]||CB_SIZE.m).m,y=CB_STY[st]||CB_STY
 const fmtC=v=>Math.abs(v)<100?"$"+v.toFixed(2):fmt(v);
 const cbFee=(t,sz,c,st)=>Math.max(CB_MIN,Math.round(cbEcon(BIZ.find(x=>x.k===t),sz,st).cost*CB_FEE*PRICE[c.size]));
 function cbReg(d){const t=BIZ.find(x=>x.k===d.t);if(!t||BIZ.some(x=>x.k===d.k))return;const E=cbEcon(t,d.sz,d.st),y=CB_STY[d.st]||CB_STY.std;
-  BIZ.push({k:d.k,n:(d.e?d.e+" ":"")+d.n,d:`Your own ${(CB_SIZE[d.sz]||CB_SIZE.m).n.toLowerCase()}${y===CB_STY.std?"":" "+y.n.toLowerCase()} brand, run like a ${t.n.toLowerCase()}.${SUP[d.t]?" Sells only while it has stock.":""}`,cost:E.cost,gross:E.gross,up:E.up,cx:d.city,t:d.t});
+  BIZ.push({k:d.k,n:(d.e?d.e+" ":"")+d.n,d:`Your own ${(CB_SIZE[d.sz]||CB_SIZE.m)===CB_SIZE.m?"":(CB_SIZE[d.sz]).n.toLowerCase()+" "}${y===CB_STY.std?"":y.n.toLowerCase()+" "}brand, run like a ${t.n.toLowerCase()}.${SUP[d.t]?" Sells only while it has stock.":""}`,cost:E.cost,gross:E.gross,up:E.up,cx:d.city,t:d.t});
   if(SUP[d.t])SUP[d.k]=Object.assign({},SUP[d.t],{r:E.r});STAFF[d.k]=Math.max(1,Math.round((STAFF[d.t]||1)*E.m))}
 S.cbiz.forEach(cbReg);
 let cbForm={n:"",e:"🏪",t:"shop",sz:"m",st:"std"};
@@ -2432,6 +2446,7 @@ function appHtml(k){const {inc,nw}=totals();
     <button data-ph="gigtap" style="width:100%;aspect-ratio:1.4;border:0;border-radius:18px;background:#b45309;color:#fff;font:inherit;font-size:22px;font-weight:700;cursor:pointer;margin:8px 0;touch-action:manipulation">${GIGS[g.i].v}<br><span style="font-size:15px;font-weight:600;opacity:.9">+${fmtc(v)}</span></button>
     <div class="ph-rows"><div><span>Combo</span><b>×${(1+Math.min(1,g.combo/50)).toFixed(2)}</b></div><div><span>Energy</span><b>${Math.round(g.en)}%</b></div><div><span>Earned today</span><b>${fmtc(g.today)}</b></div><div><span>All-time taps</span><b>${g.taps.toLocaleString()}</b></div></div>
     <div class="ph-seg" style="margin-top:8px">${GIGS.map((x,i)=>`<button data-ph="gigpick" data-k="${i}" aria-pressed="${g.i===i}" ${g.taps<x.u?"disabled":""}>${g.taps<x.u?x.u+" taps":x.n}</button>`).join("")}</div>
+    ${rideHtml()}
     <p class="ph-sub" style="margin-top:6px">Tap fast to build a combo. Energy refills over time and drops when you tap.</p>`}
   if(k==="bank"){const sc=creditScore(),[bd,col]=scoreBand(sc),c=B().card;return `<div class="ph-big" style="color:${col}">${sc}</div><div class="ph-sub">credit score · ${bd}</div>${scoreSpark()}<div class="ph-rows"><div><span>Card</span><b>${c?fmt(c.bal)+" / "+fmt(c.lim):"none"}</b></div><div><span>Loans</span><b>${fmt(B().loans.reduce((a,l)=>a+l.bal,0))}</b></div><div><span>Payments</span><b>${fmt(bankPayHr())}/hr</b></div>${c?`<div><span>Card due</span><b>${fmtDur(c.due-Date.now())}</b></div>`:""}</div><button class="buy" data-ph="gobank" style="width:100%;margin-top:8px">Open bank</button>`}
   if(k==="wallet")return `<div class="ph-big">${fmt(S.cash)}</div><div class="ph-sub">cash on hand</div>
@@ -2459,6 +2474,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="repay"){if(B().card&&B().card.bal)payCard(true);else if(B().loans[0])repayLoan(B().loans[0].id,true);S.debt=bankDebt();save();hud()}
   else if(a==="gobank"){openPortfolio();setTimeout(()=>{const x=[...sheet.querySelectorAll(".sec")].find(e=>/credit score/.test(e.textContent));if(x)x.scrollIntoView()},50);PH.open=false}
   else if(a==="gigtap"){gigTap(b);return}
+  else if(a==="ridego"){rideStart();return}
   else if(a==="mkt"){mkTab=b.dataset.k;mkSel=null}else if(a==="mksel"){mkSel=b.dataset.k||null;PH.el.querySelectorAll(".ph-screen").forEach(x=>x.scrollTop=0)}
   else if(a==="trade"){trade(b.dataset.k,+b.dataset.q);return}
   else if(a==="ug"){ugDo(b.dataset.k);save();hud()}
