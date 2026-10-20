@@ -30,7 +30,7 @@ Reports go out every 3 game days, on milestones, and whenever the tester taps **
 
 The live form has a single short-answer question (`entry.661861787`), set as `PLAYTEST.one`. Each report arrives as one line like
 `tester=Bob | tid=k3j9x2 | slot=1 | day=7 | cash=50000 | networth=120000 | … | event=auto | ver=pt1`.
-To split it into columns in the Sheet, use **Data → Split text to columns** with the custom separator ` | `, or `=SPLIT(B2," | ")`.
+To split it into columns in the Sheet, use **Data → Split text to columns** with the custom separator ` | `, or `=SPLIT(B2," | ",FALSE)`.
 If you later add the separate questions, fill in `f` and the game sends both.
 
 ## Before the form is set up
