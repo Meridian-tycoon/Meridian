@@ -1678,13 +1678,14 @@ function renderSaves(){save();let h=`<div class="shead"><div><h2>Save slots</h2>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${act?`<button class="buy up" data-sv="rename" data-n="${n}">Rename</button>`:`<button class="buy" data-sv="load" data-n="${n}">${i?"Load":"New game"}</button>`}
     ${i&&!act?`<button class="buy up" data-sv="del" data-n="${n}">Delete</button>`:""}</span></div>`;
     if(act&&renaming)h+=`<div style="display:flex;gap:8px;padding:8px 0 12px"><input id="svname" maxlength="24" value="${(S.name||"").replace(/"/g,"")}" placeholder="Name this game" style="flex:1;min-width:0;font:inherit;padding:8px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink)"><button class="buy" data-sv="setname">Save</button></div>`}
-  h+=`</div><p class="d" style="font-size:12px;color:var(--muted);padding:8px 0">Every slot keeps earning while you play another one, up to the usual 48 hours of offline income when you come back to it.</p>`;
+  h+=`</div><div class="row"><div class="n">Share progress</div><div class="d">Send this game's numbers to the developer for playtesting${PTP.name?` as ${ptEsc(PTP.name)}`:""}.</div><button class="buy" data-sv="share">Share progress</button></div><p class="d" style="font-size:12px;color:var(--muted);padding:8px 0">Every slot keeps earning while you play another one, up to the usual 48 hours of offline income when you come back to it.</p>`;
   sheet.innerHTML=h;$("#cls").onclick=closeSheet}
 let renaming=false;
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-sv]");if(!b)return;const n=+b.dataset.n,a=b.dataset.sv;
   if(a==="load"){save();try{localStorage.setItem(SLOTKEY,String(n))}catch(e){}location.reload()}
   else if(a==="del"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}try{localStorage.removeItem(slotKey(n))}catch(e){}toast(`Slot ${n} deleted`);renderSaves()}
   else if(a==="rename"){renaming=!renaming;renderSaves();const i=$("#svname");if(i)i.focus()}
+  else if(a==="share")ptSend();
   else if(a==="setname"){S.name=$("#svname").value.trim().slice(0,24)||undefined;renaming=false;save();renderSaves()}});
 $("#rsbtn").onclick=()=>mode==="rs"&&sheet.classList.contains("open")?closeSheet():openResearch();
 function openResearch(){mode="rs";sel=null;renderResearch();sheet.scrollTop=0;sheet.classList.add("open");draw()}
@@ -2234,7 +2235,8 @@ function ptCopy(t){const fb=()=>{try{prompt("Copy this and send it to the develo
 function ptWire(){const n=$("#ptname"),tg=$("#pttog"),sd=$("#ptsend");if(!n)return;
   n.onchange=()=>{PTP.name=n.value.trim().slice(0,24);ptSave()};
   if(tg)tg.onclick=()=>{PTP.name=n.value.trim().slice(0,24);PTP.on=!PTP.on;PTP.asked=true;if(PTP.on)PTP.lastDay=S.day;ptSave();toast(PTP.on?"Playtest reports on, thanks!":"Playtest reports off");renderSheet()};
-  sd.onclick=()=>{PTP.name=n.value.trim().slice(0,24);ptSave();const sn=ptSnap("manual");if(ptOK()&&(PTP.on||confirm("Send your nickname and game progress to the developer?"))){if(Date.now()-ptLast<10000){toast("Just sent, try again in a few seconds");return}ptLast=Date.now();ptPost(sn);toast("Progress sent, thanks!")}else if(!ptOK())ptCopy(ptText(sn))}}
+  sd.onclick=()=>{PTP.name=n.value.trim().slice(0,24);ptSend()}}
+function ptSend(){ptSave();const sn=ptSnap("manual");if(ptOK()&&(PTP.on||confirm("Send your nickname and game progress to the developer?"))){if(Date.now()-ptLast<10000){toast("Just sent, try again in a few seconds");return}ptLast=Date.now();ptPost(sn);toast("Progress sent, thanks!")}else if(!ptOK())ptCopy(ptText(sn))}
 function ptAsk(){if(!ptOK()||PTP.asked||document.getElementById("ptask"))return;const d=document.createElement("div");d.id="ptask";
   d.innerHTML=`<div role="dialog" aria-label="Help test Meridian"><div class="em">🧪</div><h3>Help test Meridian?</h3><p>Share your progress with the developer. Only your nickname and game numbers are sent, nothing else. You can turn this off anytime in Your empire.</p>
     <input id="ptaskn" maxlength="24" placeholder="Your nickname" autocomplete="off" value="${ptEsc(PTP.name)}"><button class="buy" id="ptyes" style="width:100%">Share my progress</button><button id="ptno">No thanks</button></div>`;
