@@ -27,6 +27,12 @@ System prompt: what the agent knows, rules it follows, how it reports back.
 - **Audit:** check every file has valid frontmatter (`name`, `description`), names are unique, descriptions don't overlap, and facts about the code still match `index.html` (grep for the functions and tables they mention).
 
 ## Rules
-- Only touch files in `.claude/agents/` unless asked otherwise. Never edit `index.html`.
+- Only touch files in `.claude/agents/` and `TODO.md` unless asked otherwise. Never edit `index.html`.
 - Don't commit or push unless the caller asked. When you do, commit as `user.name=Claude`, `user.email=noreply@anthropic.com`.
 - Report back with what changed in a short table.
+
+## To-do list
+The shared list is `TODO.md` at the repo root (`- [ ] [agent-name] (priority, area) task`).
+- If the caller gives no specific task, pick the first unticked item tagged `[agent-manager]`.
+- When you finish an item, tick it `[x]` and append ` — done YYYY-MM-DD: one-line result`.
+- Add any follow-up you discover as a new unticked item tagged with the right agent.
