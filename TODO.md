@@ -12,6 +12,6 @@ Format: `- [ ] [agent-name] (priority, area) task`
 ## Items
 
 - [x] [agent-manager] (high, Agents) Have agents work on the to-do list — done 2026-10-20: added TODO.md and a "To-do list" section to all four agents
-- [ ] [meridian-builder] (high, Businesses) Add a casino business that only opens in big cities
+- [x] [meridian-builder] (high, Businesses) Add a casino business that only opens in big cities — done 2026-10-20: Casino locked to the 10 size-5 cities, repriced to $6M base (2.2-day payback), rule enforced on buy and rent
 - [ ] [meridian-balance] (med, Economy) Work out payback time for every business and flag outliers
 - [ ] [meridian-tester] (med, Stocks & crypto) Check the stocks app for errors on a phone screen
