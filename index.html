@@ -2038,7 +2038,14 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-bank]");if(!b
   S.debt=bankDebt();save();hud();renderSheet()});
 /* ---------- bank ownership (phase 1): found & run your own bank. S.ob = owned bank, S.bank = personal banking ---------- */
 const BANKCFG={unlockNW:5e6,license:1e6,minCapital:2e6,monthMs:15*60000,maxCatchup:24,histKeep:36,sampleCap:200,baseRate:.04,
-  yieldShare:1,           // share of base rate earned on reserves (treasury/central-bank deposits)
+  yieldShare:.3,          // share of base rate earned on reserves (treasury/central-bank deposits); loans are the main income
+  appBase:8,appRate:.012,appCap:30,appLife:2, // loan applications/month = appBase+nc*appRate; max pending; months before expiry
+  loanCap:300,            // max active loans
+  premRisk:.10,           // fair risk premium = risk*premRisk (risk 0 best .. 1 worst)
+  missK:.09,missExp:2.2,  // monthly missed-payment chance = missK*risk^missExp*(1+(rate-base)*rateDef)*econ
+  rateDef:6,              // each +1.00 of rate above base multiplies miss chance by (1+rateDef)
+  missDef:3,              // misses before a loan defaults
+  lmMin:-.02,lmMax:.08,   // player loan margin range (added to base+risk premium)
   rateSens:30,            // attractiveness gained per 1.00 of (depRate - base*rateRef)
   rateRef:.5,             // "market" deposit rate = base*rateRef
   growBase:60,growRate:.12,churn:.02,  // new customers/month = (growBase+n*growRate)*appeal*(1-n/cap); churn = n*churn/appeal
@@ -2048,10 +2055,10 @@ const BANKCFG={unlockNW:5e6,license:1e6,minCapital:2e6,monthMs:15*60000,maxCatch
   capRatio:.08,           // dividends can't push equity below deposits*capRatio
   tiers:[{n:"Small",opex:12000,cap:3000,avgDep:30000,maxLoan:250000,branches:1,corp:0,minCap:2e6},
          {n:"Regional",opex:80000,cap:15000,avgDep:25000,maxLoan:5e6,branches:10,corp:1,minCap:5e6,req:{cap:4e6,cust:2500,loans:0}},
-         {n:"Major",opex:400000,cap:250000,avgDep:40000,maxLoan:1e8,branches:100,corp:1,minCap:5e7,req:{cap:5e7,cust:20000,loans:2e7}}]};
+         {n:"Major",opex:400000,cap:250000,avgDep:40000,maxLoan:1e8,branches:100,corp:1,minCap:5e7,req:{cap:5e7,cust:12000,loans:2e7}}]};
 S.econ=S.econ||{base:BANKCFG.baseRate};if(S.econ.base==null)S.econ.base=BANKCFG.baseRate;
 if(S.ob===undefined)S.ob=null;
-function obFix(){const o=S.ob;if(!o)return;const d={tier:0,capital:0,reserves:0,deposits:0,depRate:.02,loans:[],cards:[],rep:50,emerg:0,customers:[],nc:0,hist:[],yrs:[],t:Date.now(),m:0,last:null,div:0,inj:0};for(const k in d)if(o[k]==null)o[k]=d[k]}
+function obFix(){const o=S.ob;if(!o)return;const d={tier:0,capital:0,reserves:0,deposits:0,depRate:.02,loans:[],cards:[],rep:50,emerg:0,customers:[],nc:0,hist:[],yrs:[],t:Date.now(),m:0,last:null,div:0,inj:0,cid:0,apps:[],crit:{cr:620,rk:.5},lm:.03,dlog:[]};for(const k in d)if(o[k]==null)o[k]=d[k]}
 obFix();
 const obT=()=>BANKCFG.tiers[S.ob.tier];
 const obLoanBal=()=>S.ob.loans.reduce((a,l)=>a+(l.bal||0),0)+S.ob.cards.reduce((a,c)=>a+(c.bal||0),0);
@@ -2059,18 +2066,43 @@ const obEquity=()=>S.ob?S.ob.reserves+obLoanBal()-S.ob.deposits-S.ob.emerg:0;
 const obAppeal=()=>{const o=S.ob,C=BANKCFG;return Math.max(.05,Math.min(2.5,1+(o.depRate-S.econ.base*C.rateRef)*C.rateSens+(o.rep-50)/100))};
 const OBN1=["Alex","Sam","Maria","Chen","Priya","Omar","Lena","Jules","Kofi","Yuki","Ivan","Sofia","Noah","Aisha","Mateo","Hana"],OBN2=["Smith","Tremblay","Garcia","Wong","Patel","Haddad","Muller","Rossi","Mensah","Sato","Novak","Silva","Kim","Diallo","Lopez","Berg"],OBCO=["Logistics","Foods","Tech","Holdings","Motors","Textiles","Media","Pharma","Energy","Retail"];
 function obCust(){const t=obT(),corp=t.corp&&Math.random()<.12,r=Math.random(),cr=Math.round(300+550*Math.pow(Math.random(),.7));
-  return corp?{n:OBN2[Math.random()*16|0]+" "+OBCO[Math.random()*10|0],ty:"c",cr,inc:Math.round(5e5+r*2e7),risk:+(1-(cr-300)/550).toFixed(2),dep:Math.round(1e5+r*2e6),ph:{ok:0,late:0}}
-   :{n:OBN1[Math.random()*16|0]+" "+OBN2[Math.random()*16|0],ty:"i",cr,inc:Math.round(2e4+r*r*3e5),risk:+(1-(cr-300)/550).toFixed(2),dep:Math.round(500+r*r*t.avgDep*3),ph:{ok:0,late:0}}}
+  return corp?{n:OBN2[Math.random()*16|0]+" "+OBCO[Math.random()*10|0],ty:"c",cr,inc:Math.round(5e5+r*2e7),risk:+(1-(cr-300)/550).toFixed(2),dep:Math.round(1e5+r*2e6),ph:{ok:0,late:0},id:++S.ob.cid}
+   :{n:OBN1[Math.random()*16|0]+" "+OBN2[Math.random()*16|0],ty:"i",cr,inc:Math.round(2e4+r*r*3e5),risk:+(1-(cr-300)/550).toFixed(2),dep:Math.round(500+r*r*t.avgDep*3),ph:{ok:0,late:0},id:++S.ob.cid}}
+const obEcon=()=>S.econ.mult||1; // phase 5 hook: economy phase multiplier on missed payments
+const obMiss=(rk,rate)=>{const C=BANKCFG;return Math.min(.9,C.missK*Math.pow(rk,C.missExp)*(1+Math.max(0,rate-S.econ.base)*C.rateDef)*obEcon())};
+const obPay=(P,r,n)=>{const i=r/12;return i?P*i/(1-Math.pow(1+i,-n)):P/n};
+const obRisk=rk=>rk<.3?"Low":rk<.55?"Medium":"High";
+const obExpRet=a=>a.rate-Math.min(1,obMiss(a.risk,a.rate)*12/BANKCFG.missDef);
+function obGenApps(){const o=S.ob,C=BANKCFG,t=obT();o.apps=o.apps.filter(a=>a.exp>=o.m);
+  let n=Math.round((C.appBase+o.nc*C.appRate)*(.6+Math.random()*.8));
+  while(n-->0&&o.apps.length<C.appCap){const c=o.customers.length&&Math.random()<.5?o.customers[Math.random()*o.customers.length|0]:obCust();
+    if(c.ty==="c"&&!t.corp)continue;const corp=c.ty==="c",amt=Math.round(Math.min(t.maxLoan,c.inc*(corp?.2+Math.random()*1.3:.5+Math.random()*2.5))/100)*100;if(amt<1000)continue;
+    const term=corp?24+(Math.random()*8|0)*12:12+(Math.random()*5|0)*12,rate=Math.max(.005,+(S.econ.base+o.lm+c.risk*C.premRisk).toFixed(4));
+    o.apps.push({id:++o.cid,cid:c.id,n:c.n,ty:c.ty,cr:c.cr,risk:c.risk,amt,term,rate,exp:o.m+C.appLife})}}
+const obElig=a=>a.cr>=S.ob.crit.cr&&a.risk<=S.ob.crit.rk;
+function obApprove(id){const o=S.ob,i=o.apps.findIndex(a=>a.id===id);if(i<0)return 0;const a=o.apps[i];
+  if(o.loans.length>=BANKCFG.loanCap){toast("Loan book full");return 0}if(o.reserves<a.amt){toast("Reserves can't cover this loan");return 0}
+  o.reserves-=a.amt;o.apps.splice(i,1);o.loans.push({id:a.id,cid:a.cid,n:a.n,ty:a.ty,cr:a.cr,risk:a.risk,amt:a.amt,term:a.term,rate:a.rate,pay:Math.round(obPay(a.amt,a.rate,a.term)*100)/100,bal:a.amt,st:"active",miss:0,m0:o.m});
+  o.nl=(o.nl||0)+a.amt;return 1}
+function obApproveAll(){const o=S.ob;let k=0;for(const a of o.apps.filter(obElig))k+=obApprove(a.id);toast(k?`Approved ${k} loan${k>1?"s":""}`:"No eligible applications");return k}
+function obDefault(src,x){const o=S.ob;x.st="defaulted";o.wo=(o.wo||0)+x.bal;o.dlog.push({...x,src,m:o.m});if(o.dlog.length>50)o.dlog.shift();
+  if(src==="loan")o.loans=o.loans.filter(l=>l!==x)} // phase 4: collections will pick up S.ob.dlog
+function obLoanMonth(){const o=S.ob,C=BANKCFG;let li=0;
+  for(const x of o.loans.slice()){const i=x.bal*x.rate/12;
+    if(Math.random()<obMiss(x.risk,x.rate)){x.miss++;x.st="late";if(x.miss>=C.missDef)obDefault("loan",x);continue}
+    const pr=Math.min(x.bal,x.pay-i);x.bal-=pr;li+=i;o.reserves+=pr;if(x.st==="late")x.st="active";if(x.bal<1){x.st="paid";o.reserves+=x.bal;x.bal=0}}
+  o.loans=o.loans.filter(x=>x.st!=="paid");return li}
 function obMonth(){const o=S.ob,C=BANKCFG,t=obT(),b=S.econ.base,a=obAppeal();
   const add=Math.max(0,Math.round((C.growBase+o.nc*C.growRate)*a*(1-o.nc/t.cap))),lose=Math.round(o.nc*C.churn/a);
   o.nc=Math.max(0,Math.min(t.cap,o.nc+add-lose));
   for(let i=0;i<Math.min(add,20);i++){if(o.customers.length<C.sampleCap)o.customers.push(obCust());else o.customers[Math.random()*o.customers.length|0]=obCust()}
   const tgt=o.nc*t.avgDep*Math.min(1.3,.7+.3*a),dd=(tgt-o.deposits)*C.depAdj;o.deposits=Math.max(0,o.deposits+dd);o.reserves+=dd;
-  const inc=o.reserves*b*C.yieldShare/12+o.loans.reduce((s,l)=>s+(l.bal||0)*(l.rate||0)/12,0)+o.cards.reduce((s,c)=>s+(c.bal||0)*(c.rate||0)/12,0);
-  const exp=o.deposits*o.depRate/12+t.opex+o.nc*C.custCost+o.emerg*C.emergRate/12,p=inc-exp;
-  o.reserves+=p;o.capital=obEquity();o.m++;
+  o.wo=0;const ry=Math.max(0,o.reserves)*b*C.yieldShare/12,li=obLoanMonth(),nl=o.nl||0;o.nl=0;
+  const inc=ry+li+o.cards.reduce((s,c)=>s+(c.bal||0)*(c.rate||0)/12,0),wo=o.wo;
+  const exp=o.deposits*o.depRate/12+t.opex+o.nc*C.custCost+o.emerg*C.emergRate/12,p=inc-exp-wo;
+  o.reserves+=inc-exp;o.capital=obEquity();o.m++;obGenApps();
   o.rep=Math.max(0,Math.min(100,o.rep+(p>0?.4:-.8)+(a-1)*.5-(o.emerg>0?1:0)-(o.reserves<0?5:0)));
-  o.last={p,inc,exp,add,lose};o.hist.push({m:o.m,p:Math.round(p),r:Math.round(o.reserves),d:0,dep:Math.round(o.deposits),c:o.nc});
+  o.last={p,inc,exp,add,lose,li,wo,nl,ry};o.hist.push({m:o.m,p:Math.round(p),r:Math.round(o.reserves),d:Math.round(wo),li:Math.round(li),nl:Math.round(nl),dep:Math.round(o.deposits),c:o.nc});
   while(o.hist.length>C.histKeep){const h=o.hist.shift(),y=Math.floor((h.m-1)/12)+1;let Y=o.yrs.find(x=>x.y===y);if(!Y){Y={y,p:0,d:0};o.yrs.push(Y)}Y.p+=h.p;Y.d+=h.d}
   if(o.yrs.length>50)o.yrs.shift();obTierUp(true)}
 function obTick(now){const o=S.ob;if(!o)return;const M=BANKCFG.monthMs;let n=Math.floor((now-o.t)/M);if(n<=0)return;
@@ -2090,18 +2122,27 @@ const obPct=v=>(v*100).toFixed(2)+"%";
 const obBtn=(a,x,t,dis,bg)=>`<button class="buy" data-ph="${a}" data-x="${x}" style="flex:1;min-width:0;margin-top:6px;color:#fff;background:${bg||"#14532d"}!important;border-color:#ffffff44" ${dis?"disabled":""}>${t}</button>`;
 function obApp(){const C=BANKCFG,o=S.ob;
   if(!o){const nw=totals().nw,ok=nw>=C.unlockNW,cost=C.license+C.minCapital;
-    return `<div class="ph-big" style="font-size:22px">🏦 Found a bank</div><p class="ph-sub">Take deposits, earn the spread over the central bank rate, grow from Small to Major.</p>
+    return `<div class="ph-big" style="font-size:22px">🏦 Found a bank</div><p class="ph-sub">Take deposits, lend them out, manage credit risk, grow from Small to Major.</p>
     <div class="ph-rows"><div><span>Net worth needed</span><b style="color:${ok?"var(--good)":"var(--bad)"}">${fmt(nw)} / ${fmt(C.unlockNW)}</b></div><div><span>Banking license</span><b>${fmt(C.license)}</b></div><div><span>Starting capital</span><b>${fmt(C.minCapital)}</b></div></div>
     ${ok?`<input id="obname" maxlength="28" placeholder="Bank name" style="width:100%;margin-top:8px;padding:8px;border-radius:10px;border:1px solid #ffffff44;background:#0003;color:#fff;font:inherit;box-sizing:border-box">
     <select id="obhq" style="width:100%;margin-top:6px;padding:8px;border-radius:10px;background:#1f2937;color:#fff;font:inherit">${CITIES.map(c=>`<option value="${c.id}" ${(S.home||{}).city===c.id?"selected":""}>${c.name}, ${c.country}</option>`).join("")}</select>
     <button class="buy" data-ph="obfound" style="width:100%;margin-top:8px;color:#fff;background:#14532d!important;border-color:#22c55e" ${S.cash<cost?"disabled":""}>Found bank · ${fmt(cost)}</button>`:""}`}
-  let h=`<div class="ph-seg">${[["ov","Overview"],["cu","Customers"]].map(([k,n])=>`<button data-ph="obtab" data-k="${k}" aria-pressed="${obTab===k}">${n}</button>`).join("")}</div>`;
+  let h=`<div class="ph-seg">${[["ov","Overview"],["ln","Loans"],["cu","Customers"]].map(([k,n])=>`<button data-ph="obtab" data-k="${k}" aria-pressed="${obTab===k}">${n}</button>`).join("")}</div>`;
+  if(obTab==="ln"){const el=o.apps.filter(obElig).length,cr=o.crit,bd=s=>s==="late"?`<span style="color:#fbbf24">LATE</span>`:s==="defaulted"?`<span style="color:var(--bad)">DEFAULT</span>`:"";
+    h+=`<div class="ph-rows"><div><span>Loan book</span><b>${fmt(obLoanBal())} · ${o.loans.length}/${C.loanCap}</b></div><div><span>Reserves available</span><b>${fmt(o.reserves)}</b></div>
+    <div><span>Loan margin (pricing)</span><b>${o.lm>=0?"+":""}${obPct(o.lm)}</b></div><div><span>Min credit score</span><b>${cr.cr}</b></div><div><span>Max risk</span><b>${Math.round(cr.rk*100)}% (${obRisk(cr.rk)})</b></div></div>
+    <div style="display:flex;gap:5px">${obBtn("oblm",-.005,"Margin −0.5%",o.lm<=C.lmMin,"#7f1d1d")}${obBtn("oblm",.005,"Margin +0.5%",o.lm>=C.lmMax)}</div>
+    <div style="display:flex;gap:5px">${obBtn("obcr",-20,"Score −20",cr.cr<=300,"#7f1d1d")}${obBtn("obcr",20,"Score +20",cr.cr>=850)}${obBtn("obrk",-.05,"Risk −5",cr.rk<=0,"#7f1d1d")}${obBtn("obrk",.05,"Risk +5",cr.rk>=1)}</div>
+    ${obBtn("oball",0,`Approve all eligible (${el})`,!el)}<p class="ph-sub">Applications (${o.apps.length}) · new ones arrive monthly, expire after ${C.appLife} months</p>
+    <div class="ph-list">${o.apps.map(a=>{const er=obExpRet(a);return `<div><b>${a.ty==="c"?"🏢":"👤"} ${a.n} · ${fmt(a.amt)}</b>Credit ${a.cr} · ${obRisk(a.risk)} risk · ${a.term} mo @ ${obPct(a.rate)} · exp. return <span style="color:${er>0?"var(--good)":"var(--bad)"}">${obPct(er)}</span>
+    <div style="display:flex;gap:5px">${obBtn("obok",a.id,"Approve",o.reserves<a.amt)}${obBtn("obno",a.id,"Reject",0,"#7f1d1d")}</div></div>`}).join("")||"<div>No applications this month</div>"}</div>
+    <p class="ph-sub">Active loans</p><div class="ph-list">${o.loans.slice(-60).reverse().map(x=>`<div><b>${x.ty==="c"?"🏢":"👤"} ${x.n} ${bd(x.st)}</b>Balance ${fmt(x.bal)} of ${fmt(x.amt)} · ${fmtc(x.pay)}/mo @ ${obPct(x.rate)}${x.miss?` · ${x.miss} missed`:""}</div>`).join("")||"<div>No loans yet</div>"}</div>`;return h}
   if(obTab==="cu")return h+`<p class="ph-sub">${o.nc.toLocaleString()} customers · sample of ${o.customers.length}</p><div class="ph-list">${o.customers.slice(-40).reverse().map(c=>`<div><b>${c.ty==="c"?"🏢":"👤"} ${c.n}</b>Credit ${c.cr} · income ${fmt(c.inc)}/yr · deposit ${fmtc(c.dep)}</div>`).join("")}</div>`;
   const t=obT(),eq=obEquity(),l=o.last,nx=obNext(),pr=(v,m)=>`<b style="color:${v>=m?"var(--good)":"#fbbf24"}">${m?Math.min(100,Math.round(v/m*100)):100}%</b>`,fr=obFree();
   h+=`<div class="ph-big" style="font-size:22px">${o.name}</div><div class="ph-sub">${t.n} bank · HQ ${CITIES[o.hq].name} · month ${o.m} · next in ${fmtDur(C.monthMs-(Date.now()-o.t))}</div>
-  <div class="ph-rows"><div><span>Capital (equity)</span><b>${fmt(eq)}</b></div><div><span>Reserves</span><b>${fmt(o.reserves)}</b></div><div><span>Deposits</span><b>${fmt(o.deposits)}</b></div><div><span>Customers</span><b>${o.nc.toLocaleString()} / ${t.cap.toLocaleString()}</b></div><div><span>Reputation</span><b>${Math.round(o.rep)}/100</b></div>
+  <div class="ph-rows"><div><span>Capital (equity)</span><b>${fmt(eq)}</b></div><div><span>Reserves</span><b>${fmt(o.reserves)}</b></div><div><span>Loan book</span><b>${fmt(obLoanBal())} · ${o.loans.length} loans</b></div><div><span>Deposits</span><b>${fmt(o.deposits)}</b></div><div><span>Customers</span><b>${o.nc.toLocaleString()} / ${t.cap.toLocaleString()}</b></div><div><span>Reputation</span><b>${Math.round(o.rep)}/100</b></div>
   <div><span>Central bank rate</span><b>${obPct(S.econ.base)}</b></div><div><span>Your deposit rate</span><b>${obPct(o.depRate)}</b></div><div><span>Appeal</span><b>×${obAppeal().toFixed(2)}</b></div>
-  <div><span>Last month</span><b style="color:${!l||l.p>=0?"var(--good)":"var(--bad)"}">${l?fmt(l.p):"—"}</b></div>${l?`<div><span>Income / costs</span><b>${fmt(l.inc)} / ${fmt(l.exp)}</b></div><div><span>New / lost customers</span><b>+${l.add} / −${l.lose}</b></div>`:""}</div>
+  <div><span>Last month</span><b style="color:${!l||l.p>=0?"var(--good)":"var(--bad)"}">${l?fmt(l.p):"—"}</b></div>${l?`<div><span>Income / costs</span><b>${fmt(l.inc)} / ${fmt(l.exp)}</b></div><div><span>New / lost customers</span><b>+${l.add} / −${l.lose}</b></div>${l.li!=null?`<div><span>Loan interest / write-offs</span><b>${fmt(l.li)} / ${fmt(l.wo)}</b></div><div><span>New lending</span><b>${fmt(l.nl)}</b></div>`:""}`:""}</div>
   <div style="display:flex;gap:5px">${obBtn("obrate",-.0025,"Rate −0.25%",o.depRate<=0,"#7f1d1d")}${obBtn("obrate",.0025,"Rate +0.25%",o.depRate>=.15)}</div>
   <div style="display:flex;gap:5px">${obBtn("obmoney",1e6,"Inject "+fmt(1e6),S.cash<1e6)}${obBtn("obmoney",1e7,"Inject "+fmt(1e7),S.cash<1e7)}</div>
   <div style="display:flex;gap:5px">${obBtn("obmoney",-fr/4,"Dividend "+fmt(fr/4),fr<1,"#1e3a8a")}${obBtn("obmoney",-fr,"Pay all "+fmt(fr),fr<1,"#1e3a8a")}</div>
@@ -2570,6 +2611,12 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="obfound"){const n=PH.el.querySelector("#obname"),c=PH.el.querySelector("#obhq");obFound(n?n.value:"",c?+c.value:0);save();hud()}
   else if(a==="obrate"){if(S.ob)S.ob.depRate=Math.max(0,Math.min(.15,Math.round((S.ob.depRate+ +b.dataset.x)*1e4)/1e4));save()}
   else if(a==="obmoney"){obMoney(+b.dataset.x);save();hud()}
+  else if(a==="oblm"){if(S.ob)S.ob.lm=Math.max(BANKCFG.lmMin,Math.min(BANKCFG.lmMax,Math.round((S.ob.lm+ +b.dataset.x)*1e4)/1e4));save()}
+  else if(a==="obcr"){if(S.ob)S.ob.crit.cr=Math.max(300,Math.min(850,S.ob.crit.cr+ +b.dataset.x));save()}
+  else if(a==="obrk"){if(S.ob)S.ob.crit.rk=Math.max(0,Math.min(1,Math.round((S.ob.crit.rk+ +b.dataset.x)*100)/100));save()}
+  else if(a==="obok"){if(S.ob&&obApprove(+b.dataset.x))toast("Loan approved");save()}
+  else if(a==="obno"){if(S.ob)S.ob.apps=S.ob.apps.filter(x=>x.id!==+b.dataset.x);save()}
+  else if(a==="oball"){if(S.ob)obApproveAll();save()}
   else if(a==="obtier"){if(S.ob)obTierUp(false);save()}
   else if(a==="buygear"){const x=GEAR.find(y=>y.k===b.dataset.k),g=gearOwn();if(!x||g[x.k]||S.cash<x.p)return;S.cash-=x.p;g[x.k]=1;toast(`You bought a ${x.n.toLowerCase()}`);save();hud()}
   else if(a==="sellgear"){const x=GEAR.find(y=>y.k===b.dataset.k),g=gearOwn();if(!x||!g[x.k])return;delete g[x.k];S.cash+=x.p*.5;toast(`${x.n} sold`);save();hud()}
