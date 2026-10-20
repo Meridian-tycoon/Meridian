@@ -2069,6 +2069,8 @@ const BANKCFG={unlockNW:5e6,license:1e6,minCapital:2e6,monthMs:15*60000,maxCatch
   emergPen:.04,emergMax:.5, // emergency loans cost base+emergPen; max = minCap+deposits*emergMax
   shockP:.04,shockDep:[.04,.12],shockRisk:1.2, // corporate shock chance/month (*phase shock); a pull takes this share of deposits; a hit corp loan defaults w.p. risk*shockRisk (else deposits are pulled)
   capRatio:.08,           // dividends can't push equity below deposits*capRatio
+  // Risk tab health score (0-100): weights are max points lost per factor; loss is judged vs a per-product baseline (fair-priced, risk hsRk)
+  hs:{w:{loss:25,late:15,nd:10,hi:15,res:20,emerg:15},hsRk:.35,lossX:2,lateMax:.15,ndMax:.05,hiOk:.15,hiMax:.6,emergMax:.25,eqLoss:.5,runCap:22,negCap:18},
   // phase 3: credit cards. APR = base + cardBase + card margin + risk*cardPrem
   cardCap:300,cappBase:4,cappRate:.006,cappCap:20,cardBase:.10,cardPrem:.12,cmMin:-.05,cmMax:.10,
   cardLim:[.04,.20],cardMaxLim:[25000,100000,500000], // limit = income*U(lo,hi), capped per tier
@@ -2204,6 +2206,22 @@ const obCMap=()=>{const m={};for(const c of S.ob.customers)m[c.id]=c;return m};
 const obPH=(c,k)=>{if(!c)return;const p=c.ph=c.ph||{ok:0,late:0};p[k]=(p[k]||0)+1;(p.h=p.h||[]).push(k==="ok"?1:k==="late"?0:-1);if(p.h.length>BANKCFG.phKeep)p.h.shift()};
 const obELoss=()=>{const C=BANKCFG,o=S.ob;return o.loans.reduce((a,x)=>a+x.bal*obMiss(x.risk,x.rate)/C.missDef,0)+o.cards.reduce((a,c)=>a+c.bal*Math.min(.9,obMiss(c.risk,c.rate)*C.cardMissMul)/C.cardMissDef,0)};
 const obNum=v=>isFinite(v)?v:0;
+function obHealth(){const C=BANKCFG,H=C.hs,W=H.w,o=S.ob,b=S.econ.base,cl=v=>Math.max(0,Math.min(1,v)),pen=[];
+  const bl=Math.min(.9,obMiss(H.hsRk,b+H.hsRk*C.premRisk+C.lmFair))/C.missDef,bc=Math.min(.9,obMiss(H.hsRk,b+C.cardBase+C.cmFair+H.hsRk*C.cardPrem)*C.cardMissMul)/C.cardMissDef;
+  let bk=0,base=0,late=0,nd=0,hi=0;
+  const add=(x,card)=>{const bal=Math.max(0,x.bal||0);bk+=bal;base+=bal*(card?bc:bl);if(x.risk>=.55)hi+=bal;
+    if(x.st==="late"){late+=bal/(card?C.cardMissMul:1);if(x.miss>=(card?C.cardMissDef:C.missDef)-1)nd+=bal}};
+  for(const x of o.loans)add(x,0);for(const c of o.cards)add(c,1);
+  const P=(k,f,why)=>{const v=W[k]*cl(f);if(v>=.5)pen.push([v,why]);return v};let lost=0;
+  if(bk>0){const el=obELoss(),q=base>0?el/base:1,eq=obEquity();
+    lost+=P("loss",Math.max((q-1)/H.lossX,eq>0?el*12/eq/H.eqLoss-.5:1),`expected losses ${q.toFixed(1)}× normal for your mix`);
+    lost+=P("late",late/bk/H.lateMax,`${Math.round(late/bk*100)}% of book late`);
+    lost+=P("nd",nd/bk/H.ndMax,`${Math.round(nd/bk*100)}% one miss from default`);
+    lost+=P("hi",(hi/bk-H.hiOk)/(H.hiMax-H.hiOk),`${Math.round(hi/bk*100)}% high-risk exposure`)}
+  const rr=obRR();lost+=P("res",o.reserves<0?1:(C.reqRes-rr)/C.reqRes,o.reserves<0?"negative reserves":`reserve ratio ${Math.round(rr*1000)/10}% vs ${Math.round(C.reqRes*100)}% required`);
+  lost+=P("emerg",o.emerg/Math.max(1,o.deposits)/H.emergMax,`central-bank borrowing ${fmt(o.emerg)}`);
+  let s=100-lost;if(o.run>0){s=Math.min(s,H.runCap);pen.push([99,"bank run under way"])}if(o.reserves<0)s=Math.min(s,H.negCap);
+  pen.sort((x,y)=>y[0]-x[0]);return{s:Math.round(Math.max(0,Math.min(100,s))),why:pen.slice(0,3).map(x=>x[1])}}
 function obChart(ser,o2){o2=o2||{};const w=300,ht=o2.h||70,all=ser.flatMap(s=>s.v);if(all.length<2)return `<p class="ph-sub">Not enough months yet.</p>`;
   let mn=Math.min(0,...all),mx=Math.max(...all);if(mx===mn)mx=mn+1;const n=Math.max(...ser.map(s=>s.v.length)),X=i=>(n>1?i/(n-1)*w:0).toFixed(1),Y=v=>(ht-(v-mn)/(mx-mn)*ht).toFixed(1);
   const bg=o2.bg?o2.bg.map((c,i)=>`<rect x="${X(i)}" y="0" width="${(w/Math.max(1,n-1)+.5).toFixed(1)}" height="${ht}" fill="${c}" opacity=".18"/>`).join(""):"";
@@ -2223,9 +2241,9 @@ function obTabs2(h){const C=BANKCFG,o=S.ob,b=S.econ.base,lb=o.loans.reduce((a,x)
   if(obTab==="rk"){const bands=["Low","Medium","High"].map(n=>({n,lb:0,ln:0,cb:0,cn:0}));const bi=r=>r<.3?0:r<.55?1:2;
     for(const x of o.loans){const q=bands[bi(x.risk)];q.lb+=x.bal;q.ln++}for(const c of o.cards){const q=bands[bi(c.risk)];q.cb+=c.bal;q.cn++}
     const late=o.loans.filter(x=>x.st==="late"),lc=o.cards.filter(c=>c.st==="late"),nd=x=>x.miss>=(x.lim?C.cardMissDef:C.missDef)-1,el=obELoss(),
-      hs=Math.round(Math.max(0,Math.min(100,100-(bk?(late.reduce((a,x)=>a+x.bal,0)+lc.reduce((a,c)=>a+c.bal,0))/bk*150+el*12/bk*200+(bands[2].lb+bands[2].cb)/bk*30:0)-(rr<C.reqRes?10:0)))),
+      hh=obHealth(),hs=hh.s,
       top=[...o.loans.map(x=>({x,s:"📄",e:x.bal*obMiss(x.risk,x.rate)})),...o.cards.map(c=>({x:c,s:"💳",e:c.bal*obMiss(c.risk,c.rate)*C.cardMissMul}))].sort((a,b)=>b.e-a.e).slice(0,10),col=[G,Y,B];
-    return h+`<div class="ph-big" style="font-size:22px;color:${hs>=70?G:hs>=40?Y:B}">${hs}/100</div><div class="ph-sub">Portfolio health · higher is safer</div>
+    return h+`<div class="ph-big" style="font-size:22px;color:${hs>=70?G:hs>=40?Y:B}">${hs}/100</div><div class="ph-sub">Portfolio health · higher is safer</div><div class="ph-sub" style="margin-top:2px">${hh.why.length?"Pulling it down: "+hh.why.join(" · "):"Nothing significant pulling it down"}</div>
     <div class="ph-rows">${R("Expected default loss",fmt(el)+"/mo",el>Math.max(1,o.last?o.last.inc*.3:1)?Y:"")}${R("Late loans",late.length+" · "+fmt(late.reduce((a,x)=>a+x.bal,0)),late.length?Y:"")}${R("Late cards",lc.length+" · "+fmt(lc.reduce((a,c)=>a+c.bal,0)),lc.length?Y:"")}${R("One miss from default",o.loans.filter(x=>x.st==="late"&&nd(x)).length+o.cards.filter(c=>c.st==="late"&&nd(c)).length,B)}${R("Open collection cases",o.coll.filter(k=>k.st==="open").length)}</div>
     <p class="ph-sub" style="margin-top:12px">Exposure by risk band</p><div class="ph-rows">${bands.map((q,i)=>`<div><span style="color:${col[i]}">${q.n}</span><b>${fmt(q.lb)} (${q.ln}) · 💳 ${fmt(q.cb)} (${q.cn})</b></div><div class="bar" style="height:5px;background:#ffffff14;border-radius:3px"><div style="height:100%;width:${bk?Math.round((q.lb+q.cb)/bk*100):0}%;background:${col[i]};border-radius:3px"></div></div>`).join("")}</div>
     <p class="ph-sub" style="margin-top:12px">Top risky borrowers (expected monthly loss)</p><div class="ph-list">${top.map(({x,s,e})=>`<button data-ph="obcu" data-x="${x.cid||0}"><b>${s} ${x.n} · ${fmt(x.bal)}</b>${obRisk(x.risk)} risk · credit ${x.cr} · ${x.miss} missed${x.st==="late"?` · <span style="color:${Y}">LATE</span>`:""} · exp. loss ${fmt(e)}/mo</button>`).join("")||"<div>No exposure yet</div>"}</div>`}
