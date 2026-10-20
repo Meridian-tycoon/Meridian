@@ -350,10 +350,20 @@ const compMult=c=>Math.max(.4,1-0.13*rivalsIn(c));
 const buyoutCost=c=>Math.round(30000*PRICE[c.size]*(1+S.day/40));
 const mgrCost=c=>Math.round(20000*PRICE[c.size]);
 const bonus=(b,c)=>b.k==="airport"&&(S.own[c.id]||{}).airline?1.2:b.k==="airport"||b.k==="airline"?(c.size>=5?1.25:c.size<=2?.8:1):b.k==="hotel"&&c.size>=4?1.3:b.k==="apt"&&c.size<=2?1.25:1;
+/* Variety menus for carts and restaurants: gross x g, supplies used x u, switch fee = sw x price */
+const MENUS={cart:[{id:"hot",n:"Classic hot dogs",g:1,u:1,d:"Cheap and steady. The default."},{id:"taco",n:"Tacos",g:1.02,u:1.1,small:.14,d:"Street favourite: +14% sales in small towns (size 1-2)."},{id:"burg",n:"Gourmet burgers",g:1.06,u:1.35,big:.14,d:"Big tickets: +14% sales in big cities and real booms."},{id:"vegan",n:"Vegan bowls",g:.9,u:.72,slump:.3,d:"Lean on supplies; holds up in slumps (+30%)."}],
+  rest:[{id:"diner",n:"Diner classics",g:1,u:1,d:"Reliable. The default."},{id:"steak",n:"Steakhouse",g:1.05,u:1.25,slump:.25,d:"Loyal regulars: +5% sales, +25% more in slumps."},{id:"pizza",n:"Pizzeria",g:.88,u:.75,small:.15,d:"Cheap dough; town favourite: +15% sales in small towns (size 1-2)."},{id:"fine",n:"Fine dining",g:1.04,u:1.4,big:.16,d:"Top prices: +16% sales in big cities and real booms."}]};
+const MENU_SW=.05; // switching menus costs 5% of the business price
+let menuOv=null;   // {key:id} temporary override used to preview other menus
+function menuOf(c,k){const m=MENUS[k];if(!m||!c)return null;const key=c.id+":"+k,id=menuOv&&menuOv[key]||(S.menu||{})[key];return m.find(x=>x.id===id)||m[0]}
+function menuG(c,b){const m=menuOf(c,b.k);if(!m)return 1;const e=S.events&&S.events[c.id],boom=e&&e.m>=1.5,slump=e&&e.m<1;  // ads are m:1.4, real booms 1.6
+  return m.g+(m.small&&c.size<=2?m.small:0)+(m.big&&(c.size>=5||boom)?m.big:0)+(m.slump&&slump?m.slump:0)}
+function menuU(c,b){const m=menuOf(c,b.k);return m?m.u:1}
+function menuNet(c,b,lv,id){menuOv={[c.id+":"+b.k]:id};try{return profit(b,c,lv)-useRate(b,lv,c)*unitCost(b,c)}finally{menuOv=null}}
 const USE={cart:{burgers:2},kiosk:{bread:3},shop:{bread:4,tools:1},rest:{burgers:5,beef:3},office:{electronics:.5},hotel:{bread:8,electronics:.5}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
-function profit(b,c,lv){if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(1+0.55*(lv-1))-b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&b.k!=="apt"&&b.k!=="office"?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.3*(lv-1)))}
+function profit(b,c,lv){if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(1+0.55*(lv-1))-b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&b.k!=="apt"&&b.k!=="office"?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.3*(lv-1)))}
 function cityProfit(c){const o=S.own[c.id]||{};let t=0;for(const b of BIZ)if(o[b.k])t+=profit(b,c,o[b.k]);return t}
 /* renting: anything you don't own pays hourly rent (value / 40 per hour, so buying pays for itself in under 2 days of rent) */
 const RENT=1/40,FIT=.2;
@@ -497,7 +507,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
     for(const b of mine){const lv=o[b.k],p=profit(b,c,lv);const uc=upCost(b,c,lv);
       h+=`<div class="row"><div class="n">${b.n} <span class="tag" style="border:1px solid var(--line)">Lv ${lv}</span>${isLeased(c,b.k)?`<span class="tag" style="border:1px solid var(--line)">Rented · ${fmt(bizRent(b,c))}/hr</span>`:""}${bizReg(c,b.k)?"":`<span class="tag bust">Unregistered</span>`}</div>
       <div class="d">${USE[b.k]?(supFrac(c,b)>.99?'<span style="color:var(--good)">✓ Supplied from your warehouse (+35%)</span> · ':`<span style="color:var(--muted)">Supply ${Object.entries(USE[b.k]).map(([g,q])=>q*lv+' '+G[g][0].toLowerCase()).join(' + ')}/hr from a warehouse here for +35%${supFrac(c,b)>0?' (now '+Math.round(supFrac(c,b)*100)+'%)':''}</span> · `):''}Making <b style="color:${p<0?"var(--bad)":"var(--good)"}">${fmt(p)}</b>/hr${lv<MAXLV?` → <b>${fmt(profit(b,c,lv+1))}</b> at Lv ${lv+1}`:" · max level"}</div>
-      <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${lv<MAXLV?`<button class="buy up" data-up="${b.k}" ${S.cash<uc?"disabled":""}>Upgrade ${fmt(uc)}</button>`:`<button class="buy up" disabled>Maxed</button>`}${isLeased(c,b.k)?`<button class="buy" data-own="${b.k}" ${S.cash<cost(b,c)*(1-FIT)?"disabled":""}>Buy premises ${fmt(cost(b,c)*(1-FIT))}</button>`:""}</span></div>`+opsHtml(c,b,lv)+(b.k==="cart"?cartTips(c,b,lv):"")}
+      <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${lv<MAXLV?`<button class="buy up" data-up="${b.k}" ${S.cash<uc?"disabled":""}>Upgrade ${fmt(uc)}</button>`:`<button class="buy up" disabled>Maxed</button>`}${isLeased(c,b.k)?`<button class="buy" data-own="${b.k}" ${S.cash<cost(b,c)*(1-FIT)?"disabled":""}>Buy premises ${fmt(cost(b,c)*(1-FIT))}</button>`:""}</span></div>`+opsHtml(c,b,lv)+menuHtml(c,b,lv)+(b.k==="cart"?cartTips(c,b,lv):"")}
     const mc=mgrCost(c);
     h+=`<div class="row"><div class="n">City manager ${S.mgr[c.id]?'<span class="tag boom">Hired</span>':""}</div>
       <div class="d">${S.mgr[c.id]?"Sales here are 20% higher.":"Raises sales of every business here by 20%. One-time fee."}</div>
@@ -529,6 +539,9 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
   sheet.querySelectorAll("[data-own]").forEach(btn=>btn.onclick=()=>{const k=btn.dataset.own,b=BIZ.find(x=>x.k===k),p=cost(b,c)*(1-FIT);if(S.cash<p)return;
     S.cash-=p;delete S.lease[c.id][k];toast(`You now own the ${b.n.toLowerCase()} premises. No more rent.`);commit()});
   sheet.querySelectorAll("[data-up]").forEach(btn=>btn.onclick=()=>upgrade(c,btn.dataset.up));
+  sheet.querySelectorAll("[data-menu]").forEach(btn=>btn.onclick=()=>{const [k,id]=btn.dataset.menu.split("|"),b=BIZ.find(x=>x.k===k),m=(MENUS[k]||[]).find(x=>x.id===id);if(!b||!m||menuOf(c,k).id===id)return;
+    const fee=Math.round(cost(b,c)*MENU_SW);if(S.cash<fee){toast(`Switching menus costs ${fmt(fee)}`);return}
+    S.cash-=fee;S.menu=S.menu||{};S.menu[bkey(c,k)]=id;toast(`${b.n} now serves ${m.n} (${fmt(fee)} refit).`);commit()});
   const ad=$("#ads");if(ad)ad.onclick=()=>{const k=adCost(c);if(S.cash<k)return;S.cash-=k;S.events[c.id]={m:1.4,d:5};toast(`Ads running in ${c.name} for 5 hours`);commit()};
   const ua=$("#upall");if(ua)ua.onclick=()=>{const pl=upgradePlan(c);for(const [k] of pl.steps){const b=BIZ.find(x=>x.k===k);S.cash-=upCost(b,c,S.own[c.id][k]);S.own[c.id][k]++}toast(`${pl.n} upgrades done in ${c.name}`);commit()};
   sheet.querySelectorAll("[data-bo]").forEach(btn=>btn.onclick=()=>{const i=+btn.dataset.bo,k=buyoutCost(c);if(S.cash<k)return;S.cash-=k;
@@ -542,7 +555,7 @@ function upgrade(c,k){const b=BIZ.find(x=>x.k===k),lv=S.own[c.id][k],p=upCost(b,
   S.cash-=p;S.own[c.id][k]=lv+1;toast(`${b.n} in ${c.name} → Lv ${lv+1}`);commit()}
 function sellAll(c){const o=S.own[c.id];let v=0;for(const b of BIZ){const lv=o[b.k];if(!lv)continue;let x=isLeased(c,b.k)?cost(b,c)*FIT:cost(b,c);for(let l=1;l<lv;l++)x+=upCost(b,c,l);v+=x*.75}
   if(S.mgr[c.id])v+=mgrCost(c)*.5;
-  S.cash+=Math.round(v);delete S.own[c.id];delete S.mgr[c.id];delete S.lease[c.id];toast(`Sold ${c.name} for ${fmt(v)}`);commit()}
+  S.cash+=Math.round(v);delete S.own[c.id];delete S.mgr[c.id];if(S.menu)for(const k in MENUS)delete S.menu[bkey(c,k)];delete S.lease[c.id];toast(`Sold ${c.name} for ${fmt(v)}`);commit()}
 function commit(){checkGoals();save();renderSheet();hud();draw()}
 
 /* ---------- industry: land, farms, mines, factories, warehouses, fleet ---------- */
@@ -1441,7 +1454,7 @@ const ORDER_MIN=3;                                    // supplier delivery time,
 const bkey=(c,k)=>c.id+":"+k;
 const isStaffed=(c,k)=>!!S.staff[bkey(c,k)];
 const present=c=>!!(S.loc&&!S.trip&&S.loc.city===c.id);
-const useRate=(b,lv)=>SUP[b.k]?SUP[b.k].r*(1+.55*(lv-1)):0;  // units per hour at full speed
+const useRate=(b,lv,c)=>SUP[b.k]?SUP[b.k].r*(1+.55*(lv-1))*(c?menuU(c,b):1):0;  // units per hour at full speed
 const unitCost=(b,c)=>SUP[b.k].c*PRICE[c.size];
 const stockOf=(c,k)=>S.stock[bkey(c,k)]||0;
 const opFactor=(c,b)=>{const k=bkey(c,b.k);return S.opf[k]==null?0:S.opf[k]};
@@ -1450,18 +1463,20 @@ function runShops(h){
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv)continue;const key=bkey(c,b.k);
     const op=isStaffed(c,b.k)?1:(b.k==="apt"||b.k==="office"?1:present(c)?selfRate:0);
     if(!SUP[b.k]){S.opf[key]=op;continue}
-    const need=useRate(b,lv)*op*h,have=S.stock[key]||0;const f=need>0?Math.min(1,have/need):0;
+    const need=useRate(b,lv,c)*op*h,have=S.stock[key]||0;const f=need>0?Math.min(1,have/need):0;
     S.stock[key]=Math.max(0,have-need*f);S.opf[key]=op*(need>0?f:(have>0?1:0))}}
   // deliveries
   const now=Date.now();for(const o of S.orders.slice()){if(now<o.arr)continue;S.stock[o.key]=(S.stock[o.key]||0)+o.q;S.orders=S.orders.filter(x=>x!==o)}
   // managers restock automatically when stock drops under 2 hours
   for(const id in S.own){const c=CITIES[id];if(!S.mgr[c.id])continue;for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||!SUP[b.k])continue;const key=bkey(c,b.k);
-    if(!S.auto2[key]||S.orders.some(o=>o.key===key))continue;const r=useRate(b,lv);if((S.stock[key]||0)>=r*2)continue;
+    if(!S.auto2[key]||S.orders.some(o=>o.key===key))continue;const r=useRate(b,lv,c);if((S.stock[key]||0)>=r*2)continue;
     const q=Math.round(r*6),cost=q*unitCost(b,c)*1.1;if(S.cash<cost)continue;S.cash-=cost;S.orders.push({key,q,arr:now+ORDER_MIN*60000,auto:1})}}}
 function orderStock(c,b,q){const own=supMode()==="own"&&(S.own[c.id]||{}).trucking,cost=q*unitCost(b,c)*(own?1:1.06);if(S.cash<cost){toast(`That order costs ${fmt(cost)}`);return}
   S.cash-=cost;S.orders.push({key:bkey(c,b.k),q,arr:Date.now()+ORDER_MIN*60000*(own?.5:1)});toast(`Ordered ${q.toLocaleString()} ${SUP[b.k].u}. ${own?"Your trucks deliver":"Carrier delivers"} in ${own?ORDER_MIN/2:ORDER_MIN} min.`)}
+function menuHtml(c,b,lv){if(!MENUS[b.k])return "";const cur=menuOf(c,b.k),fee=Math.round(cost(b,c)*MENU_SW),base=SUP[b.k].r*(1+.55*(lv-1));
+  return `<div class="ops"><div class="ops-l"><b>🍽️ Menu</b>: ${cur.n}<br><span style="color:var(--muted)">Switching costs ${fmt(fee)}. Net = sales minus supplies, per hour, here and now:</span>`+MENUS[b.k].map(m=>`<br><button class="buy" style="margin-top:4px;width:100%;text-align:left" data-menu="${b.k}|${m.id}" ${m.id===cur.id||S.cash<fee?"disabled":""}>${m.id===cur.id?"✓ ":""}${m.n}: <b>${fmt(menuNet(c,b,lv,m.id))}/hr net</b> · ${Math.round(base*m.u)} ${SUP[b.k].u}/h<br><small>${m.d}</small></button>`).join("")+`</div></div>`}
 /* AI advisor tips for food carts: local, rule-based, no network */
-function cartTips(c,b,lv){try{const key=bkey(c,b.k),st=isStaffed(c,b.k),r=useRate(b,lv),have=stockOf(c,b.k),hrs=r?have/(r*(st?1:selfRate)):0,pend=S.orders.some(o=>o.key===key),p=profit(b,c,lv),t=[];
+function cartTips(c,b,lv){try{const key=bkey(c,b.k),st=isStaffed(c,b.k),r=useRate(b,lv,c),have=stockOf(c,b.k),hrs=r?have/(r*(st?1:selfRate)):0,pend=S.orders.some(o=>o.key===key),p=profit(b,c,lv),t=[];
   if(have<=0&&!pend)t.push("Out of stock: the cart sells nothing until you order more servings.");
   else if(hrs<3&&!pend)t.push(`Stock runs out in ~${hrs<1?Math.round(hrs*60)+" min":hrs.toFixed(1)+" h"}. Order now${S.mgr[c.id]&&!S.auto2[key]?" or switch on manager auto-restock":""}.`);
   if(!st&&b.k!=="apt")t.push(present(c)?"No staff: you're selling at 60% speed yourself. Hire staff to run it full time.":"No staff and you're away, so it's closed. Hire staff.");
@@ -1471,7 +1486,7 @@ function cartTips(c,b,lv){try{const key=bkey(c,b.k),st=isStaffed(c,b.k),r=useRat
   if(p<0)t.push("This cart is losing money. Check staff and stock, or try a bigger city.");
   if(!t.length)t.push("All good: stocked, staffed and profitable. Keep it up.");
   return `<div class="ops" style="border-left:3px solid var(--good)"><div class="ops-l"><b>🤖 AI advisor</b>${t.slice(0,3).map(x=>`<br>• ${x}`).join("")}</div></div>`}catch(e){return ""}}
-function opsHtml(c,b,lv){const key=bkey(c,b.k),st=isStaffed(c,b.k),staff=bizStaff(b.k,lv),sup=SUP[b.k],r=useRate(b,lv);
+function opsHtml(c,b,lv){const key=bkey(c,b.k),st=isStaffed(c,b.k),staff=bizStaff(b.k,lv),sup=SUP[b.k],r=useRate(b,lv,c);
   const pend=S.orders.filter(o=>o.key===key),opf=opFactor(c,b);
   const runs=st?"Run by your staff":(b.k==="apt"||b.k==="office")?"Tenants pay rent":present(c)?"You're running it yourself (60% speed)":"Closed: no staff and you're not here";
   let h=`<div class="ops"><div class="ops-l"><b style="color:${opf>.01?"var(--good)":"var(--bad)"}">${opf>.01?"Open":"Not selling"}</b> · ${runs}`;
@@ -1534,7 +1549,7 @@ function drawStreetLife(t){if(!LM||!stCity){return}const W2=amb.clientWidth,H2=a
   if(shops.length&&t-lastSpawn>420){lastSpawn=t;const sh=shops[Math.floor(Math.random()*shops.length)],pt=LM.latLngToContainerPoint([sh.p.lat,sh.p.lon]),a=Math.random()*Math.PI*2,dist=60+Math.random()*90;
     walkers.push({x:pt.x+Math.cos(a)*dist,y:pt.y+Math.sin(a)*dist,sh,t0:t,dur:3500+Math.random()*2500,col:["#f472b6","#60a5fa","#fbbf24","#34d399","#e5e7eb"][Math.floor(Math.random()*5)]})}
   for(let i=walkers.length-1;i>=0;i--){const w=walkers[i],pt=LM.latLngToContainerPoint([w.sh.p.lat,w.sh.p.lon]),u=(t-w.t0)/w.dur;
-    if(u>=1){walkers.splice(i,1);const per=profit(w.sh.b,stCity,w.sh.lv)/Math.max(1,useRate(w.sh.b,w.sh.lv)||40);pops2.push({x:pt.x,y:pt.y-30,t0:t,v:Math.max(1,per)});continue}
+    if(u>=1){walkers.splice(i,1);const per=profit(w.sh.b,stCity,w.sh.lv)/Math.max(1,useRate(w.sh.b,w.sh.lv,stCity)||40);pops2.push({x:pt.x,y:pt.y-30,t0:t,v:Math.max(1,per)});continue}
     const x=w.x+(pt.x-w.x)*u,y=w.y+(pt.y-w.y)*u+Math.sin(u*40)*1.2;actx.globalAlpha=Math.min(1,u*4,(1-u)*6);actx.fillStyle=w.col;actx.beginPath();actx.arc(x,y,3.2,0,7);actx.fill();actx.strokeStyle="rgba(0,0,0,.5)";actx.lineWidth=1;actx.stroke()}
   for(let i=pops2.length-1;i>=0;i--){const p=pops2[i],u=(t-p.t0)/1200;if(u>=1){pops2.splice(i,1);continue}
     actx.globalAlpha=1-u;actx.font="700 12px var(--mono),monospace";actx.textAlign="center";actx.fillStyle="#6ee7b7";actx.fillText("+$"+(p.v<10?p.v.toFixed(2):Math.round(p.v)),p.x,p.y-u*26)}
@@ -1864,7 +1879,7 @@ function warHour(quiet){S.wars=S.wars||[];const ws=S.wars;
       if(w.l===4)for(const n of [w.a,w.b])gov(n).appr=Math.min(90,gov(n).appr+10)}
     else if(r>1-dn){w.l--;if(!quiet)logGov(w.l?`${w.a}–${w.b}: de-escalates to ${WARL[w.l].toLowerCase()}`:`${w.a} and ${w.b} sign a peace deal`)}
     if(w.l>=4)for(const n of [w.a,w.b])for(const c of ctyCities(n)){const o=S.own[c.id];if(!o||Math.random()>.03)continue;
-      const ks=Object.keys(o),k=ks[Math.floor(Math.random()*ks.length)];if(--o[k]<=0)delete o[k];if(!Object.keys(o).length)delete S.own[c.id];
+      const ks=Object.keys(o),k=ks[Math.floor(Math.random()*ks.length)];if(--o[k]<=0){delete o[k];if(S.menu)delete S.menu[bkey(c,k)]}if(!Object.keys(o).length)delete S.own[c.id];
       if(!quiet)logGov(`Fighting in ${c.name} damaged your ${BIZ.find(x=>x.k===k).n.toLowerCase()}`)}}
   S.wars=ws.filter(w=>w.l>0)}
 function warAct(id,a){const w=(S.wars||[]).find(x=>x.id===id);if(!w)return;const cst=warCost(w);if(S.cash<cst){toast(`Need ${fmt(cst)}`);return}S.cash-=cst;
