@@ -2512,11 +2512,23 @@ window.addEventListener("resize",resize);
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",draw);
 new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeSheet()});
-/* offline: full pay for the time away, up to 48 hours */
-function catchUp(){const away=Date.now()-(S.acc||Date.now());const got=accrue();
+/* offline: full pay for the time away, up to 48 hours, then a welcome-back summary */
+function catchUp(){const now0=Date.now(),away=now0-(S.acc||now0),cash0=S.cash,debt0=S.debt||0,hadStock=Object.keys(S.stock||{}).filter(k=>S.stock[k]>0);
+  const got=accrue();
   S.last=Date.now();checkGoals();save();hud();draw();
-  if(away>5*60000&&got>1){const hrs=away/DAYMS,t=hrs>=1?hrs.toFixed(1)+" h":Math.round(away/60000)+" min";
-    S.log.unshift(`While you were away (${t}): ${fmt(got)} earned`);S.log=S.log.slice(0,3);hud();toast(`Welcome back · +${fmt(got)}`)}}
+  if(away>5*60000){const hrs=away/DAYMS,t=hrs>=1?hrs.toFixed(1)+" h":Math.round(away/60000)+" min";
+    if(got>1){S.log.unshift(`While you were away (${t}): ${fmt(got)} earned`);S.log=S.log.slice(0,3);hud()}
+    const ran=hadStock.filter(k=>!(S.stock[k]>0));awaySummary({away,got,net:S.cash-cash0,debt:(S.debt||0)-debt0,ran,capped:away>48*DAYMS})}}
+function awaySummary(r){let el=$("#away");if(!el){el=document.createElement("div");el.id="away";document.body.appendChild(el)}
+  const nm=k=>{const [id,b]=k.split(":");const c=CITIES[id],bz=BIZ.find(x=>x.k===b);return (bz?bz.n:b)+(c?" in "+c.name:"")};
+  const row=(a,b,col)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)"><span>${a}</span><b${col?` style="color:${col}"`:""}>${b}</b></div>`;
+  el.innerHTML=`<div style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px" data-away="x"><div style="background:var(--panel);color:var(--ink);border-radius:14px;max-width:360px;width:100%;padding:18px;box-shadow:0 18px 40px rgba(0,0,0,.35)">
+    <h3 style="margin:0 0 4px">While you were away</h3><p class="d" style="margin:0 0 10px;color:var(--muted)">Your empire kept running for ${fmtDur(r.away)}.</p>
+    ${r.got>1?row("Earned",fmt(r.got),"var(--good)"):""}${row("Cash change",(r.net>=0?"+":"")+fmt(r.net),r.net>=0?"var(--good)":"var(--bad)")}${Math.abs(r.debt)>1?row("Debt change",(r.debt>0?"+":"")+fmt(r.debt),r.debt>0?"var(--bad)":"var(--good)"):""}
+    ${r.ran.length?`<p style="margin:10px 0 4px;color:var(--bad)"><b>Ran out of stock:</b></p><div class="d">${r.ran.slice(0,5).map(nm).join("<br>")}${r.ran.length>5?`<br>and ${r.ran.length-5} more`:""}</div>`:""}
+    ${r.capped?`<p class="d" style="margin:10px 0 0;color:var(--muted)">Offline earnings stop after 48 hours. Check in at least every two days to keep everything paid.</p>`:""}
+    <button class="buy" data-away="x" style="margin-top:14px;width:100%">Back to work</button></div></div>`;
+  el.onclick=e=>{if(e.target.dataset.away)el.innerHTML=""}}
 resize();catchUp();hud();
 if(!S.log.length){S.log=["You start with nothing. Tap a city, open Jobs & home, rent a room and apply for work."];hud()}
 if(!world)toast("Map outline didn't load. Cities still work.");
