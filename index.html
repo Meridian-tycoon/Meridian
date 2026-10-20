@@ -2078,7 +2078,7 @@ function ugAct(a,x){const u=UG(),c=ugCity();
   else if(a==="recruit"){const p=Math.round(3000*Math.pow(1.12,u.gang.m));if(S.cash<p)return;S.cash-=p;u.gang.m++;u.heat=Math.min(100,u.heat+2);toast(`${u.gang.m} members`)}
   else if(a==="turf"){const need=3+c.size*2;if(u.gang.m<need){toast(`Needs ${need} members for ${c.name}`);return}if(Math.random()<.7){u.turf[c.id]=(u.turf[c.id]||0)+1;u.heat=Math.min(100,u.heat+10);u.rep+=4;toast(`You run ${c.name} now`)}else{u.gang.m=Math.max(1,u.gang.m-2);u.heat=Math.min(100,u.heat+15);toast("Turf war lost: 2 members down")}}}
 function ugApp(){const u=UG(),c=ugCity(),now=Date.now(),hc=u.heat>66?"#ef4444":u.heat>33?"#f59e0b":"#22c55e";
-  let h=`<div class="ph-sub">${c.name} · street rep ${u.rep}</div><div style="height:8px;background:#ffffff22;border-radius:4px;overflow:hidden;margin:6px 0 2px"><div style="height:100%;width:${u.heat}%;background:${hc}"></div></div><div class="ph-sub">Heat ${Math.round(u.heat)}% · cools ~6%/hr · the higher it is, the likelier an arrest</div>`;
+  let h=`<div class="ph-sub">${c.name} · street rep ${u.rep}</div><div style="height:8px;background:#ffffff22;border-radius:4px;overflow:hidden;margin:6px 0 2px"><div id="ugbar" style="height:100%;width:${u.heat}%;background:${hc}"></div></div><div class="ph-sub" id="ugheat">Heat ${Math.round(u.heat)}% · cools ~6%/hr · the higher it is, the likelier an arrest</div>`;
   h+=`<div class="ph-list" style="margin-top:8px">`;for(const j of UGJ){const cd=Math.max(0,(u.cd[j.k]||0)-now),lock=(j.rep&&u.rep<j.rep)||(j.gang&&(!u.gang||u.gang.m<j.gang));
     h+=`<div><b>${j.n}</b> <span style="float:right;font-family:var(--mono)">~${fmt(ugPay(j))}</span><small style="display:block">${j.d} ${Math.round(j.ok*100)}% odds · +${j.heat}% heat${j.rep?` · ${j.rep} rep`:""}</small>
       <button class="buy" data-ph="ug" data-k="${j.k}" style="width:100%;margin-top:4px" ${cd||lock?"disabled":""}>${cd?"Lie low "+Math.ceil(cd/1000)+"s":lock?"Locked":"Do it"}</button></div>`}
@@ -2091,6 +2091,12 @@ function ugApp(){const u=UG(),c=ugCity(),now=Date.now(),hc=u.heat>66?"#ef4444":u
     else h+=`<p class="ph-sub">Start your own gang to recruit and take turf.</p>`;
     h+=`<button class="buy up" data-ph="uga" data-a="leave" style="width:100%;margin-top:6px">Leave the gang</button>`}
   return h+`<p class="ph-sub" style="margin-top:8px">Every arrest goes on your record and can mean prison time.</p>`}
+/* live-update the Underground app in place (no re-render, so scrolling never jumps) */
+setInterval(()=>{if(!PH.open||PH.app!=="ug")return;const u=UG(),now=Date.now(),el=PH.el;
+  const bar=el.querySelector("#ugbar");if(bar){bar.style.width=u.heat+"%";bar.style.background=u.heat>66?"#ef4444":u.heat>33?"#f59e0b":"#22c55e"}
+  const ht=el.querySelector("#ugheat");if(ht)ht.textContent=`Heat ${Math.round(u.heat)}% · cools ~6%/hr · the higher it is, the likelier an arrest`;
+  el.querySelectorAll('[data-ph="ug"]').forEach(b=>{const j=UGJ.find(x=>x.k===b.dataset.k),cd=Math.max(0,(u.cd[j.k]||0)-now),lock=(j.rep&&u.rep<j.rep)||(j.gang&&(!u.gang||u.gang.m<j.gang));
+    const t=cd?"Lie low "+Math.ceil(cd/1000)+"s":lock?"Locked":"Do it";if(b.textContent!==t)b.textContent=t;b.disabled=!!(cd||lock)})},1000);
 let saveT=0;
 setInterval(()=>{if(saveT%10===0)accrue();checkApp();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -2162,6 +2168,7 @@ function appHtml(k){const {inc,nw}=totals();
   if(k==="calc")return `<input class="ph-calc" id="phc" inputmode="decimal" placeholder="e.g. 1500*12-300" aria-label="Calculator"><div class="ph-big" id="phr" style="font-size:22px">0</div><p class="ph-sub">Type a sum. + − × ÷ and brackets work.</p>`;
   return ""}
 const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);return `<button class="ph-item" data-ph="buyitem" data-k="${it.k}" ${S.cash<p?"disabled":""}><span>${it.n}<small>${NEEDS.filter(([q])=>it[q]).map(([q,n])=>(it[q]>0?"+":"")+it[q]+" "+n.toLowerCase()).join(", ")}</small></span><b>${fmt(p)}</b></button>`};
+["touchstart","touchmove","wheel","scroll","pointerdown"].forEach(t=>PH.el.addEventListener(t,()=>{PH.touched=Date.now()},{passive:true,capture:true}));
 PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;
   if(a==="unfold"){PH.open=true;PH.app=null}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="app"){PH.app=b.dataset.k}
   else if(a==="buyitem"){const it=ITEMS.find(x=>x.k===b.dataset.k),p=itemPrice(it,CITIES[(S.home||{city:0}).city]);if(S.cash<p)return;S.cash-=p;for(const [q] of NEEDS)if(it[q])S.need[q]=Math.max(0,Math.min(100,S.need[q]+it[q]));toast(`${it.n} delivered`);save();hud()}
@@ -2183,7 +2190,7 @@ PH.el.addEventListener("input",e=>{if(e.target.id!=="phc")return;const v=e.targe
   window.addEventListener("pointerup",e=>{if(!st||e.pointerId!==st.id)return;st=null;PH.el.classList.remove("dragging");
     if(PH.dragged){if(!PH.open){const w=PH.el.offsetWidth;PH.x=PH.x+w/2<innerWidth/2?4:innerWidth-w-4;phPlace()}phSave();setTimeout(()=>PH.dragged=false,0)}})})();
 window.addEventListener("resize",phPlace);
-setInterval(()=>{trackNews();if(!PH.open||[null,"wallet","needs","job","weather","ug"].includes(PH.app)||(PH.app==="travel"&&S.trip))phRender()},2000);
+setInterval(()=>{trackNews();if(PH.open&&Date.now()-(PH.touched||0)<3000)return;if(!PH.open||[null,"wallet","needs","job","weather"].includes(PH.app)||(PH.app==="travel"&&S.trip))phRender()},2000);
 trackNews();phRender();
 
 /* ---------- travel: you are somewhere. Fly, take the train or bus, drive, or grab a taxi ---------- */
