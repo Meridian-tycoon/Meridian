@@ -497,7 +497,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
     for(const b of mine){const lv=o[b.k],p=profit(b,c,lv);const uc=upCost(b,c,lv);
       h+=`<div class="row"><div class="n">${b.n} <span class="tag" style="border:1px solid var(--line)">Lv ${lv}</span>${isLeased(c,b.k)?`<span class="tag" style="border:1px solid var(--line)">Rented · ${fmt(bizRent(b,c))}/hr</span>`:""}${bizReg(c,b.k)?"":`<span class="tag bust">Unregistered</span>`}</div>
       <div class="d">${USE[b.k]?(supFrac(c,b)>.99?'<span style="color:var(--good)">✓ Supplied from your warehouse (+35%)</span> · ':`<span style="color:var(--muted)">Supply ${Object.entries(USE[b.k]).map(([g,q])=>q*lv+' '+G[g][0].toLowerCase()).join(' + ')}/hr from a warehouse here for +35%${supFrac(c,b)>0?' (now '+Math.round(supFrac(c,b)*100)+'%)':''}</span> · `):''}Making <b style="color:${p<0?"var(--bad)":"var(--good)"}">${fmt(p)}</b>/hr${lv<MAXLV?` → <b>${fmt(profit(b,c,lv+1))}</b> at Lv ${lv+1}`:" · max level"}</div>
-      <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${lv<MAXLV?`<button class="buy up" data-up="${b.k}" ${S.cash<uc?"disabled":""}>Upgrade ${fmt(uc)}</button>`:`<button class="buy up" disabled>Maxed</button>`}${isLeased(c,b.k)?`<button class="buy" data-own="${b.k}" ${S.cash<cost(b,c)*(1-FIT)?"disabled":""}>Buy premises ${fmt(cost(b,c)*(1-FIT))}</button>`:""}</span></div>`+opsHtml(c,b,lv)}
+      <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${lv<MAXLV?`<button class="buy up" data-up="${b.k}" ${S.cash<uc?"disabled":""}>Upgrade ${fmt(uc)}</button>`:`<button class="buy up" disabled>Maxed</button>`}${isLeased(c,b.k)?`<button class="buy" data-own="${b.k}" ${S.cash<cost(b,c)*(1-FIT)?"disabled":""}>Buy premises ${fmt(cost(b,c)*(1-FIT))}</button>`:""}</span></div>`+opsHtml(c,b,lv)+(b.k==="cart"?cartTips(c,b,lv):"")}
     const mc=mgrCost(c);
     h+=`<div class="row"><div class="n">City manager ${S.mgr[c.id]?'<span class="tag boom">Hired</span>':""}</div>
       <div class="d">${S.mgr[c.id]?"Sales here are 20% higher.":"Raises sales of every business here by 20%. One-time fee."}</div>
@@ -1460,6 +1460,17 @@ function runShops(h){
     const q=Math.round(r*6),cost=q*unitCost(b,c)*1.1;if(S.cash<cost)continue;S.cash-=cost;S.orders.push({key,q,arr:now+ORDER_MIN*60000,auto:1})}}}
 function orderStock(c,b,q){const own=supMode()==="own"&&(S.own[c.id]||{}).trucking,cost=q*unitCost(b,c)*(own?1:1.06);if(S.cash<cost){toast(`That order costs ${fmt(cost)}`);return}
   S.cash-=cost;S.orders.push({key:bkey(c,b.k),q,arr:Date.now()+ORDER_MIN*60000*(own?.5:1)});toast(`Ordered ${q.toLocaleString()} ${SUP[b.k].u}. ${own?"Your trucks deliver":"Carrier delivers"} in ${own?ORDER_MIN/2:ORDER_MIN} min.`)}
+/* AI advisor tips for food carts: local, rule-based, no network */
+function cartTips(c,b,lv){try{const key=bkey(c,b.k),st=isStaffed(c,b.k),r=useRate(b,lv),have=stockOf(c,b.k),hrs=r?have/(r*(st?1:selfRate)):0,pend=S.orders.some(o=>o.key===key),p=profit(b,c,lv),t=[];
+  if(have<=0&&!pend)t.push("Out of stock: the cart sells nothing until you order more servings.");
+  else if(hrs<3&&!pend)t.push(`Stock runs out in ~${hrs<1?Math.round(hrs*60)+" min":hrs.toFixed(1)+" h"}. Order now${S.mgr[c.id]&&!S.auto2[key]?" or switch on manager auto-restock":""}.`);
+  if(!st&&b.k!=="apt")t.push(present(c)?"No staff: you're selling at 60% speed yourself. Hire staff to run it full time.":"No staff and you're away, so it's closed. Hire staff.");
+  if(lv<MAXLV){const uc=upCost(b,c,lv),g=profit(b,c,lv+1)-p;if(g>0){const h=Math.ceil(uc/g);t.push(`Upgrade to Lv ${lv+1}: +${fmt(g)}/hr, pays back in ${h<48?h+" h":(h/24).toFixed(1)+" days"}${S.cash<uc?` (you need ${fmt(uc-S.cash)} more)`:""}.`)}}
+  const ev=S.events[c.id];if(ev&&ev.m>1)t.push(`Boom in ${c.name} for ${ev.d}h: keep stock high, demand is up.`);else if(ev)t.push(`Slump in ${c.name} for ${ev.d}h: hold off on big orders.`);
+  if(typeof law==="function"&&!law(c,"grant"))t.push("Small-business grants are off here. A party that backs them would give carts +10%.");
+  if(p<0)t.push("This cart is losing money. Check staff and stock, or try a bigger city.");
+  if(!t.length)t.push("All good: stocked, staffed and profitable. Keep it up.");
+  return `<div class="ops" style="border-left:3px solid var(--good)"><div class="ops-l"><b>🤖 AI advisor</b>${t.slice(0,3).map(x=>`<br>• ${x}`).join("")}</div></div>`}catch(e){return ""}}
 function opsHtml(c,b,lv){const key=bkey(c,b.k),st=isStaffed(c,b.k),staff=bizStaff(b.k,lv),sup=SUP[b.k],r=useRate(b,lv);
   const pend=S.orders.filter(o=>o.key===key),opf=opFactor(c,b);
   const runs=st?"Run by your staff":(b.k==="apt"||b.k==="office")?"Tenants pay rent":present(c)?"You're running it yourself (60% speed)":"Closed: no staff and you're not here";
