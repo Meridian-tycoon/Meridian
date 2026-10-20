@@ -3,7 +3,7 @@
 Shared work queue for the subagents in `.claude/agents/`.
 
 Format: `- [ ] [agent-name] (priority, area) task`
-- `agent-name`: the agent that should do it (`meridian-builder`, `meridian-balance`, `meridian-tester`, `agent-manager`).
+- `agent-name`: the agent that should do it (`meridian-builder`, `meridian-reviewer`, `meridian-tester`, `meridian-release`, `meridian-balance`, `agent-manager`).
 - `priority`: `high`, `med` or `low`. `area`: the part of the game or repo it touches.
 - An agent with no specific task picks the first unticked item tagged with its name.
 - When done, tick it `[x]` and append ` — done YYYY-MM-DD: one-line result`.
@@ -23,3 +23,4 @@ Format: `- [ ] [agent-name] (priority, area) task`
 - [ ] [meridian-builder] (low, Stocks & crypto) Portfolio header labels market value (holdVal) as "invested"; rename to "value" or show cost basis separately
 - [ ] [meridian-builder] (low, Stocks & crypto) Phone Buy buttons use the dark --ink fill on the dark phone so their surface barely stands out, and 3-column qty buttons wrap unevenly ("Buy 100"/"Sell 10" on two lines); give phone .buy a lighter fill and nowrap. Also the Buy disabled check uses a 0.5% fee for stocks (fee is 0.1%)
 - [x] [meridian-builder] (med, Businesses) refreshButtons() (5s tick on the Business tab) re-enables any Buy/Rent whose label has a $ price when cash is enough, so rows blocked by bizBlock (no HQ, gambling banned, no airport, seaport size<3) turn clickable again after ~5s; tapping enters placement and ends in a generic "Couldn't complete that purchase" (no state change). Skip buttons in rows with a bizBlock reason (e.g. mark them data-fixed). Small casino "Locked" button is unaffected but is very faint (white on grey at row opacity .6 × .32) — done 2026-10-20: retested; blocked Buy/Rent (no HQ, gambling ban, no airport site, small seaport, small-casino Locked) stay disabled through 2+ refresh cycles (data-fixed="1"); unblocked rows still toggle with cash in ~2.5–4.5s; casino.js no regressions; 0 errors at 390x844.
+- [ ] [meridian-builder] (low, Code health) Rename block-scoped `const L` locals (index.html:1041, 1045, 1059 mLevel results; 1490 `for(const L of LANES)`; 1590 last point; 1793 `L=LAWS[k]`) to e.g. `lv`/`ln`/`law`; harmless today but they shadow Leaflet `L` and break the "never name anything L" rule meridian-reviewer checks
