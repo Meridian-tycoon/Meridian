@@ -391,7 +391,7 @@ function totals(){let inc=0,assets=0;
   const interest=typeof bankPayHr==="function"?Math.round(bankPayHr()):Math.round(S.debt*0.003);
   const upk=typeof indUpkeep==="function"?indUpkeep():0;assets+=typeof indAssets==="function"?indAssets():0;
   const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof luxIncome==="function"){inc+=luxIncome();assets+=luxAssets()}if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
-  if(typeof holdVal==="function")assets+=holdVal();
+  if(typeof holdVal==="function")assets+=holdVal();if(typeof gearAssets==="function")assets+=gearAssets();
   return{inc:inc-(typeof bankPayHr==="function"?0:interest)-upk-rent,interest,upk,rent,nw:S.cash+assets-S.debt}}
 
 /* ---------- map: a 3D globe you can spin 360° in any direction ---------- */
@@ -1289,7 +1289,7 @@ const itemPrice=(it,c)=>Math.round(it.p*COL(c)*100)/100;
 const DECAY={h:1.2,f:6,m:4};
 function runNeeds(hours){const N=S.need;let left=hours;
   while(left>1e-6){const h=Math.min(.25,left);left-=h;
-    for(const [k] of NEEDS){let d=-DECAY[k];if(k==="h"){if(N.f<=0)d-=4;if(N.m<=0)d-=1}
+    for(const [k] of NEEDS){let d=-DECAY[k]*gearDecay(k);if(k==="h"){if(N.f<=0)d-=4;if(N.m<=0)d-=1}
       const hm=S.home&&(typeof atHomeNow!=="function"||atHomeNow());
       if(hm&&N[k]<HOMECAP)N[k]=Math.min(HOMECAP,N[k]+15*h);   // home refills toward 85
       else N[k]=Math.max(hm?HOMECAP:0,N[k]+d*h*(S.home&&!hm?.5:1))}                // above 85 (or homeless) it decays
@@ -2062,10 +2062,10 @@ const GIGS=[{n:"Flyers",v:"Hand out flyer",p:.25,u:0},{n:"Deliveries",v:"Deliver
 function gigState(){const g=S.gig=S.gig||{i:0,taps:0,combo:0,last:0,en:100,today:0,day:0,t:Date.now()};
   const now=Date.now();if(g.ride&&now>=g.ride.end){const v=g.ride.pay;g.ride=null;g.rides=(g.rides||0)+1;S.cash+=v;S.earned=(S.earned||0)+v;g.today+=v;toast("Ride complete · +"+fmtc(v))}g.en=Math.min(100,g.en+(now-g.t)/1000*.5);g.t=now;if(now-g.last>1500)g.combo=0;const d=Math.floor(now/(24*DAYMS));if(d!==g.day){g.day=d;g.today=0}return g}
 function gigPay(){const g=gigState(),c=CITIES[(S.loc||{city:0}).city];if(jailed())return .1;
-  return Math.round(GIGS[g.i].p*COL(c)*(1+Math.min(1,g.combo/50))*(g.en<10?.3:1)*(1+Math.min(.5,(S.exp||0)*.002))*100)/100}
+  return Math.round(GIGS[g.i].p*COL(c)*(1+Math.min(1,g.combo/50))*(g.en<10?.3:1)*(1+Math.min(.5,(S.exp||0)*.002))*(gearOwn().laptop?1.05:1)*100)/100}
 /* rideshare: car owners only; one ride at a time on a timer so it can't be autoclicked */
 const RIDE_MS=8000,RIDE_EN=6,RIDE_TIER={compact:1,sedan:1.15,suv:1.25,sports:1.5};
-function ridePay(){const c=CITIES[(S.loc||{city:0}).city];return S.car?Math.round(12*COL(c)*(RIDE_TIER[S.car.k]||1)*(1+Math.min(.5,(S.exp||0)*.002))*100)/100:0}
+function ridePay(){const c=CITIES[(S.loc||{city:0}).city];return S.car?Math.round(12*COL(c)*(RIDE_TIER[S.car.k]||1)*(1+Math.min(.5,(S.exp||0)*.002))*(gearOwn().phone?1.05:1)*100)/100:0}
 function rideStart(){const g=gigState();if(!S.car||g.ride||jailed())return;if(g.en<RIDE_EN){toast("Too tired to drive, rest a bit");return}
   g.en-=RIDE_EN;g.ride={end:Date.now()+RIDE_MS,pay:ridePay()};setTimeout(()=>{gigState();save();hud();phRender()},RIDE_MS+60);phRender()}
 function rideHtml(){const g=gigState();if(jailed())return "";if(!S.car)return `<div class="ph-card" style="margin-top:8px;opacity:.7"><b>🔒 Rideshare</b><span>Buy a car to drive</span></div>`;
@@ -2395,6 +2395,25 @@ sheet.addEventListener("click",e=>{if(!e.target.closest("#cb-go")||!sel)return;c
   const d={k:"cx"+(S.nid++),n,e:[...cbForm.e.replace(/[<>&"]/g,"").trim()].slice(0,2).join(""),t:cbForm.t,sz:cbForm.sz,st:cbForm.st,city:c.id};S.cash-=fee;S.cbiz.push(d);cbReg(d);cbForm.n="";
   toast(`${n} is ready. Buy or rent it below, then order stock.`);commit()});
 
+/* ---------- Shop app: home appliances & electronics (cars reuse the Garage) ---------- */
+const GEAR=[
+ {k:"fridge",n:"Fridge",p:900,c:"Appliances",e:"Food drains 15% slower"},
+ {k:"microwave",n:"Microwave",p:150,c:"Appliances",e:"Food drains 5% slower"},
+ {k:"washer",n:"Washing machine",p:700,c:"Appliances",e:"Mind drains 5% slower"},
+ {k:"ac",n:"Air conditioner",p:1200,c:"Appliances",e:"Mind drains 8% slower, health 5% slower"},
+ {k:"tv",n:"Smart TV",p:800,c:"Electronics",e:"Mind drains 8% slower"},
+ {k:"console",n:"Game console",p:500,c:"Electronics",e:"Mind drains 5% slower"},
+ {k:"laptop",n:"Laptop",p:1400,c:"Electronics",e:"+5% gig tap pay"},
+ {k:"phone",n:"Phone upgrade",p:1100,c:"Electronics",e:"+5% rideshare pay"}];
+const GEARFX={fridge:{f:.15},microwave:{f:.05},washer:{m:.05},ac:{m:.08,h:.05},tv:{m:.08},console:{m:.05}};
+function gearOwn(){if(!S.gear||typeof S.gear!=="object")S.gear={};return S.gear}
+function gearDecay(k){const g=gearOwn();let cut=0;for(const x in GEARFX)if(g[x]&&GEARFX[x][k])cut+=GEARFX[x][k];return 1-Math.min(.25,cut)}
+function gearAssets(){const g=gearOwn();return GEAR.reduce((a,x)=>a+(g[x.k]?x.p*.5:0),0)}
+let shopTab="Cars";
+function shopApp(){const g=gearOwn();let h=`<div class="ph-seg">${["Cars","Appliances","Electronics"].map(k=>`<button data-ph="shoptab" data-k="${k}" aria-pressed="${shopTab===k}">${k}</button>`).join("")}</div>`;
+  if(shopTab==="Cars")return h+garageHtml();
+  h+=GEAR.filter(x=>x.c===shopTab).map(x=>g[x.k]?`<button class="ph-item" data-ph="sellgear" data-k="${x.k}"><span>${x.n} · Owned<small>${x.e} · Sell for 50%</small></span><b>${fmt(x.p*.5)}</b></button>`:`<button class="ph-item" data-ph="buygear" data-k="${x.k}" ${S.cash<x.p?"disabled":""}><span>${x.n}<small>${x.e}</small></span><b>${fmt(x.p)}</b></button>`).join("");
+  return h+`<p class="ph-sub">One of each. Comfort bonuses stack up to 25% slower drain per need.</p>`}
 let saveT=0;
 setInterval(()=>{if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -2414,7 +2433,7 @@ try{Object.assign(PH,JSON.parse(localStorage.getItem("meridian-phone")||"{}"),{e
 const phSave=()=>{try{localStorage.setItem("meridian-phone",JSON.stringify({open:PH.open,x:PH.x,y:PH.y}))}catch(e){}};
 let lastLog="";
 function trackNews(){const l=S.log[0];if(l&&l!==lastLog){lastLog=l;if(!S.news.length||S.news[0].t!==l){S.news.unshift({t:l,at:Date.now()});S.news=S.news.slice(0,40)}}}
-const ICO={stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,
+const ICO={shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,
  wallet:'<path d="M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z M3 7l12-3v3 M16 13.5h2"/>',
  news:'<path d="M4 5h13v14H6a2 2 0 0 1-2-2z M17 9h3v8a2 2 0 0 1-2 2 M7 9h7 M7 12h7 M7 15h5"/>',
  needs:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -2424,7 +2443,7 @@ const ICO={stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0
  market:'<path d="M4 19V9 M10 19V5 M16 19v-7 M22 19H2"/>',
  travel:'<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["wallet","Wallet","#0f766e"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"]];
+const APPS=[["wallet","Wallet","#0f766e"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 function phPlace(){const el=PH.el,w=el.offsetWidth,h=el.offsetHeight,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
@@ -2443,6 +2462,7 @@ function phRender0(){const el=PH.el;el.classList.toggle("folded",!PH.open);
 function appHtml(k){const {inc,nw}=totals();
   if(k==="ug")return ugApp();
   if(k==="stocks")return mktApp();
+  if(k==="shop")return shopApp();
   if(k==="gig"){const g=gigState(),v=gigPay();return `<div class="ph-sub">${jailed()?"Prison labour":GIGS[g.i].n} · ${CITIES[(S.loc||{city:0}).city].name}</div>
     ${rideHtml()}
     <button data-ph="gigtap" style="width:100%;aspect-ratio:1.4;border:0;border-radius:18px;background:#b45309;color:#fff;font:inherit;font-size:22px;font-weight:700;cursor:pointer;margin:8px 0;touch-action:manipulation">${GIGS[g.i].v}<br><span style="font-size:15px;font-weight:600;opacity:.9">+${fmtc(v)}</span></button>
@@ -2471,6 +2491,9 @@ const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);ret
 ["touchstart","touchmove","wheel","scroll","pointerdown"].forEach(t=>PH.el.addEventListener(t,()=>{PH.touched=Date.now()},{passive:true,capture:true}));
 PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;
   if(a==="unfold"){PH.open=true;PH.app=null}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="app"){PH.app=b.dataset.k}
+  else if(a==="shoptab"){shopTab=b.dataset.k}
+  else if(a==="buygear"){const x=GEAR.find(y=>y.k===b.dataset.k),g=gearOwn();if(!x||g[x.k]||S.cash<x.p)return;S.cash-=x.p;g[x.k]=1;toast(`You bought a ${x.n.toLowerCase()}`);save();hud()}
+  else if(a==="sellgear"){const x=GEAR.find(y=>y.k===b.dataset.k),g=gearOwn();if(!x||!g[x.k])return;delete g[x.k];S.cash+=x.p*.5;toast(`${x.n} sold`);save();hud()}
   else if(a==="buyitem"){const it=ITEMS.find(x=>x.k===b.dataset.k),p=itemPrice(it,CITIES[(S.home||{city:0}).city]);if(S.cash<p)return;S.cash-=p;for(const [q] of NEEDS)if(it[q])S.need[q]=Math.max(0,Math.min(100,S.need[q]+it[q]));toast(`${it.n} delivered`);save();hud()}
   else if(a==="repay"){if(B().card&&B().card.bal)payCard(true);else if(B().loans[0])repayLoan(B().loans[0].id,true);S.debt=bankDebt();save();hud()}
   else if(a==="gobank"){openPortfolio();setTimeout(()=>{const x=[...sheet.querySelectorAll(".sec")].find(e=>/credit score/.test(e.textContent));if(x)x.scrollIntoView()},50);PH.open=false}
@@ -2560,7 +2583,9 @@ function travelApp(){const now=Date.now(),t=S.trip;let h="";
     for(const e of entities())if(e.c.id===c.id&&S.pos[e.key])spots.push({label:e.label,lat:S.pos[e.key].lat,lon:S.pos[e.key].lon});
     h+=`<p class="ph-sub">Getting around ${c.name}</p>`+spots.filter(x=>!x.hide).map((x,i)=>{const {km,o}=rideOptions(S.loc,x);return `<div class="ph-card"><b>${x.label}</b><span>${km.toFixed(1)} km away</span><div class="ph-rides">${o.map((r,j)=>`<button data-ph="ride" data-i="${i}" data-j="${j}" ${S.cash<r.price?"disabled":""}>${r.n}<small>${r.price?fmt(r.price):"free"} · ${Math.max(1,Math.round(r.sec))}s</small></button>`).join("")}</div></div>`}).join("");
     PH.spots=spots.filter(x=>!x.hide)}
-  else{h+=S.car?`<div class="ph-card"><b>Your ${CK[S.car.k].n}</b><span>Fuel ${fmt(CK[S.car.k].fuel)}/km · ${Math.round((CK[S.car.k].f-1)*100)}% faster</span></div><button class="ph-item" data-ph="sellcar"><span>Sell car<small>Get back 60%</small></span><b>${fmt(CK[S.car.k].p*.6)}</b></button>`:"";
+  else h+=garageHtml();
+  return h}
+function garageHtml(){let h="";{h+=S.car?`<div class="ph-card"><b>Your ${CK[S.car.k].n}</b><span>Fuel ${fmt(CK[S.car.k].fuel)}/km · ${Math.round((CK[S.car.k].f-1)*100)}% faster</span></div><button class="ph-item" data-ph="sellcar"><span>Sell car<small>Get back 60%</small></span><b>${fmt(CK[S.car.k].p*.6)}</b></button>`:"";
     h+=CARS.filter(c=>!S.car||c.k!==S.car.k).map(c=>`<button class="ph-item" data-ph="buycar" data-k="${c.k}" ${S.cash<c.p?"disabled":""}><span>${c.n}<small>${c.f>1?Math.round((c.f-1)*100)+"% faster · ":""}${fmt(c.fuel)}/km fuel</small></span><b>${fmt(c.p)}</b></button>`).join("")+`<p class="ph-sub">A car replaces taxis in town and lets you drive between cities on the same continent.</p>`}
   return h}
 PH.el.addEventListener("change",e=>{if(e.target.id==="tvsel"){tvDest=e.target.value===""?null:+e.target.value;phRender()}});
