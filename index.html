@@ -327,8 +327,9 @@ const KEY=slotKey(SLOT);
 let S={cash:0,day:1,own:{},events:{},log:[],hist:[],goals:[],mgr:{},speed:1,debt:0,rivals:null,last:Date.now(),earned:0}; // own[cityId][bizKey]=level
 try{const raw=localStorage.getItem(KEY);if(raw)S=Object.assign(S,JSON.parse(raw))}catch(e){}
 /* playtest progress reports (opt-in). Fill in to switch on: form = Google Form "formResponse" URL, f = each field's "entry.NNN" id (empty ids are skipped). */
-const PLAYTEST={form:"", // Google Form "formResponse" URL, e.g. https://docs.google.com/forms/d/e/XXXX/formResponse
+const PLAYTEST={form:"https://docs.google.com/forms/d/e/1FAIpQLScN0SmD630lPaC073ltMKdyGbunUb_QaTjA9F9u7G6zyoLjUw/formResponse", // Google Form "formResponse" URL
   every:3, // auto-report every N game days
+  one:"entry.661861787", // optional: one form field that gets the whole report as "key=value | key=value …"
   f:{tester:"",tid:"",slot:"",day:"",cash:"",networth:"",earned:"",cities:"",businesses:"",goals:"",debt:"",event:"",ver:""}}; // each value is a Google Form field id like "entry.123456"
 const PTKEY="meridian-playtest",PTVER="pt1";
 const PTP={on:false,name:"",id:"",asked:false,lastDay:0};try{Object.assign(PTP,JSON.parse(localStorage.getItem(PTKEY)||"{}"))}catch(e){}
@@ -2213,6 +2214,7 @@ function ptSnap(ev){const{nw}=totals();let biz=0;for(const k in S.own)for(const 
   return{tester:PTP.name||"anon",tid:PTP.id,slot:SLOT,day:S.day,cash:Math.round(S.cash),networth:Math.round(nw),earned:Math.round(S.earned||0),
     cities:nCities(),businesses:biz,goals:`${S.goals.length}/${GOALS.length}`,debt:Math.round(S.debt||0),event:ev,ver:PTVER}}
 function ptPost(sn){if(!ptOK())return;try{const q=new URLSearchParams();for(const k in PLAYTEST.f)if(PLAYTEST.f[k]&&sn[k]!=null)q.append(PLAYTEST.f[k],String(sn[k]));
+  if(PLAYTEST.one)q.append(PLAYTEST.one,Object.keys(sn).map(k=>k+"="+String(sn[k]).replace(/\|/g,"/")).join(" | "));
   fetch(PLAYTEST.form,{method:"POST",mode:"no-cors",body:q}).catch(()=>{})}catch(e){}}
 let ptLast=0,ptPend=null,ptTimer=0;
 function ptEvent(ev){if(!ptOK()||!PTP.on)return;try{ptPend=ptSnap(ev)}catch(e){return}const w=ptLast+30000-Date.now();
@@ -2232,7 +2234,7 @@ function ptCopy(t){const fb=()=>{try{prompt("Copy this and send it to the develo
 function ptWire(){const n=$("#ptname"),tg=$("#pttog"),sd=$("#ptsend");if(!n)return;
   n.onchange=()=>{PTP.name=n.value.trim().slice(0,24);ptSave()};
   if(tg)tg.onclick=()=>{PTP.name=n.value.trim().slice(0,24);PTP.on=!PTP.on;PTP.asked=true;if(PTP.on)PTP.lastDay=S.day;ptSave();toast(PTP.on?"Playtest reports on, thanks!":"Playtest reports off");renderSheet()};
-  sd.onclick=()=>{PTP.name=n.value.trim().slice(0,24);ptSave();const sn=ptSnap("manual");if(ptOK()){ptLast=Date.now();ptPost(sn);toast("Progress sent, thanks!")}else ptCopy(ptText(sn))}}
+  sd.onclick=()=>{PTP.name=n.value.trim().slice(0,24);ptSave();const sn=ptSnap("manual");if(ptOK()&&(PTP.on||confirm("Send your nickname and game progress to the developer?"))){if(Date.now()-ptLast<10000){toast("Just sent, try again in a few seconds");return}ptLast=Date.now();ptPost(sn);toast("Progress sent, thanks!")}else if(!ptOK())ptCopy(ptText(sn))}}
 function ptAsk(){if(!ptOK()||PTP.asked||document.getElementById("ptask"))return;const d=document.createElement("div");d.id="ptask";
   d.innerHTML=`<div role="dialog" aria-label="Help test Meridian"><div class="em">🧪</div><h3>Help test Meridian?</h3><p>Share your progress with the developer. Only your nickname and game numbers are sent, nothing else. You can turn this off anytime in Your empire.</p>
     <input id="ptaskn" maxlength="24" placeholder="Your nickname" autocomplete="off" value="${ptEsc(PTP.name)}"><button class="buy" id="ptyes" style="width:100%">Share my progress</button><button id="ptno">No thanks</button></div>`;
