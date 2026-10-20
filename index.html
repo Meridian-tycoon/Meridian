@@ -1476,7 +1476,7 @@ const unitCost=(b,c)=>SUP[b.k].c*PRICE[c.size];
 const stockOf=(c,k)=>S.stock[bkey(c,k)]||0;
 const opFactor=(c,b)=>{const k=bkey(c,b.k);return S.opf[k]==null?0:S.opf[k]};
 const selfRate=.6;                                    // running it yourself: 60% speed, only while you're there
-function runShops(h){
+function runShops(h){S.shopT=Date.now();
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv)continue;const key=bkey(c,b.k);
     const op=isStaffed(c,b.k)?1:(b.k==="apt"||b.k==="office"?1:present(c)?selfRate:0);
     if(!SUP[b.k]){S.opf[key]=op;continue}
@@ -2304,13 +2304,14 @@ setTimeout(ptAsk,2500);
 S.cbiz=Array.isArray(S.cbiz)?S.cbiz:[];
 const CB_SIZE={s:{n:"Small",m:.6},m:{n:"Standard",m:1},l:{n:"Large",m:1.8}},CB_FEE=.25,CB_MIN=2000,CB_MAX=3,CB_OUT=.8;
 const fmtC=v=>Math.abs(v)<100?"$"+v.toFixed(2):fmt(v);
-const cbFee=(t,sz,c)=>Math.max(CB_MIN,Math.round(BIZ.find(x=>x.k===t).cost*CB_SIZE[sz].m*CB_FEE*PRICE[c.size]));
+const cbFee=(t,sz,c)=>Math.max(CB_MIN,Math.round(BIZ.find(x=>x.k===t).cost*(CB_SIZE[sz]||CB_SIZE.m).m*CB_FEE*PRICE[c.size]));
 function cbReg(d){const t=BIZ.find(x=>x.k===d.t),m=(CB_SIZE[d.sz]||CB_SIZE.m).m;if(!t||!SUP[d.t]||BIZ.some(x=>x.k===d.k))return;
-  BIZ.push({k:d.k,n:(d.e?d.e+" ":"")+d.n,d:`Your own ${CB_SIZE[d.sz].n.toLowerCase()} brand, run like a ${t.n.toLowerCase()}. Sells only while it has stock.`,cost:Math.round(t.cost*m),gross:Math.round(t.gross*m),up:Math.round(t.up*m),cx:d.city});
+  BIZ.push({k:d.k,n:(d.e?d.e+" ":"")+d.n,d:`Your own ${(CB_SIZE[d.sz]||CB_SIZE.m).n.toLowerCase()} brand, run like a ${t.n.toLowerCase()}. Sells only while it has stock.`,cost:Math.round(t.cost*m),gross:Math.round(t.gross*m),up:Math.round(t.up*m),cx:d.city});
   SUP[d.k]=Object.assign({},SUP[d.t],{r:Math.round(SUP[d.t].r*m)});STAFF[d.k]=Math.max(1,Math.round(STAFF[d.t]*m))}
 S.cbiz.forEach(cbReg);
 let cbForm={n:"",e:"🏪",t:"shop",sz:"m"};
-function shipOut(c,b,q){q=Math.min(Math.floor(stockOf(c,b.k)),q);if(!(q>0))return;const g=q*unitCost(b,c)*CB_OUT;S.stock[bkey(c,b.k)]-=q;S.cash+=g;toast(`Shipped out ${q.toLocaleString()} ${SUP[b.k].u} for ${fmtC(g)}`)}
+function shipOut(c,b,q){const key=bkey(c,b.k),lv=(S.own[c.id]||{})[b.k]||0,pend=lv&&S.shopT?useRate(b,lv,c)*(S.opf[key]||0)*Math.max(0,Date.now()-S.shopT)/DAYMS:0;
+  q=Math.min(Math.floor(Math.max(0,stockOf(c,b.k)-pend)),q);if(!(q>0))return;const g=q*unitCost(b,c)*CB_OUT;S.stock[key]-=q;if(S.stock[key]<=1e-9){S.stock[key]=0;S.opf[key]=0}S.cash+=g;toast(`Shipped out ${q.toLocaleString()} ${SUP[b.k].u} for ${fmtC(g)}`)}
 function cbHtml(c){const mine=S.cbiz.filter(d=>d.city===c.id),tpl=Object.keys(SUP).filter(k=>BIZ.some(x=>x.k===k&&x.cx==null));if(!tpl.includes(cbForm.t))cbForm.t=tpl[0];
   const fee=cbFee(cbForm.t,cbForm.sz,c),full=mine.length>=CB_MAX,esc=v=>String(v).replace(/[&<>"]/g,ch=>"&#"+ch.charCodeAt(0)+";");
   return `<div class="sec">Create custom business</div><div class="list"><div class="row" style="display:block"><div class="d">Start your own brand in ${c.name}. It copies a template's economics, then appears under "Open a business" here to buy or rent. It only sells while stocked: order stock in, ship surplus out at ${Math.round(CB_OUT*100)}% of cost. ${mine.length}/${CB_MAX} brands here.</div>
@@ -2321,7 +2322,7 @@ function cbHtml(c){const mine=S.cbiz.filter(d=>d.city===c.id),tpl=Object.keys(SU
 sheet.addEventListener("input",e=>{const id=e.target.id;if(id==="cb-n")cbForm.n=e.target.value;else if(id==="cb-e")cbForm.e=e.target.value});
 sheet.addEventListener("change",e=>{const id=e.target.id;if(id==="cb-t"||id==="cb-sz"){cbForm[id==="cb-t"?"t":"sz"]=e.target.value;renderSheet()}});
 sheet.addEventListener("click",e=>{if(!e.target.closest("#cb-go")||!sel)return;const c=sel,n=cbForm.n.replace(/[<>&"]/g,"").trim().slice(0,24);if(!n){toast("Give your business a name");return}
-  if(S.cbiz.filter(d=>d.city===c.id).length>=CB_MAX){toast(`Max ${CB_MAX} custom brands per city`);return}if(BIZ.some(b=>b.n.replace(/^\S+ /,"")===n||b.n===n)){toast("That name is taken");return}
+  if(S.cbiz.filter(d=>d.city===c.id).length>=CB_MAX){toast(`Max ${CB_MAX} custom brands per city`);return}const nl=n.toLowerCase();if(BIZ.some(b=>b.n.toLowerCase()===nl)||S.cbiz.some(d=>d.n.toLowerCase()===nl)){toast("That name is taken");return}
   const fee=cbFee(cbForm.t,cbForm.sz,c);if(S.cash<fee){toast(`Creating it costs ${fmt(fee)}`);return}
   const d={k:"cx"+(S.nid++),n,e:[...cbForm.e.replace(/[<>&"]/g,"").trim()].slice(0,2).join(""),t:cbForm.t,sz:cbForm.sz,city:c.id};S.cash-=fee;S.cbiz.push(d);cbReg(d);cbForm.n="";
   toast(`${n} is ready. Buy or rent it below, then order stock.`);commit()});
