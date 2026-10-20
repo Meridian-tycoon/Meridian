@@ -28,3 +28,9 @@ You change Meridian Tycoon, a browser tycoon game that lives entirely in `index.
 2. If the change is visible or touches the game loop, ask for (or run) the `meridian-tester` checks.
 3. Do not commit or push unless the caller asked you to. When you do, commit as `user.name=Claude`, `user.email=noreply@anthropic.com`.
 4. Report what changed in plain game terms (what the player sees and can do), plus any new numbers in a small table.
+
+## To-do list
+The shared list is `TODO.md` at the repo root (`- [ ] [agent-name] (priority, area) task`).
+- If the caller gives no specific task, pick the first unticked item tagged `[meridian-builder]`.
+- When you finish an item, tick it `[x]` and append ` — done YYYY-MM-DD: one-line result`.
+- Add any follow-up you discover as a new unticked item tagged with the right agent.
