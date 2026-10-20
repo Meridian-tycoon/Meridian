@@ -291,6 +291,12 @@ const PRICE=[0,0.6,0.8,1,1.35,1.8], DEMAND=[0,0.7,0.85,1,1.25,1.6];
 /* business types: cost, gross/day, upkeep/day */
 const BIZ=[
  {k:"cart",n:"Food cart",d:"Street food. Cheap and quick to pay back.",cost:1500,gross:260,up:60},
+ {k:"coffeecart",n:"Coffee cart",d:"Espresso on wheels for the morning rush.",cost:1700,gross:290,up:70},
+ {k:"icecream",n:"Ice cream cart",d:"Scoops and cones. Sweet margins.",cost:1400,gross:240,up:55},
+ {k:"taco",n:"Taco truck",d:"Bigger kitchen, bigger queues.",cost:2400,gross:400,up:105},
+ {k:"pretzel",n:"Pretzel stand",d:"Cheap dough, salty profits.",cost:1100,gross:190,up:40},
+ {k:"noodle",n:"Noodle cart",d:"Hot bowls for the late-night crowd.",cost:2000,gross:340,up:85},
+ {k:"smoothie",n:"Smoothie stand",d:"Fresh fruit blends for the gym crowd.",cost:1600,gross:270,up:65},
  {k:"kiosk",n:"Coffee kiosk",d:"Commuter traffic, steady margins.",cost:6000,gross:820,up:240},
  {k:"shop",n:"Corner shop",d:"Groceries and everyday goods.",cost:18000,gross:2200,up:700},
  {k:"rest",n:"Restaurant",d:"Staffed kitchen, big tickets.",cost:55000,gross:6200,up:2100},
@@ -316,8 +322,11 @@ const BIGCITY=5,isBigCity=c=>c.size>=BIGCITY;
 /* extra cities that allow big:1 businesses (casinos) despite being smaller than BIGCITY */
 const CASINO_CITIES=["Montréal"],bigOK=c=>isBigCity(c)||CASINO_CITIES.includes(c.name);
 /* why a business can't be opened in a city ("" if it can). Used by every buy/rent path. */
+const CARTS=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie"],CART_MAX=5,isCart=k=>CARTS.includes(k);
+const cartCount=c=>CARTS.filter(k=>(S.own[c.id]||{})[k]).length,licCost=c=>5000*Math.max(1,c.size||1);
 function bizBlock(b,c){if(b.big&&!bigOK(c))return `${b.n}s only open in big cities (size ${BIGCITY}, e.g. ${CITIES.filter(isBigCity).slice(0,3).map(x=>x.name).join(", ")}) or in ${CASINO_CITIES.join(", ")}`;
   if(b.co&&!hasHQ(c))return `${b.n}s need an HQ in this city`;if(lawBan(c,b))return `Gambling is banned in ${c.country}`;
+  if(isCart(b.k)&&!S.lic?.[c.id]&&!(S.own[c.id]||{})[b.k]&&cartCount(c)>=CART_MAX)return `${CART_MAX} carts max — buy a street vendor license`;
   if(b.k==="airport"&&!hasAirport(c))return `${c.name} has no airport site`;if(b.k==="port"&&c.size<3)return "Seaports need a size 3+ city";return ""}
 
 /* ---------- state ---------- */
@@ -361,15 +370,17 @@ function menuG(c,b){const m=menuOf(c,b.k);if(!m)return 1;const e=S.events&&S.eve
   return m.g+(m.small&&c.size<=2?m.small:0)+(m.big&&(c.size>=5||boom)?m.big:0)+(m.slump&&slump?m.slump:0)}
 function menuU(c,b){const m=menuOf(c,b.k);return m?m.u:1}
 function menuNet(c,b,lv,id){menuOv={[c.id+":"+b.k]:id};try{return profit(b,c,lv)-useRate(b,lv,c)*unitCost(b,c)}finally{menuOv=null}}
-const USE={cart:{burgers:2},kiosk:{bread:3},shop:{bread:4,tools:1},rest:{burgers:5,beef:3},office:{electronics:.5},hotel:{bread:8,electronics:.5}};
+const USE={cart:{burgers:2},coffeecart:{bread:1},icecream:{bread:1},taco:{beef:1,bread:1},pretzel:{bread:2},noodle:{beef:1},smoothie:{bread:1},kiosk:{bread:3},shop:{bread:4,tools:1},rest:{burgers:5,beef:3},office:{electronics:.5},hotel:{bread:8,electronics:.5}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
 function profit(b,c,lv){if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(1+0.55*(lv-1))-b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&b.k!=="apt"&&b.k!=="office"?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.3*(lv-1)))}
 function cityProfit(c){const o=S.own[c.id]||{};let t=0;for(const b of BIZ)if(o[b.k])t+=profit(b,c,o[b.k]);return t}
-/* renting: anything you don't own pays hourly rent (value / 60 per hour). Leases with a payback under 60 days profit; the Rent button warns when rent exceeds Lv1 profit. Rate is read live, so old saves just pay the new rate. */
+/* renting: anything you don't own pays hourly rent (value / 60 per hour). Leases with a payback under 60 days profit; the Rent button warns when rent exceeds Lv1 profit minus hourly stock cost. Rate is read live, so old saves just pay the new rate. */
 const RENT=1/60,FIT=.2;
 const isLeased=(c,k)=>!!((S.lease||{})[c.id]||{})[k];
-const bizRent=(b,c)=>Math.round(cost(b,c)*RENT);
+/* transport hubs (tr) earn far less than cost/60 in some city sizes, so their rent is capped at 80% of baseline Lv1 profit there (no rivals/events/perks): leasing nets >=20%, buying still keeps 100%. */
+const rentBase=(b,c)=>Math.round(b.gross*.85*(b.k==="airport"||b.k==="airline"?(c.size>=5?1.25:c.size<=2?.8:1):1)*DEMAND[c.size]-b.up*1.15*PRICE[c.size]);
+const bizRent=(b,c)=>{const r=Math.round(cost(b,c)*RENT);return b.tr?Math.max(0,Math.min(r,Math.round(rentBase(b,c)*.8))):r};
 function rentTotal(){let r=0;for(const id in S.lease||{})for(const k in S.lease[id]){if(!S.lease[id][k]||!(S.own[id]||{})[k])continue;r+=bizRent(BIZ.find(b=>b.k===k),CITIES[id])}
   for(const s of S.sites||[])if(s.lease)r+=Math.round(plotPrice(CITIES[s.city],zoneOf(s)||"farm",s.size)*RENT);return r}
 function totals(){let inc=0,assets=0;
@@ -508,7 +519,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
     for(const b of mine){const lv=o[b.k],p=profit(b,c,lv);const uc=upCost(b,c,lv);
       h+=`<div class="row"><div class="n">${b.n} <span class="tag" style="border:1px solid var(--line)">Lv ${lv}</span>${isLeased(c,b.k)?`<span class="tag" style="border:1px solid var(--line)">Rented · ${fmt(bizRent(b,c))}/hr</span>`:""}${bizReg(c,b.k)?"":`<span class="tag bust">Unregistered</span>`}</div>
       <div class="d">${USE[b.k]?(supFrac(c,b)>.99?'<span style="color:var(--good)">✓ Supplied from your warehouse (+35%)</span> · ':`<span style="color:var(--muted)">Supply ${Object.entries(USE[b.k]).map(([g,q])=>q*lv+' '+G[g][0].toLowerCase()).join(' + ')}/hr from a warehouse here for +35%${supFrac(c,b)>0?' (now '+Math.round(supFrac(c,b)*100)+'%)':''}</span> · `):''}Making <b style="color:${p<0?"var(--bad)":"var(--good)"}">${fmt(p)}</b>/hr${lv<MAXLV?` → <b>${fmt(profit(b,c,lv+1))}</b> at Lv ${lv+1}`:" · max level"}</div>
-      <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${lv<MAXLV?`<button class="buy up" data-up="${b.k}" ${S.cash<uc?"disabled":""}>Upgrade ${fmt(uc)}</button>`:`<button class="buy up" disabled>Maxed</button>`}${isLeased(c,b.k)?`<button class="buy" data-own="${b.k}" ${S.cash<cost(b,c)*(1-FIT)?"disabled":""}>Buy premises ${fmt(cost(b,c)*(1-FIT))}</button>`:""}</span></div>`+opsHtml(c,b,lv)+menuHtml(c,b,lv)+(b.k==="cart"?cartTips(c,b,lv):"")}
+      <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${lv<MAXLV?`<button class="buy up" data-up="${b.k}" ${S.cash<uc?"disabled":""}>Upgrade ${fmt(uc)}</button>`:`<button class="buy up" disabled>Maxed</button>`}${isLeased(c,b.k)?`<button class="buy" data-own="${b.k}" ${S.cash<cost(b,c)*(1-FIT)?"disabled":""}>Buy premises ${fmt(cost(b,c)*(1-FIT))}</button>`:""}</span></div>`+opsHtml(c,b,lv)+menuHtml(c,b,lv)+(CARTS.includes(b.k)?cartTips(c,b,lv):"")}
     const mc=mgrCost(c);
     h+=`<div class="row"><div class="n">City manager ${S.mgr[c.id]?'<span class="tag boom">Hired</span>':""}</div>
       <div class="d">${S.mgr[c.id]?"Sales here are 20% higher.":"Raises sales of every business here by 20%. One-time fee."}</div>
@@ -526,15 +537,18 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
       <div class="d">Buy out their local branch to win back customers.</div><button class="buy up" data-bo="${i}" ${S.cash<bc?"disabled":""}>Buy out ${fmt(bc)}</button></div>`;
     h+=`</div>`}
   h+=`<div class="sec">Open a business</div><div class="list">`;
-  for(const b of avail){const k=cost(b,c),blk=bizBlock(b,c),lock=b.big&&!bigOK(c),p=potential(b,c,1),pay=p>0?Math.ceil(k/p):null;
+  if(!S.lic?.[c.id]&&cartCount(c)>=CART_MAX){const lc=licCost(c);h+=`<div class="row"><div class="n">Street vendor license</div><div class="d">You run ${CART_MAX} carts here, the limit without a license. One-time fee, lets you run every cart type in ${c.name}.</div><button class="buy" id="buylic" ${S.cash<lc?"disabled":""}>License ${fmt(lc)}</button></div>`}
+  else if(S.lic?.[c.id])h+=`<p class="d" style="color:var(--muted);padding:4px 0">✓ Street vendor license held in ${c.name} — no cart limit.</p>`;
+  for(const b of avail){const k=cost(b,c),blk=bizBlock(b,c),lock=b.big&&!bigOK(c),p=potential(b,c,1),pn=p-(SUP[b.k]?useRate(b,1,c)*unitCost(b,c):0),pay=p>0?Math.ceil(k/p):null;
     h+=`<div class="row"${lock?' style="opacity:.6"':""}><div class="n">${lock?"🔒 ":""}${b.n}</div>
-    <div class="d">${b.d} ${lock?"":`<b style="color:${p<0?"var(--bad)":"var(--ink)"}">${fmt(p)}</b>/hr${pay?` · pays back in ${pay<48?pay+" h":(pay/24).toFixed(1)+" days"}`:" · loses money here"}`}${blk?`<br><b style="color:var(--bad)">${lock?"Locked: ":""}${blk}.</b>`:""}</div>
-    <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-buy="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k||blk?"disabled":""}>${lock?"Locked":"Buy "+fmt(k)}</button>${lock?"":`<button class="buy up" data-rent="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k*FIT||blk?"disabled":""} ${!blk&&bizRent(b,c)>p?'title="Rent exceeds profit" style="border-color:var(--bust,#c0392b)"':""}>Rent · ${fmt(k*FIT)} + ${fmt(bizRent(b,c))}/hr${!blk&&bizRent(b,c)>p?" · rent exceeds profit":""}</button>`}</span></div>`}
+    <div class="d">${b.d} ${lock?"":`<b style="color:${p<0?"var(--bad)":"var(--ink)"}">${fmt(p)}</b>/hr${pay?` · pays back in ${pay<48?pay+" h":(pay/24).toFixed(1)+" days"}`:" · loses money here"}`}${blk?`<br><b style="color:var(--bad)">${lock?"Locked: ":""}${blk}.</b>`:""}${!lock&&!blk&&bizRent(b,c)>pn?`<br><small style="color:var(--bad)">⚠ Renting: rent exceeds profit after stock costs</small>`:""}</div>
+    <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-buy="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k||blk?"disabled":""}>${lock?"Locked":"Buy "+fmt(k)}</button>${lock?"":`<button class="buy up" data-rent="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k*FIT||blk?"disabled":""} ${!blk&&bizRent(b,c)>pn?'title="Rent exceeds profit after stock costs" style="border-color:var(--bust,#c0392b)"':""}>Rent · ${fmt(k*FIT)} + ${fmt(bizRent(b,c))}/hr${!blk&&bizRent(b,c)>pn?" ⚠":""}</button>`}</span></div>`}
   if(!avail.length)h+=`<p class="d" style="color:var(--muted);padding:10px 0">You own every business type in ${c.name}.</p>`;
   h+=`</div>`+propsHtml(c)+`<div class="foot">${mine.length?`<button id="sellall">Sell everything here (75%)</button>`:""}</div>`;
   sheet.innerHTML=h;
   $("#cls").onclick=closeSheet;
   sheet.querySelectorAll("[data-buy]").forEach(btn=>btn.onclick=()=>buy(c,btn.dataset.buy));
+  {const lb=$("#buylic");if(lb)lb.onclick=()=>{const lc=licCost(c);if(S.cash<lc)return;S.cash-=lc;(S.lic=S.lic||{})[c.id]=1;toast(`Street vendor license bought in ${c.name}`);commit()}}
   sheet.querySelectorAll("[data-rent]").forEach(btn=>btn.onclick=()=>{const k=btn.dataset.rent,b=BIZ.find(x=>x.k===k),p=cost(b,c)*FIT;if(S.cash<p)return;const blk=bizBlock(b,c);if(blk){toast(blk);return}
     S.cash-=p;(S.own[c.id]=S.own[c.id]||{})[k]=1;(S.lease[c.id]=S.lease[c.id]||{})[k]=1;toast(`Renting premises for ${b.n} in ${c.name}`);commit()});
   sheet.querySelectorAll("[data-own]").forEach(btn=>btn.onclick=()=>{const k=btn.dataset.own,b=BIZ.find(x=>x.k===k),p=cost(b,c)*(1-FIT);if(S.cash<p)return;
@@ -955,7 +969,7 @@ const hasHQ=c=>!!S.hq[c.id];
 const bizReg=(c,k)=>!!((S.reg[c.id]||{})[k]);
 const regFeeBiz=(b,c)=>Math.round(cost(b,c)*.07);
 const regFeeSite=s=>Math.round(plotPrice(CITIES[s.city],zoneOf(s)||"farm",s.size)*.05);
-const STAFF={cart:1,kiosk:2,shop:4,rest:12,apt:2,office:20,hotel:60,casino:250,secfirm:25,ambulance:40,lawfirm:30,prison:150,taxico:35,busline:60,trucking:80,rail:400,port:600,airline:900,airport:1500};
+const STAFF={cart:1,coffeecart:1,icecream:1,taco:2,pretzel:1,noodle:1,smoothie:1,kiosk:2,shop:4,rest:12,apt:2,office:20,hotel:60,casino:250,secfirm:25,ambulance:40,lawfirm:30,prison:150,taxico:35,busline:60,trucking:80,rail:400,port:600,airline:900,airport:1500};
 const siteStaff=s=>{const o=siteOp(s);if(!o)return 0;const ha=LAND[s.size][1];return Math.ceil(ha*(o.rp?1:o.cat==="Farm"?.5:o.cat==="Ranch"?.3:o.cat==="Mine"?2:3)*(1+.2*(slv(s)-1)))};
 const bizStaff=(k,lv)=>Math.ceil(STAFF[k]*(1+.5*(lv-1)));
 function hqTotalUpkeep(){let u=0;for(const id in S.hq)if(S.hq[id])u+=hqUpkeep(CITIES[id]);return u}
@@ -1303,7 +1317,7 @@ function enterStreet(c,zoom){if(!HAS_STREET)return false;stCity=c;inStreet=true;
 function leaveStreet(){if(placing)cancelPlace();if(offer)closeOffer();inStreet=false;stEl.hidden=true;stBar.hidden=true;
   if(stCity){V.lam=-stCity.lon;V.phi=Math.max(-80,Math.min(80,-stCity.lat));V.k=8}draw()}
 const PIN={biz:["#c2410c","Shop"],prop:["#7c3aed","Rent"],"site-farm":["#4d7c0f","Farm"],"site-mine":["#78716c","Mine"],"site-ind":["#0e7490","Ind"],hq:["#1d2a2b","HQ"],wh:["#a16207","Depot"],home:["#be185d","Home"]};
-const BIZTAG={cart:"Cart",kiosk:"Café",shop:"Shop",rest:"Diner",apt:"Apts",office:"Office",hotel:"Hotel",casino:"Casino"};
+const BIZTAG={cart:"Cart",coffeecart:"Coffee",icecream:"Ice",taco:"Taco",pretzel:"Pretzel",noodle:"Noodle",smoothie:"Smoothie",kiosk:"Café",shop:"Shop",rest:"Diner",apt:"Apts",office:"Office",hotel:"Hotel",casino:"Casino"};
 function pinIcon(e){let [col,txt]=PIN[e.cls]||["#333","•"];if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
   return L.divIcon({className:"mpin",html:`<span style="background:${col}">${txt}</span>`,iconSize:null,iconAnchor:[18,30]})}
 function renderPins(){if(!layer)return;layer.clearLayers();ensurePositions();
@@ -1449,7 +1463,9 @@ if(WX_TEST)window.__wx={stormAt,activeStorms,stormCenter,cities:CITIES,get city(
 
 /* ---------- running a business: stock, staff, managers and auto-restock ---------- */
 S.stock=S.stock||{};S.staff=S.staff||{};S.auto2=S.auto2||{};S.orders=S.orders||[];S.opf=S.opf||{};
-const SUP={cart:{u:"servings",r:50,c:1.3,n:"Sausages, buns and toppings"},kiosk:{u:"cups",r:160,c:1.0,n:"Coffee beans, milk and cups"},
+const SUP={cart:{u:"servings",r:50,c:1.3,n:"Sausages, buns and toppings"},
+  coffeecart:{u:"cups",r:60,c:1.1,n:"Beans, milk and cups"},icecream:{u:"scoops",r:55,c:1.0,n:"Ice cream tubs and cones"},taco:{u:"tacos",r:80,c:1.4,n:"Tortillas, meat and salsa"},
+  pretzel:{u:"pretzels",r:45,c:.9,n:"Dough, salt and mustard"},noodle:{u:"bowls",r:60,c:1.3,n:"Noodles, broth and toppings"},smoothie:{u:"cups",r:50,c:1.2,n:"Fruit, yoghurt and cups"},kiosk:{u:"cups",r:160,c:1.0,n:"Coffee beans, milk and cups"},
   shop:{u:"stock units",r:200,c:2.0,n:"Wholesale groceries"},rest:{u:"meals",r:120,c:8,n:"Fresh ingredients"},hotel:{u:"guest kits",r:120,c:80,n:"Linens, toiletries and breakfast"}};
 const ORDER_MIN=3;                                    // supplier delivery time, real minutes
 const bkey=(c,k)=>c.id+":"+k;
@@ -1775,7 +1791,7 @@ const LAWS={
   tariff:{n:"Import tariffs",v:["None","Low","High"],e:["Free trade","Retail profit −3%, land output value +4%","Retail profit −7%, land output value +9%"]},
   police:{n:"Policing",v:["Lenient","Standard","Strict"],e:["35% arrest chance, sentences ×0.6, private prisons earn −30%","55% arrest chance, normal sentences","80% arrest chance, sentences ×1.6, private prisons earn +40%"]},
   grant:{n:"Small-business grants",v:["Off","On"],e:["No support","Carts, kiosks and corner shops earn +10%"]}};
-const RETAIL=["cart","kiosk","shop","rest"],SMALL=["cart","kiosk","shop"];
+const RETAIL=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","rest"],SMALL=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop"];
 const ELECT=90*DAYMS; // elections every 3 game months (90 game days = 90 real hours)
 const COUNTRIES=[...new Set(CITIES.map(c=>c.country))];
 const ctyCities=n=>CITIES.filter(c=>c.country===n);
@@ -2132,9 +2148,13 @@ sheet.addEventListener("click",e=>{if(!e.target.closest("[data-supm]"))return;S.
 /* ---------- underground: hustles, gangs, turf (all fictional, all risky) ---------- */
 const UGJ=[
  {k:"deal",n:"Move knock-off goods",d:"Fake designer bags out of a car trunk.",p:60,heat:4,ok:.9,cd:45,sev:6,reason:"selling counterfeit goods"},
+ {k:"cards",n:"Run a street card game",d:"Three cards, a folding table, a lookout on the corner.",p:120,heat:6,ok:.85,cd:75,sev:8,reason:"illegal gambling",rep:2},
  {k:"scam",n:"Run a phone scam",d:"A call centre in a basement. Easy money, angry victims.",p:220,heat:9,ok:.75,cd:120,sev:14,reason:"fraud",rep:5},
  {k:"fence",n:"Fence stolen electronics",d:"No questions asked.",p:500,heat:12,ok:.7,cd:240,sev:16,reason:"handling stolen goods",rep:15},
+ {k:"chop",n:"Strip a stolen car",d:"A back-alley garage sells the parts by morning.",p:350,heat:11,ok:.72,cd:180,sev:18,reason:"vehicle theft",rep:10},
  {k:"extort",n:"Shake down a shop",d:"Collect 'protection' money. Needs a gang.",p:900,heat:18,ok:.7,cd:300,sev:24,reason:"extortion",gang:1},
+ {k:"smuggle",n:"Smuggle crates through the docks",d:"Unmarked crates, a friendly night guard. Needs real street rep.",p:1600,heat:22,ok:.65,cd:480,sev:30,reason:"smuggling",rep:25},
+ {k:"casino",n:"Run a backroom casino",d:"Cards and dice behind a laundromat. Needs a gang with 6+ members.",p:3000,heat:28,ok:.65,cd:720,sev:36,reason:"running an illegal casino",gang:6},
  {k:"heist",n:"Pull off a heist",d:"An armoured truck on a quiet road. Needs a gang with 10+ members.",p:9000,heat:45,ok:.5,cd:1800,sev:72,reason:"armed robbery",gang:10}];
 const GANGS=[["Los Cuervos","#dc2626"],["Iron Saints","#2563eb"],["The Velvet","#9333ea"],["Northside Kings","#ca8a04"]];
 function UG(){return S.ug=S.ug||{heat:0,rep:0,gang:null,cd:{},turf:{},t:Date.now(),earned:0}}
@@ -2145,13 +2165,16 @@ function ugTick(){const u=UG(),now=Date.now(),h=(now-u.t)/DAYMS;u.t=now;
       if(Math.random()<u.gang.m/(u.gang.m+8)){u.rep+=3;ugLog(`Your crew fought off ${enemy} in ${CITIES[id].name}`)}else{delete u.turf[id];u.gang.m=Math.max(1,u.gang.m-2);ugLog(`${enemy} took your turf in ${CITIES[id].name}`)}}}}
 function ugLog(m){S.log.unshift("Underground: "+m);S.log=S.log.slice(0,3)}
 const ugCity=()=>CITIES[(S.loc||{city:0}).city];
+/* gang cover: being in a crew lowers heat and raises odds; bigger crews a bit more (capped) */
+function ugCover(){const g=UG().gang;if(!g)return{ok:0,heat:1};const m=g.m||1;return{ok:Math.min(.15,.08+m*.005),heat:Math.max(.6,.77-m*.005)}}
+const ugOk=j=>Math.min(.95,j.ok+ugCover().ok),ugHeat=j=>j.heat*ugCover().heat;
 const ugPay=j=>Math.round(j.p*COL(ugCity())*(1+UG().rep*.01)*(UG().gang&&j.gang?1+UG().gang.m*.03:1));
 function ugDo(k){const u=UG(),j=UGJ.find(x=>x.k===k),c=ugCity(),now=Date.now();if(jailed()){toast("Not from prison");return}
   if((u.cd[k]||0)>now)return;if(j.rep&&u.rep<j.rep){toast(`Needs ${j.rep} street rep`);return}if(j.gang&&(!u.gang||u.gang.m<j.gang)){toast(j.gang>1?`Needs a gang with ${j.gang}+ members`:"Join or start a gang first");return}
   u.cd[k]=now+j.cd*1000;const pol=[.7,1,1.4][law(c,"police")??1];
   const caught=Math.random()<(u.heat/100)*.5*pol;
-  if(caught||Math.random()>j.ok){u.heat=Math.min(100,u.heat+j.heat*1.5);if(arrest(j.reason,j.sev,c)){u.rep=Math.max(0,u.rep-3);return}toast("It went wrong. You got away, barely.");return}
-  const v=ugPay(j);S.cash+=v;u.earned+=v;u.heat=Math.min(100,u.heat+j.heat);u.rep+=1;toast(`+${fmt(v)} · heat ${Math.round(u.heat)}%`);vib&&vib(15)}
+  if(caught||Math.random()>ugOk(j)){u.heat=Math.min(100,u.heat+ugHeat(j)*1.5);if(arrest(j.reason,j.sev,c)){u.rep=Math.max(0,u.rep-3);return}toast("It went wrong. You got away, barely.");return}
+  const v=ugPay(j);S.cash+=v;u.earned+=v;u.heat=Math.min(100,u.heat+ugHeat(j));u.rep+=1;toast(`+${fmt(v)} · heat ${Math.round(u.heat)}%`);vib&&vib(15)}
 const bribeCost=()=>Math.round(800*COL(ugCity())*(1+UG().heat/20));
 function ugAct(a,x){const u=UG(),c=ugCity();
   if(a==="bribe"){const p=bribeCost();if(S.cash<p||u.heat<1)return;S.cash-=p;if(Math.random()<.85){u.heat=Math.max(0,u.heat-35);toast("The detective looks the other way")}else{toast("The cop was wired!");arrest("bribing a police officer",18,c)}}
@@ -2162,8 +2185,9 @@ function ugAct(a,x){const u=UG(),c=ugCity();
   else if(a==="turf"){const need=3+c.size*2;if(u.gang.m<need){toast(`Needs ${need} members for ${c.name}`);return}if(Math.random()<.7){u.turf[c.id]=(u.turf[c.id]||0)+1;u.heat=Math.min(100,u.heat+10);u.rep+=4;toast(`You run ${c.name} now`)}else{u.gang.m=Math.max(1,u.gang.m-2);u.heat=Math.min(100,u.heat+15);toast("Turf war lost: 2 members down")}}}
 function ugApp(){const u=UG(),c=ugCity(),now=Date.now(),hc=u.heat>66?"#ef4444":u.heat>33?"#f59e0b":"#22c55e";
   let h=`<div class="ph-sub">${c.name} · street rep ${u.rep}</div><div style="height:8px;background:#ffffff22;border-radius:4px;overflow:hidden;margin:6px 0 2px"><div id="ugbar" style="height:100%;width:${u.heat}%;background:${hc}"></div></div><div class="ph-sub" id="ugheat">Heat ${Math.round(u.heat)}% · cools ~6%/hr · the higher it is, the likelier an arrest</div>`;
+  if(u.gang){const cv=ugCover();h+=`<div class="ph-sub" style="color:${u.gang.col}">Gang cover: −${Math.round((1-cv.heat)*100)}% heat, +${Math.round(cv.ok*100)}% success</div>`}
   h+=`<div class="ph-list" style="margin-top:8px">`;for(const j of UGJ){const cd=Math.max(0,(u.cd[j.k]||0)-now),lock=(j.rep&&u.rep<j.rep)||(j.gang&&(!u.gang||u.gang.m<j.gang));
-    h+=`<div><b>${j.n}</b> <span style="float:right;font-family:var(--mono)">~${fmt(ugPay(j))}</span><small style="display:block">${j.d} ${Math.round(j.ok*100)}% odds · +${j.heat}% heat${j.rep?` · ${j.rep} rep`:""}</small>
+    h+=`<div><b>${j.n}</b> <span style="float:right;font-family:var(--mono)">~${fmt(ugPay(j))}</span><small style="display:block">${j.d} ${Math.round(ugOk(j)*100)}% odds · +${Math.round(ugHeat(j)*10)/10}% heat${j.rep?` · ${j.rep} rep`:""}</small>
       <button class="buy" data-ph="ug" data-k="${j.k}" style="width:100%;margin-top:4px" ${cd||lock?"disabled":""}>${cd?"Lie low "+Math.ceil(cd/1000)+"s":lock?"Locked":"Do it"}</button></div>`}
   h+=`</div><button class="buy up" data-ph="uga" data-a="bribe" style="width:100%;margin-top:8px" ${S.cash<bribeCost()||u.heat<1?"disabled":""}>Bribe a detective ${fmt(bribeCost())} (−35% heat)</button>`;
   h+=`<div class="ph-sub" style="margin-top:10px;font-weight:700">Gang</div>`;
