@@ -391,7 +391,7 @@ function totals(){let inc=0,assets=0;
   const interest=typeof bankPayHr==="function"?Math.round(bankPayHr()):Math.round(S.debt*0.003);
   const upk=typeof indUpkeep==="function"?indUpkeep():0;assets+=typeof indAssets==="function"?indAssets():0;
   const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof luxIncome==="function"){inc+=luxIncome();assets+=luxAssets()}if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
-  if(typeof holdVal==="function")assets+=holdVal();if(typeof gearAssets==="function")assets+=gearAssets();
+  if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity();if(typeof gearAssets==="function")assets+=gearAssets();
   return{inc:inc-(typeof bankPayHr==="function"?0:interest)-upk-rent,interest,upk,rent,nw:S.cash+assets-S.debt}}
 
 /* ---------- map: a 3D globe you can spin 360° in any direction ---------- */
@@ -1812,7 +1812,7 @@ const hourOf=t=>Math.floor(t/DAYMS);
 function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=totals().inc*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
 function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);
-  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runFleet(now);const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}if(S.gig&&S.gig.ride)gigState();if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
+  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runFleet(now);const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
@@ -2036,6 +2036,79 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-bank]");if(!b
   if(a==="card")applyCard();else if(a==="loan")applyLoan(b.dataset.t,+b.dataset.a);else if(a==="payall")repayLoan(+b.dataset.id,true);
   else if(a==="cardall")payCard(true);else if(a==="adv"){const c=B().card,v=Math.min(c.lim-c.bal,Math.round(c.lim/4));c.bal+=v*1.05;S.cash+=v;c.paidStmt=false;toast(`Cash advance ${fmt(v)} (5% fee)`)}
   S.debt=bankDebt();save();hud();renderSheet()});
+/* ---------- bank ownership (phase 1): found & run your own bank. S.ob = owned bank, S.bank = personal banking ---------- */
+const BANKCFG={unlockNW:5e6,license:1e6,minCapital:2e6,monthMs:15*60000,maxCatchup:24,histKeep:36,sampleCap:200,baseRate:.04,
+  yieldShare:1,           // share of base rate earned on reserves (treasury/central-bank deposits)
+  rateSens:30,            // attractiveness gained per 1.00 of (depRate - base*rateRef)
+  rateRef:.5,             // "market" deposit rate = base*rateRef
+  growBase:60,growRate:.12,churn:.02,  // new customers/month = (growBase+n*growRate)*appeal*(1-n/cap); churn = n*churn/appeal
+  depAdj:.25,             // deposits move this share toward target each month
+  custCost:3,             // opex per customer per month
+  emergRate:.08,          // annual rate on emergency central-bank borrowing (phase 6)
+  capRatio:.08,           // dividends can't push equity below deposits*capRatio
+  tiers:[{n:"Small",opex:12000,cap:3000,avgDep:30000,maxLoan:250000,branches:1,corp:0,minCap:2e6},
+         {n:"Regional",opex:80000,cap:15000,avgDep:25000,maxLoan:5e6,branches:10,corp:1,minCap:5e6,req:{cap:4e6,cust:2500,loans:0}},
+         {n:"Major",opex:400000,cap:250000,avgDep:40000,maxLoan:1e8,branches:100,corp:1,minCap:5e7,req:{cap:5e7,cust:20000,loans:2e7}}]};
+S.econ=S.econ||{base:BANKCFG.baseRate};if(S.econ.base==null)S.econ.base=BANKCFG.baseRate;
+if(S.ob===undefined)S.ob=null;
+function obFix(){const o=S.ob;if(!o)return;const d={tier:0,capital:0,reserves:0,deposits:0,depRate:.02,loans:[],cards:[],rep:50,emerg:0,customers:[],nc:0,hist:[],yrs:[],t:Date.now(),m:0,last:null,div:0,inj:0};for(const k in d)if(o[k]==null)o[k]=d[k]}
+obFix();
+const obT=()=>BANKCFG.tiers[S.ob.tier];
+const obLoanBal=()=>S.ob.loans.reduce((a,l)=>a+(l.bal||0),0)+S.ob.cards.reduce((a,c)=>a+(c.bal||0),0);
+const obEquity=()=>S.ob?S.ob.reserves+obLoanBal()-S.ob.deposits-S.ob.emerg:0;
+const obAppeal=()=>{const o=S.ob,C=BANKCFG;return Math.max(.05,Math.min(2.5,1+(o.depRate-S.econ.base*C.rateRef)*C.rateSens+(o.rep-50)/100))};
+const OBN1=["Alex","Sam","Maria","Chen","Priya","Omar","Lena","Jules","Kofi","Yuki","Ivan","Sofia","Noah","Aisha","Mateo","Hana"],OBN2=["Smith","Tremblay","Garcia","Wong","Patel","Haddad","Muller","Rossi","Mensah","Sato","Novak","Silva","Kim","Diallo","Lopez","Berg"],OBCO=["Logistics","Foods","Tech","Holdings","Motors","Textiles","Media","Pharma","Energy","Retail"];
+function obCust(){const t=obT(),corp=t.corp&&Math.random()<.12,r=Math.random(),cr=Math.round(300+550*Math.pow(Math.random(),.7));
+  return corp?{n:OBN2[Math.random()*16|0]+" "+OBCO[Math.random()*10|0],ty:"c",cr,inc:Math.round(5e5+r*2e7),risk:+(1-(cr-300)/550).toFixed(2),dep:Math.round(1e5+r*2e6),ph:{ok:0,late:0}}
+   :{n:OBN1[Math.random()*16|0]+" "+OBN2[Math.random()*16|0],ty:"i",cr,inc:Math.round(2e4+r*r*3e5),risk:+(1-(cr-300)/550).toFixed(2),dep:Math.round(500+r*r*t.avgDep*3),ph:{ok:0,late:0}}}
+function obMonth(){const o=S.ob,C=BANKCFG,t=obT(),b=S.econ.base,a=obAppeal();
+  const add=Math.max(0,Math.round((C.growBase+o.nc*C.growRate)*a*(1-o.nc/t.cap))),lose=Math.round(o.nc*C.churn/a);
+  o.nc=Math.max(0,Math.min(t.cap,o.nc+add-lose));
+  for(let i=0;i<Math.min(add,20);i++){if(o.customers.length<C.sampleCap)o.customers.push(obCust());else o.customers[Math.random()*o.customers.length|0]=obCust()}
+  const tgt=o.nc*t.avgDep*Math.min(1.3,.7+.3*a),dd=(tgt-o.deposits)*C.depAdj;o.deposits=Math.max(0,o.deposits+dd);o.reserves+=dd;
+  const inc=o.reserves*b*C.yieldShare/12+o.loans.reduce((s,l)=>s+(l.bal||0)*(l.rate||0)/12,0)+o.cards.reduce((s,c)=>s+(c.bal||0)*(c.rate||0)/12,0);
+  const exp=o.deposits*o.depRate/12+t.opex+o.nc*C.custCost+o.emerg*C.emergRate/12,p=inc-exp;
+  o.reserves+=p;o.capital=obEquity();o.m++;
+  o.rep=Math.max(0,Math.min(100,o.rep+(p>0?.4:-.8)+(a-1)*.5-(o.emerg>0?1:0)-(o.reserves<0?5:0)));
+  o.last={p,inc,exp,add,lose};o.hist.push({m:o.m,p:Math.round(p),r:Math.round(o.reserves),d:0,dep:Math.round(o.deposits),c:o.nc});
+  while(o.hist.length>C.histKeep){const h=o.hist.shift(),y=Math.floor((h.m-1)/12)+1;let Y=o.yrs.find(x=>x.y===y);if(!Y){Y={y,p:0,d:0};o.yrs.push(Y)}Y.p+=h.p;Y.d+=h.d}
+  if(o.yrs.length>50)o.yrs.shift();obTierUp(true)}
+function obTick(now){const o=S.ob;if(!o)return;const M=BANKCFG.monthMs;let n=Math.floor((now-o.t)/M);if(n<=0)return;
+  if(n>BANKCFG.maxCatchup){n=BANKCFG.maxCatchup;o.t=now-(now-o.t)%M}else o.t+=n*M;for(let i=0;i<n;i++)obMonth()}
+function obNext(){const o=S.ob,T=BANKCFG.tiers[o.tier+1];if(!T)return null;const r=T.req;return {T,ok:o.capital>=r.cap&&o.nc>=r.cust&&obLoanBal()>=r.loans,r}}
+function obTierUp(auto){const x=obNext();if(!x||!x.ok){if(!auto)toast("Not ready for the next tier yet");return}S.ob.tier++;S.ob.rep=Math.min(100,S.ob.rep+5);toast(`${S.ob.name} is now a ${x.T.n} bank!`);logBank(`${S.ob.name} upgraded to ${x.T.n}`)}
+function obFound(name,hq){const C=BANKCFG,cost=C.license+C.minCapital;if(S.ob)return;if(totals().nw<C.unlockNW){toast(`Needs ${fmt(C.unlockNW)} net worth`);return}
+  if(S.cash<cost){toast(`Needs ${fmt(cost)} cash (license + capital)`);return}const c=CITIES[hq]||CITIES[0];
+  S.cash-=cost;S.ob={name:(name||"").trim().slice(0,28)||c.name+" Trust",hq:c.id,capital:C.minCapital,reserves:C.minCapital,t:Date.now()};obFix();
+  for(let i=0;i<5;i++)S.ob.customers.push(obCust());toast(`${S.ob.name} is open for business in ${c.name}!`);logBank(`Founded ${S.ob.name}`)}
+const obMinEq=()=>Math.max(obT().minCap,S.ob.deposits*BANKCFG.capRatio);
+const obFree=()=>Math.max(0,Math.min(S.ob.reserves,obEquity()-obMinEq()));
+function obMoney(v){const o=S.ob;if(!o)return;if(v>0){v=Math.min(v,Math.max(0,S.cash));if(v<=0)return;S.cash-=v;o.reserves+=v;o.inj+=v;toast(`Injected ${fmt(v)} into ${o.name}`)}
+  else{v=Math.min(-v,obFree());if(v<=0){toast("No excess capital to pay out");return}o.reserves-=v;S.cash+=v;o.div+=v;toast(`Dividend paid: ${fmt(v)}`)}o.capital=obEquity()}
+let obTab="ov";
+const obPct=v=>(v*100).toFixed(2)+"%";
+const obBtn=(a,x,t,dis,bg)=>`<button class="buy" data-ph="${a}" data-x="${x}" style="flex:1;min-width:0;margin-top:6px;color:#fff;background:${bg||"#14532d"}!important;border-color:#ffffff44" ${dis?"disabled":""}>${t}</button>`;
+function obApp(){const C=BANKCFG,o=S.ob;
+  if(!o){const nw=totals().nw,ok=nw>=C.unlockNW,cost=C.license+C.minCapital;
+    return `<div class="ph-big" style="font-size:22px">🏦 Found a bank</div><p class="ph-sub">Take deposits, earn the spread over the central bank rate, grow from Small to Major.</p>
+    <div class="ph-rows"><div><span>Net worth needed</span><b style="color:${ok?"var(--good)":"var(--bad)"}">${fmt(nw)} / ${fmt(C.unlockNW)}</b></div><div><span>Banking license</span><b>${fmt(C.license)}</b></div><div><span>Starting capital</span><b>${fmt(C.minCapital)}</b></div></div>
+    ${ok?`<input id="obname" maxlength="28" placeholder="Bank name" style="width:100%;margin-top:8px;padding:8px;border-radius:10px;border:1px solid #ffffff44;background:#0003;color:#fff;font:inherit;box-sizing:border-box">
+    <select id="obhq" style="width:100%;margin-top:6px;padding:8px;border-radius:10px;background:#1f2937;color:#fff;font:inherit">${CITIES.map(c=>`<option value="${c.id}" ${(S.home||{}).city===c.id?"selected":""}>${c.name}, ${c.country}</option>`).join("")}</select>
+    <button class="buy" data-ph="obfound" style="width:100%;margin-top:8px;color:#fff;background:#14532d!important;border-color:#22c55e" ${S.cash<cost?"disabled":""}>Found bank · ${fmt(cost)}</button>`:""}`}
+  let h=`<div class="ph-seg">${[["ov","Overview"],["cu","Customers"]].map(([k,n])=>`<button data-ph="obtab" data-k="${k}" aria-pressed="${obTab===k}">${n}</button>`).join("")}</div>`;
+  if(obTab==="cu")return h+`<p class="ph-sub">${o.nc.toLocaleString()} customers · sample of ${o.customers.length}</p><div class="ph-list">${o.customers.slice(-40).reverse().map(c=>`<div><b>${c.ty==="c"?"🏢":"👤"} ${c.n}</b>Credit ${c.cr} · income ${fmt(c.inc)}/yr · deposit ${fmtc(c.dep)}</div>`).join("")}</div>`;
+  const t=obT(),eq=obEquity(),l=o.last,nx=obNext(),pr=(v,m)=>`<b style="color:${v>=m?"var(--good)":"#fbbf24"}">${m?Math.min(100,Math.round(v/m*100)):100}%</b>`,fr=obFree();
+  h+=`<div class="ph-big" style="font-size:22px">${o.name}</div><div class="ph-sub">${t.n} bank · HQ ${CITIES[o.hq].name} · month ${o.m} · next in ${fmtDur(C.monthMs-(Date.now()-o.t))}</div>
+  <div class="ph-rows"><div><span>Capital (equity)</span><b>${fmt(eq)}</b></div><div><span>Reserves</span><b>${fmt(o.reserves)}</b></div><div><span>Deposits</span><b>${fmt(o.deposits)}</b></div><div><span>Customers</span><b>${o.nc.toLocaleString()} / ${t.cap.toLocaleString()}</b></div><div><span>Reputation</span><b>${Math.round(o.rep)}/100</b></div>
+  <div><span>Central bank rate</span><b>${obPct(S.econ.base)}</b></div><div><span>Your deposit rate</span><b>${obPct(o.depRate)}</b></div><div><span>Appeal</span><b>×${obAppeal().toFixed(2)}</b></div>
+  <div><span>Last month</span><b style="color:${!l||l.p>=0?"var(--good)":"var(--bad)"}">${l?fmt(l.p):"—"}</b></div>${l?`<div><span>Income / costs</span><b>${fmt(l.inc)} / ${fmt(l.exp)}</b></div><div><span>New / lost customers</span><b>+${l.add} / −${l.lose}</b></div>`:""}</div>
+  <div style="display:flex;gap:5px">${obBtn("obrate",-.0025,"Rate −0.25%",o.depRate<=0,"#7f1d1d")}${obBtn("obrate",.0025,"Rate +0.25%",o.depRate>=.15)}</div>
+  <div style="display:flex;gap:5px">${obBtn("obmoney",1e6,"Inject "+fmt(1e6),S.cash<1e6)}${obBtn("obmoney",1e7,"Inject "+fmt(1e7),S.cash<1e7)}</div>
+  <div style="display:flex;gap:5px">${obBtn("obmoney",-fr/4,"Dividend "+fmt(fr/4),fr<1,"#1e3a8a")}${obBtn("obmoney",-fr,"Pay all "+fmt(fr),fr<1,"#1e3a8a")}</div>
+  <p class="ph-sub">Dividends keep equity ≥ ${fmt(obMinEq())}. Paid out ${fmt(o.div)} so far.</p>`;
+  if(nx){const r=nx.r;h+=`<div class="ph-card"><b>Next tier: ${nx.T.n}</b></div><div class="ph-rows"><div><span>Capital ${fmt(r.cap)}</span>${pr(eq,r.cap)}</div><div><span>Customers ${r.cust.toLocaleString()}</span>${pr(o.nc,r.cust)}</div><div><span>Loan book ${fmt(r.loans)}</span>${pr(obLoanBal(),r.loans)}</div></div>${obBtn("obtier",0,"Upgrade to "+nx.T.n,!nx.ok)}`}
+  else h+=`<p class="ph-sub">Top tier reached.</p>`;
+  return h}
 /* ---------- crime, courts and prison ---------- */
 S.rec=S.rec||[];
 const POLMULT=[.6,1,1.6];
@@ -2433,7 +2506,7 @@ try{Object.assign(PH,JSON.parse(localStorage.getItem("meridian-phone")||"{}"),{e
 const phSave=()=>{try{localStorage.setItem("meridian-phone",JSON.stringify({open:PH.open,x:PH.x,y:PH.y}))}catch(e){}};
 let lastLog="";
 function trackNews(){const l=S.log[0];if(l&&l!==lastLog){lastLog=l;if(!S.news.length||S.news[0].t!==l){S.news.unshift({t:l,at:Date.now()});S.news=S.news.slice(0,40)}}}
-const ICO={shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,
+const ICO={shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
  wallet:'<path d="M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z M3 7l12-3v3 M16 13.5h2"/>',
  news:'<path d="M4 5h13v14H6a2 2 0 0 1-2-2z M17 9h3v8a2 2 0 0 1-2 2 M7 9h7 M7 12h7 M7 15h5"/>',
  needs:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -2443,7 +2516,7 @@ const ICO={shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks
  market:'<path d="M4 19V9 M10 19V5 M16 19v-7 M22 19H2"/>',
  travel:'<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["wallet","Wallet","#0f766e"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"]];
+const APPS=[["wallet","Wallet","#0f766e"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 function phPlace(){const el=PH.el,w=el.offsetWidth,h=el.offsetHeight,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
@@ -2463,6 +2536,7 @@ function appHtml(k){const {inc,nw}=totals();
   if(k==="ug")return ugApp();
   if(k==="stocks")return mktApp();
   if(k==="shop")return shopApp();
+  if(k==="obank")return obApp();
   if(k==="gig"){const g=gigState(),v=gigPay();return `<div class="ph-sub">${jailed()?"Prison labour":GIGS[g.i].n} · ${CITIES[(S.loc||{city:0}).city].name}</div>
     ${rideHtml()}
     <button data-ph="gigtap" style="width:100%;aspect-ratio:1.4;border:0;border-radius:18px;background:#b45309;color:#fff;font:inherit;font-size:22px;font-weight:700;cursor:pointer;margin:8px 0;touch-action:manipulation">${GIGS[g.i].v}<br><span style="font-size:15px;font-weight:600;opacity:.9">+${fmtc(v)}</span></button>
@@ -2492,6 +2566,11 @@ const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);ret
 PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;
   if(a==="unfold"){PH.open=true;PH.app=null}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="app"){PH.app=b.dataset.k}
   else if(a==="shoptab"){shopTab=b.dataset.k}
+  else if(a==="obtab"){obTab=b.dataset.k}
+  else if(a==="obfound"){const n=PH.el.querySelector("#obname"),c=PH.el.querySelector("#obhq");obFound(n?n.value:"",c?+c.value:0);save();hud()}
+  else if(a==="obrate"){if(S.ob)S.ob.depRate=Math.max(0,Math.min(.15,Math.round((S.ob.depRate+ +b.dataset.x)*1e4)/1e4));save()}
+  else if(a==="obmoney"){obMoney(+b.dataset.x);save();hud()}
+  else if(a==="obtier"){if(S.ob)obTierUp(false);save()}
   else if(a==="buygear"){const x=GEAR.find(y=>y.k===b.dataset.k),g=gearOwn();if(!x||g[x.k]||S.cash<x.p)return;S.cash-=x.p;g[x.k]=1;toast(`You bought a ${x.n.toLowerCase()}`);save();hud()}
   else if(a==="sellgear"){const x=GEAR.find(y=>y.k===b.dataset.k),g=gearOwn();if(!x||!g[x.k])return;delete g[x.k];S.cash+=x.p*.5;toast(`${x.n} sold`);save();hud()}
   else if(a==="buyitem"){const it=ITEMS.find(x=>x.k===b.dataset.k),p=itemPrice(it,CITIES[(S.home||{city:0}).city]);if(S.cash<p)return;S.cash-=p;for(const [q] of NEEDS)if(it[q])S.need[q]=Math.max(0,Math.min(100,S.need[q]+it[q]));toast(`${it.n} delivered`);save();hud()}
