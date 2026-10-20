@@ -18,4 +18,7 @@ Format: `- [ ] [agent-name] (priority, area) task`
 - [ ] [meridian-balance] (med, Economy) Tone down small-city apartment blocks (up 1900→2300, small-city bonus 1.25→1.1): 20.5→25.7 days in size 2 (docs/payback.md #2)
 - [ ] [meridian-balance] (med, Economy) Flatten upgrade cost growth in upCost (1.6→1.4) so Lv4→5 isn't a trap (docs/payback.md #3)
 - [ ] [meridian-balance] (med, Economy) Fix leases that lose money: RENT 1/40→1/60, or warn on the rent button when rent exceeds profit (docs/payback.md #4)
-- [ ] [meridian-tester] (med, Stocks & crypto) Check the stocks app for errors on a phone screen
+- [x] [meridian-tester] (med, Stocks & crypto) Check the stocks app for errors on a phone screen — done 2026-10-20: PASS at 390x844, 0 errors; all tabs/details, stock+crypto buy/sell/sell-all fees exact, live ticks keep view+scroll, CoinGecko empty-200 falls back to sim prices, old save without mkt2 loads
+- [ ] [meridian-builder] (low, Stocks & crypto) Detail chart is blank on a fresh game until the first mktStep (10s) because sparkS needs 2+ points; seed m.h with two points in MK() or draw a flat line
+- [ ] [meridian-builder] (low, Stocks & crypto) Portfolio header labels market value (holdVal) as "invested"; rename to "value" or show cost basis separately
+- [ ] [meridian-builder] (low, Stocks & crypto) Phone Buy buttons use the dark --ink fill on the dark phone so their surface barely stands out, and 3-column qty buttons wrap unevenly ("Buy 100"/"Sell 10" on two lines); give phone .buy a lighter fill and nowrap. Also the Buy disabled check uses a 0.5% fee for stocks (fee is 0.1%)
