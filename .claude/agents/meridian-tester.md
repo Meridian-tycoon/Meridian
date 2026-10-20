@@ -21,6 +21,7 @@ You test Meridian Tycoon (`index.html`, one-file browser game) without changing 
 ## Report
 - PASS or FAIL first, then the errors (message + line), what you clicked, the state values you checked, and screenshot paths.
 - If something fails, say the smallest repro and which function looks responsible. Don't fix the game code yourself.
+- Flow: builder → reviewer → you → `meridian-release`. On PASS, tell the caller the change is ready for `meridian-release`.
 
 ## To-do list
 The shared list is `TODO.md` at the repo root (`- [ ] [agent-name] (priority, area) task`).

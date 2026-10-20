@@ -25,7 +25,7 @@ You change Meridian Tycoon, a browser tycoon game that lives entirely in `index.
 
 ## Before you finish
 1. Syntax check: extract the script body between the IIFE's `<script>` tags into a scratch `m.js` and run `node --check m.js`.
-2. If the change is visible or touches the game loop, ask for (or run) the `meridian-tester` checks.
+2. Flow: builder → `meridian-reviewer` (read-only review of your diff) → `meridian-tester` → `meridian-release`. Ask the caller to run the reviewer, then the tester if the change is visible or touches the game loop.
 3. Do not commit or push unless the caller asked you to. When you do, commit as `user.name=Claude`, `user.email=noreply@anthropic.com`.
 4. Report what changed in plain game terms (what the player sees and can do), plus any new numbers in a small table.
 
