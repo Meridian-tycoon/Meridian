@@ -113,11 +113,16 @@ A size-5 restaurant makes the same real profit ($1.3k/day) as a size-2 one that 
 
 A $146k apartment block in a size-2 city pays back in **20.5 days** (18.3 in size 1). It needs no staff and no stock, and the ×1.25 small-city bonus applies. That beats every business that costs more than it: office 34, hotel 42, prison 42, railway 46, casino 52 in its best city. Only the $1.6k food cart is faster. A mid-game player's best move is to buy an apartment block in every size-1/2 city before touching anything bigger.
 
-### 3. Upgrades get steadily worse; Lv4→5 is never worth it (MED)
+### 3. Upgrades get steadily worse; Lv4→5 is never worth it (MED) — DONE 2026-10-20
 
 Each level adds a fixed amount of profit (+55% of takings, +30% of upkeep), but its cost grows 1.6× per level. So step paybacks run about **1× → 1.6× → 2.6× → 4.1×** the Lv1 payback. A cart's Lv4→5 step takes 88 days to repay, an airport's 306. Buying a new Lv1 business in another city is always better, so upgrading only makes sense once you've run out of slots. That's acceptable for a late-game cash sink, but Lv5 is currently a trap for anyone still expanding.
 
-### 4. Renting big assets loses money every hour (MED)
+**Fix applied:** `upCost` growth 1.6→1.4 per level (index.html:341). Step paybacks now 1× → 1.4× → 2.0× → 2.7× of the Lv1→2 step: cart Lv4→5 ≈59 days (was 88), airport ≈205 (was 306). Total upgrade spend to Lv5 drops from 7.4× to 5.7× build cost. Saves store only levels, so they load unchanged (sell/net-worth valuations of upgraded businesses drop accordingly).
+
+### 4. Renting big assets loses money every hour (MED) — DONE 2026-10-20
+
+**Fixed:** `RENT` 1/40 → 1/60 (index.html:369). Leases now profit whenever payback is under 60 days. Size 5 (base profit, staffed, no stock): casino −$83k → **+$34k/day**, prison −$50k → +$0.3k, office −$2.7k → +$9k, airport −$144k → +$148k. Still losing: railway (−$13k size 5) and seaport (−$20k size 5), airline/airport in size ≤2 cities, and stocked shops/restaurants in big cities. For these the Rent button now says "· rent exceeds profit" with a red border (index.html:531, compares `bizRent` to Lv1 `profit`; skipped on blocked rows). Old saves pay the new rate automatically.
+
 
 Rent is `price/40` per hour, so any lease with a payback above 40 days runs at a loss. In a size-5 city that covers most things: casino **−$83k/day**, railway −$95k, seaport −$137k, airport −$144k, prison −$50k, office −$2.7k, restaurant −$1.9k. Only the hotel (+$10k), apartments (+$1.2k) and food cart (+$25) make anything. The rent button is offered without any warning, and these leases still cost 20% of the price upfront. Rent is also flat by level, so an upgraded lease does improve over time. A leased Lv1 casino never does.
 
@@ -141,9 +146,40 @@ Business loan rates are 0.064–0.48% per game day, against a 2–5% per day ret
 
 | # | Constant | Before | After | Effect |
 |---|---|---|---|---|
-| 1 | `SUP.kiosk.c` / `SUP.shop.c` / `SUP.rest.c` | 1.3 / 2.8 / 13 | 1.0 / 2.0 / 8 | Size-5 payback: kiosk 58→43, shop 79→51, restaurant 101→55 days. Size-2 payback: kiosk 30→26, shop 38→30, restaurant 44→32 days. The food cart is unchanged. Retail no longer falls behind the taxi company. |
-| 2 | Apartment block `up` | 1900 | 2300, with small-city apt bonus 1.25→1.1 in `bonus()` | Size-2 payback 20.5→25.7 days, size-1 18.3→22.6, size-5 34.9→38.2. Still a strong mid-game buy, but no longer beats the cart-to-office ladder by a mile. |
+| 1 ✅ **done 2026-10-20** | `SUP.kiosk.c` / `SUP.shop.c` / `SUP.rest.c` (+ steakhouse `u` 1.25→1.3) | 1.3 / 2.8 / 13 | 1.0 / 2.0 / 8 | Applied. Size-5 payback: kiosk 58→43, shop 79→51, restaurant 101→55 days. Size-2 payback: kiosk 30→26, shop 38→30, restaurant 44→32 days. The food cart is unchanged. Retail no longer falls behind the taxi company. |
+| 2 ✅ **done 2026-10-20** | Apartment block `up` | 1900 | 2300, with small-city apt bonus 1.25→1.1 in `bonus()` | Size-2 payback 20.5→25.7 days, size-1 18.3→22.6, size-5 34.9→38.2. Still a strong mid-game buy, but no longer beats the cart-to-office ladder by a mile. |
 | 3 | Upgrade growth in `upCost` | `Math.pow(1.6,lv-1)` | `Math.pow(1.4,lv-1)` | Step paybacks for a size-2 apartment go from 27/43/69/110 to 27/38/53/74 days. Payback to Lv5: cart 42→33, hotel 91→73, casino 107→85. Lv5 becomes a real choice rather than a trap. Existing saves are unaffected (levels already bought stay bought). |
 | 4 | `RENT` | 1/40 | 1/60 | Leases of most big assets earn money: size-5 casino −$83k→+$34k/day, airport −$144k→+$148k/day. Size-5 railway (−$13k), seaport (−$20k), shop and restaurant, plus small-city airline/airport, still lose money. Buying still pays for itself within 60 days of rent. Alternative if leases are meant to be a trap: keep 1/40 and show "loses $X/hr" on the rent button. |
 
 Tweaks 1–3 are independent. Do tweak 4 only if leasing is meant to be a real way into the late game.
+
+## #1 applied (2026-10-20)
+
+Supply costs are now kiosk 1.0, shop 2.0 and restaurant 8. The steakhouse menu's supply use went from 1.25 to 1.3. Without that change, cheaper ingredients would have made the steakhouse beat the diner in normal times in size 3–4 cities, and it already wins every slump. The tables above still show the old numbers.
+
+Payback for a Lv1 business in normal times, in days (old → new):
+
+| Business / menu | Size 1 | Size 2 | Size 3 | Size 4 | Size 5 |
+|---|---:|---:|---:|---:|---:|
+| Kiosk | 23.7→20.7 | 30.4→25.6 | 36.6→29.9 | 48.3→37.3 | 57.5→42.5 |
+| Shop | 28.7→24.0 | 37.6→29.9 | 46.3→35.2 | 63.9→44.4 | 78.7→51.2 |
+| Restaurant – diner | 32.9→25.8 | 44.0→32.1 | 55.2→37.7 | 79.0→47.5 | 101→54.6 |
+| Restaurant – steakhouse | 34.2→25.6 | 47.2→32.3 | 61.2→38.2 | 94.3→49.0 | 129→56.9 |
+| Restaurant – pizzeria | 26.0→22.4 | 32.8→27.2 | 67.9→47.6 | 101→61.7 | 133→72.4 |
+| Restaurant – fine dining | 39.8→27.1 | 58.4→34.6 | 81.1→41.5 | 150→54.3 | 69.9→38.4 |
+
+Best restaurant menu by situation: pizzeria in size 1–2, diner in size 3–4, fine dining in size 5 and in any boom, steakhouse in any slump. No menu wins everywhere. Cart menus did not change.
+
+## #2 applied (2026-10-20)
+
+Apartment block upkeep is now 2300 (was 1900) and the small-city apartment bonus in `bonus()` is ×1.1 (was ×1.25). Tables above still show old numbers. Lv1, baseline setup, RENT 1/60:
+
+| City size | Price | Profit/day old → new | Payback days old → new | Leased profit/day old → new |
+|---:|---:|---:|---:|---:|
+| 1 | $109.2k | $5,978 → $4,827 | 18.3 → 22.6 | $4,158 → $3,007 |
+| 2 | $145.6k | $7,103 → $5,673 | 20.5 → 25.7 | $4,676 → $3,246 |
+| 3 | $182.0k | $6,145 → $5,685 | 29.6 → 32.0 | $3,112 → $2,652 |
+| 4 | $245.7k | $7,463 → $6,842 | 32.9 → 35.9 | $3,368 → $2,747 |
+| 5 | $327.6k | $9,395 → $8,567 | 34.9 → 38.2 | $3,935 → $3,107 |
+
+Apartments are still worth buying everywhere (23–38 days, in line with the 20–45 day band) and leases stay clearly profitable. Small cities no longer beat the office (34) by a wide margin. Old saves load unchanged: only constants changed.
