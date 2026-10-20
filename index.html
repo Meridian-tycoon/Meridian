@@ -343,6 +343,7 @@ function totals(){let inc=0,assets=0;
   const interest=typeof bankPayHr==="function"?Math.round(bankPayHr()):Math.round(S.debt*0.003);
   const upk=typeof indUpkeep==="function"?indUpkeep():0;assets+=typeof indAssets==="function"?indAssets():0;
   const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
+  if(typeof holdVal==="function")assets+=holdVal();
   return{inc:inc-(typeof bankPayHr==="function"?0:interest)-upk-rent,interest,upk,rent,nw:S.cash+assets-S.debt}}
 
 /* ---------- map: a 3D globe you can spin 360° in any direction ---------- */
@@ -2099,6 +2100,59 @@ setInterval(()=>{if(!PH.open||PH.app!=="ug")return;const u=UG(),now=Date.now(),e
     const t=cd?"Lie low "+Math.ceil(cd/1000)+"s":lock?"Locked":"Do it";if(b.textContent!==t)b.textContent=t;b.disabled=!!(cd||lock)})},1000);
 /* owner shortcut: open the game with ?release to walk out of prison */
 if(/[?&]release\b/.test(location.search)&&S.jail){S.jail=null;if(S.ug)S.ug.heat=0;save();setTimeout(()=>toast("You're free. Released from prison."),800);history.replaceState(null,"",location.pathname)}
+/* ---------- stock & crypto market ---------- */
+const ASSETS=[
+ ["AAPL","Apple","s",230,.012,"tech"],["MSFT","Microsoft","s",480,.011,"tech"],["NVDA","NVIDIA","s",170,.025,"tech"],["GOOGL","Alphabet","s",190,.014,"tech"],
+ ["AMZN","Amazon","s",220,.015,"tech"],["META","Meta Platforms","s",700,.018,"tech"],["TSLA","Tesla","s",330,.032,"auto"],["NFLX","Netflix","s",1200,.018,"media"],
+ ["SHOP","Shopify","s",150,.026,"tech"],["BRK.B","Berkshire Hathaway","s",480,.007,"fin"],["JPM","JPMorgan Chase","s",280,.01,"fin"],["V","Visa","s",340,.008,"fin"],
+ ["RY","Royal Bank of Canada","s",170,.008,"fin"],["WMT","Walmart","s",100,.007,"retail"],["KO","Coca-Cola","s",70,.005,"retail"],["DIS","Disney","s",115,.013,"media"],
+ ["XOM","ExxonMobil","s",110,.012,"energy"],["LMT","Lockheed Martin","s",470,.01,"defense"],["DAL","Delta Air Lines","s",55,.02,"travel"],
+ ["BTC","Bitcoin","c",100000,.03,"bitcoin"],["ETH","Ethereum","c",3500,.038,"ethereum"],["SOL","Solana","c",180,.05,"solana"],["BNB","BNB","c",650,.03,"binancecoin"],
+ ["XRP","XRP","c",2.5,.045,"ripple"],["ADA","Cardano","c",.7,.05,"cardano"],["DOGE","Dogecoin","c",.2,.06,"dogecoin"],["LTC","Litecoin","c",90,.04,"litecoin"]
+].map(a=>({s:a[0],n:a[1],t:a[2],p0:a[3],vol:a[4],sec:a[5]}));
+const AK=Object.fromEntries(ASSETS.map(a=>[a.s,a]));
+function MK(){const m=S.mkt2=S.mkt2||{px:{},h:{},open:{},hold:{},t:0,live:0,realized:0};for(const a of ASSETS){if(m.px[a.s]==null){m.px[a.s]=a.p0;m.h[a.s]=[a.p0];m.open[a.s]=a.p0}}return m}
+function mktStep(){const m=MK(),now=Date.now();const war=typeof tension==="function"?tension()/100:0;
+  for(const a of ASSETS){if(a.t==="c"&&now-m.live<5*60000&&m.liveSet&&m.liveSet[a.s])continue;
+    let drift=.0002;if(war>.2){if(a.sec==="defense"||a.sec==="energy")drift+=.002*war;else if(a.sec==="travel")drift-=.003*war;else drift-=.0008*war}
+    const shock=Math.random()<.004?(Math.random()<.5?-1:1)*a.vol*4:0;
+    m.px[a.s]=Math.max(a.p0*.05,m.px[a.s]*Math.exp(drift+(Math.random()-.5)*2*a.vol*.25+shock));
+    if(shock&&Math.abs(shock)>0)mktNews(a,shock)}
+  for(const a of ASSETS){const h=m.h[a.s];h.push(m.px[a.s]);if(h.length>90)h.shift()}
+  const d=Math.floor(now/(24*DAYMS));if(m.day!==d){m.day=d;for(const a of ASSETS)m.open[a.s]=m.px[a.s]}}
+function mktNews(a,sh){S.log.unshift(`Markets: ${a.n} ${sh>0?"surges":"plunges"} ${Math.abs(sh*100).toFixed(0)}% on ${sh>0?["strong earnings","takeover rumours","a big contract"][Math.floor(Math.random()*3)]:["a profit warning","a lawsuit","a data breach"][Math.floor(Math.random()*3)]}`);S.log=S.log.slice(0,3)}
+/* real crypto prices from CoinGecko when the network allows it */
+async function mktLive(){try{const ids=ASSETS.filter(a=>a.t==="c").map(a=>a.sec).join(",");
+  const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);if(!r.ok)return;const j=await r.json(),m=MK();m.liveSet={};
+  for(const a of ASSETS)if(a.t==="c"&&j[a.sec]&&j[a.sec].usd){m.px[a.s]=j[a.sec].usd;m.liveSet[a.s]=1}m.live=Date.now()}catch(e){}}
+setInterval(mktStep,10000);setInterval(mktLive,90000);setTimeout(mktLive,3000);
+const holdVal=()=>{const m=MK();let v=0;for(const s in m.hold)v+=m.hold[s].q*m.px[s];return v};
+const fee=a=>a.t==="c"?.005:.001;
+function trade(s,q){const m=MK(),a=AK[s],p=m.px[s],h=m.hold[s]=m.hold[s]||{q:0,avg:0};
+  if(q>0){const cost=p*q*(1+fee(a));if(S.cash<cost){toast(`Need ${fmt(cost)}`);return}S.cash-=cost;h.avg=(h.avg*h.q+p*q)/(h.q+q);h.q+=q;toast(`Bought ${fq(q)} ${s}`)}
+  else{q=Math.min(-q,h.q);if(q<=0)return;const v=p*q*(1-fee(a));S.cash+=v;m.realized+=(p-h.avg)*q;h.q-=q;if(h.q<1e-9)delete m.hold[s];toast(`Sold ${fq(q)} ${s} for ${fmt(v)}`)}
+  save();hud();phRender()}
+const fq=q=>q>=1?(+q.toFixed(q<10?3:0)).toLocaleString():(+q.toPrecision(3)).toString();
+const fp=p=>p>=1000?"$"+Math.round(p).toLocaleString():p>=1?"$"+p.toFixed(2):"$"+p.toPrecision(3);
+function sparkS(h,col){if(h.length<2)return"";const w=60,ht=18,mn=Math.min(...h),mx=Math.max(...h)||1;return `<svg viewBox="0 0 ${w} ${ht}" width="${w}" height="${ht}"><polyline fill="none" stroke="${col}" stroke-width="1.5" points="${h.map((v,i)=>`${(i/(h.length-1)*w).toFixed(1)},${(ht-(v-mn)/((mx-mn)||1)*ht).toFixed(1)}`).join(" ")}"/></svg>`}
+let mkTab="s",mkSel=null;
+function mktApp(){const m=MK();
+  let h=`<div class="ph-seg">${[["s","Stocks"],["c","Crypto"],["p","Portfolio"]].map(([k,n])=>`<button data-ph="mkt" data-k="${k}" aria-pressed="${mkTab===k}">${n}</button>`).join("")}</div>`;
+  if(mkSel){const a=AK[mkSel],p=m.px[a.s],ch=(p/m.open[a.s]-1)*100,hd=m.hold[a.s],col=ch>=0?"#22c55e":"#ef4444";
+    const qs=a.t==="c"?[.001,.01,.1,1].map(x=>x*Math.max(1,10**Math.floor(Math.log10(1000/p)))):[1,10,100];
+    h+=`<div style="margin-top:8px"><button data-ph="mksel" data-k="" class="buy up" style="min-width:0;min-height:26px;padding:3px 9px;font-size:11px;color:#fff;border-color:#ffffff55">‹ Back</button></div>
+      <div class="ph-big" style="font-size:24px;margin-top:6px">${fp(p)}</div><div class="ph-sub">${a.n} · ${a.s} <b style="color:${col}">${ch>=0?"+":""}${ch.toFixed(2)}% today</b>${a.t==="c"&&m.liveSet&&m.liveSet[a.s]?" · live price":""}</div>
+      <div style="margin:8px 0">${sparkS(m.h[a.s],col).replace('width="60" height="18"','width="100%" height="70" preserveAspectRatio="none"')}</div>
+      <div class="ph-rows"><div><span>You own</span><b>${hd?fq(hd.q):0}</b></div>${hd?`<div><span>Value</span><b>${fmt(hd.q*p)}</b></div><div><span>Avg cost</span><b>${fp(hd.avg)}</b></div><div><span>Gain</span><b style="color:${p>=hd.avg?"#22c55e":"#ef4444"}">${fmt((p-hd.avg)*hd.q)}</b></div>`:""}<div><span>Fee</span><b>${fee(a)*100}%</b></div></div>
+      <div style="display:grid;grid-template-columns:repeat(${qs.length},1fr);gap:5px;margin-top:8px">${qs.map(q=>`<button class="buy" data-ph="trade" data-k="${a.s}" data-q="${q}" style="min-width:0;font-size:11px" ${S.cash<p*q*1.005?"disabled":""}>Buy ${fq(q)}</button>`).join("")}</div>
+      <div style="display:grid;grid-template-columns:repeat(${qs.length},1fr);gap:5px;margin-top:5px">${qs.map(q=>`<button class="buy up" data-ph="trade" data-k="${a.s}" data-q="${-q}" style="min-width:0;font-size:11px;color:#fff;border-color:#ffffff55" ${!hd||hd.q<q-1e-9?"disabled":""}>Sell ${fq(q)}</button>`).join("")}</div>
+      ${hd?`<button class="buy up" data-ph="trade" data-k="${a.s}" data-q="${-hd.q}" style="width:100%;margin-top:5px;color:#fff;border-color:#ffffff55">Sell all</button>`:""}`;return h}
+  const list=mkTab==="p"?ASSETS.filter(a=>m.hold[a.s]):ASSETS.filter(a=>a.t===mkTab);
+  if(mkTab==="p"){const v=holdVal(),cost=Object.entries(m.hold).reduce((t,[s,x])=>t+x.q*x.avg,0);h+=`<div class="ph-big" style="font-size:24px;margin-top:8px">${fmt(v)}</div><div class="ph-sub">invested · <b style="color:${v>=cost?"#22c55e":"#ef4444"}">${fmt(v-cost)}</b> open · ${fmt(m.realized)} realized</div>`;if(!list.length)h+=`<p class="ph-sub">You don't own anything yet.</p>`}
+  else h+=`<p class="ph-sub" style="margin-top:6px">${mkTab==="c"?"Crypto uses live prices when available; it trades 24/7.":"Prices start from real-world levels and move with the game world: wars lift defense and oil, hit airlines."}</p>`;
+  h+=`<div class="ph-list">`+list.map(a=>{const p=m.px[a.s],ch=(p/m.open[a.s]-1)*100,col=ch>=0?"#22c55e":"#ef4444",hd=m.hold[a.s];
+    return `<button data-ph="mksel" data-k="${a.s}" style="all:unset;display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;width:100%;cursor:pointer;padding:2px 0"><span><b>${a.s}</b><small style="display:block">${hd?fq(hd.q)+" · "+fmt(hd.q*p):a.n}</small></span>${sparkS(m.h[a.s].slice(-30),col)}<span style="text-align:right;font-family:var(--mono)">${fp(p)}<small style="display:block;color:${col}">${ch>=0?"+":""}${ch.toFixed(2)}%</small></span></button>`}).join("")+`</div>`;
+  return h}
 let saveT=0;
 setInterval(()=>{if(saveT%10===0)accrue();checkApp();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -2118,7 +2172,7 @@ try{Object.assign(PH,JSON.parse(localStorage.getItem("meridian-phone")||"{}"),{e
 const phSave=()=>{try{localStorage.setItem("meridian-phone",JSON.stringify({open:PH.open,x:PH.x,y:PH.y}))}catch(e){}};
 let lastLog="";
 function trackNews(){const l=S.log[0];if(l&&l!==lastLog){lastLog=l;if(!S.news.length||S.news[0].t!==l){S.news.unshift({t:l,at:Date.now()});S.news=S.news.slice(0,40)}}}
-const ICO={ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,
+const ICO={stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,
  wallet:'<path d="M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z M3 7l12-3v3 M16 13.5h2"/>',
  news:'<path d="M4 5h13v14H6a2 2 0 0 1-2-2z M17 9h3v8a2 2 0 0 1-2 2 M7 9h7 M7 12h7 M7 15h5"/>',
  needs:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -2128,7 +2182,7 @@ const ICO={ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9
  market:'<path d="M4 19V9 M10 19V5 M16 19v-7 M22 19H2"/>',
  travel:'<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["wallet","Wallet","#0f766e"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["gig","Gigs","#b45309"],["ug","Underground","#111827"]];
+const APPS=[["wallet","Wallet","#0f766e"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 function phPlace(){const el=PH.el,w=el.offsetWidth,h=el.offsetHeight,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
@@ -2146,6 +2200,7 @@ function phRender0(){const el=PH.el;el.classList.toggle("folded",!PH.open);
     <div class="ph-screen">${body}</div><button class="ph-homebar" data-ph="home" aria-label="Home screen"></button>`;phPlace()}
 function appHtml(k){const {inc,nw}=totals();
   if(k==="ug")return ugApp();
+  if(k==="stocks")return mktApp();
   if(k==="gig"){const g=gigState(),v=gigPay();return `<div class="ph-sub">${jailed()?"Prison labour":GIGS[g.i].n} · ${CITIES[(S.loc||{city:0}).city].name}</div>
     <button data-ph="gigtap" style="width:100%;aspect-ratio:1.4;border:0;border-radius:18px;background:#b45309;color:#fff;font:inherit;font-size:22px;font-weight:700;cursor:pointer;margin:8px 0;touch-action:manipulation">${GIGS[g.i].v}<br><span style="font-size:15px;font-weight:600;opacity:.9">+${fmtc(v)}</span></button>
     <div class="ph-rows"><div><span>Combo</span><b>×${(1+Math.min(1,g.combo/50)).toFixed(2)}</b></div><div><span>Energy</span><b>${Math.round(g.en)}%</b></div><div><span>Earned today</span><b>${fmtc(g.today)}</b></div><div><span>All-time taps</span><b>${g.taps.toLocaleString()}</b></div></div>
@@ -2177,6 +2232,8 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="repay"){if(B().card&&B().card.bal)payCard(true);else if(B().loans[0])repayLoan(B().loans[0].id,true);S.debt=bankDebt();save();hud()}
   else if(a==="gobank"){openPortfolio();setTimeout(()=>{const x=[...sheet.querySelectorAll(".sec")].find(e=>/credit score/.test(e.textContent));if(x)x.scrollIntoView()},50);PH.open=false}
   else if(a==="gigtap"){gigTap(b);return}
+  else if(a==="mkt"){mkTab=b.dataset.k;mkSel=null}else if(a==="mksel"){mkSel=b.dataset.k||null;PH.el.querySelectorAll(".ph-screen").forEach(x=>x.scrollTop=0)}
+  else if(a==="trade"){trade(b.dataset.k,+b.dataset.q);return}
   else if(a==="ug"){ugDo(b.dataset.k);save();hud()}
   else if(a==="uga"){ugAct(b.dataset.a,b.dataset.x);save();hud()}
   else if(a==="gigpick"){gigState().i=+b.dataset.k}
@@ -2192,7 +2249,7 @@ PH.el.addEventListener("input",e=>{if(e.target.id!=="phc")return;const v=e.targe
   window.addEventListener("pointerup",e=>{if(!st||e.pointerId!==st.id)return;st=null;PH.el.classList.remove("dragging");
     if(PH.dragged){if(!PH.open){const w=PH.el.offsetWidth;PH.x=PH.x+w/2<innerWidth/2?4:innerWidth-w-4;phPlace()}phSave();setTimeout(()=>PH.dragged=false,0)}})})();
 window.addEventListener("resize",phPlace);
-setInterval(()=>{trackNews();if(PH.open&&Date.now()-(PH.touched||0)<3000)return;if(!PH.open||[null,"wallet","needs","job","weather"].includes(PH.app)||(PH.app==="travel"&&S.trip))phRender()},2000);
+setInterval(()=>{trackNews();if(PH.open&&Date.now()-(PH.touched||0)<3000)return;if(!PH.open||[null,"wallet","needs","job","weather","stocks"].includes(PH.app)||(PH.app==="travel"&&S.trip))phRender()},2000);
 trackNews();phRender();
 
 /* ---------- travel: you are somewhere. Fly, take the train or bus, drive, or grab a taxi ---------- */
