@@ -1764,7 +1764,7 @@ function renderPortfolio(){const{inc,nw}=totals();
   for(const g of GOALS){const done=S.goals.includes(g.id),p=Math.min(1,Math.max(0,g.v()/g.t));
     h+=`<div class="goal${done?" done":""}"><div class="n">${done?"✓ ":""}${g.n}</div><div style="font-family:var(--mono);font-size:12px">${g.r?"+"+fmt(g.r):"🏆"}</div>
     <div class="d">${g.d}</div><div></div>${done?"":`<div class="bar"><i style="width:${(p*100).toFixed(0)}%"></i></div>`}</div>`}
-  h+=`</div>`+ptHtml()+`<div class="foot"><button id="reset">Start a new game</button></div>`;
+  h+=`</div>`+ptHtml()+devHtml()+`<div class="foot"><button id="reset">Start a new game</button></div>`;
   sheet.innerHTML=h;
   $("#cls").onclick=closeSheet;
   sheet.querySelectorAll("[data-go]").forEach(r=>r.onclick=()=>flyTo(CITIES[r.dataset.go]));
@@ -2397,7 +2397,16 @@ function arrest(reason,sev,c,quiet){c=c||CITIES[(S.loc||{city:0}).city];const po
 function logCrime(m){S.log.unshift("Justice: "+m);S.log=S.log.slice(0,3)}
 function jailHtml(){if(!jailed())return"";const J=S.jail,c=CITIES[J.city],lc=Math.round(J.bail*.4);
   return `<div class="welcome" style="background:#7f1d1d;color:#fff"><b>In prison · ${c.name}</b><br>${J.reason}. Released in <b>${fmtDur(J.until-Date.now())}</b>. No wages, travel, education or job applications until then. Your businesses keep running.
-    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="buy" data-jail="bail" data-fixed="1" ${S.cash<J.bail?"disabled":""}>Post bail ${fmt(J.bail)}</button>${J.lawyer?"":`<button class="buy up" data-jail="lawyer" data-fixed="1" ${S.cash<lc?"disabled":""}>Hire lawyer ${fmt(lc)}</button>`}</div></div>`}
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="buy" data-jail="bail" data-fixed="1" ${S.cash<J.bail?"disabled":""}>Post bail ${fmt(J.bail)}</button>${J.lawyer?"":`<button class="buy up" data-jail="lawyer" data-fixed="1" ${S.cash<lc?"disabled":""}>Hire lawyer ${fmt(lc)}</button>`}${devOn()?`<button class="buy" data-dev="bail" data-fixed="1">Dev: bail out</button>`:""}</div></div>`}
+/* ---------- owner-only dev tools: unlocked per device with ?dev=1, cleared with ?dev=0 ---------- */
+function devOn(){try{return localStorage.getItem("meridian-dev")==="1"}catch(e){return false}}
+function devHtml(){if(!devOn())return"";return `<div class="sec">Dev</div><div class="list"><div class="row"><div class="n">Reset loans</div><div class="d">${B().loans.length} loans · ${fmt(B().loans.reduce((a,l)=>a+l.bal,0))} owed</div><button class="buy" data-dev="loans">Reset loans</button></div>
+  <div class="row"><div class="n">Bail out of jail</div><div class="d">${jailed()?"In prison · "+fmtDur(S.jail.until-Date.now())+" left":"Not in prison"}</div><button class="buy" data-dev="bail" ${S.jail?"":"disabled"}>Bail out</button></div></div>`}
+function devAct(b){const k=b.dataset.dev;
+  if(k==="loans"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to clear";return}const bk=B();bk.loans=[];bk.lates=[];S.debt=bankDebt();toast("Dev: all loans cleared")}
+  else if(k==="bail"){if(!S.jail)return;S.jail=null;toast("Dev: released from prison")}
+  save();hud();renderSheet()}
+document.addEventListener("click",e=>{const b=e.target.closest("[data-dev]");if(b&&devOn())devAct(b)});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-jail]");if(!b||!jailed())return;const J=S.jail;
   if(b.dataset.jail==="bail"){if(S.cash<J.bail)return;S.cash-=J.bail;S.jail=null;toast("Bail posted. You're free.");logCrime("Released on bail")}
   else{const lc=Math.round(J.bail*.4);if(S.cash<lc)return;S.cash-=lc;J.lawyer=1;if(Math.random()<.55){J.until=Date.now()+(J.until-Date.now())*.4;J.bail=Math.round(J.bail*.5);toast("Your lawyer got the sentence cut");logCrime("Appeal won: sentence reduced")}else toast("Appeal denied")}
@@ -2605,6 +2614,7 @@ setInterval(()=>{if(!PH.open||PH.app!=="ug")return;const u=UG(),now=Date.now(),e
   el.querySelectorAll('[data-ph="ug"]').forEach(b=>{const j=UGJ.find(x=>x.k===b.dataset.k),cd=Math.max(0,(u.cd[j.k]||0)-now),lock=(j.rep&&u.rep<j.rep)||(j.gang&&(!u.gang||u.gang.m<j.gang));
     const t=cd?"Lie low "+Math.ceil(cd/1000)+"s":lock?"Locked":"Do it";if(b.textContent!==t)b.textContent=t;b.disabled=!!(cd||lock)})},1000);
 /* owner shortcut: open the game with ?release to walk out of prison */
+try{if(/[?&]dev=1\b/.test(location.search))localStorage.setItem("meridian-dev","1");else if(/[?&]dev=0\b/.test(location.search))localStorage.removeItem("meridian-dev")}catch(e){}
 if(/[?&]release\b/.test(location.search)&&S.jail){S.jail=null;if(S.ug)S.ug.heat=0;save();setTimeout(()=>toast("You're free. Released from prison."),800);history.replaceState(null,"",location.pathname)}
 /* ---------- stock & crypto market ---------- */
 const ASSETS=[
