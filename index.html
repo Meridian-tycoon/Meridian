@@ -917,7 +917,7 @@ const jobsIn=c=>JOBS.filter(j=>!j.ok||j.ok(c));
 const wage=(j,c)=>Math.round(j.w*COL(c)*100)/100;
 const homeRent=(h,c)=>Math.round(h.r*COL(c)*PRICE[c.size]*100)/100;
 const homeBuy=(h,c)=>Math.round(h.buy*PRICE[c.size]*PRICE[c.size]);
-function lifeIncome(){let v=0;if(S.job&&!(typeof jailed==="function"&&jailed())&&!S.trip&&S.loc&&S.loc.city===S.job.city)v+=wage(JK[S.job.k],CITIES[S.job.city])*(typeof jobLaw==="function"?jobLaw(CITIES[S.job.city]):1)*(typeof wageMult==="function"?wageMult():1);if(S.home&&!S.home.own)v-=homeRent(HK[S.home.k],CITIES[S.home.city]);return v}
+function lifeIncome(){let v=0;if(S.job&&!(typeof jailed==="function"&&jailed())&&!S.trip&&S.loc&&S.loc.city===S.job.city)v+=wage(JK[S.job.k],CITIES[S.job.city])*(typeof jobLaw==="function"?jobLaw(CITIES[S.job.city]):1)*(typeof wageMult==="function"?wageMult():1)*(typeof rankMult==="function"?rankMult():1);if(S.home&&!S.home.own)v-=homeRent(HK[S.home.k],CITIES[S.home.city]);return v}
 function lifeAssets(){return S.home&&S.home.own?homeBuy(HK[S.home.k],CITIES[S.home.city])*.9:0}
 /* Luxury: condos, mansions, jets, boats, a cruise ship. Use them yourself (vacation) or charter them out (business). Charter payback ~3-4 days, slower than real businesses. */
 const LUX=[
@@ -963,7 +963,7 @@ function renderLife(c){let h=cityHead(c);const hm=S.home,jb=S.job;
     h+=`<div class="row"><div class="n">${H.n}</div><div class="d">${H.d} <b>${fmt(r)}</b>/hr rent${H.buy?` · or buy for <b>${fmt(bp)}</b>`:""}${hm&&hm.city!==c.id&&jb?" · moving here ends your job":""}</div>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy${hm?" up":""}" data-life="rent" data-h="${H.k}">${hm?"Move · rent":"Rent"}</button>${H.buy?`<button class="buy up" data-life="buy" data-h="${H.k}" ${S.cash<bp?"disabled":""}>Buy ${fmt(bp)}</button>`:""}</span></div>`}
   h+=`</div><div class="sec">Your job</div><div class="list">`;
-  if(jb){const j=JK[jb.k],jc=CITIES[jb.city];h+=`<div class="row"><div class="n">${j.n} · ${jc.name}</div><div class="d">Earning <b style="color:var(--good)">${fmt(wage(j,jc))}</b>/hr · ${fmtDur(Date.now()-jb.since)} on the job</div><button class="buy up" data-life="quit">Quit</button></div>`}
+  if(jb){const j=JK[jb.k],jc=CITIES[jb.city];h+=`<div class="row"><div class="n">${rankName()}${j.n} · ${jc.name}</div><div class="d">Earning <b style="color:var(--good)">${fmt(wage(j,jc)*rankMult())}</b>/hr · ${fmtDur(Date.now()-jb.since)} on the job</div><button class="buy up" data-life="quit">Quit</button></div>`}
   else if(S.app){const j=JK[S.app.k];h+=`<div class="row"><div class="n">Application sent: ${j.n}</div><div class="d">${CITIES[S.app.city].name} · reply in ${fmtDur(Math.max(60000,S.app.t-Date.now())).replace("1 min","under a minute")}</div><span></span></div>`}
   else h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:8px 0">Unemployed.${hm?"":" You need a home before you can apply."}</p>`;
   h+=`</div><div class="sec">Jobs in ${c.name}</div><div class="list">`;
@@ -1812,7 +1812,7 @@ const hourOf=t=>Math.floor(t/DAYMS);
 /* business sales trickle in every second; accrue() settles any remainder via the same clock, so nothing is counted twice */
 function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=totals().inc*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
 function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
-  const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);
+  const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);if(typeof careerTick==="function")careerTick(dt/DAYMS);
   if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runFleet(now);const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
@@ -2739,6 +2739,36 @@ function shopApp(){const g=gearOwn();let h=`<div class="ph-seg ob-seg" style="gr
   if(shopTab==="Cars")return h+garageHtml();
   h+=GEAR.filter(x=>x.c===shopTab).map(x=>g[x.k]?`<button class="ph-item" data-ph="sellgear" data-k="${x.k}"><span>${x.n} · Owned<small>${x.e} · Sell for 50%</small></span><b>${fmt(x.p*.5)}</b></button>`:`<button class="ph-item" data-ph="buygear" data-k="${x.k}" ${S.cash<x.p?"disabled":""}><span>${x.n}<small>${x.e}</small></span><b>${fmt(x.p)}</b></button>`).join("");
   return h+`<p class="ph-sub">One of each. Comfort bonuses stack up to 25% slower drain per need.</p>`}
+/* ---------- career: ranks within a job, promotion tasks ---------- */
+var CAREER={slots:3,ranks:["","Senior ","Lead ","Head "],rankW:.12,minH:[6,16,36],need:60,max:95,cool:2,failKeep:.5,
+ T:{shift:{n:h=>`Work ${h} h on site`,h:[3,5],p:12},present:{n:h=>`Stay in your work city ${h} h straight`,h:[2,3],p:8},well:{n:h=>`Keep Health/Food/Mind ≥ 60 for ${h} h`,h:[2,4],p:10},
+  peak:{n:h=>`Be in top shape (all needs ≥ 95) ${h} h`,h:[1,2],p:14},clean:{n:h=>`No arrests or records for ${h} h`,h:[12,24],p:10},study:{n:()=>"Finish an education course",h:[1,1],p:20}}};
+function careerKey(){return S.job?S.job.k+"@"+S.job.city+"@"+S.job.since:""}
+function careerNewTask(skip){const ks=Object.keys(CAREER.T).filter(k=>!skip.includes(k)&&!(k==="study"&&!S.edu.cur&&EDU.every(e=>hasEdu(e.k))));const k=ks[Math.floor(Math.random()*ks.length)],t=CAREER.T[k];
+  return {k,h:t.h[0]+Math.floor(Math.random()*(t.h[1]-t.h[0]+1)),v:0,t:Date.now(),r:(S.rec||[]).length,e:Object.keys(S.edu.have).length}}
+function careerFill(C){while(C.tasks.length<CAREER.slots)C.tasks.push(careerNewTask(C.tasks.map(t=>t.k)))}
+function career(){let C=S.career;if(!C||typeof C!=="object")C=S.career={};const key=careerKey();
+  if(C.key!==key){C.key=key;C.rank=0;C.ch=0;C.cd=0;C.tasks=[];C.since=Date.now()}C.rank=C.rank||0;C.ch=C.ch||0;C.tasks=C.tasks||[];C.since=C.since||Date.now();if(S.job)careerFill(C);return C}
+function rankMult(){return CAREER&&S.job&&S.career&&S.career.key===careerKey()?1+(S.career.rank||0)*CAREER.rankW:1}
+function rankName(){return rankMult()>1?CAREER.ranks[S.career.rank]||"":""}
+function careerTick(dt){if(!S.job){if(S.career)S.career.key="";return}const C=career();
+  if(jailed()){if(C.ch||C.tasks.some(t=>t.v)){C.ch=0;C.tasks=[];careerFill(C)}return}
+  const atWork=!S.trip&&S.loc&&S.loc.city===S.job.city,m=needMin(),rec=(S.rec||[]).length,edu=Object.keys(S.edu.have).length;
+  for(const t of C.tasks){if(t.k==="shift"){if(atWork&&wageMult()>0)t.v+=dt}else if(t.k==="present")t.v=atWork?t.v+dt:0;else if(t.k==="well")t.v=m>=60?t.v+dt:0;
+    else if(t.k==="peak")t.v=m>=95?t.v+dt:0;else if(t.k==="clean"){if(rec>t.r){t.r=rec;t.v=0}else t.v+=dt}else if(t.k==="study")t.v=edu>t.e?1:0}
+  const done=C.tasks.filter(t=>t.v>=t.h);if(done.length){for(const t of done){C.ch=Math.min(CAREER.max,C.ch+CAREER.T[t.k].p);toast(`Task done: +${CAREER.T[t.k].p}% promotion chance`)}C.tasks=C.tasks.filter(t=>t.v<t.h);careerFill(C)}}
+function careerAsk(){const C=career(),r=C.rank;if(!S.job||r>=CAREER.ranks.length-1||jailed())return;const inR=(Date.now()-C.since)/DAYMS;
+  if(inR<CAREER.minH[r]||Date.now()<(C.cd||0)||C.ch<1)return;
+  if(Math.random()*100<C.ch){C.rank++;C.ch=0;C.since=Date.now();C.tasks=[];careerFill(C);const j=JK[S.job.k];S.log.unshift(`Promoted: ${CAREER.ranks[C.rank]}${j.n}`);S.log=S.log.slice(0,3);toast(`Promoted to ${CAREER.ranks[C.rank]}${j.n}! +${Math.round(CAREER.rankW*100)}% pay`)}
+  else{C.ch=Math.floor(C.ch*CAREER.failKeep);C.cd=Date.now()+CAREER.cool*DAYMS;toast("Promotion denied. Try again later.")}}
+function careerHtml(){const C=career(),r=C.rank,j=JK[S.job.k],c=CITIES[S.job.city],top=r>=CAREER.ranks.length-1,inR=(Date.now()-C.since)/DAYMS,need=top?0:CAREER.minH[r],cd=Math.max(0,(C.cd||0)-Date.now());
+  const why=top?"Top of the ladder":jailed()?"Not from prison":inR<need?`Needs ${fmtDur((need-inR)*DAYMS)} more in role`:cd?`Cooldown ${fmtDur(cd)}`:C.ch<1?"Complete tasks first":"";
+  let h=`<div class="ph-sub" style="margin-top:12px;color:#fff;font-weight:600">Career</div><div class="ph-rows"><div><span>Rank</span><b>${CAREER.ranks[r]||"Entry "}level</b></div><div><span>Time in rank</span><b>${fmtDur(inR*DAYMS)}</b></div>`;
+  h+=top?"":`<div><span>Next</span><b>${CAREER.ranks[r+1]}${j.n}</b></div><div><span>Next pay</span><b>${fmt(wage(j,c)*(1+(r+1)*CAREER.rankW))}/hr</b></div><div><span>Needs</span><b>${need} h in rank, ${CAREER.need}%+ advised</b></div>`;
+  h+=`<div><span>Promotion chance</span><b>${Math.round(C.ch)}%</b></div><div class="bar" style="height:6px;background:#334155;border-radius:3px;overflow:hidden"><div style="height:100%;width:${C.ch}%;background:${C.ch>=CAREER.need?"#22c55e":"#3b82f6"}"></div></div></div>`;
+  if(!top){h+=`<div class="ph-sub" style="margin-top:10px">Tasks</div><div class="ph-rows">`;for(const t of C.tasks){const T=CAREER.T[t.k];h+=`<div><span>${T.n(t.h)}</span><b>${t.k==="study"?(t.v?"done":"—"):Math.min(t.h,t.v).toFixed(1)+"/"+t.h} · +${T.p}%</b></div>`}
+    h+=`</div><button class="buy" data-ph="promo" ${why?"disabled":""} style="width:100%;margin-top:8px;background:#1e3a8a!important;color:#fff;border-color:#3b82f6">${why||`Request promotion (${Math.round(C.ch)}%)`}</button>`}
+  return h}
 let saveT=0;
 setInterval(()=>{if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -2797,14 +2827,14 @@ function appHtml(k){const {inc,nw}=totals();
     <p class="ph-sub" style="margin-top:6px">Tap fast to build a combo. Energy refills over time and drops when you tap.</p>`}
   if(k==="bank"){const sc=creditScore(),[bd,col]=scoreBand(sc),c=B().card;return `<div class="ph-big" style="color:${col}">${sc}</div><div class="ph-sub">credit score · ${bd}</div>${scoreSpark()}<div class="ph-rows"><div><span>Card</span><b>${c?fmt(c.bal)+" / "+fmt(c.lim):"none"}</b></div><div><span>Loans</span><b>${fmt(B().loans.reduce((a,l)=>a+l.bal,0))}</b></div><div><span>Payments</span><b>${fmt(bankPayHr())}/hr</b></div>${c?`<div><span>Card due</span><b>${fmtDur(c.due-Date.now())}</b></div>`:""}</div><button class="buy" data-ph="gobank" style="width:100%;margin-top:8px;background:#1e3a8a!important;color:#fff;border-color:#3b82f6">Open bank</button>`}
   if(k==="wallet")return `<div class="ph-big">${fmt(S.cash)}</div><div class="ph-sub">cash on hand</div>
-    <div class="ph-rows"><div><span>Income</span><b style="color:${inc<0?"var(--bad)":"var(--good)"}">${fmt(inc)}/hr</b></div><div><span>Net worth</span><b>${fmt(nw)}</b></div><div><span>Loan</span><b>${fmt(S.debt)}</b></div><div><span>Taxes owed</span><b>${fmt(taxOwed())}</b></div><div><span>Wages</span><b>${S.job?fmt(wage(JK[S.job.k],CITIES[S.job.city])*wageMult())+"/hr":"—"}</b></div></div>
+    <div class="ph-rows"><div><span>Income</span><b style="color:${inc<0?"var(--bad)":"var(--good)"}">${fmt(inc)}/hr</b></div><div><span>Net worth</span><b>${fmt(nw)}</b></div><div><span>Loan</span><b>${fmt(S.debt)}</b></div><div><span>Taxes owed</span><b>${fmt(taxOwed())}</b></div><div><span>Wages</span><b>${S.job?fmt(wage(JK[S.job.k],CITIES[S.job.city])*wageMult()*rankMult())+"/hr":"—"}</b></div></div>
     ${S.debt&&S.cash>0?`<button class="buy" data-ph="repay" style="width:100%;margin-top:8px">Repay ${fmt(Math.min(S.debt,S.cash))}</button>`:""}`;
   if(k==="news")return S.news.length?`<div class="ph-list">${S.news.slice(0,25).map(n=>`<div><small>${fmtDur(Date.now()-n.at)} ago</small>${n.t}</div>`).join("")}</div>`:`<p class="ph-sub">No news yet.</p>`;
   if(k==="needs")return `<div class="ph-rows">${NEEDS.map(([q,n])=>`<div><span>${n}</span><b>${Math.round(S.need[q])}%</b></div><div class="bar" style="height:6px;grid-column:auto;margin:-4px 0 6px"><i style="width:${S.need[q]}%;background:${S.need[q]<25?"var(--bad)":S.need[q]<50?"var(--accent)":"var(--good)"}"></i></div>`).join("")}</div>
     <p class="ph-sub">${S.home?"Home keeps you at 85%.":"No home: needs keep draining."}</p>${ITEMS.filter(i=>i.cat!=="Food").map(itemBtn).join("")}`;
   if(k==="food")return ITEMS.filter(i=>i.cat==="Food").map(itemBtn).join("")+`<p class="ph-sub">Delivered wherever you are. Prices from your home city.</p>`;
   if(k==="job"){if(!S.job)return `<p class="ph-sub">You're not working right now.</p><button class="buy" data-ph="gojob" style="width:100%;background:#1e3a8a!important;color:#fff;border-color:#3b82f6">Find a job</button>`;const j=JK[S.job.k],c=CITIES[S.job.city];
-    return `<div class="ph-big" style="font-size:20px">${j.n}</div><div class="ph-sub">${c.name}</div><div class="ph-rows"><div><span>Pay</span><b>${fmt(wage(j,c)*wageMult())}/hr</b></div><div><span>On the job</span><b>${fmtDur(Date.now()-S.job.since)}</b></div><div><span>Experience</span><b>${S.exp.toFixed(1)} h</b></div></div><button class="buy up" data-ph="gojob" style="width:100%;margin-top:8px">Open job board</button>`}
+    return `<div class="ph-big" style="font-size:20px">${rankName()}${j.n}</div><div class="ph-sub">${c.name}</div><div class="ph-rows"><div><span>Pay</span><b>${fmt(wage(j,c)*wageMult()*rankMult())}/hr</b></div><div><span>On the job</span><b>${fmtDur(Date.now()-S.job.since)}</b></div><div><span>Experience</span><b>${S.exp.toFixed(1)} h</b></div></div>${careerHtml()}<button class="buy up" data-ph="gojob" style="width:100%;margin-top:8px">Open job board</button>`}
   if(k==="weather"){const now=Date.now(),act=activeStorms(now);const w=Math.floor(now/WEEK),up=[...stormsOfWeek(w),...stormsOfWeek(w+1)].filter(s=>s.start>now).sort((a,b)=>a.start-b.start)[0];
     const near=s=>{const ce=stormCenter(s);const c=CITIES.slice().sort((a,b)=>d3.geoDistance(ce,[a.lon,a.lat])-d3.geoDistance(ce,[b.lon,b.lat]))[0];return c.name};
     return (act.length?act.map(s=>`<div class="ph-card storm"><b>Storm near ${near(s)}</b><span>ends in ${fmtDur(s.end-now)}</span></div>`).join(""):`<div class="ph-card"><b>Clear skies</b><span>No storms anywhere right now.</span></div>`)+
@@ -2851,6 +2881,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="ug"){ugDo(b.dataset.k);save();hud()}
   else if(a==="uga"){ugAct(b.dataset.a,b.dataset.x);save();hud()}
   else if(a==="gigpick"){gigState().i=+b.dataset.k}
+  else if(a==="promo"){careerAsk();save();hud()}
   else if(a==="gojob"){const c=CITIES[(S.home||S.job||{city:0}).city];tab="life";flyTo(c);PH.open=false}
   else if(a==="go"){flyTo(CITIES[+b.dataset.c]);PH.open=false}
   phSave();phRender()});
