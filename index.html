@@ -3076,7 +3076,8 @@ const WPNCFG={ // cost per weapon, build = game days, enemy = share of enemy max
   queue:3,         // builds in progress at once
   stockMax:{msl:20,gas:6,nuke:2},
   // strikes alone can't end a war: they never push the front past frontCap or the enemy below strFloor × max strength; battles must finish it
-  frontCap:85,strFloor:.15,
+  frontCap:85,strFloor:.15,nukeCap:98, // a nuke may push the front to 98, which wins the war
+  
   ownHit:.5,       // your own strikes hit your businesses in the target city at half the city damage (enemy strikes hit in full)
   // enemy retaliation: chance per war per game hour (× enemy strength left), cooldown in game days after a strike of that kind,
   // gas only once you used WMD on them or weariness > 50; nukes only if you nuked them and their max strength ≥ nukeMin.
@@ -3096,12 +3097,13 @@ function wpnBuild(k){const p=pol(),m=wpn(),W=WPNCFG.w[k];if(!W)return;if(!polLea
   m.wq.push({k,done:Date.now()+W.build*DAYMS});toast(`${W.n} in production · ready in ${fmtDur(W.build*DAYMS)}`)}
 function wpnFire(k,id){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id],now=Date.now();if(!W||!c)return;if(!polLeader())return toast("Only a Leader can order strikes");
   const w=m.wars[c.country];if(!w)return toast(`You're not at war with ${c.country}`);if(!m.wpn[k])return toast(`No ${W.n.toLowerCase()} in stock`);
-  m.wpn[k]--;if(k!=="msl"){w.wmd=1;if(k==="nuke")w.nk=1;wpnSanction(k)}const kill=Math.max(0,Math.min(w.enemyMax*W.enemy,w.enemyStr-w.enemyMax*WPNCFG.strFloor)),f0=w.front;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.max(f0,Math.min(WPNCFG.frontCap,f0+W.front));const push=Math.round((w.front-f0)*10)/10;w.weariness=Math.min(100,w.weariness+W.wear);
+  m.wpn[k]--;if(k!=="msl"){w.wmd=1;if(k==="nuke")w.nk=1;wpnSanction(k)}const kill=Math.max(0,Math.min(w.enemyMax*W.enemy,w.enemyStr-w.enemyMax*WPNCFG.strFloor)),f0=w.front;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.max(f0,Math.min(k==="nuke"?WPNCFG.nukeCap:WPNCFG.frontCap,f0+W.front));const push=Math.round((w.front-f0)*10)/10;w.weariness=Math.min(100,w.weariness+W.wear);
   p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const n in p.ctrl)p.ctrl[n].loy=Math.max(0,p.ctrl[n].loy+W.loy);for(const n in m.occ)m.occ[n].resist=Math.min(100,m.occ[n].resist+W.resist);
   m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*WPNCFG.ownHit,from:p.c});
   const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,dead=popStrike(k,c);
   const t=`${W.ico} ${W.n} hit ${c.name}, ${c.country}: ${fmtPop(dead)} killed, enemy −${Math.round(kill)}, front +${push}${W.appr?`, approval ${W.appr}`:""}${W.loy?`, allies' loyalty ${W.loy}`:""}`;logPol(t);milLog(m,t);
   toast(t+(mine?` · your businesses in ${c.name} lose ${Math.round(W.city*WPNCFG.ownHit*100)}% demand for a while`:""));
+  if(k==="nuke"&&w.front>=WPNCFG.nukeCap&&m.wars[c.country])milEndWar(c.country,"win");
   if(typeof PH!=="undefined"&&PH.open){PH.open=false}rotateTo(c,Math.max(V.k,2.5));wpnAnim()}
 // the world reacts to gas/nukes: sanctions-like hit to every city's demand for a while
 function wpnSanction(k){const m=mil(),X=WPNCFG.sanc[k];if(!X)return;const now=Date.now(),o=m.sanc&&m.sanc.until>now?m.sanc:{f:0,until:now};
@@ -3141,7 +3143,7 @@ function wpnHtml(m,lead,sb,bx,urow){const C=WPNCFG,now=Date.now();wpnTick();
   const wk=Object.keys(m.wars),have=Object.keys(C.w).filter(k=>m.wpn[k]>0);
   if(lead&&wk.length&&have.length)for(const n of wk)h+=`<div class="ph-sub" style="margin-top:8px">Strike ${n}</div><div class="ph-rows">${ctyCities(n).map(c=>{const sm=strikeMult(c);return urow(c.name+(S.own[c.id]&&Object.keys(S.own[c.id]).length?` <small style="color:#fbbf24">· yours</small>`:""),sm<1?`<span style="color:#f87171">damaged −${Math.round((1-sm)*100)}%</span>`:"",have.map(k=>bx("wpnfire",k+"|"+c.id,`${C.w[k].ico} ${m.wpn[k]}`,k==="nuke"?"#713f12":k==="gas"?"#3f6212":"#7c2d12",0,1)).join(""))}).join("")}</div>`;
   else if(lead&&have.length)h+=`<p class="ph-sub">Declare war to use your weapons.</p>`;
-  h+=`<p class="ph-sub" style="margin-top:6px">Strikes cut enemy strength, push the front (never past ${C.frontCap}: battles must finish a war) and wreck demand in the hit city for a few days (your businesses there lose ${Math.round(C.ownHit*100)}% of that). Gas and nukes cost heavy approval and the loyalty of every country in your sphere, and raise resistance in occupied lands. Enemies strike back at your own cities with missiles, and with gas or nukes if you used them first; the world answers WMD with sanctions.</p>`;
+  h+=`<p class="ph-sub" style="margin-top:6px">Strikes cut enemy strength, push the front (never past ${C.frontCap}, or ${C.nukeCap} with a nuke, which wins the war) and wreck demand in the hit city for a few days (your businesses there lose ${Math.round(C.ownHit*100)}% of that). Gas and nukes cost heavy approval and the loyalty of every country in your sphere, and raise resistance in occupied lands. Enemies strike back at your own cities with missiles, and with gas or nukes if you used them first; the world answers WMD with sanctions.</p>`;
   if(sancMult()<1)h+=`<p class="ph-sub" style="color:#f87171">Sanctions: demand −${Math.round((1-sancMult())*100)}% in all cities for ${fmtDur(m.sanc.until-now)}</p>`;
   return h}
 /* ---- HQ phone app: schedules, wage raises/cuts, firing (per business; S.sched / S.wadj keyed by bkey) ---- */
