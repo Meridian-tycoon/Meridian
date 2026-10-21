@@ -1,0 +1,31 @@
+rules_version = '2';
+// Meridian Tycoon: public player profiles shown on other players' globes.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function validProfile(d) {
+      return d.keys().hasOnly(['name', 'col', 'home', 'hq', 'biz', 'nw', 'rank', 'lastSeen'])
+        && d.keys().hasAll(['name', 'col', 'lastSeen'])
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 20
+        && d.col is string && d.col.matches('^#[0-9a-fA-F]{6}$')
+        && (!('home' in d) || d.home == null || (d.home is int && d.home >= 0 && d.home < 10000))
+        && (!('hq' in d) || (d.hq is list && d.hq.size() <= 50))
+        && (!('biz' in d) || (d.biz is list && d.biz.size() <= 100))
+        && (!('nw' in d) || d.nw is number)
+        && (!('rank' in d) || (d.rank is int && d.rank >= 1 && d.rank <= 1000))
+        && d.lastSeen == request.time;
+    }
+
+    match /players/{uid} {
+      // Anyone (signed in or not) may read profiles. Profiles never contain emails.
+      allow read: if true;
+      // Each signed-in user may only write their own profile, with checked fields.
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && validProfile(request.resource.data);
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
