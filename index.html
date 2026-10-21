@@ -377,7 +377,7 @@ const PTKEY="meridian-playtest",PTVER="pt1";
 const PTP={on:false,name:"",id:"",asked:false,lastDay:0};try{Object.assign(PTP,JSON.parse(localStorage.getItem(PTKEY)||"{}"))}catch(e){}
 if(!PTP.id)PTP.id=Math.random().toString(36).slice(2,8);
 const ptSave=()=>{try{localStorage.setItem(PTKEY,JSON.stringify(PTP))}catch(e){}};ptSave();
-const save=()=>{try{if(typeof ensurePositions==="function")ensurePositions();localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const save=()=>{if(save.lock)return;try{if(typeof ensurePositions==="function")ensurePositions();localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 
 const cost=(b,c)=>Math.round(b.cost*1.3*PRICE[c.size]);
 const upCost=(b,c,lv)=>Math.round(cost(b,c)*0.8*Math.pow(1.4,lv-1));
@@ -3829,7 +3829,7 @@ function onScript(u){return new Promise((ok,no)=>{const s=document.createElement
 async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
   try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
-    ON.auth.onAuthStateChanged(u=>{ON.user=u;if(u){onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true)}onRefresh()});
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;if(u){onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}onRefresh()});
     ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;draw()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
   }catch(e){ON.err="Online unavailable: "+(e&&e.message||e)}ON.loading=false;onRefresh()}
 function onRefresh(){if(mode==="pf"&&sheet.classList.contains("open")&&!(document.activeElement&&/^(INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}}
@@ -3862,15 +3862,15 @@ function onlineHtml(){if(!onEnabled())return"";const p=onProf(),u=ON.user,inp="w
   if(!ON.ready)h+=`<div class="d">${ON.err?onEsc(ON.err):"Connecting…"}</div>`;
   else if(u){h+=`<div class="n">Signed in · ${ON.players.length} other player${ON.players.length===1?"":"s"} on the map</div><div class="d">Others see your name, colour, home, HQ and business cities, net worth and rank. Never your email.</div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="onname" maxlength="20" value="${onEsc(p.name)}" placeholder="Display name" style="${inp};margin-top:0;flex:1;min-width:0"><input id="oncol" type="color" value="${p.col}" style="width:40px;height:36px;padding:0;border:1px solid var(--line);border-radius:4px;background:none"></div>
-    <div style="display:flex;gap:8px;margin-top:8px"><button class="buy" data-on="save" style="flex:1">Save profile</button><button class="buy" data-on="out">Sign out</button></div>`}
-  else h+=`<div class="d">Create an account to appear on other players' globes and see theirs. Your save stays on this device.</div>
+    <div style="display:flex;gap:8px;margin-top:8px"><button class="buy" data-on="save" style="flex:1">Save profile</button><button class="buy" data-on="out">Sign out</button></div>${csHtml()}`}
+  else h+=`<div class="d">Create an account to appear on other players' globes and see theirs. Sign in on any device to keep playing the same save.</div>
     <input id="onname" maxlength="20" value="${onEsc(ON.draft.n||p.name)}" placeholder="Display name" style="${inp}">
     <input id="onemail" type="email" autocomplete="email" value="${onEsc(ON.draft.e)}" placeholder="Email" style="${inp}">
     <input id="onpass" type="password" autocomplete="current-password" placeholder="Password (6+ characters)" style="${inp}">
     <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="buy" data-on="up" style="flex:1">Create account</button><button class="buy" data-on="in" style="flex:1">Sign in</button><button class="buy" data-on="g" style="flex:1 0 100%">Sign in with Google</button></div>`;
   if(ON.ready&&ON.err)h+=`<div class="d" style="color:var(--bad);margin-top:6px">${onEsc(ON.err)}</div>`;
   return h+`</div></div>`}
-function onlineWire(){if(!onEnabled())return;const v=s=>{const e=$(s);return e?e.value:""};
+function onlineWire(){if(!onEnabled())return;csWire();const v=s=>{const e=$(s);return e?e.value:""};
   ["#onname","#onemail"].forEach(s=>{const e=$(s);if(e)e.oninput=()=>{ON.draft.n=v("#onname");ON.draft.e=v("#onemail")}});
   sheet.querySelectorAll("[data-on]").forEach(b=>b.onclick=async()=>{if(ON.busy||!ON.ready)return;const a=b.dataset.on;ON.err="";const nm=v("#onname").trim().slice(0,20);
     try{ON.busy=true;
@@ -3883,6 +3883,63 @@ function onlineWire(){if(!onEnabled())return;const v=s=>{const e=$(s);return e?e
         ON.draft={e:"",p:"",n:""};save()}
     }catch(e){ON.err=String(e&&e.message||e).replace(/^Firebase:\s*/,"").slice(0,140)}ON.busy=false;if(document.activeElement)document.activeElement.blur();onRefresh()})}
 if(onEnabled()){onInit();setInterval(()=>{if(ON.user)onPublish(false)},15000)}
+/* ---------- cloud save: private copy of this slot's save at saves/{uid} so the account works on other devices ---------- */
+const CS={doc:null,checked:false,pending:null,last:0,lastStr:"",busy:false,err:""},CSPART=600000,CSBAK="meridian-cloud-backup";
+const csMetaKey=()=>"meridian-cloud-meta-"+SLOT;
+function csMeta(){try{return JSON.parse(localStorage.getItem(csMetaKey())||"{}")||{}}catch(e){return{}}}
+function csSetMeta(m){try{localStorage.setItem(csMetaKey(),JSON.stringify(m))}catch(e){}}
+function csDevice(){const u=navigator.userAgent||"",os=/iPhone/.test(u)?"iPhone":/iPad/.test(u)?"iPad":/Android/.test(u)?"Android":/Mac/.test(u)?"Mac":/Windows/.test(u)?"Windows":/Linux/.test(u)?"Linux":"Device";
+  const b=/Edg\//.test(u)?"Edge":/Firefox\//.test(u)?"Firefox":/Chrome\//.test(u)?"Chrome":/Safari\//.test(u)?"Safari":"browser";return os+" · "+b}
+function csSummary(){const {nw}=totals(),n=Object.values(S.own||{}).reduce((a,o)=>a+Object.keys(o||{}).length,0);return{nw:Math.round(isFinite(nw)?nw:0),day:+S.day||1,biz:n}}
+const csTrivial=()=>{const s=csSummary();return s.day<=2&&s.biz===0};
+const csTime=d=>{const t=d&&d.updated,ms=t&&t.toMillis?t.toMillis():+(d&&d.at)||0;return ms};
+const csAgo=ms=>{if(!ms)return"never";const m=(Date.now()-ms)/6e4;return m<1?"just now":m<60?Math.round(m)+" min ago":m<2880?Math.round(m/60)+"h ago":Math.round(m/1440)+"d ago"};
+function csRef(){return ON.db.collection("saves").doc(ON.user.uid)}
+async function csFetch(){const s=await csRef().get();if(!s.exists)return null;const d=s.data()||{};return d}
+async function csData(d){if(!(d.n>0))return d.d;let out="";for(let i=0;i<d.n;i++){const p=await csRef().collection("parts").doc(String(i)).get();const v=p.exists?p.data():null;
+  if(!v||v.sid!==d.sid)throw new Error("cloud save is incomplete, try again");out+=v.d}return out}
+async function csUpload(force){if(!ON.ready||!ON.user||CS.busy||CS.pending||!CS.checked)return;save();let str;try{str=localStorage.getItem(KEY)||JSON.stringify(S)}catch(e){str=JSON.stringify(S)}
+  if(!force&&str===CS.lastStr)return;CS.busy=true;const sid=Date.now().toString(36)+Math.random().toString(36).slice(2,7),sm=csSummary();
+  try{if(!force){const cur=await csFetch(),m=csMeta();if(cur&&cur.sid!==m.sid){CS.doc=cur;CS.pending=cur;CS.busy=false;csAsk();onRefresh();return}}
+    const big=str.length>CSPART,n=big?Math.ceil(str.length/CSPART):0,ts=window.firebase.firestore.FieldValue.serverTimestamp();
+    for(let i=0;i<n;i++)await csRef().collection("parts").doc(String(i)).set({sid,d:str.slice(i*CSPART,(i+1)*CSPART)});
+    const doc={ver:1,sid,n,d:big?"":str,updated:ts,at:Date.now(),device:csDevice(),nw:sm.nw,day:sm.day,biz:sm.biz,len:str.length};
+    await csRef().set(doc);CS.doc=Object.assign({},doc,{updated:null});CS.last=Date.now();CS.lastStr=str;CS.err="";csSetMeta({uid:ON.user.uid,sid,at:CS.last})}
+  catch(e){CS.err="Cloud save failed: "+(e&&e.code||e&&e.message||e)}CS.busy=false;onRefresh()}
+async function csCheck(){if(!ON.user)return;const uid=ON.user.uid;CS.checked=false;CS.pending=null;CS.err="";
+  try{const d=await csFetch();if(!ON.user||ON.user.uid!==uid)return;CS.doc=d;const m=csMeta();
+    if(!d){CS.checked=true;csUpload(true);return}
+    if(m.uid===uid&&m.sid===d.sid){CS.checked=true;CS.last=m.at||csTime(d);return}
+    CS.pending=d;csAsk()}catch(e){CS.err="Couldn't read cloud save: "+(e&&e.code||e&&e.message||e)}onRefresh()}
+async function csLoad(d){if(CS.busy)return;CS.busy=true;try{d=d||await csFetch();if(!d){CS.err="No cloud save yet";CS.busy=false;onRefresh();return}
+    const str=await csData(d);JSON.parse(str);save();try{const cur=localStorage.getItem(KEY);if(cur)localStorage.setItem(CSBAK,cur)}catch(e){}
+    save.lock=true;localStorage.setItem(KEY,str);csSetMeta({uid:ON.user.uid,sid:d.sid,at:Date.now()});location.reload()}
+  catch(e){save.lock=false;CS.err="Couldn't load cloud save: "+(e&&e.code||e&&e.message||e)}CS.busy=false;onRefresh()}
+function csAsk(){const d=CS.pending;if(!d)return;let ov=document.getElementById("csask");if(ov)ov.remove();const loc=csSummary();
+  ov=document.createElement("div");ov.id="csask";ov.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px";
+  const when=csTime(d)?new Date(csTime(d)).toLocaleString([], {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"unknown time";
+  ov.innerHTML=`<div style="background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:16px;max-width:360px;width:100%;box-sizing:border-box">
+   <div class="n" style="font-weight:700;margin-bottom:6px">Cloud save found</div>
+   <div class="d" style="margin-bottom:10px">This account has a save from another device. ${csTrivial()?"This device has a fresh game.":"This device also has a game in progress."}</div>
+   <button class="buy" data-cs="load" style="width:100%;margin-bottom:8px;text-align:left">Load cloud save<br><span style="font-weight:400;font-size:12px">from ${onEsc(d.device||"another device")}, ${onEsc(when)}, ${fmt(+d.nw||0)} · day ${+d.day||1}</span></button>
+   <button class="buy" data-cs="keep" style="width:100%;text-align:left">Keep this device's save (uploads it)<br><span style="font-weight:400;font-size:12px">${fmt(loc.nw)} · day ${loc.day} · replaces the cloud copy</span></button>
+   <div class="d" style="margin-top:8px;font-size:12px">Loading keeps a backup of this device's save.</div></div>`;
+  document.body.appendChild(ov);
+  ov.onclick=e=>{const b=e.target.closest("[data-cs]");if(!b)return;ov.remove();const p=CS.pending;CS.pending=null;
+    if(b.dataset.cs==="load")csLoad(p);else{CS.checked=true;csUpload(true)}}}
+function csHtml(){if(!ON.user)return"";const st=CS.pending?"waiting for your choice":CS.busy?"syncing…":!CS.checked?"checking…":CS.last?"synced "+csAgo(CS.last):"not synced yet";
+  let bak=false;try{bak=!!localStorage.getItem(CSBAK)}catch(e){}
+  return `<div class="d" style="margin-top:8px">Cloud save: ${st}. Sign in on another device to continue there.</div>
+    <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap"><button class="buy" data-cs2="up" style="flex:1">Save now</button><button class="buy" data-cs2="load" style="flex:1">Load from cloud</button>${bak?`<button class="buy" data-cs2="bak" style="flex:1 0 100%">Restore pre-cloud backup</button>`:""}</div>
+    ${CS.err?`<div class="d" style="color:var(--bad);margin-top:6px">${onEsc(CS.err)}</div>`:""}`}
+function csWire(){sheet.querySelectorAll("[data-cs2]").forEach(b=>b.onclick=()=>{const a=b.dataset.cs2;
+  if(a==="up"){if(CS.pending){csAsk();return}CS.checked=true;csUpload(true)}
+  else if(a==="load"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to replace this save";return}csLoad()}
+  else if(a==="bak"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to restore backup";return}
+    try{const bk=localStorage.getItem(CSBAK);JSON.parse(bk);save.lock=true;localStorage.setItem(KEY,bk);localStorage.removeItem(CSBAK);csSetMeta({});location.reload()}catch(e){save.lock=false;toast("Backup unreadable")}}})}
+if(onEnabled()){setInterval(()=>{if(ON.user&&!document.hidden&&Date.now()-CS.last>=120000)csUpload(false)},15000);
+  window.addEventListener("pagehide",()=>{if(ON.user&&Date.now()-CS.last>=20000)csUpload(false)});
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"&&ON.user&&Date.now()-CS.last>=20000)csUpload(false)})}
 let saveT=0;
 setInterval(()=>{if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));

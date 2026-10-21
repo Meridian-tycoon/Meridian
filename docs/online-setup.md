@@ -16,3 +16,9 @@ Until you do this, the game stays fully offline: `FIREBASE_CONFIG` in `index.htm
 8. Commit and push. On the site open **Empire** (the portfolio screen) → **Online** section → create an account. Others appear on the globe as small coloured diamonds next to their home/HQ cities; tap a city to see "Players here".
 
 Listing players sorts on one field (`lastSeen`), so no custom index is needed.
+
+## Cloud saves (sign in on other devices)
+
+Signed-in players' saves are also stored privately in Firestore at `saves/{uid}` (large saves spill into `saves/{uid}/parts/{n}`). Only the owner can read or write them.
+
+**You must re-publish the rules** after this update: Firestore → **Rules** tab → replace everything with the current `firestore.rules` from this repo → **Publish**. Until you do, cloud saving shows "Cloud save failed: permission-denied" in the Online section and the game keeps working from the local save.
