@@ -1977,19 +1977,20 @@ function incomeHr(){let v=0;if(S.job)v+=wage(JK[S.job.k],CITIES[S.job.city]);for
 function bizAssets(){let a=0;for(const id in S.own)for(const b of BIZ){const lv=S.own[id][b.k];if(lv)a+=cost(b,CITIES[id])*lv}return a}
 function bankDebt(){const b=B();return b.loans.reduce((a,l)=>a+l.bal,0)+(b.card?b.card.bal:0)}
 const amort=(P,r,n)=>r?P*r/(1-Math.pow(1+r,-n)):P/n;
-const LOANT={personal:{n:"Personal loan",term:48,min:550,d:"Unsecured. Based on your income and credit."},
-  business:{n:"Business loan",term:168,min:620,d:"For companies with an HQ. Based on your business assets."},
-  mortgage:{n:"Mortgage",term:336,min:600,d:"Secured by your home. Lowest rates, longest term."}};
+const LOANT={personal:{n:"Personal loan",term:120,terms:[48,120,240],min:550,d:"Unsecured. Based on your income and credit."},
+  business:{n:"Business loan",term:336,terms:[168,336,504],min:620,d:"For companies with an HQ. Based on your business assets."},
+  mortgage:{n:"Mortgage",term:720,terms:[336,720,1008],min:600,d:"Secured by your home. Lowest rates, longest term."}};
 function loanMax(type){const s=creditScore(),inc=incomeHr(),m=s>=740?1.3:s>=670?1:s>=580?.6:.3;
   if(type==="personal")return Math.round(inc*120*m/100)*100;
   if(type==="business")return Object.values(S.hq||{}).some(Boolean)?Math.round(bizAssets()*.6*m/1000)*1000:0;
   if(type==="mortgage")return S.home&&S.home.own?Math.round(homeBuy(HK[S.home.k],CITIES[S.home.city])*.8/100)*100:0;return 0}
 const owedOn=type=>B().loans.filter(l=>l.type===type).reduce((a,l)=>a+l.bal,0);
-function applyLoan(type,amt){const b=B(),s=creditScore(),T=LOANT[type];b.inq.push(Date.now());
+const TERMN=["Short","Standard","Long"],bankTerm={};/* chosen term per loan type (UI only); longer = lower payment, more interest */
+function applyLoan(type,amt,ti){const b=B(),s=creditScore(),T=LOANT[type],n=T.terms[ti]||T.term;b.inq.push(Date.now());
   if(s<T.min){toast(`Denied: needs a ${T.min}+ credit score`);return}
   const room=loanMax(type)-owedOn(type);if(amt>room){toast(`Denied: you can borrow up to ${fmt(Math.max(0,room))}`);return}
-  const r=loanRate(s,type)*(type==="mortgage"?.6:1);b.loans.push({id:b.lid++,type,bal:amt,rate:r,pay:amort(amt,r,T.term),left:T.term,miss:0,start:Date.now()});
-  b.first=b.first||Date.now();S.cash+=amt;toast(`Approved: ${fmt(amt)} at ${(r*100).toFixed(2)}%/hr`);logBank(`${T.n} approved: ${fmt(amt)}`)}
+  const r=loanRate(s,type)*(type==="mortgage"?.6:1);b.loans.push({id:b.lid++,type,bal:amt,rate:r,pay:amort(amt,r,n),left:n,miss:0,start:Date.now()});
+  b.first=b.first||Date.now();S.cash+=amt;toast(`Approved: ${fmt(amt)} over ${n} h at ${(r*100).toFixed(2)}%/hr`);logBank(`${T.n} approved: ${fmt(amt)}`)}
 function applyCard(){const b=B(),s=creditScore();b.inq.push(Date.now());
   if(s<520){toast("Card denied: credit score too low");return}
   const lim=Math.max(500,Math.round((incomeHr()*40*(s>=740?2:s>=670?1.4:s>=580?1:.5))/100)*100);
@@ -2001,7 +2002,7 @@ function bankHour(quiet){const b=B();
   for(const l of b.loans){l.bal*=1+l.rate;const due=Math.min(l.pay,l.bal);
     if(S.cash>=due){S.cash-=due;l.bal-=due;l.miss=0;b.ontime++;l.left--}
     else{l.miss++;l.bal+=Math.max(5,due*.05);b.lates.push(Date.now());if(!quiet)logBank(`Missed a ${LOANT[l.type].n.toLowerCase()} payment (late fee charged)`);
-      if(l.miss>=3&&!l.coll){l.coll=1;l.rate*=1.5;l.bal*=1.1;b.lates.push(Date.now(),Date.now());if(!quiet)logBank(`${LOANT[l.type].n} sent to collections`)}}}
+      if(l.miss>=3&&!l.coll){l.coll=1;l.rate*=1.5;l.bal*=1.1;l.pay=Math.max(l.pay,amort(l.bal,l.rate,Math.max(24,l.left)));/* re-amortize so 1.5x rate can't outgrow the payment on long terms */b.lates.push(Date.now(),Date.now());if(!quiet)logBank(`${LOANT[l.type].n} sent to collections`)}}}
   b.loans=b.loans.filter(l=>l.bal>.5);
   const c=b.card;if(c){if(!c.paidStmt)c.bal+=Math.min(c.bal,c.stmt)*c.rate;
     if(Date.now()>=c.due){const min=Math.min(c.bal,Math.max(25,c.bal*.03));
@@ -2030,11 +2031,14 @@ function bankHtml(){const b=B(),s=creditScore(),[band,col]=scoreBand(s),f=credit
     <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2;flex-direction:column"><button class="buy" data-bank="payall" data-id="${l.id}" data-fixed="1" ${S.cash<=0?"disabled":""}>Pay off ${fmt(Math.min(l.bal,Math.max(0,S.cash)))}</button></span></div>`;
   for(const k in LOANT){const T=LOANT[k],room=Math.max(0,loanMax(k)-owedOn(k)),r=loanRate(s,k)*(k==="mortgage"?.6:1);
     const opts=[.25,.5,1].map(x=>Math.round(room*x/100)*100).filter((v,i,a)=>v>=500&&a.indexOf(v)===i);
-    h+=`<div class="row"><div class="n">${T.n}</div><div class="d">${T.d} ${T.term} h term · ${s<T.min?`<b>needs ${T.min}+ score</b>`:`${(r*100).toFixed(2)}%/hr · up to ${fmt(room)}`}</div>
+    const ti=bankTerm[k]??1,n=T.terms[ti],top=opts[opts.length-1],ok=s>=T.min&&opts.length;
+    const chips=ok?`<span style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">${T.terms.map((t,i)=>`<button class="buy${i===ti?"":" up"}" data-bank="term" data-t="${k}" data-i="${i}" data-fixed="1" style="padding:2px 8px;font-size:11px">${TERMN[i]} ${t} h</button>`).join("")}</span>
+      <span style="display:block;margin-top:3px">${fmt(top)} over ${n} h: ${fmt(amort(top,r,n))}/hr · ${fmt(amort(top,r,n)*n)} total</span>`:"";
+    h+=`<div class="row"><div class="n">${T.n}</div><div class="d">${T.d} ${T.terms[0]}–${T.terms[2]} h terms · ${s<T.min?`<b>needs ${T.min}+ score</b>`:`${(r*100).toFixed(2)}%/hr · up to ${fmt(room)}`}${chips}</div>
       <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2;flex-direction:column">${s>=T.min?opts.map(v=>`<button class="buy up" data-bank="loan" data-t="${k}" data-a="${v}" data-fixed="1">${fmt(v)}</button>`).join(""):""}</span></div>`}
   return h+`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Miss 3 payments in a row and a loan goes to collections: 1.5× the rate, a 10% penalty and a big score hit. Every application is a hard inquiry.</p>`}
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-bank]");if(!b)return;const a=b.dataset.bank;
-  if(a==="card")applyCard();else if(a==="loan")applyLoan(b.dataset.t,+b.dataset.a);else if(a==="payall")repayLoan(+b.dataset.id,true);
+  if(a==="card")applyCard();else if(a==="loan")applyLoan(b.dataset.t,+b.dataset.a,bankTerm[b.dataset.t]??1);else if(a==="term")bankTerm[b.dataset.t]=+b.dataset.i;else if(a==="payall")repayLoan(+b.dataset.id,true);
   else if(a==="cardall")payCard(true);else if(a==="adv"){const c=B().card,v=Math.min(c.lim-c.bal,Math.round(c.lim/4));c.bal+=v*1.05;S.cash+=v;c.paidStmt=false;toast(`Cash advance ${fmt(v)} (5% fee)`)}
   S.debt=bankDebt();save();hud();renderSheet()});
 /* ---------- bank ownership (phase 1): found & run your own bank. S.ob = owned bank, S.bank = personal banking ---------- */
