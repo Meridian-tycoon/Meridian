@@ -1875,8 +1875,9 @@ function election(n,quiet){const g=gov(n),ks=Object.keys(PARTIES);
   const pct=Math.round(w[ks.indexOf(win)]/w.reduce((a,b)=>a+b,0)*100);
   const backed=Object.keys(g.don).sort((a,b)=>g.don[b]-g.don[a])[0];
   g.favor=backed===win?Math.min(.25,Math.log10(1+g.don[win]/donUnit(n))*.15):0;
-  const wasCtrl=g.ctrl;g.ctrl=backed===win&&g.don[win]>=ctrlNeed(n);if(!g.ctrl)g.contract=0;
-  if(!quiet&&g.ctrl)logGov(`You now control the government of ${n}`);else if(!quiet&&wasCtrl)logGov(`You lost control of ${n}`);
+  const wasCtrl=g.ctrl,donC=backed===win&&g.don[win]>=ctrlNeed(n),ldC=!!(g.polCtrl&&S.pol&&S.pol.c===n&&S.pol.r===GOVCFG.offices.length-1);
+  g.ctrl=donC||ldC;g.polCtrl=donC?0:ldC?1:0;if(!g.ctrl)g.contract=0;
+  if(!quiet&&g.ctrl&&!wasCtrl)logGov(`You now control the government of ${n}`);else if(!quiet&&wasCtrl&&!g.ctrl)logGov(`You lost control of ${n}`);
   const changed=win!==g.party;g.party=win;g.appr=changed?55+Math.random()*15:Math.min(90,g.appr+5);g.don={};
   g.next=g.next+ELECT>Date.now()?g.next+ELECT:Date.now()+ELECT;
   if(changed){const pl=PARTIES[win].pl,diff=Object.keys(LAWS).filter(k=>g.laws[k]!==pl[k]);if(diff.length){const k=diff[0];g.laws[k]=pl[k]}}
@@ -1922,7 +1923,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)
 /* ---------- government control & global conflicts ---------- */
 const ctrlNeed=n=>donUnit(n)*30;
 const contractPay=n=>Math.round(1200*ctyScale(n));
-function exposed(n,quiet){const g=gov(n),fine=donUnit(n)*30;S.cash-=fine;g.ctrl=false;g.contract=0;g.appr=Math.max(5,g.appr-25);
+function exposed(n,quiet){const g=gov(n),fine=donUnit(n)*30;S.cash-=fine;g.ctrl=false;g.polCtrl=0;g.contract=0;g.appr=Math.max(5,g.appr-25);
   logGov(`Exposed! Your control of ${n}'s government leaks to the press. Fined ${fmt(fine)}`);arrest("corruption",48,cap(n),quiet);if(!quiet)toast(`Scandal in ${n}: fined ${fmt(fine)}`)}
 const WARL=["Calm","Tension","Sanctions","Border clashes","War"],WARC=["#3a9","#b9961c","#e07a2a","#d84a4a","#9b1111"];
 const cap=n=>ctyCities(n).sort((a,b)=>b.size-a.size)[0];
@@ -2789,6 +2790,7 @@ const GOVCFG={
   taxCd:1,taxAppr:[3,1,0,-3,-6], // leader tax change cooldown (days) and one-off approval change per tax band (10%..30%)
   annexCost:4e6,annexStep:.3, // influence cost per unit of target size; +30% per country already controlled
   annexWin:.5,annexStepWin:-.04,annexCd:2,annexFailAppr:-12,annexAppr:4,
+  ctrlWin:.15,      // win-chance bonus when running in a country whose government you control through party donations
   share:3000,       // income per unit of controlled country size per hour
   loyStart:60,loyDrift:-.4,loyLowAppr:-1.5,loyLose:12,loyCost:.015,loyGain:15, // loyalty of controlled countries
 };
@@ -2800,7 +2802,8 @@ const annexCost=n=>Math.round(GOVCFG.annexCost*ctyScale(n)*(1+GOVCFG.annexStep*O
 const annexChance=()=>{const p=pol(),C=GOVCFG;return Math.max(.1,Math.min(.85,C.annexWin+C.annexStepWin*Object.keys(p.ctrl).length+(p.appr-50)/200))};
 function polIncome(){const p=S.pol;if(!p||p.r==null||p.r<0||!p.c)return p&&p.mil&&typeof milUpkeep==="function"?milOccIncome()-milUpkeep():0;let v=GOVCFG.offices[p.r].pay*ctyScale(p.c);for(const n in p.ctrl)v+=GOVCFG.share*ctyScale(n);if(typeof milUpkeep==="function")v+=milOccIncome()-milUpkeep();return v}
 function logPol(m,good){S.log.unshift("Government: "+m);S.log=S.log.slice(0,3);if(typeof toast==="function")toast(m)}
-function polChance(r){const p=pol(),{nw}=totals(),O=GOVCFG.offices[r];return Math.max(.05,Math.min(.9,O.win+Math.min(.15,Math.log10(Math.max(1,nw/O.nw))*.08)+(p.r>=0?(p.appr-50)/250:0)))}
+const polDonCtrl=n=>!!(n&&S.gov&&S.gov[n]&&S.gov[n].ctrl&&!S.gov[n].polCtrl);
+function polChance(r){const p=pol(),{nw}=totals(),O=GOVCFG.offices[r],n=p.r>=0?p.c:polHere();return Math.max(.05,Math.min(.9,O.win+(polDonCtrl(n)?GOVCFG.ctrlWin:0)+Math.min(.15,Math.log10(Math.max(1,nw/O.nw))*.08)+(p.r>=0?(p.appr-50)/250:0)))}
 function polRun(){const p=pol(),C=GOVCFG,now=Date.now(),r=p.r+1,O=C.offices[r];if(!O)return;
   const n=p.r>=0?p.c:polHere();
   if(typeof jailed==="function"&&jailed())return toast("You can't campaign from prison");
@@ -2814,7 +2817,7 @@ function polRun(){const p=pol(),C=GOVCFG,now=Date.now(),r=p.r+1,O=C.offices[r];i
   else{p.cd=now+C.loseCd*DAYMS;if(p.r>=0)p.appr=Math.max(0,p.appr-5);logPol(`You lost the race for ${O.n} of ${n} (${Math.round(ch*100)}% chance)`)}}
 function polPR(){const p=pol();if(p.r<0)return;const c=Math.round(polCost(p.r,p.c)*GOVCFG.prCost);if(S.cash<c)return toast(`PR campaign costs ${fmt(c)}`);if(p.appr>=95)return toast("Approval is already maxed");S.cash-=c;p.appr=Math.min(95,p.appr+GOVCFG.prGain);toast(`Approval +${GOVCFG.prGain}`)}
 function polResign(){const p=pol();if(p.r<0)return;logPol(`You stepped down as ${GOVCFG.offices[p.r].n} of ${p.c}`);polFall()}
-function polFall(){const p=pol();if(p.r===GOVCFG.offices.length-1){for(const n in p.ctrl)p.ctrl[n].loy=Math.min(p.ctrl[n].loy,40)}p.r=-1;p.tax=null;p.cd=Date.now()+GOVCFG.loseCd*DAYMS}
+function polFall(){const p=pol();if(p.c&&S.gov&&S.gov[p.c]&&S.gov[p.c].polCtrl){const g=S.gov[p.c];g.ctrl=false;g.contract=0;g.polCtrl=0}if(p.r===GOVCFG.offices.length-1){for(const n in p.ctrl)p.ctrl[n].loy=Math.min(p.ctrl[n].loy,40)}p.r=-1;p.tax=null;p.cd=Date.now()+GOVCFG.loseCd*DAYMS}
 function polSetTax(t){const p=pol(),C=GOVCFG,now=Date.now();if(!polLeader())return;if(now<p.taxCd)return toast("Tax change cooldown: "+fmtDur(p.taxCd-now));t=Math.max(0,Math.min(4,t));const g=gov(p.c);if(g.laws.tax===t)return;
   g.laws.tax=t;p.tax=t;p.taxCd=now+C.taxCd*DAYMS;p.appr=Math.max(0,Math.min(95,p.appr+C.taxAppr[t]));logPol(`${p.c} corporate tax set to ${LAWS.tax.v[t]}`)}
 function polAnnex(n){const p=pol(),C=GOVCFG,now=Date.now();if(!polLeader()||n===p.c||p.ctrl[n]||!COUNTRIES.includes(n))return;
@@ -2827,7 +2830,7 @@ function polRelease(n){const p=pol();if(p.ctrl[n]){delete p.ctrl[n];logPol(`You 
 function polHour(quiet){const p=S.pol;if(!p)return;pol();const C=GOVCFG;
   if(p.r>=0){p.appr=Math.max(0,Math.min(95,p.appr+C.apprDrift+(Math.random()-.5)*C.apprNoise+(typeof jailed==="function"&&jailed()?C.apprJail:0)));
     if(p.appr<C.apprOut){const o=C.offices[p.r].n;polFall();if(!quiet)logPol(`Approval collapsed: you were removed as ${o}`);else S.log.unshift(`Government: removed from office`)}
-    else if(polLeader()&&p.tax!=null){const g=gov(p.c);g.laws.tax=p.tax}}
+    else if(polLeader()){const g=gov(p.c);if(!g.ctrl){g.ctrl=true;g.polCtrl=1;if(!quiet)logPol(`As Leader you now run the government of ${p.c}`)}if(p.tax!=null)g.laws.tax=p.tax}}
   for(const n in p.ctrl){const c=p.ctrl[n];c.loy=Math.max(0,Math.min(100,c.loy+C.loyDrift+(!polLeader()||p.appr<35?C.loyLowAppr:0)));
     if(c.loy<C.loyLose&&Math.random()<.25){delete p.ctrl[n];if(!quiet)logPol(`${n} broke away from your influence`)}}
   if(typeof milHour==="function")milHour(quiet)}
@@ -2841,7 +2844,7 @@ function govApp0(){const p=pol(),C=GOVCFG,now=Date.now(),{nw}=totals(),here=polH
     :`<div class="ph-big" style="font-size:20px">Private citizen</div><div class="ph-sub">Run for office in ${here}</div>`;
   const r=p.r+1,n=p.r>=0?p.c:here;
   if(O[r]){const cost=polCost(r,n),cd=Math.max(0,p.cd-now),hold=p.r>=0?Math.max(0,p.since+C.minHold*DAYMS-now):0;
-    h+=`<div class="ph-rows" style="margin-top:10px"><div><span>Next office</span><b>${O[r].n} of ${n}</b></div><div><span>Net worth needed</span><b style="color:${nw>=O[r].nw?"#4ade80":"#f87171"}">${fmt(O[r].nw)}</b></div><div><span>Campaign</span><b>${fmt(cost)}</b></div><div><span>Win chance</span><b>${Math.round(polChance(r)*100)}%</b></div>${cd?`<div><span>Cooldown</span><b>${fmtDur(cd)}</b></div>`:""}${hold?`<div><span>Eligible in</span><b>${fmtDur(hold)}</b></div>`:""}</div>
+    h+=`<div class="ph-rows" style="margin-top:10px"><div><span>Next office</span><b>${O[r].n} of ${n}</b></div><div><span>Net worth needed</span><b style="color:${nw>=O[r].nw?"#4ade80":"#f87171"}">${fmt(O[r].nw)}</b></div><div><span>Campaign</span><b>${fmt(cost)}</b></div><div><span>Win chance</span><b>${Math.round(polChance(r)*100)}%</b></div>${polDonCtrl(n)?`<div><span>Party you fund rules ${n}</span><b style="color:#4ade80">+${Math.round(C.ctrlWin*100)}%</b></div>`:""}${cd?`<div><span>Cooldown</span><b>${fmtDur(cd)}</b></div>`:""}${hold?`<div><span>Eligible in</span><b>${fmtDur(hold)}</b></div>`:""}</div>
     ${btn("polrun",`Run for ${O[r].n}`,cd||hold||nw<O[r].nw||S.cash<cost||here!==n)}${here!==n?`<p class="ph-sub">Travel to ${n} to campaign.</p>`:""}`}
   if(lead){const g=gov(p.c),tc=Math.max(0,p.taxCd-now);
     h+=`<div class="ph-sub" style="margin-top:12px">Corporate tax in ${p.c}${tc?" · change in "+fmtDur(tc):""}</div><div class="ph-seg">${LAWS.tax.v.map((v,i)=>`<button data-ph="poltax" data-k="${i}" aria-pressed="${g.laws.tax===i}" ${tc?"disabled":""}>${v}</button>`).join("")}</div>`;
@@ -2849,7 +2852,7 @@ function govApp0(){const p=pol(),C=GOVCFG,now=Date.now(),{nw}=totals(),here=polH
     h+=`<div class="ph-sub" style="margin-top:12px">Extend influence · ${Math.round(ch*100)}% success${acd?" · ready in "+fmtDur(acd):""}</div><div class="ph-rows">${list.map(x=>{const c=annexCost(x);return `<div><span>${x}<br><small style="opacity:.7">+${fmt(C.share*ctyScale(x))}/hr</small></span><button class="buy" data-ph="polannex" data-k="${x}" style="color:#fff;background:#7c2d12!important;border-color:#f59e0b;padding:4px 8px" ${acd||S.cash<c?"disabled":""}>${fmt(c)}</button></div>`}).join("")}</div>`}
   const ck=Object.keys(p.ctrl);if(ck.length)h+=`<div class="ph-sub" style="margin-top:12px">Your sphere of influence</div><div class="ph-rows">${ck.map(x=>{const c=p.ctrl[x];return `<div><span>${x} · loyalty <b style="color:${c.loy<25?"#f87171":"#4ade80"}">${Math.round(c.loy)}</b></span><span><button class="buy" data-ph="polloy" data-k="${x}" style="color:#fff;background:#14532d!important;border-color:#22c55e;padding:4px 8px">Aid ${fmt(Math.round(annexCost(x)*C.loyCost))}</button> <button class="buy" data-ph="polrel" data-k="${x}" style="color:#fff;background:#374151!important;padding:4px 8px">Release</button></span></div>`}).join("")}</div>`;
   if(p.r>=0)h+=btn("polquit","Resign",0,null,"#374151");
-  h+=`<p class="ph-sub" style="margin-top:8px">Ladder: ${O.map(o=>o.n).join(" → ")}. Approval drifts down; it falls faster in prison. Leaders set tax and can bring other countries into their sphere for a share of their economy. Countries with low loyalty break away.</p>`;
+  h+=`<p class="ph-sub" style="margin-top:8px">Ladder: ${O.map(o=>o.n).join(" → ")}. Approval drifts down; it falls faster in prison. Controlling ${n}'s government through party donations adds +${Math.round(C.ctrlWin*100)}% to your win chance there. As Leader you also run its government (decrees, state contract); the Leader's tax setting always wins. Leaders set tax and can bring other countries into their sphere for a share of their economy. Countries with low loyalty break away.</p>`;
   return h}
 /* ---------- military conquest for Leaders: army, wars, occupation, peace ---------- */
 const MILCFG={
@@ -2859,6 +2862,7 @@ const MILCFG={
     air:{n:"Air wing",cost:3.5e6,up:8000,str:7,t:{plains:1.1,mountains:.9,jungle:.7,desert:1.25,urban:.9}},
     log:{n:"Logistics",cost:900e3,up:1800,str:.3,t:{plains:1,mountains:1,jungle:1,desert:1,urban:1}}},
   batch:5,              // units bought per recruit tap
+  reserveUp:.25,        // upkeep share while not Leader (army in reserve)
   terrains:["plains","mountains","jungle","desert","urban"],
   enemyStr:6,enemyVar:.4,enemyRegen:.004, // enemy strength per unit of country size (±40% by hash), share regained per hour
   defBonus:1.15,        // defenders' home advantage
@@ -2879,7 +2883,7 @@ const milTerrain=n=>{const cs=ctyCities(n),lat=cs.reduce((a,c)=>a+Math.abs(c.lat
 const milEnemy=n=>Math.round(ctyScale(n)*MILCFG.enemyStr*(1-MILCFG.enemyVar+(hashS(n+"#")%100)/100*2*MILCFG.enemyVar));
 const milGar=()=>{const m=mil();let g=0;for(const n in m.occ)g+=m.occ[n].gar||0;return g};
 function milStr(ter){const m=mil(),U=MILCFG.units;let s=0;for(const k in U){const c=k==="inf"?Math.max(0,m.units.inf-milGar()):m.units[k];s+=c*U[k].str*(ter?U[k].t[ter]:1)}return s}
-function milUpkeep(){const m=S.pol&&S.pol.mil;if(!m)return 0;let v=0;for(const k in MILCFG.units)v+=(m.units[k]||0)*MILCFG.units[k].up;return v}
+function milUpkeep(){const m=S.pol&&S.pol.mil;if(!m)return 0;let v=0;for(const k in MILCFG.units)v+=(m.units[k]||0)*MILCFG.units[k].up;return polLeader()?v:v*MILCFG.reserveUp}
 function milOccIncome(){const m=S.pol&&S.pol.mil;if(!m||!m.occ)return 0;let v=0;for(const n in m.occ)v+=GOVCFG.share*MILCFG.occIncome*ctyScale(n)*(1-m.occ[n].resist/100);return v}
 const milCenter=n=>{const cs=ctyCities(n);return [cs.reduce((a,c)=>a+c.lon,0)/cs.length,cs.reduce((a,c)=>a+c.lat,0)/cs.length]};
 function milDist(a,b){const [x1,y1]=milCenter(a),[x2,y2]=milCenter(b),r=Math.PI/180,h=Math.sin((y2-y1)*r/2)**2+Math.cos(y1*r)*Math.cos(y2*r)*Math.sin((x2-x1)*r/2)**2;return 12742*Math.asin(Math.min(1,Math.sqrt(h)))}
@@ -2934,18 +2938,20 @@ function milHour(quiet){const p=S.pol;if(!p||!p.mil)return;const m=mil(),C=MILCF
 let govTab="pol";
 function milApp(){const p=pol(),m=mil(),C=MILCFG,U=C.units,now=Date.now(),lead=polLeader(),here=polHere()===p.c;
   const sb=(a,k,t,bg,dis)=>`<button class="buy" data-ph="${a}" data-k="${k}" style="color:#fff;background:${bg}!important;border-color:#f59e0b;padding:4px 8px" ${dis?"disabled":""}>${t}</button>`;
-  const gar=milGar();let h=`<div class="ph-rows"><div><span>Strength</span><b>${Math.round(milStr())}</b></div><div><span>Morale</span><b style="color:${m.morale<40?"#f87171":"#4ade80"}">${Math.round(m.morale)}%</b></div><div><span>Supply</span><b>${Math.round(m.supply)}%</b></div><div><span>Upkeep</span><b>${fmt(milUpkeep())}/hr</b></div>${gar?`<div><span>On garrison</span><b>${gar} inf</b></div>`:""}${m.rep.length?`<div><span>Reparations owed</span><b style="color:#f87171">${fmt(m.rep.reduce((a,r)=>a+r.left,0))}</b></div>`:""}</div>`;
-  h+=`<div class="ph-sub" style="margin-top:10px">Army${lead&&!here?` · recruit from ${p.c}`:""}</div><div class="ph-rows">${Object.keys(U).map(k=>`<div><span>${U[k].n} × ${m.units[k]}<br><small style="opacity:.7">str ${U[k].str} · ${fmt(U[k].up)}/hr each</small></span><span>${sb("milrec",k,`+${C.batch} ${fmt(U[k].cost*C.batch)}`,"#7f1d1d",!lead||!here||S.cash<U[k].cost*C.batch)} ${sb("mildis",k,"−","#374151",!m.units[k])}</span></div>`).join("")}</div>`;
+  const gar=milGar();let h=`<div class="ph-rows"><div><span>Strength</span><b>${Math.round(milStr())}</b></div><div><span>Morale</span><b style="color:${m.morale<40?"#f87171":"#4ade80"}">${Math.round(m.morale)}%</b></div><div><span>Supply</span><b>${Math.round(m.supply)}%</b></div><div><span>Upkeep${lead?"":" (reserve)"}</span><b>${fmt(milUpkeep())}/hr</b></div>${gar?`<div><span>On garrison</span><b>${gar} inf</b></div>`:""}${m.rep.length?`<div><span>Reparations owed</span><b style="color:#f87171">${fmt(m.rep.reduce((a,r)=>a+r.left,0))}</b></div>`:""}</div>`;
+  const bx=(a,k,t,bg,dis,w)=>`<button class="buy" data-ph="${a}" data-k="${k}" style="color:#fff;background:${bg}!important;border-color:#f59e0b;padding:4px 6px;margin:0;font-size:11px;white-space:nowrap;${w?"flex:1;min-width:0":"width:34px;min-width:0;flex:none"}" ${dis?"disabled":""}>${t}</button>`;
+  const urow=(top,sub,btns)=>`<div style="display:block"><div style="display:flex;justify-content:space-between;gap:6px;align-items:baseline"><span>${top}</span><small style="opacity:.7;text-align:right">${sub}</small></div><div style="display:flex;gap:5px;margin-top:4px">${btns}</div></div>`;
+  h+=`<div class="ph-sub" style="margin-top:10px">Army${lead&&!here?` · recruit from ${p.c}`:""}${lead?"":` · <span style="color:#fbbf24">Reserve (${Math.round(C.reserveUp*100)}% upkeep)</span>`}</div><div class="ph-rows">${Object.keys(U).map(k=>urow(`${U[k].n} <b>× ${m.units[k]}</b>`,`str ${U[k].str} · ${fmt(U[k].up*(lead?1:C.reserveUp))}/hr ea`,bx("milrec",k,`+${C.batch} · ${fmt(U[k].cost*C.batch)}`,"#7f1d1d",!lead||!here||S.cash<U[k].cost*C.batch,1)+bx("mildis",k,"−","#374151",!m.units[k]))).join("")}</div>`;
   const wk=Object.keys(m.wars);
   for(const n of wk){const w=m.wars[n],pc=Math.max(0,w.pcd-now);
     h+=`<div class="ph-sub" style="margin-top:10px">War with ${n} · ${w.terrain} · weariness ${Math.round(w.weariness)}</div><div style="height:8px;border-radius:4px;background:#7f1d1d;overflow:hidden"><div style="height:100%;width:${w.front}%;background:#22c55e"></div></div>
     <div class="ph-rows"><div><span>Front</span><b>${Math.round(w.front)}/100</b></div><div><span>Enemy strength</span><b>${Math.round(w.enemyStr)}</b></div><div><span>Your strength here</span><b>${Math.round(milStr(w.terrain))}</b></div><div><span>Supply</span><b>${Math.round(milSupply(n))}%</b></div>
     ${w.battles.slice(0,3).map(b=>`<div><span><small>${new Date(b.t).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})} · ${b.ps} vs ${b.es}</small></span><b style="color:${b.mv>=0?"#4ade80":"#f87171"}">${b.mv>=0?"+":""}${b.mv}</b></div>`).join("")}</div>
     ${sb("milpeace",n,pc?"Talks in "+fmtDur(pc):`Offer peace${w.front>=65?" (they pay)":w.front<=35?" (you pay)":" (white)"}`,"#374151",pc)}`}
-  const ok=Object.keys(m.occ);if(ok.length)h+=`<div class="ph-sub" style="margin-top:10px">Occupied</div><div class="ph-rows">${ok.map(n=>{const o=m.occ[n];return `<div><span>${n} · resist <b style="color:${o.resist>60?"#f87171":o.resist<C.occCalm?"#4ade80":"#fbbf24"}">${Math.round(o.resist)}</b><br><small style="opacity:.7">garrison ${o.gar||0} · +${fmt(GOVCFG.share*C.occIncome*ctyScale(n)*(1-o.resist/100))}/hr${o.calm?` · calm ${o.calm}/${C.occDays*24}h`:""}</small></span><span>${sb("milgar",n+"|1","+"+C.batch,"#14532d")} ${sb("milgar",n+"|-1","−","#374151",!o.gar)} ${sb("milab",n,"✕","#374151")}</span></div>`}).join("")}</div>`;
+  const ok=Object.keys(m.occ);if(ok.length)h+=`<div class="ph-sub" style="margin-top:10px">Occupied</div><div class="ph-rows">${ok.map(n=>{const o=m.occ[n];return urow(`${n} · resist <b style="color:${o.resist>60?"#f87171":o.resist<C.occCalm?"#4ade80":"#fbbf24"}">${Math.round(o.resist)}</b>`,`garrison ${o.gar||0} · +${fmt(GOVCFG.share*C.occIncome*ctyScale(n)*(1-o.resist/100))}/hr${o.calm?` · calm ${o.calm}/${C.occDays*24}h`:""}`,bx("milgar",n+"|1",`+${C.batch} garrison`,"#14532d",0,1)+bx("milgar",n+"|-1","−","#374151",!o.gar)+bx("milab",n,"✕","#374151"))}).join("")}</div>`;
   if(lead){const cd=Math.max(0,m.cd-now),full=wk.length>=C.maxWars,list=COUNTRIES.filter(x=>x!==p.c&&!p.ctrl[x]&&!m.occ[x]&&!m.wars[x]).sort((a,b)=>milEnemy(a)-milEnemy(b));
     h+=`<div class="ph-sub" style="margin-top:10px">Declare war${cd?" · ready in "+fmtDur(cd):""}${full?" · max wars reached":""} (approval ${C.warAppr})</div><div class="ph-rows">${list.map(x=>`<div><span>${x}<br><small style="opacity:.7">${milTerrain(x)} · enemy ${milEnemy(x)} vs you ${Math.round(milStr(milTerrain(x)))}</small></span>${sb("milwar",x,fmt(milWarCost(x)),"#7f1d1d",cd||full||S.cash<milWarCost(x)||milStr()<=0)}</div>`).join("")}</div>`}
-  else h+=`<p class="ph-sub">Only a Leader can recruit and declare war. Losing office forces a white peace.</p>`;
+  else h+=`<p class="ph-sub">Only a Leader can recruit and declare war. Losing office forces a white peace and puts the army in reserve: units stay at ${Math.round(C.reserveUp*100)}% upkeep until you lead again.</p>`;
   if(m.log.length)h+=`<div class="ph-sub" style="margin-top:10px">${m.log.slice(0,4).join("<br>")}</div>`;
   h+=`<p class="ph-sub" style="margin-top:8px">Each hour every war fights a battle: strength × terrain × morale × supply. Front 100 = capitulation and occupation, 0 = defeat and reparations. Garrison infantry to calm resistance; ${C.occDays} calm days and it joins your controlled countries.</p>`;
   return h}
