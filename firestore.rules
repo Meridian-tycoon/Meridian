@@ -52,6 +52,21 @@ service cloud.firestore {
           && request.resource.data.d is string && request.resource.data.d.size() <= 700000;
       }
     }
+    // Money transfers between players: sender creates, recipient reads + deletes (claims). No updates.
+    match /transfers/{id} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['from', 'fromName', 'to', 'amt', 'at', 'note'])
+        && request.resource.data.keys().hasAll(['from', 'fromName', 'to', 'amt', 'at'])
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.to is string && request.resource.data.to.size() > 0 && request.resource.data.to.size() <= 128
+        && request.resource.data.to != request.auth.uid
+        && request.resource.data.fromName is string && request.resource.data.fromName.size() <= 20
+        && request.resource.data.amt is number && request.resource.data.amt > 0 && request.resource.data.amt <= 1000000
+        && request.resource.data.at == request.time
+        && (!('note' in request.resource.data) || (request.resource.data.note is string && request.resource.data.note.size() <= 40));
+      allow read, delete: if request.auth != null
+        && (resource.data.to == request.auth.uid || resource.data.from == request.auth.uid);
+    }
     match /{document=**} {
       allow read, write: if false;
     }
