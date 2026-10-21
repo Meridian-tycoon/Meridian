@@ -840,7 +840,7 @@ function shipInfo(){const i=$("#sf-info");if(!i||!sel)return;const v=S.fleet.fin
 sheet.addEventListener("change",e=>{const t=e.target;if(t.id==="sf-g"||t.id==="sf-d")shipInfo();
   if(t.dataset.act==="auto"&&sel){(S.auto[sel.id]=S.auto[sel.id]||{})[t.dataset.g]=t.checked;save();toast(t.checked?`Auto-selling ${G[t.dataset.g][0].toLowerCase()} in ${sel.name}`:"Auto-sell off")}});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-act]");if(!b||b.tagName==="INPUT")return;
-  if(b.dataset.tab){tab=b.dataset.tab;shipForm=null;renderSheet();return}
+  if(b.dataset.tab){if(b.dataset.tab==="hq"&&typeof ofEnter==="function"&&!OFC.on&&sel&&hasHQ(sel)){ofEnter(hqCity(sel.country));return}tab=b.dataset.tab;shipForm=null;renderSheet();return}
   const c=sel;if(!c)return;const a=b.dataset.act,id=+b.dataset.id;
   if(a==="land"){const k=b.dataset.k,z=b.dataset.z,p=plotPrice(c,z,k);if(S.cash<p)return;S.cash-=p;S.sites.push({id:S.nid++,city:c.id,size:k,type:z,op:null});ensureWh(c);toast(`Bought ${LAND[k][1]} ha of ${ZONE[z].n.toLowerCase()} in ${c.name}`)}
   else if(a==="build"){const s=S.sites.find(x=>x.id===id),o=OP[$("#op-"+id).value],p=o.build*LAND[s.size][1];if(S.cash<p){toast(`Need ${fmt(p)} to build that`);return}S.cash-=p;s.op=o.k;s.k=null;toast(`${o.n} built`)}
@@ -1096,7 +1096,7 @@ function renderHQ(c){let h=cityHead(c);const o=S.own[c.id]||{},sites=S.sites.fil
     const un=BIZ.filter(b=>o[b.k]&&!bizReg(c,b.k)).length+sites.filter(s=>!s.reg).length;
     if(un)h+=`<p class="d" style="color:var(--bad);font-size:13px;padding:8px 0">You have ${un} unregistered asset${un>1?"s":""} here.</p>`;
     sheet.innerHTML=h;$("#cls").onclick=closeSheet;return}
-  const hc=hqCity(c.country),nb=hqNetB(c);h+=`<p class="d" style="font-size:12px;color:var(--muted);margin:4px 0">${hc.id===c.id?`Your ${c.country} HQ. It covers every city in ${c.country}.`:`Your HQ in ${hc.name} already covers ${c.country}.`}${nb?` HQ network: +${Math.round(nb*100)}% income here.`:""}</p><div id="hqroom-host"></div><div id="hqpanel"></div><div class="tabs" style="margin-top:0">${[["reg","Register"],["emp","Employees"],["all","All registered"],["net","Network"]].map(([k,n])=>`<button data-hqt="${k}" aria-selected="${hqTab===k}">${n}</button>`).join("")}</div>`;
+  const hc=hqCity(c.country),nb=hqNetB(c);h+=`<p class="d" style="font-size:12px;color:var(--muted);margin:4px 0">${hc.id===c.id?`Your ${c.country} HQ. It covers every city in ${c.country}.`:`Your HQ in ${hc.name} already covers ${c.country}.`}${nb?` HQ network: +${Math.round(nb*100)}% income here.`:""}</p>${typeof OFC!=="undefined"&&OFC.on?"":`<button class="buy" data-ofc="1" style="width:100%;margin:4px 0 8px">🏢 Enter your 3D office</button>`}<div id="hqroom-host"></div><div id="hqpanel"></div><div class="tabs" style="margin-top:0">${[["reg","Register"],["emp","Employees"],["all","All registered"],["net","Network"]].map(([k,n])=>`<button data-hqt="${k}" aria-selected="${hqTab===k}">${n}</button>`).join("")}</div>`;
   if(hqTab==="reg"){h+=`<div class="sec">Businesses in ${c.name}</div><div class="list">`;
     const mine=BIZ.filter(b=>o[b.k]);if(!mine.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:8px 0">No businesses here yet.</p>`;
     for(const b of mine){const r=bizReg(c,b.k);h+=`<div class="row own"><div class="n">${b.n} <span class="tag ${r?"boom":"bust"}">${r?"Registered":"Unregistered"}</span></div>
@@ -1119,7 +1119,7 @@ function renderHQ(c){let h=cityHead(c);const o=S.own[c.id]||{},sites=S.sites.fil
     all.sort((a,b)=>b[1]-a[1]);const sum=all.reduce((a,r)=>a+r[1],0);
     h+=`<div class="meta"><div><span>Registered </span>${all.length}</div><div><span>Earning </span>${fmt(sum)}/hr</div><div><span>Tax rate </span>${TAX_REG*100}%</div></div><div class="list">`+
       (all.length?all.map(r=>`<div class="row link" data-go="${r[3]}"><div class="n">${r[0]}</div><div class="d">${r[2]}</div><span style="font-family:var(--mono);color:${r[1]<0?"var(--bad)":"var(--good)"}">${fmt(r[1])}/hr</span></div>`).join(""):`<p class="d" style="color:var(--muted);font-size:13px;padding:8px 0">Nothing registered yet.</p>`)+`</div>`}
-  sheet.innerHTML=h;$("#cls").onclick=closeSheet;sheet.querySelectorAll("#sheet [data-go]").forEach(r=>r.onclick=()=>flyTo(CITIES[r.dataset.go]));const host=$("#hqroom-host");if(host)mountRoom(host,c)}
+  sheet.innerHTML=h;$("#cls").onclick=closeSheet;sheet.querySelectorAll("#sheet [data-go]").forEach(r=>r.onclick=()=>flyTo(CITIES[r.dataset.go]));const host=$("#hqroom-host");if(host&&!(typeof OFC!=="undefined"&&OFC.on))mountRoom(host,c)}
 let hqTab="reg";
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-hq],[data-hqt]");if(!b||!sel)return;const c=sel;
   if(b.dataset.hqt){hqTab=b.dataset.hqt;renderSheet();return}const a=b.dataset.hq;
@@ -3357,6 +3357,327 @@ function dxRender(){if(!DX.open||!DX.el)return;const reg=!!DX.reg,T=dxData(reg),
   const ne=main.querySelector("#mdx-net");if(ne){const cs=hqCountries(),ls=hqLinks();ne.innerHTML=!cs.length?`<div class="mdx-empty">No HQ yet. One HQ covers a whole country.</div>`:cs.map(n=>{const hc=hqCity(n),bn=hqNetB(hc);return `<div><i style="background:#dcfce7;color:#16a34a">${dxI("biz",17)}</i><div class="mdx-um"><b>${dxE(n)}</b><small>${dxE(hc.name)} · ${hqDeg(n)} link${hqDeg(n)===1?"":"s"}</small></div><div class="mdx-ua" style="color:${bn?"#16a34a":"#94a3b8"}">+${Math.round(bn*100)}%</div></div>`}).join("")+`<div class="mdx-empty" style="text-align:left">${ls.length?`${ls.length} link${ls.length>1?"s":""} · upkeep ${dxM(hqNetUp())}/hr`:cs.length>1?"Connect HQs from the HQ app or city HQ tab.":"Open an HQ in a second country to start a network."}</div>`}
   const nt=main.querySelector("#mdx-note");if(nt)nt.textContent=Date.now()-DX.noteT<6000?DX.note:"";
   const hb=main.querySelector('[data-dx=hireall]');if(hb)hb.disabled=!T.rows.some(x=>!x.staffed)}
+/* =====================================================================
+   HQ OFFICE MODE: a full-screen, walkable 3D office for every HQ.
+   - Pressing the HQ tab of a city covered by an HQ enters it (ofEnter).
+   - three.js r128 is lazy-loaded from cdnjs the first time only.
+   - Layout persists per HQ city id:
+       S.office[id] = {items:[{type,x,z,rot,free?}], floor, wall, inv:{type:count}}
+     rot is in quarter turns (0..3); floor/wall index OFC_FLOORS/OFC_WALLS.
+   EXTENSION POINT: add furniture or new office features in OFFICE_ITEMS.
+   ===================================================================== */
+const OFC={on:false,city:null,key:null,T:null,ren:null,scene:null,cam:null,el:null,cv:null,raf:0,last:0,
+  p:{x:0,z:2.6,yaw:0},keys:{},joy:null,drag:null,objs:[],obst:[],near:null,nearSig:"",place:null,panel:null,ptab:"shop",arm:null,camD:4.6,camH:2.6,fx:{}};
+const OFC_ROOM={w:16,d:12,h:3.2}; // floor spans x -8..8, z -6..6
+const OFC_FLOORS=[["Oak","#b98a5a"],["Walnut","#6b4a33"],["Grey carpet","#7d838c"],["Marble","#e6e4df"],["Slate tile","#3f4650"]];
+const OFC_WALLS=[["Gallery white","#f2f0eb"],["Sand","#e3d3b4"],["Sage","#b7c7b0"],["Navy","#2f3e5c"],["Charcoal","#3a3d42"]];
+const OFC_KIOSK={x:7.1,z:4.9,size:[.9,.7]}; // fixed shop terminal in the front-right corner
+
+/* tiny low-poly helpers: origin is the floor, item front faces +z */
+const ofMat=(T,col,o)=>new T.MeshStandardMaterial({color:col,roughness:o&&o.r!=null?o.r:.75,metalness:o&&o.m||0,emissive:o&&o.e||0,emissiveIntensity:o&&o.ei!=null?o.ei:1,transparent:!!(o&&o.op),opacity:o&&o.op||1,flatShading:true});
+function ofBox(T,g,w,h,d,col,x,y,z,o){const m=new T.Mesh(new T.BoxGeometry(w,h,d),ofMat(T,col,o));m.position.set(x,y+h/2,z);g.add(m);return m}
+function ofCyl(T,g,rt,rb,h,col,x,y,z,o){const m=new T.Mesh(new T.CylinderGeometry(rt,rb,h,o&&o.seg||10),ofMat(T,col,o));m.position.set(x,y+h/2,z);g.add(m);return m}
+function ofSph(T,g,r,col,x,y,z,o){const m=new T.Mesh(new T.SphereGeometry(r,10,7),ofMat(T,col,o));m.position.set(x,y,z);g.add(m);return m}
+function ofScreenTex(T,title,lines){const cv=document.createElement("canvas");cv.width=512;cv.height=288;const g=cv.getContext("2d");
+  g.fillStyle="#0b1220";g.fillRect(0,0,512,288);g.fillStyle="#38bdf8";g.font="bold 30px sans-serif";g.fillText(title,22,46);
+  g.fillStyle="#e2e8f0";g.font="22px monospace";lines.forEach((s,i)=>g.fillText(s,22,92+i*32));
+  for(let i=0;i<10;i++){const h=24+((i*37+7*i*i)%80);g.fillStyle=i%3?"#22c55e":"#38bdf8";g.fillRect(300+i*19,270-h,13,h)}
+  const tx=new T.CanvasTexture(cv);return tx}
+function ofDashTex(T){let t={inc:0,nw:0};try{t=totals()}catch(e){}
+  return ofScreenTex(T,(OFC.city?OFC.city.name.toUpperCase()+" ":"")+"HQ",["Cash "+fmt(S.cash),"Per hr "+fmt(t.inc),"Worth "+fmt(t.nw),"HQs "+Object.keys(S.hq).filter(k=>S.hq[k]).length])}
+
+/* ---------------------------------------------------------------------
+   OFFICE_ITEMS: the registry of everything that can live in the office.
+   Add a new key here to add a new item; nothing else needs to change.
+     name   shown in the shop        price  in-game cash (sell back = 50%)
+     icon   emoji for the shop list  desc   one-line shop description
+     size   [width, depth] footprint in metres (before rotation)
+     small  true: may sit on a surface (desk) as well as the floor
+     top    height of a usable surface (other small items can sit on it)
+     walk   true: flat, the player walks over it (rugs)
+     build(T)  returns a THREE.Group, origin on the floor, front facing +z
+     use(ctx)  optional; runs when the player presses E / taps Use nearby.
+               ctx = {city, item, toast, openComputer, openShop, dash}
+   --------------------------------------------------------------------- */
+const OFFICE_ITEMS={
+  computer:{name:"Computer",price:4000,icon:"💻",small:true,size:[.8,.5],desc:"Runs your HQ: registration, employees, network",
+    build(T){const g=new T.Group();ofBox(T,g,.24,.02,.18,0x2b2f36,0,0,-.08);ofBox(T,g,.05,.24,.05,0x2b2f36,0,.02,-.1);ofBox(T,g,.72,.44,.05,0x1f2329,0,.2,-.1);
+      const s=ofBox(T,g,.66,.38,.01,0x1d4ed8,0,.23,-.07,{e:0x2563eb,ei:.8});s.material.emissiveIntensity=.9;ofBox(T,g,.5,.02,.16,0x3a3f47,0,0,.14);ofBox(T,g,.08,.02,.1,0x3a3f47,.34,0,.15);return g},
+    use:ctx=>ctx.openComputer()},
+  dashboard:{name:"Dashboard screen",price:12000,icon:"📊",size:[2.1,.4],desc:"Big live screen: opens the HQ dashboard",
+    build(T){const g=new T.Group();ofBox(T,g,.08,1.2,.08,0x2b2f36,-.8,0,0);ofBox(T,g,.08,1.2,.08,0x2b2f36,.8,0,0);ofBox(T,g,.5,.04,.36,0x2b2f36,-.8,0,0);ofBox(T,g,.5,.04,.36,0x2b2f36,.8,0,0);
+      ofBox(T,g,2.06,1.2,.08,0x14171c,0,1.0,0);const scr=new T.Mesh(new T.PlaneGeometry(1.94,1.09),new T.MeshBasicMaterial({map:ofDashTex(T)}));scr.position.set(0,1.6,.045);scr.userData.dash=1;g.add(scr);return g},
+    use:ctx=>ctx.dash()},
+  cooler:{name:"Water cooler",price:800,icon:"🚰",size:[.5,.5],desc:"Hydration and office gossip",
+    build(T){const g=new T.Group();ofBox(T,g,.42,.95,.42,0xe5e7eb,0,0,0);ofBox(T,g,.12,.06,.04,0x60a5fa,0,.7,.22);ofCyl(T,g,.17,.17,.45,0x7dd3fc,0,.95,0,{op:.75,r:.1});ofCyl(T,g,.06,.17,.06,0x7dd3fc,0,1.4,0,{op:.75,r:.1});return g},
+    use:ctx=>ctx.toast(["You sip some cold water. Refreshing.","Rumour at the cooler: rivals are eyeing your best city.","Someone left a sticky note: 'Who took my mug?'"][Math.floor(Math.random()*3)])},
+  desk:{name:"Desk",price:2500,icon:"🗄️",size:[1.8,.9],top:.76,desc:"A surface for computers, lamps and plants",
+    build(T){const g=new T.Group();ofBox(T,g,1.8,.06,.9,0x8b6a4a,0,.7,0);for(const [x,z] of [[-.84,-.39],[.84,-.39],[-.84,.39]])ofBox(T,g,.06,.7,.06,0x2b2f36,x,0,z);ofBox(T,g,.46,.66,.8,0x6f5238,.62,.02,0);ofBox(T,g,.3,.03,.02,0xd1d5db,.62,.5,.41);ofBox(T,g,.3,.03,.02,0xd1d5db,.62,.25,.41);return g}},
+  chair:{name:"Office chair",price:600,icon:"🪑",size:[.6,.6],desc:"Ergonomic, swivels, squeaks",
+    build(T){const g=new T.Group();ofCyl(T,g,.3,.3,.04,0x1f2329,0,.04,0,{seg:5});ofCyl(T,g,.03,.03,.38,0x9ca3af,0,.06,0);ofBox(T,g,.52,.08,.5,0x1e293b,0,.44,0);ofBox(T,g,.48,.55,.07,0x1e293b,0,.5,-.24);return g},
+    use:ctx=>ctx.toast("You spin in the chair. Productivity +0%. Morale +1.")},
+  plant:{name:"Plant",price:250,icon:"🪴",small:true,size:[.45,.45],desc:"Fresh air for the office",
+    build(T){const g=new T.Group();ofCyl(T,g,.17,.13,.28,0xc2683a,0,0,0);ofSph(T,g,.2,0x2f855a,0,.45,0);ofSph(T,g,.15,0x38a169,.1,.6,.04);ofSph(T,g,.13,0x276749,-.1,.58,-.05);return g},
+    use:ctx=>ctx.toast("You water the plant. It looks grateful.")},
+  sofa:{name:"Sofa",price:3500,icon:"🛋️",size:[2,.9],desc:"Client meetings, or naps",
+    build(T){const g=new T.Group();const c=0x475569;ofBox(T,g,2,.42,.9,c,0,0,0);ofBox(T,g,2,.5,.22,c,0,.4,-.34);ofBox(T,g,.2,.25,.9,c,-.9,.4,0);ofBox(T,g,.2,.25,.9,c,.9,.4,0);ofBox(T,g,.8,.1,.62,0x64748b,-.4,.42,.08);ofBox(T,g,.8,.1,.62,0x64748b,.4,.42,.08);return g},
+    use:ctx=>ctx.toast("You sink into the sofa for a minute. Ahh.")},
+  bookshelf:{name:"Bookshelf",price:1800,icon:"📚",size:[1.4,.4],desc:"Business classics and annual reports",
+    build(T){const g=new T.Group();const w=0x7c5a3c;ofBox(T,g,1.4,.05,.4,w,0,0,0);ofBox(T,g,1.4,.05,.4,w,0,1.95,0);ofBox(T,g,.05,2,.4,w,-.68,0,0);ofBox(T,g,.05,2,.4,w,.68,0,0);ofBox(T,g,1.4,2,.03,0x5b412b,0,0,-.19);
+      const cols=[0xdc2626,0x2563eb,0x16a34a,0xf59e0b,0x7c3aed,0x0f766e];for(let s=0;s<4;s++){ofBox(T,g,1.32,.04,.38,w,0,.48*s+.02,0);let x=-.6;for(let i=0;x<.55;i++){const bw=.06+((i*7+s*3)%4)*.02,bh=.28+((i*5+s)%3)*.05;ofBox(T,g,bw,bh,.26,cols[(i+s)%6],x+bw/2,.48*s+.06,0);x+=bw+.01}}return g},
+    use:ctx=>ctx.toast("You flip through 'The Art of the Deal'. Then put it back.")},
+  coffee:{name:"Coffee machine",price:2200,icon:"☕",small:true,size:[.5,.45],desc:"Fuel for late-night deals",
+    build(T){const g=new T.Group();ofBox(T,g,.4,.5,.35,0x27272a,0,0,-.02,{m:.3,r:.4});ofBox(T,g,.3,.12,.2,0x52525b,0,.38,.12);ofCyl(T,g,.06,.05,.1,0xffffff,0,.04,.1);ofBox(T,g,.05,.05,.02,0xef4444,.13,.3,.16,{e:0xef4444,ei:.8});return g},
+    use:ctx=>ctx.toast(["Fresh espresso. You feel sharper.","The machine gurgles and hands you a flat white.","Double shot. Time to close some deals."][Math.floor(Math.random()*3)])},
+  whiteboard:{name:"Whiteboard",price:900,icon:"📝",size:[1.6,.35],desc:"Plan your next takeover",
+    build(T){const g=new T.Group();ofBox(T,g,.05,1,.05,0x9ca3af,-.75,0,0);ofBox(T,g,.05,1,.05,0x9ca3af,.75,0,0);ofBox(T,g,1.62,1.02,.05,0xb0b5bd,0,.9,0);ofBox(T,g,1.54,.94,.02,0xfafafa,0,.94,.03);
+      ofBox(T,g,.6,.03,.01,0x2563eb,-.3,1.6,.045);ofBox(T,g,.4,.03,.01,0xdc2626,-.4,1.45,.045);ofBox(T,g,.5,.03,.01,0x16a34a,.3,1.3,.045);ofBox(T,g,.03,.4,.01,0x111827,.2,1.1,.045);return g},
+    use:ctx=>ctx.toast("The whiteboard reads: 'BUY LOW. EXPAND. REPEAT.'")},
+  vending:{name:"Vending machine",price:3000,icon:"🥤",size:[1,.8],desc:"Snacks for the team",
+    build(T){const g=new T.Group();ofBox(T,g,1,1.9,.8,0xb91c1c,0,0,0);ofBox(T,g,.62,1.3,.02,0xbfdbfe,-.12,.45,.41,{e:0x93c5fd,ei:.25,op:.85});
+      for(let r=0;r<4;r++)for(let i=0;i<4;i++)ofBox(T,g,.1,.14,.02,[0xf59e0b,0x22c55e,0x3b82f6,0xec4899][(r+i)%4],-.36+i*.16,.6+r*.3,.43);ofBox(T,g,.2,.5,.02,0x1f2937,.34,.9,.41);ofBox(T,g,.6,.14,.02,0x111827,-.12,.15,.41);return g},
+    use:ctx=>ctx.toast(["Clunk. A bag of chips drops. Lunch!","The machine eats your coin. Classic.","You grab a cold soda."][Math.floor(Math.random()*3)])},
+  rug:{name:"Rug",price:1200,icon:"🟥",walk:true,size:[2.4,1.6],desc:"Ties the room together",
+    build(T){const g=new T.Group();ofBox(T,g,2.4,.015,1.6,0x9f1239,0,0,0,{r:1});ofBox(T,g,2.1,.018,1.3,0xbe123c,0,0,0,{r:1});ofBox(T,g,1.4,.021,.6,0xfda4af,0,0,0,{r:1});return g}},
+  lamp:{name:"Lamp",price:400,icon:"💡",size:[.4,.4],desc:"Warm floor lamp",
+    build(T){const g=new T.Group();ofCyl(T,g,.18,.2,.04,0x1f2329,0,0,0);ofCyl(T,g,.02,.02,1.4,0x9ca3af,0,.04,0);ofCyl(T,g,.13,.22,.28,0xfde68a,0,1.38,0,{e:0xfbbf24,ei:.7,seg:8});return g},
+    use:ctx=>ctx.toast("Click. Cosy.")},
+  server:{name:"Server rack",price:25000,icon:"🖥️",size:[.7,.9],desc:"Private cloud for your empire",
+    build(T){const g=new T.Group();ofBox(T,g,.7,2,.9,0x111827,0,0,0,{m:.4,r:.4});for(let i=0;i<9;i++){ofBox(T,g,.6,.12,.02,0x1f2937,0,.2+i*.19,.46);ofBox(T,g,.03,.03,.01,i%3?0x22c55e:0x38bdf8,.22,.24+i*.19,.475,{e:i%3?0x22c55e:0x38bdf8,ei:1});}return g},
+    use:ctx=>ctx.toast(`Servers humming. ${typeof hqLinks==="function"?hqLinks().length:0} HQ network link(s) online.`)},
+  trophy:{name:"Trophy cabinet",price:15000,icon:"🏆",size:[1.2,.45],desc:"Show off your empire's wins",
+    build(T){const g=new T.Group();ofBox(T,g,1.2,1.8,.45,0x5b3a22,0,0,0);ofBox(T,g,1.08,1.6,.02,0xdbeafe,0,.12,.23,{op:.35,r:.1});
+      for(let s=0;s<3;s++){ofBox(T,g,1.08,.03,.4,0x7c5a3c,0,.12+s*.55,0);for(let i=0;i<3;i++){const x=-.35+i*.35;ofCyl(T,g,.06,.08,.06,0xfbbf24,x,.15+s*.55,0,{m:.8,r:.3});ofCyl(T,g,.02,.02,.12,0xfbbf24,x,.21+s*.55,0,{m:.8,r:.3});ofSph(T,g,.07,0xfbbf24,x,.4+s*.55,0,{m:.8,r:.3})}}return g},
+    use:ctx=>ctx.toast(`Your trophies: ${Object.keys(S.hq).filter(k=>S.hq[k]).length} HQ(s), ${Object.keys(S.own||{}).length} cities with businesses.`)}
+};
+const OFC_START=[{type:"desk",x:0,z:-3.2,rot:0,free:1},{type:"computer",x:0,z:-3.35,rot:0,free:1},{type:"dashboard",x:-4.6,z:-5.5,rot:0,free:1}];
+
+/* per-HQ layout, created with defaults so old saves load */
+function ofData(id){S.office=S.office||{};let d=S.office[id];if(!d||typeof d!=="object")d=S.office[id]={};
+  if(!Array.isArray(d.items))d.items=OFC_START.map(o=>({...o}));d.items=d.items.filter(o=>o&&OFFICE_ITEMS[o.type]);
+  if(!(d.floor>=0&&d.floor<OFC_FLOORS.length))d.floor=0;if(!(d.wall>=0&&d.wall<OFC_WALLS.length))d.wall=0;if(!d.inv||typeof d.inv!=="object")d.inv={};return d}
+const ofSellVal=o=>o.free?0:Math.round(OFFICE_ITEMS[o.type].price*.5);
+function loadThree(){if(window.THREE&&window.THREE.WebGLRenderer)return Promise.resolve(window.THREE);if(loadThree.p)return loadThree.p;
+  return loadThree.p=new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";s.onload=()=>window.THREE?res(window.THREE):rej(new Error("no THREE"));s.onerror=()=>{loadThree.p=null;s.remove();rej(new Error("load"))};document.head.appendChild(s)})}
+
+const OFCCSS=`#ofc{position:fixed;inset:0;z-index:30;background:#1e2430;color:#f8fafc;font-family:Figtree,ui-sans-serif,system-ui,sans-serif;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+#ofc canvas{display:block;width:100%;height:100%;outline:none}
+#ofc .ob{appearance:none;border:0;border-radius:999px;padding:9px 14px;font:600 13px/1 inherit;font-family:inherit;color:#fff;background:rgba(15,23,42,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);white-space:nowrap}
+#ofc .ob:disabled{opacity:.45;cursor:default}#ofc .ob.pri{background:#2563eb}#ofc .ob.ok{background:#16a34a}#ofc .ob.bad{background:#dc2626}
+#ofc .otop{position:absolute;top:max(10px,env(safe-area-inset-top,0px));left:10px;right:10px;display:flex;gap:6px;align-items:center;pointer-events:none}
+#ofc .otop>*{pointer-events:auto}#ofc .ottl{flex:1;min-width:0;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.6)}#ofc .ottl b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#ofc .ottl small{font:600 12px ui-monospace,monospace;color:#bbf7d0}
+#ofc .ohelp{position:absolute;left:10px;top:calc(max(10px,env(safe-area-inset-top,0px)) + 46px);font-size:11px;color:rgba(255,255,255,.75);text-shadow:0 1px 2px #000;pointer-events:none}
+#ofc .opr{position:absolute;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 20px);background:rgba(15,23,42,.8);padding:8px 10px;border-radius:16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#ofc .opr span{font-size:13px;font-weight:600;padding:0 4px}#ofc .opr .ob{padding:8px 12px}
+#ofc .ojoy{position:absolute;left:22px;bottom:calc(26px + env(safe-area-inset-bottom,0px));width:112px;height:112px;border-radius:50%;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);touch-action:none;display:none}
+#ofc .ojoy i{position:absolute;left:36px;top:36px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.8);pointer-events:none}
+#ofc.touch .ojoy{display:block}#ofc.touch .opr{left:auto;right:10px;transform:none;bottom:calc(150px + env(safe-area-inset-bottom,0px));justify-content:flex-end}#ofc.touch .ohelp{display:none}
+#ofc .opn{position:absolute;right:10px;top:calc(max(10px,env(safe-area-inset-top,0px)) + 48px);bottom:10px;width:min(360px,calc(100% - 20px));background:#f8fafc;color:#0f172a;border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden}
+#ofc .opn header{display:flex;gap:4px;padding:10px;border-bottom:1px solid #e2e8f0;background:#fff;align-items:center;position:static;backdrop-filter:none}
+#ofc .opn header button{appearance:none;border:0;background:#eef2f7;color:#0f172a;border-radius:999px;padding:7px 11px;font:600 12px inherit;font-family:inherit;cursor:pointer}#ofc .opn header button[aria-selected=true]{background:#0f172a;color:#fff}
+#ofc .opn .obody{overflow:auto;padding:8px 10px;flex:1}
+#ofc .oit{display:grid;grid-template-columns:34px 1fr auto;gap:2px 10px;align-items:center;padding:8px 2px;border-bottom:1px solid #eef2f7}
+#ofc .oit i{font-style:normal;font-size:24px;grid-row:1/3;text-align:center}#ofc .oit b{font-size:13px}#ofc .oit small{font-size:11px;color:#64748b;grid-column:2}
+#ofc .oit .ob{grid-row:1/3;grid-column:3;padding:7px 11px;box-shadow:none}#ofc .oit .ob.lt{background:#e2e8f0;color:#0f172a}
+#ofc .osw{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 14px}#ofc .osw button{appearance:none;width:52px;height:52px;border-radius:12px;border:3px solid transparent;cursor:pointer;font:600 9px inherit;font-family:inherit;display:flex;align-items:flex-end;justify-content:center;padding:3px;color:#fff;text-shadow:0 1px 2px #000}
+#ofc .osw button[aria-pressed=true]{border-color:#2563eb;box-shadow:0 0 0 2px #fff inset}
+#ofc .osec{font:700 11px inherit;font-family:inherit;letter-spacing:.06em;text-transform:uppercase;color:#64748b;margin:8px 0 2px}
+#ofc .oload{position:absolute;inset:0;display:grid;place-items:center;font-size:15px;color:#cbd5e1}
+body.ofc #toast{position:fixed;z-index:45}body.ofc-pc #sheet{z-index:35}
+#ofc .opc{display:none}body.ofc-pc #ofc .opc{display:inline-block}
+@media (max-width:600px){#ofc .ob{padding:8px 11px;font-size:12px}#ofc .ohide{display:none}}`;
+
+/* ---------- enter / exit ---------- */
+function ofEnter(hc){if(OFC.on||!hc)return;OFC.on=true;OFC.city=hc;OFC.key=hc.id;ofData(hc.id);
+  OFC.prev={tab,sel,open:sheet.classList.contains("open")};
+  if(!document.getElementById("ofc-css")){const st=document.createElement("style");st.id="ofc-css";st.textContent=OFCCSS;document.head.appendChild(st)}
+  const el=document.createElement("div");el.id="ofc";el.setAttribute("role","dialog");el.setAttribute("aria-label",`${hc.name} HQ office`);
+  if(matchMedia("(pointer:coarse)").matches||"ontouchstart" in window)el.classList.add("touch");
+  el.innerHTML=`<div class="oload">Loading your office…</div><div class="otop"><div class="ottl"><b>${hc.name} HQ · Office</b><small id="ofc-cash"></small></div>
+    <button class="ob opc ok" data-of="pcclose">Back to office</button><button class="ob pri" data-of="shop">🛒 Shop</button><button class="ob" data-of="classic"><span class="ohide">Classic </span>HQ view</button><button class="ob bad" data-of="exit" aria-label="Exit office">✕ Exit</button></div>
+    <div class="ohelp">W/S forward/back · A/D strafe · ←/→ or drag to turn · E use · Esc exit</div><div class="ojoy"><i></i></div><div class="opr" hidden></div><div class="opn" hidden></div>`;
+  document.body.appendChild(el);document.body.classList.add("ofc");OFC.el=el;OFC.keys={};OFC.joy=null;OFC.place=null;OFC.panel=null;OFC.near=null;OFC.nearSig="";
+  OFC.p={x:0,z:1.2,yaw:0};ofCash();ofBindUI();
+  loadThree().then(T=>{if(!OFC.on||OFC.el!==el)return;ofBuild(T)}).catch(()=>{if(!OFC.on)return;ofExit(true);toast("Couldn't load the 3D office. Showing the classic HQ view.")})}
+function ofExit(classic){if(!OFC.on)return;OFC.on=false;cancelAnimationFrame(OFC.raf);OFC.raf=0;
+  if(OFC.scene){OFC.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();const m=o.material;if(m)(Array.isArray(m)?m:[m]).forEach(x=>{if(x.map)x.map.dispose();x.dispose()})})}
+  if(OFC.ren){OFC.ren.dispose();try{OFC.ren.forceContextLoss()}catch(e){}}
+  OFC.ren=OFC.scene=OFC.cam=null;OFC.objs=[];OFC.place=null;if(OFC.el)OFC.el.remove();OFC.el=null;
+  document.body.classList.remove("ofc","ofc-pc");if(typeof DX!=="undefined"&&DX.open)dxClose();save();hud();
+  const pv=OFC.prev||{};const hc=OFC.city;
+  if(classic&&hc){tab="hq";const c=pv.sel&&hasHQ(pv.sel)&&hqCity(pv.sel.country)===hc?pv.sel:hc;openCity(c);return}
+  if(pv.sel){tab=pv.tab||"biz";sel=pv.sel;mode="city";renderSheet();if(pv.open)sheet.classList.add("open");else closeSheet()}else closeSheet();draw()}
+
+/* ---------- scene ---------- */
+function ofBuild(T){OFC.T=T;const el=OFC.el,ld=el.querySelector(".oload");
+  let ren;try{ren=new T.WebGLRenderer({antialias:(devicePixelRatio||1)<1.5,powerPreference:"low-power"})}catch(e){ofExit(true);toast("3D isn't available on this device. Showing the classic HQ view.");return}
+  ren.setPixelRatio(Math.min(1.5,devicePixelRatio||1));OFC.ren=ren;const cv=ren.domElement;cv.tabIndex=0;cv.setAttribute("aria-label","3D office. W A S D to move.");el.insertBefore(cv,el.firstChild);OFC.cv=cv;if(ld)ld.remove();
+  const sc=new T.Scene();sc.background=new T.Color(0xbcd3ea);OFC.scene=sc;OFC.cam=new T.PerspectiveCamera(60,1,.1,80);
+  sc.add(new T.HemisphereLight(0xffffff,0x6b6258,.55));const dl=new T.DirectionalLight(0xfff4e0,.55);dl.position.set(-4,9,-8);sc.add(dl);sc.add(new T.AmbientLight(0xffffff,.18));
+  const R=OFC_ROOM,d=ofData(OFC.key),room=new T.Group();sc.add(room);OFC.room=room;
+  OFC.floorM=ofBox(T,room,R.w,.1,R.d,OFC_FLOORS[d.floor][1],0,-.1,0,{r:.9}).material;
+  const wm=ofMat(T,OFC_WALLS[d.wall][1],{r:.95});OFC.wallM=wm;
+  const wall=(w,h,dd,x,y,z)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,dd),wm);m.position.set(x,y+h/2,z);room.add(m);return m};
+  // back wall with a window band
+  wall(R.w,.9,.2,0,0,-R.d/2-.1);wall(R.w,.5,.2,0,R.h-.5,-R.d/2-.1);
+  for(let i=0;i<=6;i++)wall(i%3?.12:.4,R.h-1.4,.2,-R.w/2+.2+i*(R.w-.4)/6,.9,-R.d/2-.1);
+  ofBox(T,room,R.w,R.h-1.4,.04,0xcfe8ff,0,.9,-R.d/2-.16,{e:0x9cc9f5,ei:.55,r:.1});
+  const sky=new T.Group();for(let i=0;i<14;i++){const h=1.2+((i*53)%9)*.35;ofBox(T,sky,.9,h,.6,[0x7a8ba3,0x8fa3bb,0x6b7c93][i%3],-7.5+i*1.15,.9+Math.max(0,1.6-h*.3)-.6,-R.d/2-1.2,{e:0x4a5d78,ei:.25})}room.add(sky);
+  wall(.2,R.h,R.d,-R.w/2-.1,0,0);wall(.2,R.h,R.d,R.w/2+.1,0,0);
+  wall(R.w/2-1,R.h,.2,-R.w/4-.5,0,R.d/2+.1);wall(R.w/2-1,R.h,.2,R.w/4+.5,0,R.d/2+.1);wall(2,R.h-2.3,.2,0,2.3,R.d/2+.1);
+  ofBox(T,room,1.9,2.25,.1,0x5b412b,0,0,R.d/2+.02);ofBox(T,room,.05,.05,.12,0xd4af37,.75,1.05,R.d/2-.04,{m:.8});
+  ofBox(T,room,R.w,.12,.05,0x4b5563,0,0,-R.d/2+.02);ofBox(T,room,.05,.12,R.d,0x4b5563,-R.w/2+.02,0,0);ofBox(T,room,.05,.12,R.d,0x4b5563,R.w/2-.02,0,0);
+  // company sign on the left wall
+  const sg=document.createElement("canvas");sg.width=512;sg.height=128;const g2=sg.getContext("2d");g2.fillStyle="#0f172a";g2.fillRect(0,0,512,128);g2.fillStyle="#f8fafc";g2.font="bold 54px sans-serif";g2.textAlign="center";g2.fillText((OFC.city.name+" HQ").toUpperCase().slice(0,16),256,84);
+  const sign=new T.Mesh(new T.PlaneGeometry(3.2,.8),new T.MeshBasicMaterial({map:new T.CanvasTexture(sg)}));sign.position.set(-R.w/2+.01,2.1,0);sign.rotation.y=Math.PI/2;room.add(sign);
+  // ceiling light panels (emissive only, no real lights: cheap on phones)
+  for(const x of [-4,0,4])for(const z of [-3,1.5])ofBox(T,room,1.4,.04,.5,0xffffff,x,R.h-.04,z,{e:0xffffff,ei:.9});
+  // shop kiosk (fixed fixture)
+  const k=new T.Group();ofBox(T,k,.8,.95,.6,0x1e3a8a,0,0,0,{m:.3,r:.4});ofBox(T,k,.7,.5,.06,0x0f172a,0,.95,-.05);
+  const kt=ofScreenTex(T,"SHOP",["Press E","to buy items"]);const ks=new T.Mesh(new T.PlaneGeometry(.64,.38),new T.MeshBasicMaterial({map:kt}));ks.position.set(0,1.2,-.01);k.add(ks);
+  ofBox(T,k,.9,.12,.7,0xfbbf24,0,1.5,0,{e:0xf59e0b,ei:.5});k.position.set(OFC_KIOSK.x,0,OFC_KIOSK.z);k.rotation.y=-3*Math.PI/4;room.add(k);
+  // avatar
+  const av=new T.Group(),suit=0x1e3a8a;const legL=ofBox(T,av,.13,.5,.15,0x111827,-.1,0,0),legR=ofBox(T,av,.13,.5,.15,0x111827,.1,0,0);
+  ofBox(T,av,.42,.55,.26,suit,0,.5,0);ofBox(T,av,.1,.3,.02,0xffffff,0,.72,-.13);ofBox(T,av,.04,.24,.02,0xdc2626,0,.74,-.145);ofSph(T,av,.17,0xf1c27d,0,1.22,0);ofBox(T,av,.36,.07,.36,0x3f2a1d,0,1.32,.02);
+  const sh=new T.Mesh(new T.CircleGeometry(.34,16),new T.MeshBasicMaterial({color:0,transparent:true,opacity:.22}));sh.rotation.x=-Math.PI/2;sh.position.y=.012;av.add(sh);
+  sc.add(av);OFC.av=av;OFC.legs=[legL,legR];OFC.walkT=0;
+  ofRebuildItems();ofResize();OFC.last=performance.now();OFC.raf=requestAnimationFrame(ofLoop);cv.focus({preventScroll:true})}
+function ofBuildItem(o){const T=OFC.T,def=OFFICE_ITEMS[o.type],g=def.build(T);g.position.set(o.x,o.y||0,o.z);g.rotation.y=(o.rot||0)*Math.PI/2;g.userData.item=o;return g}
+function ofRebuildItems(){const T=OFC.T;if(!T||!OFC.scene)return;for(const g of OFC.objs){OFC.scene.remove(g);g.traverse(x=>{if(x.geometry)x.geometry.dispose();if(x.material){if(x.material.map)x.material.map.dispose();x.material.dispose()}})}
+  OFC.objs=[];const d=ofData(OFC.key);for(const o of d.items){o.y=ofSurfY(o,d.items);const g=ofBuildItem(o);OFC.scene.add(g);OFC.objs.push(g)}ofObstacles()}
+const ofFoot=o=>{const s=OFFICE_ITEMS[o.type]?OFFICE_ITEMS[o.type].size:o.size,odd=(o.rot||0)%2;const w=odd?s[1]:s[0],dd=odd?s[0]:s[1];return{x0:o.x-w/2,x1:o.x+w/2,z0:o.z-dd/2,z1:o.z+dd/2}};
+const ofOver=(a,b,m)=>a.x0<b.x1-(m||0)&&a.x1>b.x0+(m||0)&&a.z0<b.z1-(m||0)&&a.z1>b.z0+(m||0);
+/* surface under a small item (e.g. computer on a desk) */
+function ofSurf(o,items){if(!OFFICE_ITEMS[o.type].small)return null;for(const s of items){if(s===o||!OFFICE_ITEMS[s.type].top)continue;const f=ofFoot(s);if(o.x>f.x0&&o.x<f.x1&&o.z>f.z0&&o.z<f.z1)return s}return null}
+function ofSurfY(o,items){const s=ofSurf(o,items);return s?OFFICE_ITEMS[s.type].top:0}
+function ofObstacles(){const d=ofData(OFC.key),R=OFC_ROOM;OFC.obst=[];for(const o of d.items){const def=OFFICE_ITEMS[o.type];if(def.walk||(def.small&&ofSurf(o,d.items)))continue;OFC.obst.push(ofFoot(o))}
+  const k=OFC_KIOSK;OFC.obst.push({x0:k.x-.5,x1:k.x+.5,z0:k.z-.5,z1:k.z+.5})}
+function ofBlocked(x,z){const R=OFC_ROOM,r=.3;if(x<-R.w/2+r||x>R.w/2-r||z<-R.d/2+r||z>R.d/2-r)return true;
+  for(const b of OFC.obst){const cx=Math.max(b.x0,Math.min(x,b.x1)),cz=Math.max(b.z0,Math.min(z,b.z1));if((x-cx)**2+(z-cz)**2<r*r)return true}return false}
+
+/* ---------- loop ---------- */
+function ofResize(){if(!OFC.ren||!OFC.el)return;const w=OFC.el.clientWidth||innerWidth,h=OFC.el.clientHeight||innerHeight;OFC.ren.setSize(w,h,false);OFC.cam.aspect=w/h;OFC.cam.updateProjectionMatrix()}
+function ofLoop(t){if(!OFC.on||!OFC.ren){OFC.raf=0;return}OFC.raf=requestAnimationFrame(ofLoop);if(document.hidden)return;
+  const dt=Math.min(.05,Math.max(0,(t-OFC.last)/1000));OFC.last=t;ofStep(dt);OFC.ren.render(OFC.scene,OFC.cam)}
+function ofStep(dt){const P=OFC.p,k=OFC.keys,busy=document.body.classList.contains("ofc-pc");
+  let f=0,s=0,turn=0;if(!busy){if(k.w||k.arrowup)f+=1;if(k.s||k.arrowdown)f-=1;if(k.d)s+=1;if(k.a)s-=1;if(k.arrowleft)turn+=1;if(k.arrowright)turn-=1;if(OFC.joy){f-=OFC.joy.y;s+=OFC.joy.x}}
+  P.yaw+=turn*2.2*dt;const m=Math.hypot(f,s);let moving=false;
+  if(m>.05){const sp=(k.shift?5:3.2)*Math.min(1,m)*dt/m,fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw),rx=Math.cos(P.yaw),rz=-Math.sin(P.yaw);
+    const dx=(fx*f+rx*s)*sp,dz=(fz*f+rz*s)*sp;if(!ofBlocked(P.x+dx,P.z))P.x+=dx;if(!ofBlocked(P.x,P.z+dz))P.z+=dz;moving=true;
+    OFC.av.rotation.y=Math.atan2(-(fx*f+rx*s),-(fz*f+rz*s))}
+  else if(OFC.place)OFC.av.rotation.y=P.yaw;
+  OFC.walkT=moving?OFC.walkT+dt*10:0;const sw=Math.sin(OFC.walkT)*.5;OFC.legs[0].rotation.x=sw;OFC.legs[1].rotation.x=-sw;
+  OFC.av.position.set(P.x,moving?Math.abs(Math.sin(OFC.walkT))*.04:0,P.z);
+  // third-person camera, clamped inside the room
+  const R=OFC_ROOM,D=OFC.camD;let cx=P.x+Math.sin(P.yaw)*D,cz=P.z+Math.cos(P.yaw)*D;cx=Math.max(-R.w/2+.25,Math.min(R.w/2-.25,cx));cz=Math.max(-R.d/2+.25,Math.min(R.d/2-.25,cz));
+  OFC.cam.position.set(cx,OFC.camH,cz);OFC.cam.lookAt(P.x-Math.sin(P.yaw)*1.2,.9,P.z-Math.cos(P.yaw)*1.2);
+  if(OFC.place)ofGhostStep();else ofNearStep();
+  if((OFC.fx.cash=(OFC.fx.cash||0)+dt)>.5){OFC.fx.cash=0;ofCash()}
+  if(busy&&!sheet.classList.contains("open"))ofPcClose()}
+function ofCash(){const e=document.getElementById("ofc-cash");if(e)e.textContent=fmt(S.cash)}
+
+/* ---------- nearby item + prompt ---------- */
+function ofNearStep(){const P=OFC.p,d=ofData(OFC.key);let best=null,bd=1.25;const fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw);
+  const test=(o,f,bias)=>{const cx=Math.max(f.x0,Math.min(P.x,f.x1)),cz=Math.max(f.z0,Math.min(P.z,f.z1));let dd=Math.hypot(P.x-cx,P.z-cz)-(bias||0);const vx=o.x-P.x,vz=o.z-P.z,vl=Math.hypot(vx,vz)||1;dd+=(1-(vx*fx+vz*fz)/vl)*.25;if(dd<bd){bd=dd;best=o}};
+  for(const o of d.items)if(!OFFICE_ITEMS[o.type].walk)test(o,ofFoot(o),OFFICE_ITEMS[o.type].small&&ofSurf(o,d.items)?.2:0); // items on a desk win over the desk
+  test({type:"_kiosk",x:OFC_KIOSK.x,z:OFC_KIOSK.z},{x0:OFC_KIOSK.x-.5,x1:OFC_KIOSK.x+.5,z0:OFC_KIOSK.z-.5,z1:OFC_KIOSK.z+.5});
+  if(!best){for(const o of d.items)if(OFFICE_ITEMS[o.type].walk){const f=ofFoot(o);if(P.x>f.x0&&P.x<f.x1&&P.z>f.z0&&P.z<f.z1)best=o}}
+  if(best&&OFFICE_ITEMS[best.type]&&OFFICE_ITEMS[best.type].top&&!OFFICE_ITEMS[best.type].use){const on=d.items.find(s=>OFFICE_ITEMS[s.type].use&&ofSurf(s,d.items)===best);if(on)best=on} // a desk hands over to the computer on it
+  if(best!==OFC.near){OFC.near=best;OFC.arm=null;ofPrompt()}}
+function ofPrompt(){const pr=OFC.el&&OFC.el.querySelector(".opr");if(!pr)return;const o=OFC.near,pl=OFC.place;
+  if(pl){const def=OFFICE_ITEMS[pl.type];pr.hidden=false;pr.innerHTML=`<span>Placing ${def.icon} ${def.name}</span><button class="ob" data-of="rot">⟲ Rotate (R)</button><button class="ob ok" data-of="confirm">✓ Place (Enter)</button><button class="ob bad" data-of="cancel">✕ Cancel</button>`;return}
+  if(!o){pr.hidden=true;pr.innerHTML="";return}pr.hidden=false;
+  if(o.type==="_kiosk"){pr.innerHTML=`<span>🛒 Office shop</span><button class="ob pri" data-of="use">E / tap to use</button>`;return}
+  const def=OFFICE_ITEMS[o.type],sv=ofSellVal(o);
+  pr.innerHTML=`<span>${def.icon} ${def.name}</span>${def.use?`<button class="ob pri" data-of="use">E / tap to use</button>`:""}<button class="ob" data-of="move">✥ Move (M)</button><button class="ob" data-of="store">Store</button><button class="ob bad" data-of="sell">${OFC.arm===o?"Tap again to sell":sv?"Sell "+fmt(sv):"Remove"}</button>`}
+function ofCtx(o){return{city:OFC.city,item:o,toast:m=>toast(m),openComputer:ofPcOpen,openShop:()=>ofPanel("shop"),dash:()=>{if(typeof dxOpen==="function")dxOpen()}}}
+function ofUse(){const o=OFC.near;if(!o)return;if(o.type==="_kiosk"){ofPanel("shop");return}const def=OFFICE_ITEMS[o.type];if(def&&def.use)def.use(ofCtx(o))}
+/* Computer: the classic HQ city tab (registration, employees, network) slides in above the office */
+function ofPcOpen(){const hc=OFC.city;if(!hc)return;document.body.classList.add("ofc-pc");tab="hq";openCity(hc)}
+function ofPcClose(){if(!document.body.classList.contains("ofc-pc"))return;document.body.classList.remove("ofc-pc");if(sheet.classList.contains("open"))sheet.classList.remove("open","full");if(OFC.cv)OFC.cv.focus({preventScroll:true})}
+
+/* ---------- placing (ghost preview in front of the player) ---------- */
+function ofStartPlace(type,from){if(!OFC.T)return;ofPanel(null);const T=OFC.T,P=OFC.p,g=OFFICE_ITEMS[type].build(T);
+  g.traverse(x=>{if(x.material){x.material=x.material.clone();x.material.transparent=true;x.material.opacity=.6;x.material.depthWrite=false}});
+  const def=OFFICE_ITEMS[type],pad=new T.Mesh(new T.PlaneGeometry(def.size[0]+.1,def.size[1]+.1),new T.MeshBasicMaterial({color:0x22c55e,transparent:true,opacity:.35,depthWrite:false}));pad.rotation.x=-Math.PI/2;pad.position.y=.02;g.add(pad);
+  OFC.scene.add(g);const vx=Math.sin(P.yaw),vz=Math.cos(P.yaw);const rot=from&&from.rot!=null?from.rot:((Math.round(Math.atan2(vx,vz)/(Math.PI/2))%4)+4)%4;
+  OFC.place={type,g,pad,rot,from:from||null,ok:false,x:0,z:0,y:0};OFC.near=null;ofPrompt();ofGhostStep()}
+function ofGhostStep(){const pl=OFC.place,P=OFC.p,R=OFC_ROOM,def=OFFICE_ITEMS[pl.type],d=ofData(OFC.key);
+  const dist=1.1+Math.max(def.size[0],def.size[1])/2,sn=v=>Math.round(v*4)/4;pl.x=sn(P.x-Math.sin(P.yaw)*dist);pl.z=sn(P.z-Math.cos(P.yaw)*dist);
+  const o={type:pl.type,x:pl.x,z:pl.z,rot:pl.rot},f=ofFoot(o),others=d.items;
+  let ok=f.x0>=-R.w/2-.001&&f.x1<=R.w/2+.001&&f.z0>=-R.d/2-.001&&f.z1<=R.d/2+.001;const surf=ofSurf(o,others);
+  if(ok&&!def.walk){for(const s of others){const sd=OFFICE_ITEMS[s.type];if(sd.walk||s===surf)continue;if(surf&&!(sd.small&&ofSurf(s,others)===surf))continue;if(!surf&&sd.small&&ofSurf(s,others))continue;if(ofOver(f,ofFoot(s),.01)){ok=false;break}}
+    const k=OFC_KIOSK;if(ok&&ofOver(f,{x0:k.x-.5,x1:k.x+.5,z0:k.z-.5,z1:k.z+.5}))ok=false;
+    if(ok&&!surf){const cx=Math.max(f.x0,Math.min(P.x,f.x1)),cz=Math.max(f.z0,Math.min(P.z,f.z1));if(Math.hypot(P.x-cx,P.z-cz)<.32)ok=false}}
+  if(ok&&def.walk&&others.some(s=>OFFICE_ITEMS[s.type].walk&&ofOver(f,ofFoot(s),.01)))ok=false;
+  pl.ok=ok;pl.y=surf?OFFICE_ITEMS[surf.type].top:0;pl.g.position.set(pl.x,pl.y+.005,pl.z);pl.g.rotation.y=pl.rot*Math.PI/2;pl.pad.material.color.setHex(ok?0x22c55e:0xef4444);
+  const b=OFC.el.querySelector('[data-of="confirm"]');if(b&&b.disabled===ok)b.disabled=!ok}
+function ofEndGhost(){const pl=OFC.place;if(!pl)return;OFC.scene.remove(pl.g);pl.g.traverse(x=>{if(x.geometry)x.geometry.dispose();if(x.material)x.material.dispose()});OFC.place=null;OFC.near=null;OFC.nearSig="";ofPrompt()}
+function ofConfirm(){const pl=OFC.place;if(!pl)return;if(!pl.ok){toast("Can't place it there. Find a clear spot.");return}const d=ofData(OFC.key);
+  const it={type:pl.type,x:pl.x,z:pl.z,rot:pl.rot};if(pl.from&&pl.from.free)it.free=1;
+  if(!pl.from){if(!(d.inv[pl.type]>0)){ofEndGhost();return}d.inv[pl.type]--;if(!d.inv[pl.type])delete d.inv[pl.type];const fi=d.freeInv||{};if(fi[pl.type]>(d.inv[pl.type]||0)){it.free=1;fi[pl.type]--;if(!fi[pl.type])delete fi[pl.type]}}
+  d.items.push(it);ofEndGhost();ofRebuildItems();save();toast(`${OFFICE_ITEMS[it.type].name} placed`)}
+function ofCancel(){const pl=OFC.place;if(!pl)return;const d=ofData(OFC.key);if(pl.from){d.items.push(pl.from);ofRebuildItems();save()}ofEndGhost()}
+function ofMove(){const o=OFC.near;if(!o||o.type==="_kiosk")return;const d=ofData(OFC.key);const kids=d.items.filter(s=>s!==o&&OFFICE_ITEMS[o.type].top&&ofSurf(s,d.items)===o);
+  if(kids.length){toast("Clear the items off it first.");return}d.items.splice(d.items.indexOf(o),1);ofRebuildItems();ofStartPlace(o.type,o)}
+function ofStore(){const o=OFC.near;if(!o||o.type==="_kiosk")return;const d=ofData(OFC.key);if(OFFICE_ITEMS[o.type].top&&d.items.some(s=>s!==o&&ofSurf(s,d.items)===o)){toast("Clear the items off it first.");return}
+  d.items.splice(d.items.indexOf(o),1);d.inv[o.type]=(d.inv[o.type]||0)+1;
+  if(o.free){d.freeInv=d.freeInv||{};d.freeInv[o.type]=(d.freeInv[o.type]||0)+1} // starter items keep their zero sell value while stored
+  OFC.near=null;ofRebuildItems();save();ofPrompt();toast(`${OFFICE_ITEMS[o.type].name} moved to storage`)}
+function ofSell(){const o=OFC.near;if(!o||o.type==="_kiosk")return;if(OFC.arm!==o){OFC.arm=o;ofPrompt();setTimeout(()=>{if(OFC.arm===o){OFC.arm=null;ofPrompt()}},3000);return}
+  const d=ofData(OFC.key);if(OFFICE_ITEMS[o.type].top&&d.items.some(s=>s!==o&&ofSurf(s,d.items)===o)){toast("Clear the items off it first.");OFC.arm=null;return}
+  const v=ofSellVal(o);d.items.splice(d.items.indexOf(o),1);S.cash+=v;OFC.arm=null;OFC.near=null;ofRebuildItems();save();hud();ofCash();ofPrompt();toast(v?`Sold ${OFFICE_ITEMS[o.type].name} for ${fmt(v)}`:`${OFFICE_ITEMS[o.type].name} removed`)}
+
+/* ---------- shop / storage / decor panel ---------- */
+function ofPanel(t){const pn=OFC.el&&OFC.el.querySelector(".opn");if(!pn)return;OFC.panel=t;if(!t){pn.hidden=true;pn.innerHTML="";if(OFC.cv)OFC.cv.focus({preventScroll:true});return}OFC.ptab=t;pn.hidden=false;ofPanelRender()}
+function ofPanelRender(){const pn=OFC.el&&OFC.el.querySelector(".opn");if(!pn||!OFC.panel)return;const d=ofData(OFC.key),t=OFC.ptab,sc=pn.querySelector(".obody")?pn.querySelector(".obody").scrollTop:0;
+  let h=`<header><button data-of="tab" data-t="shop" aria-selected="${t==="shop"}">Shop</button><button data-of="tab" data-t="inv" aria-selected="${t==="inv"}">Storage${Object.values(d.inv).reduce((a,b)=>a+b,0)?" ("+Object.values(d.inv).reduce((a,b)=>a+b,0)+")":""}</button><button data-of="tab" data-t="decor" aria-selected="${t==="decor"}">Decor</button><span style="flex:1"></span><button data-of="pclose" aria-label="Close">✕</button></header><div class="obody">`;
+  if(t==="shop"){h+=`<div class="osec">Cash ${fmt(S.cash)}</div>`;for(const k in OFFICE_ITEMS){const it=OFFICE_ITEMS[k];h+=`<div class="oit"><i>${it.icon}</i><b>${it.name}</b><small>${it.desc||""}</small><button class="ob pri" data-of="buy" data-k="${k}" ${S.cash<it.price?"disabled":""}>${fmt(it.price)}</button></div>`}}
+  else if(t==="inv"){const ks=Object.keys(d.inv).filter(k=>d.inv[k]>0&&OFFICE_ITEMS[k]);if(!ks.length)h+=`<p style="color:#64748b;font-size:13px">Storage is empty. Stored and newly bought items wait here.</p>`;
+    for(const k of ks){const it=OFFICE_ITEMS[k],fr=d.freeInv&&d.freeInv[k]>=d.inv[k];h+=`<div class="oit"><i>${it.icon}</i><b>${it.name} ×${d.inv[k]}</b><small><button class="ob lt" data-of="invsell" data-k="${k}" style="padding:4px 9px;margin-top:3px">${fr?"Remove":"Sell "+fmt(Math.round(it.price*.5))}</button></small><button class="ob pri" data-of="invplace" data-k="${k}">Place</button></div>`}}
+  else{h+=`<div class="osec">Floor</div><div class="osw">${OFC_FLOORS.map((c,i)=>`<button data-of="floor" data-i="${i}" aria-pressed="${d.floor===i}" style="background:${c[1]}">${c[0]}</button>`).join("")}</div><div class="osec">Walls</div><div class="osw">${OFC_WALLS.map((c,i)=>`<button data-of="wall" data-i="${i}" aria-pressed="${d.wall===i}" style="background:${c[1]}">${c[0]}</button>`).join("")}</div>`}
+  pn.innerHTML=h+"</div>";const b=pn.querySelector(".obody");if(b)b.scrollTop=sc}
+function ofBuy(k){const it=OFFICE_ITEMS[k];if(!it)return;if(S.cash<it.price){toast(`Need ${fmt(it.price)} for that`);return}const d=ofData(OFC.key);
+  S.cash-=it.price;d.inv[k]=(d.inv[k]||0)+1;save();hud();ofCash();toast(`Bought ${it.name}. Walk to a spot and place it.`);ofStartPlace(k)}
+function ofInvSell(k){const d=ofData(OFC.key),it=OFFICE_ITEMS[k];if(!(d.inv[k]>0))return;const fr=!!(d.freeInv&&d.freeInv[k]>=d.inv[k]);const v=fr?0:Math.round(it.price*.5);
+  d.inv[k]--;if(!d.inv[k])delete d.inv[k];if(fr){d.freeInv[k]--;if(!d.freeInv[k])delete d.freeInv[k]}S.cash+=v;save();hud();ofCash();ofPanelRender();toast(v?`Sold ${it.name} for ${fmt(v)}`:`${it.name} removed`)}
+function ofInvPlace(k){const d=ofData(OFC.key);if(!(d.inv[k]>0))return;ofStartPlace(k)}
+function ofDecor(kind,i){const d=ofData(OFC.key),arr=kind==="floor"?OFC_FLOORS:OFC_WALLS;if(!arr[i])return;d[kind]=i;save();
+  const m=kind==="floor"?OFC.floorM:OFC.wallM;if(m)m.color.set(arr[i][1]);ofPanelRender()}
+
+/* ---------- input ---------- */
+function ofBindUI(){const el=OFC.el;
+  el.addEventListener("click",e=>{const b=e.target.closest("[data-of]");if(!b||b.disabled)return;const a=b.dataset.of;
+    if(a==="exit")ofExit();else if(a==="classic")ofExit(true);else if(a==="shop")ofPanel(OFC.panel?null:"shop");else if(a==="pclose")ofPanel(null);
+    else if(a==="tab"){OFC.ptab=b.dataset.t;ofPanelRender()}else if(a==="buy")ofBuy(b.dataset.k);else if(a==="invsell")ofInvSell(b.dataset.k);else if(a==="invplace")ofInvPlace(b.dataset.k);
+    else if(a==="floor"||a==="wall")ofDecor(a,+b.dataset.i);else if(a==="use")ofUse();else if(a==="move")ofMove();else if(a==="store")ofStore();else if(a==="sell")ofSell();
+    else if(a==="rot"){if(OFC.place)OFC.place.rot=(OFC.place.rot+1)%4}else if(a==="confirm")ofConfirm();else if(a==="cancel")ofCancel();else if(a==="pcclose")ofPcClose()});
+  const joy=el.querySelector(".ojoy"),knob=joy.querySelector("i");let jid=null;
+  const jmove=e=>{const r=joy.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,jr=r.width/2-14;let dx=e.clientX-cx,dy=e.clientY-cy;const l=Math.hypot(dx,dy);if(l>jr){dx*=jr/l;dy*=jr/l}
+    knob.style.left=(36+dx)+"px";knob.style.top=(36+dy)+"px";OFC.joy={x:dx/jr,y:dy/jr}};
+  joy.addEventListener("pointerdown",e=>{jid=e.pointerId;joy.setPointerCapture(jid);jmove(e);e.preventDefault()});
+  joy.addEventListener("pointermove",e=>{if(e.pointerId===jid)jmove(e)});
+  const jend=()=>{jid=null;OFC.joy=null;knob.style.left="36px";knob.style.top="36px"};joy.addEventListener("pointerup",jend);joy.addEventListener("pointercancel",jend);
+  // drag anywhere else on the 3D view to turn and tilt the camera; wheel zooms
+  el.addEventListener("pointerdown",e=>{if(e.target!==OFC.cv)return;OFC.drag={id:e.pointerId,x:e.clientX,y:e.clientY};try{OFC.cv.setPointerCapture(e.pointerId)}catch(_){}OFC.cv.focus({preventScroll:true})});
+  el.addEventListener("pointermove",e=>{const dg=OFC.drag;if(!dg||dg.id!==e.pointerId)return;OFC.p.yaw-=(e.clientX-dg.x)*.007;OFC.camH=Math.max(1.4,Math.min(5,OFC.camH+(e.clientY-dg.y)*.01));dg.x=e.clientX;dg.y=e.clientY});
+  const dend=e=>{if(OFC.drag&&OFC.drag.id===e.pointerId)OFC.drag=null};el.addEventListener("pointerup",dend);el.addEventListener("pointercancel",dend);
+  el.addEventListener("wheel",e=>{if(e.target!==OFC.cv)return;OFC.camD=Math.max(2.5,Math.min(8,OFC.camD+e.deltaY*.004));e.preventDefault()},{passive:false})}
+window.addEventListener("keydown",e=>{if(!OFC.on)return;const tg=e.target;if(tg&&/^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName))return;const k=e.key.toLowerCase();
+  if(k==="escape"){e.stopImmediatePropagation();e.preventDefault();
+    if(typeof DX!=="undefined"&&DX.open)dxClose();else if(document.body.classList.contains("ofc-pc"))ofPcClose();else if(OFC.panel)ofPanel(null);else if(OFC.place)ofCancel();else ofExit();return}
+  if(document.body.classList.contains("ofc-pc")||(typeof DX!=="undefined"&&DX.open))return;
+  const mv=["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright","shift"];
+  if(mv.includes(k)){OFC.keys[k]=1}
+  else if(k==="e"||k==="enter"){if(OFC.place)ofConfirm();else if(!OFC.panel)ofUse();else return}
+  else if(k==="r"){if(OFC.place)OFC.place.rot=(OFC.place.rot+1)%4}
+  else if(k==="m"){if(!OFC.place)ofMove()}
+  else if(k==="b"){ofPanel(OFC.panel?null:"shop")}
+  else return;e.stopImmediatePropagation();if(k!=="shift")e.preventDefault()},true);
+window.addEventListener("keyup",e=>{if(OFC.on)OFC.keys[e.key.toLowerCase()]=0},true);
+window.addEventListener("blur",()=>{OFC.keys={}});
+window.addEventListener("resize",()=>{if(OFC.on)ofResize()});
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-ofc]");if(!b||!sel)return;const hc=hqCity(sel.country);if(hc)ofEnter(hc)});
 let saveT=0;
 setInterval(()=>{if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
