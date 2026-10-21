@@ -3829,7 +3829,7 @@ function onScript(u){return new Promise((ok,no)=>{const s=document.createElement
 async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
   try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
-    ON.auth.onAuthStateChanged(u=>{ON.user=u;if(u){onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}onRefresh()});
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;if(u){onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);onRefresh()});
     ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;draw()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
   }catch(e){ON.err="Online unavailable: "+(e&&e.message||e)}ON.loading=false;onRefresh()}
 function onRefresh(){if(mode==="pf"&&sheet.classList.contains("open")&&!(document.activeElement&&/^(INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}}
@@ -3940,6 +3940,35 @@ function csWire(){sheet.querySelectorAll("[data-cs2]").forEach(b=>b.onclick=()=>
 if(onEnabled()){setInterval(()=>{if(ON.user&&!document.hidden&&Date.now()-CS.last>=120000)csUpload(false)},15000);
   window.addEventListener("pagehide",()=>{if(ON.user&&Date.now()-CS.last>=20000)csUpload(false)});
   document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"&&ON.user&&Date.now()-CS.last>=20000)csUpload(false)})}
+/* ---------- money transfers between online players (bank phone app). Firestore transfers/{id}; recipient claims & deletes ---------- */
+const XF_MIN=1,XF_CAP=1e6,XF={q:"",to:null,amt:"",n:"",busy:false,unsub:null,uid:null};
+function xfS(){S.xfer=S.xfer||{};const x=S.xfer;if(!Array.isArray(x.hist))x.hist=[];if(!Array.isArray(x.seen))x.seen=[];return x}
+function xfLog(e){const x=xfS();x.hist.unshift(e);x.hist=x.hist.slice(0,10)}
+const xfName=p=>String(p&&p.name||"Player").slice(0,20);
+function xfListen(u){if(XF.unsub){try{XF.unsub()}catch(_){}XF.unsub=null}XF.uid=u?u.uid:null;XF.to=null;if(!u||!ON.db)return;
+  XF.unsub=ON.db.collection("transfers").where("to","==",u.uid).onSnapshot(q=>q.forEach(d=>xfClaim(d)),e=>{ON.err="Couldn't check transfers: "+(e&&e.code||e)})}
+function xfClaim(d){const id=d.id,v=d.data()||{},x=xfS();
+  if(!x.seen.includes(id)){const amt=Math.round(+v.amt||0);
+    if(v.to===XF.uid&&amt>=XF_MIN&&amt<=XF_CAP){x.seen.unshift(id);x.seen=x.seen.slice(0,300);S.cash+=amt;xfLog({d:"in",n:String(v.fromName||"Player").slice(0,20),a:amt,t:Date.now(),note:typeof v.note==="string"?v.note.slice(0,40):""});
+      toast(`Received ${fmt(amt)} from ${String(v.fromName||"a player").slice(0,20)}`);save();hud();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)&&document.activeElement.tagName==="INPUT"))phRender()}}
+  d.ref.delete().catch(()=>{})}
+function xfSend(){if(XF.busy||!ON.user||!ON.db)return;const p=ON.players.find(y=>y.uid===XF.to),amt=Math.floor(+XF.amt||0),nt=XF.n||"";
+  if(!p){toast("Pick who to send to");return}if(amt<XF_MIN){toast(`Minimum transfer is ${fmt(XF_MIN)}`);return}if(amt>XF_CAP){toast(`Maximum per transfer is ${fmt(XF_CAP)}`);return}
+  if(amt>S.cash){toast(`You only have ${fmt(Math.max(0,S.cash))} in cash`);return}
+  const me=onProf(),doc={from:ON.user.uid,fromName:(me.name||"Tycoon").slice(0,20),to:p.uid,amt,at:window.firebase.firestore.FieldValue.serverTimestamp()},note=String(nt).trim().slice(0,40);if(note)doc.note=note;
+  S.cash-=amt;XF.busy=true;const ent={d:"out",n:xfName(p),a:amt,t:Date.now(),note};xfLog(ent);save();hud();
+  ON.db.collection("transfers").add(doc).then(()=>{XF.busy=false;XF.amt="";XF.n="";toast(`Sent ${fmt(amt)} to ${xfName(p)}`);if(PH.open&&PH.app==="bank")phRender()},
+    e=>{XF.busy=false;S.cash+=amt;ent.fail=1;save();hud();toast(`Transfer failed, refunded: ${e&&e.code||e}`);if(PH.open&&PH.app==="bank")phRender()})}
+function xfList(){const q=XF.q.trim().toLowerCase(),a=ON.players.filter(p=>!q||xfName(p).toLowerCase().includes(q)).slice(0,8);
+  return a.map(p=>`<button data-ph="xfto" data-k="${onEsc(p.uid)}" style="color:#fff${XF.to===p.uid?";outline:2px solid #3b82f6":""}"><b>${onEsc(xfName(p))}</b> · ${p.rank?"Rank #"+(+p.rank||"?")+" · ":""}${fmt(+p.nw||0)}</button>`).join("")||"<div>No players found</div>"}
+function xfHtml(){if(!onEnabled()||!ON.user)return"";const x=xfS(),p=ON.players.find(y=>y.uid===XF.to),ip="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border-radius:10px;border:1px solid #ffffff44;background:#0003;color:#fff;font:inherit;font-size:16px";
+  let h=`<p class="ph-sub" style="margin-top:12px">Send money · ${fmt(XF_MIN)}–${fmt(XF_CAP)} per transfer</p>
+    <input id="xfq" type="search" placeholder="Search players" autocomplete="off" value="${onEsc(XF.q)}" style="${ip}"><div class="ph-list" id="xflist" style="margin-top:6px">${xfList()}</div>
+    <input id="xfa" type="number" inputmode="numeric" min="${XF_MIN}" max="${XF_CAP}" step="1" placeholder="Amount ($)" value="${onEsc(XF.amt)}" style="${ip}">
+    <input id="xfn" maxlength="40" placeholder="Note (optional)" autocomplete="off" value="${onEsc(XF.n)}" style="${ip}">
+    <button class="buy" data-ph="xfsend" style="width:100%;margin-top:8px;background:#1e3a8a!important;color:#fff;border-color:#3b82f6" ${XF.busy?"disabled":""}>${XF.busy?"Sending…":p?"Send to "+onEsc(xfName(p)):"Send"}</button>`;
+  if(x.hist.length)h+=`<p class="ph-sub" style="margin-top:12px">Recent transfers</p><div class="ph-list">${x.hist.map(e=>`<div><b style="color:${e.fail?"#f87171":e.d==="in"?"#4ade80":"#fff"}">${e.d==="in"?"+":"−"}${fmt(e.a)} ${e.d==="in"?"from":"to"} ${onEsc(e.n)}${e.fail?" · failed":""}</b>${fmtDur(Date.now()-e.t)} ago${e.note?" · "+onEsc(e.note):""}</div>`).join("")}</div>`;
+  return h}
 let saveT=0;
 setInterval(()=>{if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -4000,7 +4029,7 @@ function appHtml(k){const {inc,nw}=totals();
     <div class="ph-rows"><div><span>Combo</span><b>×${(1+Math.min(1,g.combo/50)).toFixed(2)}</b></div><div><span>Energy</span><b>${Math.round(g.en)}%</b></div><div><span>Earned today</span><b>${fmtc(g.today)}</b></div><div><span>All-time taps</span><b>${g.taps.toLocaleString()}</b></div></div>
     <div class="ph-seg" style="margin-top:8px">${GIGS.map((x,i)=>`<button data-ph="gigpick" data-k="${i}" aria-pressed="${g.i===i}" ${g.taps<x.u?"disabled":""}>${g.taps<x.u?x.u+" taps":x.n}</button>`).join("")}</div>
     <p class="ph-sub" style="margin-top:6px">Tap fast to build a combo. Energy refills over time and drops when you tap.</p>`}
-  if(k==="bank"){const sc=creditScore(),[bd,col]=scoreBand(sc),c=B().card;return `<div class="ph-big" style="color:${col}">${sc}</div><div class="ph-sub">credit score · ${bd}</div>${scoreSpark()}<div class="ph-rows"><div><span>Card</span><b>${c?fmt(c.bal)+" / "+fmt(c.lim):"none"}</b></div><div><span>Loans</span><b>${fmt(B().loans.reduce((a,l)=>a+l.bal,0))}</b></div><div><span>Payments</span><b>${fmt(bankPayHr())}/hr</b></div>${c?`<div><span>Card due</span><b>${fmtDur(c.due-Date.now())}</b></div>`:""}</div><button class="buy" data-ph="gobank" style="width:100%;margin-top:8px;background:#1e3a8a!important;color:#fff;border-color:#3b82f6">Open bank</button>`}
+  if(k==="bank"){const sc=creditScore(),[bd,col]=scoreBand(sc),c=B().card;return `<div class="ph-big" style="color:${col}">${sc}</div><div class="ph-sub">credit score · ${bd}</div>${scoreSpark()}<div class="ph-rows"><div><span>Card</span><b>${c?fmt(c.bal)+" / "+fmt(c.lim):"none"}</b></div><div><span>Loans</span><b>${fmt(B().loans.reduce((a,l)=>a+l.bal,0))}</b></div><div><span>Payments</span><b>${fmt(bankPayHr())}/hr</b></div>${c?`<div><span>Card due</span><b>${fmtDur(c.due-Date.now())}</b></div>`:""}</div><button class="buy" data-ph="gobank" style="width:100%;margin-top:8px;background:#1e3a8a!important;color:#fff;border-color:#3b82f6">Open bank</button>${xfHtml()}`}
   if(k==="wallet")return `<div class="ph-big">${fmt(S.cash)}</div><div class="ph-sub">cash on hand</div>
     <div class="ph-rows"><div><span>Income</span><b style="color:${inc<0?"var(--bad)":"var(--good)"}">${fmt(inc)}/hr</b></div><div><span>Net worth</span><b>${fmt(nw)}</b></div><div><span>Loan</span><b>${fmt(S.debt)}</b></div><div><span>Taxes owed</span><b>${fmt(taxOwed())}</b></div><div><span>Wages</span><b>${S.job?fmt(wage(JK[S.job.k],CITIES[S.job.city])*wageMult()*rankMult())+"/hr":"—"}</b></div></div>
     ${S.debt&&S.cash>0?`<button class="buy" data-ph="repay" style="width:100%;margin-top:8px">Repay ${fmt(Math.min(S.debt,S.cash))}</button>`:""}`;
@@ -4020,7 +4049,7 @@ function appHtml(k){const {inc,nw}=totals();
   return ""}
 const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);return `<button class="ph-item" data-ph="buyitem" data-k="${it.k}" ${S.cash<p?"disabled":""}><span>${it.n}<small>${NEEDS.filter(([q])=>it[q]).map(([q,n])=>(it[q]>0?"+":"")+it[q]+" "+n.toLowerCase()).join(", ")}</small></span><b>${fmt(p)}</b></button>`};
 ["touchstart","touchmove","wheel","scroll","pointerdown"].forEach(t=>PH.el.addEventListener(t,()=>{PH.touched=Date.now()},{passive:true,capture:true}));
-PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon",hrfire:"Tap again to fire",hqunlink:"Tap again"}[a]||(a==="wpnfire"&&!/^msl\|/.test(b.dataset.k)?"Tap again":null);if(cfm&&!b.dataset.arm){const t0=b.textContent,w0=b.style.width,f0=b.style.flex;b.dataset.arm=1;b.textContent=cfm;if(a==="milab"||a==="wpnfire"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();
+PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon",hrfire:"Tap again to fire",hqunlink:"Tap again",xfsend:"Tap again to send"}[a]||(a==="wpnfire"&&!/^msl\|/.test(b.dataset.k)?"Tap again":null);if(cfm&&!b.dataset.arm){const t0=b.textContent,w0=b.style.width,f0=b.style.flex;b.dataset.arm=1;b.textContent=cfm;if(a==="milab"||a==="wpnfire"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();
     setTimeout(()=>{if(b.isConnected&&b.dataset.arm){delete b.dataset.arm;b.textContent=t0;b.style.width=w0;b.style.flex=f0}},4000);return} // disarm after 4 s
   if(a==="unfold"){PH.open=true;PH.app=null}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="app"){PH.app=b.dataset.k}
   else if(/^hr(sch|up|dn|fire|hire)$/.test(a)){hrAct(a,b.dataset.k);save();hud()}
@@ -4053,6 +4082,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="sellgear"){const x=GEAR.find(y=>y.k===b.dataset.k),g=gearOwn();if(!x||!g[x.k])return;delete g[x.k];S.cash+=x.p*.5;toast(`${x.n} sold`);save();hud()}
   else if(a==="buyitem"){const it=ITEMS.find(x=>x.k===b.dataset.k),p=itemPrice(it,CITIES[(S.home||{city:0}).city]);if(S.cash<p)return;S.cash-=p;for(const [q] of NEEDS)if(it[q])S.need[q]=Math.max(0,Math.min(100,S.need[q]+it[q]));toast(`${it.n} delivered`);save();hud()}
   else if(a==="repay"){if(B().card&&B().card.bal)payCard(true);else if(B().loans[0])repayLoan(B().loans[0].id,true);S.debt=bankDebt();save();hud()}
+  else if(a==="xfto"){XF.to=b.dataset.k}else if(a==="xfsend"){xfSend()}
   else if(a==="gobank"){openPortfolio();setTimeout(()=>{const x=[...sheet.querySelectorAll(".sec")].find(e=>/credit score/.test(e.textContent));if(x)x.scrollIntoView()},50);PH.open=false}
   else if(a==="gigtap"){gigTap(b);return}
   else if(a==="ridego"){rideStart();return}
@@ -4065,6 +4095,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="gojob"){const c=CITIES[(S.home||S.job||{city:0}).city];tab="life";flyTo(c);PH.open=false}
   else if(a==="go"){flyTo(CITIES[+b.dataset.c]);PH.open=false}
   phSave();phRender()});
+PH.el.addEventListener("input",e=>{const t=e.target;if(t.id==="xfq"){XF.q=t.value;const l=PH.el.querySelector("#xflist");if(l)l.innerHTML=xfList()}else if(t.id==="xfa")XF.amt=t.value;else if(t.id==="xfn")XF.n=t.value;else return;PH.touched=Date.now()});
 PH.el.addEventListener("input",e=>{if(e.target.id!=="phc")return;const v=e.target.value.replace(/[×x]/g,"*").replace(/÷/g,"/").replace(/−/g,"-").replace(/,/g,"");
   let r="";if(/^[\d\s.+\-*/()%]*$/.test(v)&&v.trim()){try{const n=Function(`"use strict";return (${v})`)();r=Number.isFinite(n)?(+n.toFixed(4)).toLocaleString():"—"}catch(_){r="…"}}$("#phr").textContent=r||"0"});
 /* drag the phone (or its folded tab) anywhere */
