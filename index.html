@@ -386,7 +386,7 @@ if(!S.rivals)S.rivals=[];while(S.rivals.length<RIVALS.length){const i=S.rivals.l
 const rivalsIn=c=>S.rivals.reduce((n,r)=>n+(r.cities.includes(c.id)?1:0),0);
 const compMult=c=>Math.max(.4,1-0.13*rivalsIn(c));
 const buyoutCost=c=>Math.round(30000*PRICE[c.size]*(1+S.day/40));
-const mgrCost=c=>Math.round(20000*PRICE[c.size]);
+const mgrCost=c=>Math.round(20000*PRICE[c.size]*(typeof hqPerk==="function"?hqPerk(c):1));
 const bonus=(b,c)=>b.k==="airport"&&(S.own[c.id]||{}).airline?1.2:b.k==="airport"||b.k==="airline"?(c.size>=5?1.25:c.size<=2?.8:1):b.k==="hotel"&&c.size>=4?1.3:b.k==="apt"&&c.size<=2?1.1:1;
 /* Variety menus for carts and restaurants: gross x g, supplies used x u, switch fee = sw x price */
 const MENUS={cart:[{id:"hot",n:"Classic hot dogs",g:1,u:1,d:"Cheap and steady. The default."},{id:"taco",n:"Tacos",g:1.02,u:1.1,small:.14,d:"Street favourite: +14% sales in small towns (size 1-2)."},{id:"burg",n:"Gourmet burgers",g:1.06,u:1.35,big:.14,d:"Big tickets: +14% sales in big cities and real booms."},{id:"vegan",n:"Vegan bowls",g:.9,u:.72,slump:.3,d:"Lean on supplies; holds up in slumps (+30%)."}],
@@ -401,7 +401,7 @@ function menuNet(c,b,lv,id){menuOv={[c.id+":"+b.k]:id};try{return profit(b,c,lv)
 const USE={cart:{burgers:2},coffeecart:{bread:1},icecream:{bread:1},taco:{beef:1,bread:1},pretzel:{bread:2},noodle:{beef:1},smoothie:{bread:1},kiosk:{bread:3},shop:{bread:4,tools:1},rest:{burgers:5,beef:3},office:{electronics:.5},hotel:{bread:8,electronics:.5}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
-function profit(b,c,lv){if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)-bizWage(b,c,lv))}
+function profit(b,c,lv){if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)-bizWage(b,c,lv))}
 // hourly wages a business is charged inside profit(); HQ Employees shows the same figure
 function bizWage(b,c,lv){return b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1))*(typeof hrPay==="function"?hrPay(c,b):1)}
 function cityProfit(c){const o=S.own[c.id]||{};let t=0;for(const b of BIZ)if(o[b.k])t+=profit(b,c,o[b.k]);return t}
@@ -734,10 +734,10 @@ function runIndustry(hours){let sold=0;const step=.25;let left=hours;
       for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||!USE[b.k]){continue}if(!inv){su[b.k]=0;continue}
         let f=1;for(const g in USE[b.k]){const need=USE[b.k][g]*lv*h;f=Math.min(f,(inv[g]||0)/need)}
         for(const g in USE[b.k])inv[g]=(inv[g]||0)-USE[b.k][g]*lv*h*f;su[b.k]=f}}
-    for(const id in S.auto){const c=CITIES[id],inv=S.inv[id]||{};for(const g in S.auto[id]){if(!S.auto[id][g]||!(inv[g]>0)||(G[g][2]==="gov"&&!govOK(c))||!S.hq[c.id])continue;sold+=sellGood(c,g,inv[g])*.97;inv[g]=0}}}
+    for(const id in S.auto){const c=CITIES[id],inv=S.inv[id]||{};for(const g in S.auto[id]){if(!S.auto[id][g]||!(inv[g]>0)||(G[g][2]==="gov"&&!govOK(c))||!hasHQ(c))continue;sold+=sellGood(c,g,inv[g])*.97;inv[g]=0}}}
   for(const id in S.inv)for(const g in S.inv[id])if(S.inv[id][g]<1e-6)delete S.inv[id][g];
   S.cash+=sold;S.earned=(S.earned||0)+sold;return sold}
-function depart(v,c,d,g,t){t=t||Date.now();const V=VEH[v.type],km=distKm(c,d),fuel=km*V.km;if(S.cash<fuel)return false;S.cash-=fuel;
+function depart(v,c,d,g,t){t=t||Date.now();const V=VEH[v.type],km=distKm(c,d),fuel=km*V.km*hqShip(c,d);if(S.cash<fuel)return false;S.cash-=fuel;
   let cargo=null;if(g){const inv=S.inv[c.id]||{},q=Math.min(V.cap,inv[g]||0);if(q>0){inv[g]-=q;if(inv[g]<1e-6)delete inv[g];cargo={g,q}}}
   Object.assign(v,{from:c.id,dest:d.id,cargo,dep:t,arr:t+km/V.spd*DAYMS*(v.type==="truck"&&(S.own[c.id]||{}).trucking?.75:v.type==="ship"&&(S.own[c.id]||{}).port?.8:1),city:null});return true}
 function routeStep(v,t){const r=v.route;if(!r||v.arr)return;const A=CITIES[r.from],B=CITIES[r.to];let ok=true;
@@ -835,8 +835,8 @@ function shipFormHtml(c,v){const inv=S.inv[c.id]||{},V=VEH[v.type],ds=shipDests(
    <div id="sf-info" class="d" style="color:var(--muted)"></div>
    <button class="buy" data-act="go" data-id="${v.id}">Load up to ${V.cap} and go</button></div>`}
 function shipInfo(){const i=$("#sf-info");if(!i||!sel)return;const v=S.fleet.find(x=>x.id===shipForm);if(!v)return;const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,c=sel;
-  const km=distKm(c,d),fuel=km*V.km,q=g?Math.min(V.cap,(S.inv[c.id]||{})[g]||0):0;
-  i.innerHTML=`Fuel ${fmt(fuel)} · arrives in ${fmtDur(km/V.spd*DAYMS)}${g?` · ${Math.floor(q)} ${G[g][0].toLowerCase()} sells for ${fmt(px(d,g))} there vs ${fmt(px(c,g))} here (${px(d,g)*q-px(c,g)*q-fuel>=0?"+":""}${fmt(px(d,g)*q-px(c,g)*q-fuel)} trip profit)`:""}`}
+  const km=distKm(c,d),fuel=km*V.km*hqShip(c,d),q=g?Math.min(V.cap,(S.inv[c.id]||{})[g]||0):0;
+  i.innerHTML=`Fuel ${fmt(fuel)}${hqShip(c,d)<1?" (HQ link −25%)":""} · arrives in ${fmtDur(km/V.spd*DAYMS)}${g?` · ${Math.floor(q)} ${G[g][0].toLowerCase()} sells for ${fmt(px(d,g))} there vs ${fmt(px(c,g))} here (${px(d,g)*q-px(c,g)*q-fuel>=0?"+":""}${fmt(px(d,g)*q-px(c,g)*q-fuel)} trip profit)`:""}`}
 sheet.addEventListener("change",e=>{const t=e.target;if(t.id==="sf-g"||t.id==="sf-d")shipInfo();
   if(t.dataset.act==="auto"&&sel){(S.auto[sel.id]=S.auto[sel.id]||{})[t.dataset.g]=t.checked;save();toast(t.checked?`Auto-selling ${G[t.dataset.g][0].toLowerCase()} in ${sel.name}`:"Auto-sell off")}});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-act]");if(!b||b.tagName==="INPUT")return;
@@ -854,7 +854,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q,B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q>whCap(c)){toast("Not enough warehouse space");return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
   else if(a==="veh"){const k=b.dataset.k,V=VEH[k];if(S.cash<V.cost)return;S.cash-=V.cost;S.fleet.push({id:S.nid++,type:k,city:c.id});toast(`${V.n} ready in ${c.name}`)}
   else if(a==="ship"){shipForm=shipForm===id?null:id;renderSheet();shipInfo();return}
-  else if(a==="go"){const v=S.fleet.find(x=>x.id===id),V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,km=distKm(c,d),fuel=km*V.km;
+  else if(a==="go"){const v=S.fleet.find(x=>x.id===id),V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,km=distKm(c,d),fuel=km*V.km*hqShip(c,d);
     if(S.cash<fuel){toast(`Need ${fmt(fuel)} for fuel`);return}S.cash-=fuel;
     S.cash+=fuel;depart(v,c,d,g);const rep=$("#sf-r")&&$("#sf-r").checked;v.route=rep&&g?{from:c.id,to:d.id,g,back:$("#sf-b").value}:null;
     shipForm=null;toast(rep&&g?`Route set: ${c.name} ⇄ ${d.name}`:`${V.n} #${v.id} left for ${d.name}`)}
@@ -1033,17 +1033,48 @@ const TAXDAYS=7,TAXP=TAXDAYS*24*DAYMS,TAX_REG=.2,TAX_UNREG=.4;
 if(!S.tax)S.tax={start:Date.now(),reg:0,unreg:0,paid:0};
 const hqCost=c=>Math.round(35000*PRICE[c.size]);
 const hqUpkeep=c=>Math.round(40*PRICE[c.size]);
-const hasHQ=c=>!!S.hq[c.id];
+/* one HQ per country: an HQ in any city covers every city in that country */
+const hqCity=n=>{for(const id in S.hq)if(S.hq[id]&&CITIES[id]&&CITIES[id].country===n)return CITIES[id];return null};
+const hasHQ=c=>!!(c&&hqCity(c.country));
+(function hqMigrate(){const seen={},cut=[];let ref=0;
+  const ids=Object.keys(S.hq).filter(id=>S.hq[id]&&CITIES[id]).sort((a,b)=>CITIES[b].size-CITIES[a].size||a-b);
+  for(const id of ids){const c=CITIES[id];if(seen[c.country]){ref+=hqCost(c);cut.push(c.name);delete S.hq[id]}else seen[c.country]=c}
+  for(const id in S.hq)if(!S.hq[id]||!CITIES[id])delete S.hq[id];
+  if(cut.length){S.cash+=ref;const t=`HQs now cover a whole country: closed ${cut.length} extra HQ${cut.length>1?"s":""} (${cut.join(", ")}) and refunded ${fmt(ref)}`;S.log=S.log||[];S.log.unshift(t);S.log=S.log.slice(0,3);setTimeout(()=>{if(typeof toast==="function")toast(t)},1500)}})();
+/* HQ network: links between your country HQs (S.hqlink["A|B"]=1, countries sorted) */
+const HQNET={per:.03,cap:.15,link:.5,up:.25,ship:.75,perk:.75}; // +3% income per link (max +15%), link = 50% of both HQs' cost, upkeep 25% of both HQs' upkeep, fuel x0.75, reg/manager fees x0.75
+S.hqlink=S.hqlink||{};
+const hqLK=(a,b)=>[a,b].sort().join("|");
+function hqLinks(){const out=[];for(const k in S.hqlink){const [a,b]=k.split("|"),A=hqCity(a),B=hqCity(b);if(S.hqlink[k]&&A&&B)out.push([a,b,A,B,k]);else delete S.hqlink[k]}return out}
+const hqLinked=(a,b)=>!!(a!==b&&S.hqlink[hqLK(a,b)]&&hqCity(a)&&hqCity(b));
+const hqDeg=n=>hqLinks().filter(l=>l[0]===n||l[1]===n).length;
+const hqNetB=c=>c?Math.min(HQNET.cap,HQNET.per*hqDeg(c.country)):0;
+const hqPerk=c=>c&&hqDeg(c.country)?HQNET.perk:1;
+const hqShip=(c,d)=>c&&d&&c.country!==d.country&&hqLinked(c.country,d.country)?HQNET.ship:1;
+const hqLinkCost=(a,b)=>Math.round((hqCost(hqCity(a))+hqCost(hqCity(b)))*HQNET.link);
+const hqLinkUp=(a,b)=>Math.round((hqUpkeep(hqCity(a))+hqUpkeep(hqCity(b)))*HQNET.up);
+const hqCountries=()=>Object.keys(S.hq).filter(id=>S.hq[id]&&CITIES[id]).map(id=>CITIES[id].country);
+function hqLinkAct(a,b,on){if(!hqCity(a)||!hqCity(b)||a===b)return;const k=hqLK(a,b);
+  if(on){if(S.hqlink[k])return;const p=hqLinkCost(a,b);if(S.cash<p){toast(`Need ${fmt(p)} to link`);return}S.cash-=p;S.hqlink[k]=1;toast(`${a} HQ ↔ ${b} HQ connected`)}
+  else{delete S.hqlink[k];toast(`${a} ↔ ${b} link closed`)}}
+function hqNetHtml(ph,from){const cs=hqCountries(),links=hqLinks();if(cs.length<2)return ph?"":`<p class="d" style="color:var(--muted);font-size:13px;padding:8px 0">Own HQs in two or more countries to connect them into a network.</p>`;
+  const pairs=[];for(let i=0;i<cs.length;i++)for(let j=i+1;j<cs.length;j++)if(!from||cs[i]===from||cs[j]===from)pairs.push([cs[i],cs[j]]);
+  const btn=(a,b,on)=>{const t=on?`Connect ${fmt(hqLinkCost(a,b))}`:"Disconnect";return ph?`<button class="buy" data-ph="${on?"hqlink":"hqunlink"}" data-a="${a}" data-b="${b}" style="color:#fff;background:${on?"#0e7490":"#7f1d1d"}!important;border-color:${on?"#0e7490":"#7f1d1d"};flex:none" ${on&&S.cash<hqLinkCost(a,b)?"disabled":""}>${t}</button>`:`<button class="buy${on?"":" up"}" data-hq="${on?"link":"unlink"}" data-a="${a}" data-b="${b}" ${on&&S.cash<hqLinkCost(a,b)?"disabled":""}>${t}</button>`};
+  let h="";for(const [a,b] of pairs){const on=hqLinked(a,b),other=from?(a===from?b:a):null,lbl=other?`${on?"Linked to":"Connect to"} ${other} HQ`:`${a} ↔ ${b}`,sub=`${hqCity(a).name} ↔ ${hqCity(b).name} · upkeep ${fmt(hqLinkUp(a,b))}/hr`;
+    h+=ph?`<div class="ph-rows" style="margin-bottom:4px"><div><span><b>${lbl}</b><br><small style="color:#94a3b8">${sub}</small></span>${btn(a,b,!on)}</div></div>`:`<div class="row${on?" own":""}"><div class="n">${lbl}${on?' <span class="tag boom">Linked</span>':""}</div><div class="d">${sub}</div>${btn(a,b,!on)}</div>`}
+  return h}
+function hqNetUp(){return hqLinks().reduce((u,l)=>u+hqLinkUp(l[0],l[1]),0)}
+const HQNOTE=`Each link: +${HQNET.per*100}% business income in both countries (max +${HQNET.cap*100}% per country), ${Math.round((1-HQNET.ship)*100)}% cheaper fuel between them, ${Math.round((1-HQNET.perk)*100)}% off registration and manager fees in linked countries.`;
 const bizReg=(c,k)=>!!((S.reg[c.id]||{})[k]);
-const regFeeBiz=(b,c)=>Math.round(cost(b,c)*.07);
-const regFeeSite=s=>Math.round(plotPrice(CITIES[s.city],zoneOf(s)||"farm",s.size)*.05);
+const regFeeBiz=(b,c)=>Math.round(cost(b,c)*.07*hqPerk(c));
+const regFeeSite=s=>Math.round(plotPrice(CITIES[s.city],zoneOf(s)||"farm",s.size)*.05*hqPerk(CITIES[s.city]));
 const STAFF={cart:1,coffeecart:1,icecream:1,taco:2,pretzel:1,noodle:1,smoothie:1,kiosk:2,shop:4,rest:12,apt:2,office:20,hotel:60,casino:250,secfirm:25,ambulance:40,lawfirm:30,prison:150,taxico:35,busline:60,trucking:80,rail:400,port:600,airline:900,airport:1500};
 const siteStaff=s=>{const o=siteOp(s);if(!o)return 0;const ha=LAND[s.size][1];return Math.ceil(ha*(o.rp?1:o.cat==="Farm"?.5:o.cat==="Ranch"?.3:o.cat==="Mine"?2:3)*(1+.2*(slv(s)-1)))};
 const bizStaff=(k,lv)=>Math.ceil(STAFF[k]*(1+.5*(lv-1)));
-function hqTotalUpkeep(){let u=0;for(const id in S.hq)if(S.hq[id])u+=hqUpkeep(CITIES[id]);return u}
+function hqTotalUpkeep(){let u=0;for(const id in S.hq)if(S.hq[id]&&CITIES[id])u+=hqUpkeep(CITIES[id]);return u+hqNetUp()}
 /* split this hour's taxable profit into registered vs unregistered */
 function taxableRates(){let reg=0,un=0;const wr=c=>taxRateC(c)/TAX_REG,wu=c=>(taxRateC(c)+.2)/TAX_UNREG;
-  for(const pr of S.props||[]){if(!pr.occ)continue;const c=CITIES[pr.city],v=askRent(pr)*rentLaw(c);if(S.hq[pr.city])reg+=v*wr(c);else un+=v*wu(c)}
+  for(const pr of S.props||[]){if(!pr.occ)continue;const c=CITIES[pr.city],v=askRent(pr)*rentLaw(c);if(hasHQ(c))reg+=v*wr(c);else un+=v*wu(c)}
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv)continue;const p=Math.max(0,profit(b,c,lv));if(bizReg(c,b.k))reg+=p*wr(c);else un+=p*wu(c)}}
   for(const s of S.sites){const c=CITIES[s.city],p=Math.max(0,siteEst(s));if(s.reg)reg+=p*wr(c);else un+=p*wu(c)}
   return{reg,un}}
@@ -1059,13 +1090,13 @@ function audits(quiet){for(const c of CITIES){let v=0,n=0;const o=S.own[c.id]||{
     if(n&&Math.random()<.002*n){const fine=Math.round(v*.15);S.cash-=fine;if(!quiet){S.log.unshift(`Tax audit in ${c.name}: fined ${fmt(fine)} for ${n} unregistered asset${n>1?"s":""}`);S.log=S.log.slice(0,3)}if(n>=3&&typeof arrest==="function")arrest("tax evasion",10,c,quiet);}}}
 function renderHQ(c){let h=cityHead(c);const o=S.own[c.id]||{},sites=S.sites.filter(s=>s.city===c.id);
   h+=`<div class="meta"><div><span>Tax year ends in </span>${fmtDur(S.tax.start+TAXP-Date.now()).replace(/^(\d+)h/,(m,x)=>x>=48?Math.floor(x/24)+"d "+(x%24)+"h":m)}</div><div><span>Owed so far </span>${fmt(taxOwed())}</div></div>`+tabsHtml();
-  if(!hasHQ(c)){h+=`<div class="sec">Open a headquarters in ${c.name}</div><div class="list"><div class="row"><div class="n">City HQ</div>
-    <div class="d">Lets you register businesses and land here, manage employees, and see every registered business you own. Registered assets here pay ${Math.round(taxRateC(c)*100)}% tax each tax year (every ${TAXDAYS} days); unregistered ones pay ${Math.round(taxRateC(c)*100)+20}% and risk audit fines. Upkeep ${fmt(hqUpkeep(c))}/hr.</div>
+  if(!hasHQ(c)){h+=`<div class="sec">Open a headquarters in ${c.country}</div><div class="list"><div class="row"><div class="n">Country HQ in ${c.name}</div>
+    <div class="d">One HQ covers every city in ${c.country}. Lets you register businesses and land anywhere in ${c.country}, manage employees, and see every registered business you own. Registered assets here pay ${Math.round(taxRateC(c)*100)}% tax each tax year (every ${TAXDAYS} days); unregistered ones pay ${Math.round(taxRateC(c)*100)+20}% and risk audit fines. Upkeep ${fmt(hqUpkeep(c))}/hr.</div>
     <button class="buy" data-hq="open" ${S.cash<hqCost(c)?"disabled":""}>Open ${fmt(hqCost(c))}</button></div></div>`;
     const un=BIZ.filter(b=>o[b.k]&&!bizReg(c,b.k)).length+sites.filter(s=>!s.reg).length;
     if(un)h+=`<p class="d" style="color:var(--bad);font-size:13px;padding:8px 0">You have ${un} unregistered asset${un>1?"s":""} here.</p>`;
     sheet.innerHTML=h;$("#cls").onclick=closeSheet;return}
-  h+=`<div id="hqroom-host"></div><div id="hqpanel"></div><div class="tabs" style="margin-top:0">${[["reg","Register"],["emp","Employees"],["all","All registered"]].map(([k,n])=>`<button data-hqt="${k}" aria-selected="${hqTab===k}">${n}</button>`).join("")}</div>`;
+  const hc=hqCity(c.country),nb=hqNetB(c);h+=`<p class="d" style="font-size:12px;color:var(--muted);margin:4px 0">${hc.id===c.id?`Your ${c.country} HQ. It covers every city in ${c.country}.`:`Your HQ in ${hc.name} already covers ${c.country}.`}${nb?` HQ network: +${Math.round(nb*100)}% income here.`:""}</p><div id="hqroom-host"></div><div id="hqpanel"></div><div class="tabs" style="margin-top:0">${[["reg","Register"],["emp","Employees"],["all","All registered"],["net","Network"]].map(([k,n])=>`<button data-hqt="${k}" aria-selected="${hqTab===k}">${n}</button>`).join("")}</div>`;
   if(hqTab==="reg"){h+=`<div class="sec">Businesses in ${c.name}</div><div class="list">`;
     const mine=BIZ.filter(b=>o[b.k]);if(!mine.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:8px 0">No businesses here yet.</p>`;
     for(const b of mine){const r=bizReg(c,b.k);h+=`<div class="row own"><div class="n">${b.n} <span class="tag ${r?"boom":"bust"}">${r?"Registered":"Unregistered"}</span></div>
@@ -1082,6 +1113,7 @@ function renderHQ(c){let h=cityHead(c);const o=S.own[c.id]||{},sites=S.sites.fil
       (rows.length?rows.map(r=>`<div class="row"><div class="n">${r[0]}</div><div class="d">${r[1]} employee${r[1]>1?"s":""}</div><span style="font-family:var(--mono)">${fmt(r[2])}/hr</span></div>`).join(""):`<p class="d" style="color:var(--muted);font-size:13px;padding:8px 0">Nobody works for you here yet.</p>`)+`</div>
       <div class="row"><div class="n">Pay above market</div><div class="d">${S.bonus[c.id]?"On: shop staff paid 25% more, sales here are 8% higher.":"Pay your business staff 25% more; better service lifts sales here by 8%."}</div>
       <button class="buy${S.bonus[c.id]?" up":""}" data-hq="bonus">${S.bonus[c.id]?"Turn off":"Turn on"}</button></div>`}
+  else if(hqTab==="net"){const links=hqLinks();h+=`<div class="meta"><div><span>Links </span>${links.length}</div><div><span>Bonus here </span>+${Math.round(nb*100)}%</div><div><span>Link upkeep </span>${fmt(hqNetUp())}/hr</div></div><p class="d" style="font-size:12px;color:var(--muted);margin:4px 0">${HQNOTE}</p><div class="list">${hqNetHtml(false,c.country)}</div>`}
   else{const all=[];for(const id in S.own){const cc=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(lv&&bizReg(cc,b.k))all.push([b.n+" · "+cc.name,profit(b,cc,lv),"Lv "+lv,cc.id])}}
     for(const s of S.sites)if(s.reg&&siteOp(s))all.push([OP[s.op].n+" · "+CITIES[s.city].name,siteEst(s),LAND[s.size][1]+" ha",s.city]);
     all.sort((a,b)=>b[1]-a[1]);const sum=all.reduce((a,r)=>a+r[1],0);
@@ -1091,7 +1123,8 @@ function renderHQ(c){let h=cityHead(c);const o=S.own[c.id]||{},sites=S.sites.fil
 let hqTab="reg";
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-hq],[data-hqt]");if(!b||!sel)return;const c=sel;
   if(b.dataset.hqt){hqTab=b.dataset.hqt;renderSheet();return}const a=b.dataset.hq;
-  if(a==="open"){const p=hqCost(c);if(S.cash<p)return;S.cash-=p;S.hq[c.id]=1;toast(`HQ open in ${c.name}`)}
+  if(a==="open"){const hc=hqCity(c.country);if(hc){toast(`Your HQ in ${hc.name} already covers ${c.country}`);return}const p=hqCost(c);if(S.cash<p)return;S.cash-=p;S.hq[c.id]=1;toast(`HQ open in ${c.name}: covers all of ${c.country}`)}
+  else if(a==="link"||a==="unlink"){if(a==="unlink"&&!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to disconnect";return}hqLinkAct(b.dataset.a,b.dataset.b,a==="link")}
   else if(a==="regbiz"){const B=BIZ.find(x=>x.k===b.dataset.k),p=regFeeBiz(B,c);if(S.cash<p)return;S.cash-=p;(S.reg[c.id]=S.reg[c.id]||{})[B.k]=1;toast(`${B.n} registered`)}
   else if(a==="regsite"){const s=S.sites.find(x=>x.id===+b.dataset.id),p=regFeeSite(s);if(S.cash<p)return;S.cash-=p;s.reg=1;toast("Land registered")}
   else if(a==="bonus"){S.bonus[c.id]=S.bonus[c.id]?0:1}
@@ -3037,9 +3070,10 @@ function hrApp(){let h="",n=0,pay=0;const btn=(a,k,t,bg,dis)=>`<button class="bu
         <div><span>Hours · output</span><b>${sc[0]} · ×${hrOut(c,b).toFixed(2)}</b></div>
         <div><span>Profit</span><b>${fmt(profit(b,c,lv))}/hr</b></div></div>
         <div style="display:flex;gap:4px;margin-bottom:6px">${btn("hrsch",key,"Hours: "+sc[0],"#334155")}${btn("hrup",key,"Raise","#15803d",a>=HRCFG.maxUp||!st)}${btn("hrdn",key,"Cut","#b45309",a<=-HRCFG.maxDn||!st)}${st?btn("hrfire",key,"Fire","#7f1d1d"):btn("hrhire",key,"Hire","#1d4ed8")}</div>`}}
-  if(!n)return `<button class="buy" data-ph="dash" style="width:100%;margin:2px 0 8px;color:#fff;background:#2563eb!important;border-color:#2563eb">Open dashboard</button><div class="ph-sub">You don't own any businesses yet.</div>`;
+  const cs=hqCountries(),nh=cs.length?`<div class="ph-sub" style="margin-top:6px">HQ network</div><div class="ph-rows"><div><span>Country HQs</span><b>${cs.length}</b></div><div><span>Links · upkeep</span><b>${hqLinks().length} · ${fmt(hqNetUp())}/hr</b></div>${hqLinks().map(l=>`<div><span>${l[0]} ↔ ${l[1]}</span><b style="color:#4ade80">+${HQNET.per*100}%</b></div>`).join("")}</div>${hqNetHtml(true)}${cs.length>1?`<div class="ph-sub" style="font-size:12px">${HQNOTE}</div>`:""}`:"";
+  if(!n)return `<button class="buy" data-ph="dash" style="width:100%;margin:2px 0 8px;color:#fff;background:#2563eb!important;border-color:#2563eb">Open dashboard</button><div class="ph-sub">You don't own any businesses yet.</div>`+nh;
   return `<button class="buy" data-ph="dash" style="width:100%;margin:2px 0 8px;color:#fff;background:#2563eb!important;border-color:#2563eb">Open dashboard</button><div class="ph-rows"><div><span>Businesses</span><b>${n}</b></div><div><span>Payroll</span><b>${fmt(pay)}/hr</b></div></div>
-    <div class="ph-sub" style="margin-top:6px;font-size:12px">Extended hours: ×1.35 sales, ×1.5 wages. 24h: ×1.7 sales, ×2.2 wages. Each raise +10% wages, +4% output. Each cut −10% wages, −6% output and a 3%/day chance staff quit.</div>`+h}
+    <div class="ph-sub" style="margin-top:6px;font-size:12px">Extended hours: ×1.35 sales, ×1.5 wages. 24h: ×1.7 sales, ×2.2 wages. Each raise +10% wages, +4% output. Each cut −10% wages, −6% output and a 3%/day chance staff quit.</div>`+nh+h}
 /* ---------- HQ dashboard: floating, resizable finance window over the game (opened from the phone's HQ app) ---------- */
 const DX={el:null,open:false,reg:null,view:"city",samples:[],note:"",noteT:0,tip:null};
 function dxS(){const d=S.dash=S.dash||{};d.h=Array.isArray(d.h)?d.h:[];d.tx=Array.isArray(d.tx)?d.tx:[];if(d.paid==null)d.paid=(S.tax&&S.tax.paid)||0;return d}
@@ -3254,6 +3288,7 @@ function dxMain(){const kp=(k,lb,bg,fg)=>`<div class="mdx-card mdx-kpi" data-k="
     <div class="mdx-card"><div class="mdx-ch"><h3>Quick Actions</h3><button class="mdx-more" data-dx="hqapp" aria-label="Open HQ list">${dxI("chev",14)}</button></div><div class="mdx-qa">
       <button data-dx="hireall"><i style="background:#e0ecff;color:#2563eb">${dxI("user",18)}</i>Hire all unstaffed</button><button data-dx="restock"><i style="background:#fee2e2;color:#dc2626">${dxI("cart",18)}</i>Restock low stock</button>
       <button data-dx="hqcity"><i style="background:#dcfce7;color:#16a34a">${dxI("biz",18)}</i>Open HQ</button><button data-dx="empire"><i style="background:#f3e8ff;color:#9333ea">${dxI("net",18)}</i>Empire report</button></div><div class="mdx-note" id="mdx-note"></div></div>
+    <div class="mdx-card"><div class="mdx-ch"><h3>HQ network</h3><button class="mdx-more" data-dx="hqapp" aria-label="Open HQ app">${dxI("chev",14)}</button></div><div class="mdx-up2" id="mdx-net"></div></div>
     <div class="mdx-card"><div class="mdx-ch"><h3>Business Status</h3></div><div class="mdx-donut" id="mdx-st"></div></div>
     <div class="mdx-card"><div class="mdx-ch"><h3>Upcoming Payments</h3></div><div class="mdx-up2" id="mdx-up"></div></div></div></div>`}
 /* ---------- drawing ---------- */
@@ -3319,6 +3354,7 @@ function dxRender(){if(!DX.open||!DX.el)return;const reg=!!DX.reg,T=dxData(reg),
   for(const o of S.orders||[]){const [id,kk]=String(o.key).split(":"),c=CITIES[id],b=BIZ.find(x=>x.k===kk);if(!c||!b||(reg&&!bizReg(c,kk)))continue;ups.push(["box","#eff4ff","#2563eb","Stock arriving · "+b.n,c.name,null,o.arr-Date.now(),o.q.toLocaleString()+" "+(SUP[kk]?SUP[kk].u:"units")])}
   ups.sort((a,b)=>a[6]-b[6]);
   main.querySelector("#mdx-up").innerHTML=ups.length?ups.slice(0,5).map(u=>`<div><i style="background:${u[1]};color:${u[2]}">${dxI(u[0],17)}</i><div class="mdx-um"><b>${dxE(u[3])}</b><small>${dxE(u[4])}</small></div><div class="mdx-ua"${u[5]==null?' style="color:#2563eb"':""}>${u[5]==null?u[7]:dxM(u[5])}<small class="${u[6]<5*60000?"soon":""}">${u[5]==null?"arrives":"due"} in ${dxIn(u[6])}</small></div></div>`).join(""):`<div class="mdx-empty">Nothing due.</div>`;
+  const ne=main.querySelector("#mdx-net");if(ne){const cs=hqCountries(),ls=hqLinks();ne.innerHTML=!cs.length?`<div class="mdx-empty">No HQ yet. One HQ covers a whole country.</div>`:cs.map(n=>{const hc=hqCity(n),bn=hqNetB(hc);return `<div><i style="background:#dcfce7;color:#16a34a">${dxI("biz",17)}</i><div class="mdx-um"><b>${dxE(n)}</b><small>${dxE(hc.name)} · ${hqDeg(n)} link${hqDeg(n)===1?"":"s"}</small></div><div class="mdx-ua" style="color:${bn?"#16a34a":"#94a3b8"}">+${Math.round(bn*100)}%</div></div>`}).join("")+`<div class="mdx-empty" style="text-align:left">${ls.length?`${ls.length} link${ls.length>1?"s":""} · upkeep ${dxM(hqNetUp())}/hr`:cs.length>1?"Connect HQs from the HQ app or city HQ tab.":"Open an HQ in a second country to start a network."}</div>`}
   const nt=main.querySelector("#mdx-note");if(nt)nt.textContent=Date.now()-DX.noteT<6000?DX.note:"";
   const hb=main.querySelector('[data-dx=hireall]');if(hb)hb.disabled=!T.rows.some(x=>!x.staffed)}
 let saveT=0;
@@ -3399,10 +3435,11 @@ function appHtml(k){const {inc,nw}=totals();
   return ""}
 const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);return `<button class="ph-item" data-ph="buyitem" data-k="${it.k}" ${S.cash<p?"disabled":""}><span>${it.n}<small>${NEEDS.filter(([q])=>it[q]).map(([q,n])=>(it[q]>0?"+":"")+it[q]+" "+n.toLowerCase()).join(", ")}</small></span><b>${fmt(p)}</b></button>`};
 ["touchstart","touchmove","wheel","scroll","pointerdown"].forEach(t=>PH.el.addEventListener(t,()=>{PH.touched=Date.now()},{passive:true,capture:true}));
-PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon",hrfire:"Tap again to fire"}[a];if(cfm&&!b.dataset.arm){b.dataset.arm=1;b.textContent=cfm;if(a==="milab"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();return}
+PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon",hrfire:"Tap again to fire",hqunlink:"Tap again"}[a];if(cfm&&!b.dataset.arm){b.dataset.arm=1;b.textContent=cfm;if(a==="milab"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();return}
   if(a==="unfold"){PH.open=true;PH.app=null}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="app"){PH.app=b.dataset.k}
   else if(/^hr(sch|up|dn|fire|hire)$/.test(a)){hrAct(a,b.dataset.k);save();hud()}
   else if(a==="dash"){dxOpen();return}
+  else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
   else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
