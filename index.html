@@ -38,7 +38,9 @@ header{background:var(--panel);border-bottom:1px solid var(--line);padding-block
 h1{font-family:var(--display);font-weight:800;font-size:20px;margin:0;letter-spacing:-.02em;line-height:1.1}
 .stat.cash b{font-size:17px}
 header>*{flex:none}.brand{flex:1 1 auto}
-@media (max-width:440px){header .stat.nwst{display:none}header{gap:12px}.brand small span{display:none}}
+@media (max-width:440px){header .stat.nwst{display:none}header{gap:12px}.brand small span{display:none}header .brand{min-width:0;overflow:hidden}#rank .rn{display:none}header .stat b{white-space:nowrap}header .stat.cash b{font-size:clamp(12px,3.8vw,15px)}header .stat:not(.cash) b{font-size:clamp(11px,3.3vw,15px)}}
+@media (max-width:380px){header{gap:8px}}
+@media (max-width:819px){body #sheet{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
 h1 span{color:var(--accent)}
 .stat{display:flex;flex-direction:column}
 .stat b{font-family:var(--mono);font-weight:600;font-size:15px;font-variant-numeric:tabular-nums}
@@ -399,7 +401,9 @@ function menuNet(c,b,lv,id){menuOv={[c.id+":"+b.k]:id};try{return profit(b,c,lv)
 const USE={cart:{burgers:2},coffeecart:{bread:1},icecream:{bread:1},taco:{beef:1,bread:1},pretzel:{bread:2},noodle:{beef:1},smoothie:{bread:1},kiosk:{bread:3},shop:{bread:4,tools:1},rest:{burgers:5,beef:3},office:{electronics:.5},hotel:{bread:8,electronics:.5}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
-function profit(b,c,lv){if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(1+0.55*(lv-1))-b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1)))}
+function profit(b,c,lv){if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(1+0.55*(lv-1))-bizWage(b,c,lv))}
+// hourly wages a business is charged inside profit(); HQ Employees shows the same figure
+function bizWage(b,c,lv){return b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1))}
 function cityProfit(c){const o=S.own[c.id]||{};let t=0;for(const b of BIZ)if(o[b.k])t+=profit(b,c,o[b.k]);return t}
 /* renting: anything you don't own pays hourly rent (value / 60 per hour). Leases with a payback under 60 days profit; the Rent button warns when rent exceeds Lv1 profit minus hourly stock cost. Rate is read live, so old saves just pay the new rate. */
 const RENT=1/60,FIT=.2;
@@ -554,7 +558,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
     const mc=mgrCost(c);
     h+=`<div class="row${S.mgr[c.id]?" own":""}"><div class="n">City manager ${S.mgr[c.id]?'<span class="tag boom">Hired</span>':""}</div>
       <div class="d">${S.mgr[c.id]?"Sales here are 20% higher.":"Raises sales of every business here by 20%. One-time fee."}</div>
-      ${S.mgr[c.id]?"":`<button class="buy" id="hire" ${S.cash<mc?"disabled":""}>Hire ${fmt(mc)}</button>`}</div>`;
+      ${S.mgr[c.id]?`<button class="buy up" id="fire">Fire</button>`:`<button class="buy" id="hire" ${S.cash<mc?"disabled":""}>Hire ${fmt(mc)}</button>`}</div>`;
     const ac=adCost(c),boom=ev&&ev.m>1;
     h+=`<div class="row"><div class="n">Ad campaign</div><div class="d">${boom?`Customers are already flooding in (${ev.d}h left).`:"Billboards and radio. Starts a 5-hour boom here."}</div>
       <button class="buy up" id="ads" ${S.cash<ac||boom?"disabled":""}>Run ${fmt(ac)}</button></div>`;
@@ -593,13 +597,16 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
   sheet.querySelectorAll("[data-bo]").forEach(btn=>btn.onclick=()=>{const i=+btn.dataset.bo,k=buyoutCost(c);if(S.cash<k)return;S.cash-=k;
     S.rivals[i].cities=S.rivals[i].cities.filter(x=>x!==c.id);S.rivals[i].nw=Math.max(10000,S.rivals[i].nw-k*.5);toast(`Bought out ${RIVALS[i].n} in ${c.name}`);commit()});
   const hb=$("#hire");if(hb)hb.onclick=()=>{const mc=mgrCost(c);if(S.cash<mc)return;S.cash-=mc;S.mgr[c.id]=1;toast(`Manager hired in ${c.name}`);commit()};
+  const fb=$("#fire");if(fb)fb.onclick=()=>{if(!fb.dataset.arm){fb.dataset.arm=1;fb.textContent="Tap again to fire";return}delete S.mgr[c.id];if(S.mgrShort)for(const b of BIZ)delete S.mgrShort[bkey(c,b.k)];toast(`Manager fired in ${c.name}. No refund.`);commit()};
   const sa=$("#sellall");if(sa)sa.onclick=()=>{if(sa.dataset.arm){sellAll(c)}else{sa.dataset.arm=1;sa.textContent="Tap again to confirm sale"}};
 }
 function buy(c,k){const b=BIZ.find(x=>x.k===k),p=cost(b,c);if(S.cash<p)return;setTimeout(()=>{if(SUP[k])toast("Order stock to start selling. Hire staff so it runs without you.")},1900);{const blk=bizBlock(b,c);if(blk){toast(blk);return}}if(S.lease[c.id])delete S.lease[c.id][k];
   S.cash-=p;(S.own[c.id]=S.own[c.id]||{})[k]=1;toast(`Opened ${b.n} in ${c.name}`);commit()}
 function upgrade(c,k){const b=BIZ.find(x=>x.k===k),lv=S.own[c.id][k],p=upCost(b,c,lv);if(S.cash<p||lv>=MAXLV)return;
   S.cash-=p;S.own[c.id][k]=lv+1;toast(`${b.n} in ${c.name} → Lv ${lv+1}`);commit()}
-function sellAll(c){const o=S.own[c.id];let v=0;for(const b of BIZ){const lv=o[b.k];if(!lv)continue;let x=isLeased(c,b.k)?cost(b,c)*FIT:cost(b,c);for(let l=1;l<lv;l++)x+=upCost(b,c,l);v+=x*.75}
+// forget per-business manager state (auto-restock switch, cash-short flag) once it's no longer yours
+function clearBizState(c,k){const key=bkey(c,k);if(S.auto2)delete S.auto2[key];if(S.mgrShort)delete S.mgrShort[key]}
+function sellAll(c){const o=S.own[c.id];for(const k in o)clearBizState(c,k);let v=0;for(const b of BIZ){const lv=o[b.k];if(!lv)continue;let x=isLeased(c,b.k)?cost(b,c)*FIT:cost(b,c);for(let l=1;l<lv;l++)x+=upCost(b,c,l);v+=x*.75}
   if(S.mgr[c.id])v+=mgrCost(c)*.5;
   S.cash+=Math.round(v);delete S.own[c.id];delete S.mgr[c.id];if(S.menu)for(const k in MENUS)delete S.menu[bkey(c,k)];delete S.lease[c.id];toast(`Sold ${c.name} for ${fmt(v)}`);commit()}
 function commit(){checkGoals();save();renderSheet();hud();draw()}
@@ -1069,7 +1076,7 @@ function renderHQ(c){let h=cityHead(c);const o=S.own[c.id]||{},sites=S.sites.fil
       <div class="d">${o2?o2.n:"Empty"}${s.lease?" · rented":""}</div>${s.reg?"<span></span>":`<button class="buy" data-hq="regsite" data-id="${s.id}" ${S.cash<regFeeSite(s)?"disabled":""}>Register ${fmt(regFeeSite(s))}</button>`}</div>`}
     h+=`</div>`}
   else if(hqTab==="emp"){let tot=0,pay=0;const rows=[];
-    for(const b of BIZ){const lv=o[b.k];if(!lv)continue;const n=bizStaff(b.k,lv);tot+=n;const py=Math.round(b.up*PRICE[c.size]*(1+.3*(lv-1))*(S.bonus[c.id]?1.25:1));pay+=py;rows.push([b.n,n,py])}
+    for(const b of BIZ){const lv=o[b.k];if(!lv)continue;const n=bizStaff(b.k,lv);tot+=n;const py=Math.round(bizWage(b,c,lv));pay+=py;rows.push([b.n,n,py])}
     for(const s of sites){const n=siteStaff(s);if(!n)continue;const o2=siteOp(s);tot+=n;const py=Math.round(o2.up*techUp(o2)*LAND[s.size][1]*(1+.15*(slv(s)-1)));pay+=py;rows.push([o2.n,n,py])}
     h+=`<div class="meta"><div><span>Staff </span>${tot}</div><div><span>Payroll </span>${fmt(pay)}/hr</div></div><div class="list">`+
       (rows.length?rows.map(r=>`<div class="row"><div class="n">${r[0]}</div><div class="d">${r[1]} employee${r[1]>1?"s":""}</div><span style="font-family:var(--mono)">${fmt(r[2])}/hr</span></div>`).join(""):`<p class="d" style="color:var(--muted);font-size:13px;padding:8px 0">Nobody works for you here yet.</p>`)+`</div>
@@ -1546,7 +1553,7 @@ const selfRate=.6;                                    // running it yourself: 60
 function runShops(h){const now=Date.now();S.shopT=now;S.mgrShort=S.mgrShort||{};
   const n=h>1?Math.min(168,Math.ceil(h)):1,sh=h/n;
   for(let i=1;i<=n;i++)shopStep(sh,now-(n-i)*sh*DAYMS,now)}
-function shopStep(h,t,now){
+function shopStep(h,t,now){const short=[];
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv)continue;const key=bkey(c,b.k);
     const op=isStaffed(c,b.k)?1:(tenantRun(b.k)?1:present(c)?selfRate:0);
     if(!SUP[b.k]){S.opf[key]=op;continue}
@@ -1559,9 +1566,10 @@ function shopStep(h,t,now){
     if(!S.auto2[key]||S.orders.some(o=>o.key===key))continue;const r=useRate(b,lv,c);if((S.stock[key]||0)>=r*2){delete S.mgrShort[key];continue}
     const q=Math.round(r*6),cost=q*unitCost(b,c)*1.1;
     if(S.cash<cost){const m=S.mgrShort[key]||(S.mgrShort[key]={n:0});
-      if(!m.n||now-m.n>3*DAYMS){m.n=now;const msg=`Manager couldn't restock ${b.n} in ${c.name}: needs ${cost<100?fmtC(cost):fmt(cost)}`;S.log.unshift(msg);S.log=S.log.slice(0,3);toast(msg)}
+      if(!m.n||now-m.n>3*DAYMS){m.n=now;const msg=`Manager couldn't restock ${b.n} in ${c.name}: needs ${cost<100?fmtC(cost):fmt(cost)}`;S.log.unshift(msg);S.log=S.log.slice(0,3);short.push(msg)}
       continue}
-    delete S.mgrShort[key];S.cash-=cost;S.orders.push({key,q,arr:t+ORDER_MIN*60000,auto:1})}}}
+    delete S.mgrShort[key];S.cash-=cost;S.orders.push({key,q,arr:t+ORDER_MIN*60000,auto:1})}}
+  if(short.length)toast(short.length>1?`Manager couldn't restock ${short.length} businesses — not enough cash`:short[0])}
 function orderStock(c,b,q){const own=supMode()==="own"&&(S.own[c.id]||{}).trucking,cost=q*unitCost(b,c)*(own?1:1.06);if(S.cash<cost){toast(`That order costs ${fmt(cost)}`);return}
   S.cash-=cost;S.orders.push({key:bkey(c,b.k),q,arr:Date.now()+ORDER_MIN*60000*(own?.5:1)});toast(`Ordered ${q.toLocaleString()} ${SUP[b.k].u}. ${own?"Your trucks deliver":"Carrier delivers"} in ${own?ORDER_MIN/2:ORDER_MIN} min.`)}
 function menuHtml(c,b,lv){if(!MENUS[b.k])return "";const cur=menuOf(c,b.k),fee=Math.round(cost(b,c)*MENU_SW),base=SUP[b.k].r*(1+.55*(lv-1));
@@ -1976,7 +1984,7 @@ function warHour(quiet){S.wars=S.wars||[];const ws=S.wars;
       if(w.l===4)for(const n of [w.a,w.b])gov(n).appr=Math.min(90,gov(n).appr+10)}
     else if(r>1-dn){w.l--;if(!quiet)logGov(w.l?`${w.a}–${w.b}: de-escalates to ${WARL[w.l].toLowerCase()}`:`${w.a} and ${w.b} sign a peace deal`)}
     if(w.l>=4)for(const n of [w.a,w.b])for(const c of ctyCities(n)){const o=S.own[c.id];if(!o||Math.random()>.03)continue;
-      const ks=Object.keys(o),k=ks[Math.floor(Math.random()*ks.length)];if(--o[k]<=0){delete o[k];if(S.menu)delete S.menu[bkey(c,k)]}if(!Object.keys(o).length)delete S.own[c.id];
+      const ks=Object.keys(o),k=ks[Math.floor(Math.random()*ks.length)];if(--o[k]<=0){delete o[k];clearBizState(c,k);if(S.menu)delete S.menu[bkey(c,k)]}if(!Object.keys(o).length)delete S.own[c.id];
       if(!quiet)logGov(`Fighting in ${c.name} damaged your ${BIZ.find(x=>x.k===k).n.toLowerCase()}`)}}
   S.wars=ws.filter(w=>w.l>0)}
 function warAct(id,a){const w=(S.wars||[]).find(x=>x.id===id);if(!w)return;const cst=warCost(w);if(S.cash<cst){toast(`Need ${fmt(cst)}`);return}S.cash-=cst;
@@ -2424,13 +2432,13 @@ function confetti(n=40,x=innerWidth/2,y=innerHeight/2){if(matchMedia("(prefers-r
     const a=Math.random()*Math.PI*2,v=120+Math.random()*260,dx=Math.cos(a)*v,dy=Math.sin(a)*v-200;
     d.animate([{transform:"translate(0,0) rotate(0)",opacity:1},{transform:`translate(${dx}px,${dy+500}px) rotate(${Math.random()*900}deg)`,opacity:0}],{duration:1100+Math.random()*700,easing:"cubic-bezier(.2,.6,.4,1)"}).onfinish=()=>d.remove()}}
 let _cashShown=null,_cashRaf=0;
-const cashFmt=v=>Math.abs(v)<1e6?(v<0?"-$":"$")+Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):fmt(v);
+const cashFmt=v=>Math.abs(v)<(innerWidth<=440?1e4:1e6)?(v<0?"-$":"$")+Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):fmt(v);
 function tweenCash(){const el=$("#cash"),to=S.cash;if(_cashShown==null)_cashShown=to;const from=_cashShown;if(Math.abs(to-from)<.005){el.textContent=cashFmt(to);_cashShown=to;return}
   const big=Math.abs(to-from)>Math.max(50,Math.abs(from)*.002);if(big){el.classList.remove("up","down");el.classList.add(to>from?"up":"down");clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove("up","down"),450)}
   cancelAnimationFrame(_cashRaf);const t0=performance.now(),dur=big?500:200;
   const step=t=>{const u=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-u,3);_cashShown=from+(to-from)*e;el.textContent=cashFmt(_cashShown);if(u<1)_cashRaf=requestAnimationFrame(step)};_cashRaf=requestAnimationFrame(step)}
 function rankHud(nw){const i=rankOf(nw),r=RANKS[i],nx=RANKS[i+1],p=nx?Math.max(0,Math.min(1,(nw-r[2])/(nx[2]-r[2]))):1;
-  const h=`<i>${i+1}</i>${r[0]} ${r[1]}<span class="rb"><u style="width:${(p*100).toFixed(0)}%"></u></span>`;const el=$("#rank");if(el.innerHTML!==h)el.innerHTML=h;
+  const h=`<i>${i+1}</i>${r[0]}<em class="rn" style="font-style:normal"> ${r[1]}</em><span class="rb"><u style="width:${(p*100).toFixed(0)}%"></u></span>`;const el=$("#rank");if(el.innerHTML!==h)el.innerHTML=h;
   el.title=nx?`Next: ${nx[1]} at ${fmt(nx[2])} net worth`:"Top rank!";
   if(S.rank==null)S.rank=i;else if(i>S.rank){S.rank=i;rankUp(i)}}
 function rankUp(i){const r=RANKS[i],bonus=Math.round(r[2]*.02);S.cash+=bonus;confetti(90);vib([30,40,30]);
