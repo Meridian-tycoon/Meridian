@@ -1,6 +1,6 @@
 # Business payback times
 
-Analysis only, written 2026-10-20 by meridian-balance; tables regenerated 2026-10-21 from the current `BIZ`, `SUP` and formulas in `index.html` (after the street-cart gross ×1.6, SUP #1, apartment #2, `upCost` 1.4 and upkeep +15%/level changes). Model scripts: `payback.js` (now `payback2.js`, which reads `BIZ` and `SUP` straight from `index.html`) and `proposals.js`, kept in the balance scratch folder.
+Analysis only, written 2026-10-20 by meridian-balance; tables regenerated 2026-10-21 from the current `BIZ`, `SUP` and formulas in `index.html` (after the street-cart gross ×1.6, SUP #1, apartment #2, `upCost` 1.4 and upkeep +15%/level changes, and street-cart restock cost and wages −30% on 2026-10-21). Model scripts: `payback.js` (now `payback2.js`, which reads `BIZ` and `SUP` straight from `index.html`) and `proposals.js`, kept in the balance scratch folder.
 
 **Units:** 1 real hour = 1 game day, and `profit()` is paid once per real hour. So "20 days" means about 20 real hours of play (or idle time).
 
@@ -19,13 +19,13 @@ Analysis only, written 2026-10-20 by meridian-balance; tables regenerated 2026-1
 
 | Business | Price | Shown profit/day (Lv1) | Stock cost/day | Real profit/day (Lv1) | Payback Lv1 (shown) | Payback Lv1 (real) | Total spend to Lv5 | Real profit/day (Lv5) | Payback to Lv5 | Each upgrade step pays back in (1→2 / 2→3 / 3→4 / 4→5) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| Food cart | $1.6k | $245 | $52 | $193 | 6.4 | 8.1 | $10.4k | $705 | 14.8 | 9.7 / 13.6 / 19.1 / 26.8 |
-| Coffee cart | $1.8k | $272 | $53 | $219 | 6.5 | 8.1 | $11.8k | $803 | 14.7 | 9.7 / 13.6 / 19.0 / 26.6 |
-| Ice cream cart | $1.5k | $228 | $44 | $184 | 6.4 | 7.9 | $9.7k | $668 | 14.6 | 9.6 / 13.5 / 18.8 / 26.4 |
-| Taco truck | $2.5k | $366 | $90 | $276 | 6.8 | 9.0 | $16.7k | $1.0k | 16.1 | 10.5 / 14.7 / 20.5 / 28.8 |
-| Pretzel stand | $1.1k | $184 | $32 | $151 | 6.2 | 7.6 | $7.6k | $543 | 14.1 | 9.4 / 13.1 / 18.3 / 25.7 |
-| Noodle cart | $2.1k | $316 | $62 | $253 | 6.6 | 8.2 | $13.9k | $935 | 14.9 | 9.8 / 13.7 / 19.1 / 26.8 |
-| Smoothie stand | $1.7k | $251 | $48 | $203 | 6.6 | 8.2 | $11.1k | $745 | 14.9 | 9.8 / 13.8 / 19.3 / 27.0 |
+| Food cart | $1.6k | $261 | $36 | $225 | 6.0 | 6.9 | $10.4k | $781 | 13.3 | 9.0 / 12.6 / 17.6 / 24.6 |
+| Coffee cart | $1.8k | $291 | $37 | $254 | 6.1 | 7.0 | $11.8k | $885 | 13.4 | 9.0 / 12.6 / 17.6 / 24.6 |
+| Ice cream cart | $1.5k | $242 | $31 | $211 | 6.0 | 6.9 | $9.7k | $734 | 13.3 | 8.9 / 12.5 / 17.5 / 24.5 |
+| Taco truck | $2.5k | $394 | $63 | $332 | 6.3 | 7.5 | $16.7k | $1.2k | 14.3 | 9.5 / 13.3 / 18.7 / 26.1 |
+| Pretzel stand | $1.1k | $195 | $23 | $172 | 5.9 | 6.7 | $7.6k | $591 | 12.9 | 8.7 / 12.2 / 17.1 / 23.9 |
+| Noodle cart | $2.1k | $339 | $44 | $296 | 6.1 | 7.0 | $13.9k | $1.0k | 13.5 | 9.0 / 12.6 / 17.7 / 24.8 |
+| Smoothie stand | $1.7k | $268 | $34 | $235 | 6.2 | 7.1 | $11.1k | $819 | 13.6 | 9.1 / 12.8 / 17.9 / 25.0 |
 | Coffee kiosk | $6.2k | $372 | $128 | $244 | 16.8 | 25.6 | $41.7k | $1.1k | 36.8 | 22.5 / 31.4 / 44.0 / 61.6 |
 | Corner shop | $18.7k | $946 | $320 | $626 | 19.8 | 29.9 | $125.1k | $3.0k | 41.3 | 24.9 / 34.8 / 48.8 / 68.3 |
 | Restaurant | $57.2k | $2.5k | $768 | $1.8k | 22.5 | 32.1 | $382.3k | $8.8k | 43.5 | 26.1 / 36.6 / 51.2 / 71.7 |
@@ -49,13 +49,13 @@ Analysis only, written 2026-10-20 by meridian-balance; tables regenerated 2026-1
 
 | Business | Price | Shown profit/day (Lv1) | Stock cost/day | Real profit/day (Lv1) | Payback Lv1 (shown) | Payback Lv1 (real) | Total spend to Lv5 | Real profit/day (Lv5) | Payback to Lv5 | Each upgrade step pays back in (1→2 / 2→3 / 3→4 / 4→5) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| Food cart | $3.5k | $440 | $117 | $323 | 8.0 | 10.9 | $23.5k | $1.2k | 19.0 | 12.3 / 17.3 / 24.2 / 33.9 |
-| Coffee cart | $4.0k | $488 | $119 | $369 | 8.2 | 10.8 | $26.6k | $1.4k | 18.8 | 12.2 / 17.1 / 23.9 / 33.5 |
-| Ice cream cart | $3.3k | $410 | $99 | $311 | 8.0 | 10.5 | $21.9k | $1.2k | 18.6 | 12.1 / 17.0 / 23.7 / 33.2 |
-| Taco truck | $5.6k | $653 | $202 | $451 | 8.6 | 12.4 | $37.5k | $1.8k | 20.9 | 13.4 / 18.8 / 26.3 / 36.8 |
-| Pretzel stand | $2.6k | $332 | $73 | $259 | 7.8 | 9.9 | $17.2k | $962 | 17.9 | 11.7 / 16.4 / 23.0 / 32.2 |
-| Noodle cart | $4.7k | $565 | $140 | $425 | 8.3 | 11.0 | $31.3k | $1.6k | 19.1 | 12.3 / 17.2 / 24.1 / 33.8 |
-| Smoothie stand | $3.7k | $450 | $108 | $342 | 8.3 | 10.9 | $25.0k | $1.3k | 19.1 | 12.4 / 17.3 / 24.3 / 34.0 |
+| Food cart | $3.5k | $477 | $82 | $396 | 7.4 | 8.9 | $23.5k | $1.4k | 16.7 | 11.1 / 15.6 / 21.8 / 30.5 |
+| Coffee cart | $4.0k | $531 | $83 | $448 | 7.5 | 8.9 | $26.6k | $1.6k | 16.7 | 11.1 / 15.5 / 21.7 / 30.4 |
+| Ice cream cart | $3.3k | $443 | $69 | $374 | 7.4 | 8.8 | $21.9k | $1.3k | 16.5 | 11.0 / 15.4 / 21.6 / 30.2 |
+| Taco truck | $5.6k | $717 | $141 | $576 | 7.8 | 9.7 | $37.5k | $2.1k | 18.0 | 11.9 / 16.6 / 23.3 / 32.6 |
+| Pretzel stand | $2.6k | $357 | $51 | $306 | 7.2 | 8.4 | $17.2k | $1.1k | 16.1 | 10.8 / 15.1 / 21.1 / 29.5 |
+| Noodle cart | $4.7k | $619 | $98 | $521 | 7.6 | 9.0 | $31.3k | $1.9k | 16.8 | 11.2 / 15.6 / 21.9 / 30.6 |
+| Smoothie stand | $3.7k | $490 | $76 | $414 | 7.6 | 9.0 | $25.0k | $1.5k | 16.9 | 11.3 / 15.8 / 22.1 / 30.9 |
 | Coffee kiosk | $14.0k | $618 | $288 | $330 | 22.7 | 42.5 | $93.8k | $1.9k | 50.7 | 29.5 / 41.3 / 57.9 / 81.0 |
 | Corner shop | $42.1k | $1.5k | $720 | $823 | 27.3 | 51.2 | $281.5k | $5.0k | 56.8 | 32.6 / 45.7 / 64.0 / 89.6 |
 | Restaurant | $128.7k | $4.1k | $1.7k | $2.4k | 31.5 | 54.6 | $860.1k | $14.5k | 59.3 | 33.9 / 47.5 / 66.5 / 93.1 |
@@ -79,13 +79,13 @@ Analysis only, written 2026-10-20 by meridian-balance; tables regenerated 2026-1
 
 | Business | Size 1 | Size 2 | Size 3 | Size 4 | Size 5 |
 |---|---:|---:|---:|---:|---:|
-| Food cart | 7.0 | 8.1 | 8.9 | 10.1 | 10.9 |
-| Coffee cart | 7.0 | 8.1 | 8.9 | 10.1 | 10.8 |
-| Ice cream cart | 6.9 | 7.9 | 8.7 | 9.9 | 10.5 |
-| Taco truck | 7.8 | 9.0 | 10.0 | 11.5 | 12.4 |
-| Pretzel stand | 6.6 | 7.6 | 8.3 | 9.3 | 9.9 |
-| Noodle cart | 7.1 | 8.2 | 9.0 | 10.3 | 11.0 |
-| Smoothie stand | 7.1 | 8.2 | 9.0 | 10.2 | 10.9 |
+| Food cart | 6.1 | 6.9 | 7.5 | 8.4 | 8.9 |
+| Coffee cart | 6.2 | 7.0 | 7.6 | 8.4 | 8.9 |
+| Ice cream cart | 6.1 | 6.9 | 7.5 | 8.3 | 8.8 |
+| Taco truck | 6.6 | 7.5 | 8.2 | 9.2 | 9.7 |
+| Pretzel stand | 5.9 | 6.7 | 7.2 | 8.0 | 8.4 |
+| Noodle cart | 6.2 | 7.0 | 7.6 | 8.5 | 9.0 |
+| Smoothie stand | 6.3 | 7.1 | 7.7 | 8.5 | 9.0 |
 | Coffee kiosk | 20.7 | 25.6 | 29.9 | 37.3 | 42.5 |
 | Corner shop | 24.0 | 29.9 | 35.2 | 44.4 | 51.2 |
 | Restaurant | 25.8 | 32.1 | 37.7 | 47.5 | 54.6 |
@@ -107,7 +107,7 @@ Analysis only, written 2026-10-20 by meridian-balance; tables regenerated 2026-1
 
 ## How it sits overall
 
-Most businesses pay back in **20–45 game days** at Lv1, which is about a day or two of real time. The street carts are the deliberate exception: since their gross was raised 1.6× they pay back in **about 8 game days (8 real hours) in a size-2 city**, 7–11 days across all sizes, which is the intended quick early-game start. Almost nothing breaks the curve: no big asset pays back in under ~30 days, and everything eventually pays back at its base setup. The outliers below are about *relative* value: which choice is clearly better or clearly worse than its neighbours.
+Most businesses pay back in **20–45 game days** at Lv1, which is about a day or two of real time. The street carts are the deliberate exception: since their gross was raised 1.6× (and their restock and wages were cut 30% on 2026-10-21) they pay back in **about 7 game days (7 real hours) in a size-2 city**, 6–10 days across all sizes, which is the intended quick early-game start. Almost nothing breaks the curve: no big asset pays back in under ~30 days, and everything eventually pays back at its base setup. The outliers below are about *relative* value: which choice is clearly better or clearly worse than its neighbours.
 
 ### Casino (just re-priced)
 
