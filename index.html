@@ -390,7 +390,7 @@ function totals(){let inc=0,assets=0;
       let v=isLeased(c,b.k)?cost(b,c)*FIT:cost(b,c);for(let l=1;l<lv;l++)v+=upCost(b,c,l);assets+=v*0.75}}
   const interest=typeof bankPayHr==="function"?Math.round(bankPayHr()):Math.round(S.debt*0.003);
   const upk=typeof indUpkeep==="function"?indUpkeep():0;assets+=typeof indAssets==="function"?indAssets():0;
-  const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof luxIncome==="function"){inc+=luxIncome();assets+=luxAssets()}if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
+  const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof polIncome==="function")inc+=polIncome();if(typeof luxIncome==="function"){inc+=luxIncome();assets+=luxAssets()}if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
   if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity();if(typeof gearAssets==="function")assets+=gearAssets();
   return{inc:inc-(typeof bankPayHr==="function"?0:interest)-upk-rent,interest,upk,rent,nw:S.cash+assets-S.debt}}
 
@@ -446,6 +446,8 @@ function drawNow(){applyView();
     else{ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.fill()}}
   if(typeof drawNight==="function"){drawTraffic(ctx,C)}
   if(typeof drawStorms==="function")drawStorms(ctx,C);
+  if(S.pol&&(S.pol.r>=0||S.pol.ctrl&&Object.keys(S.pol.ctrl).length)){const lead=S.pol.r>=0?S.pol.c:null;for(const c of CITIES){const mine=c.country===lead,inf=S.pol.ctrl&&S.pol.ctrl[c.country];if(!mine&&!inf||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]);
+    ctx.beginPath();ctx.arc(x,y,9,0,7);ctx.strokeStyle=mine?"#f59e0b":"#fb923c";ctx.globalAlpha=.85;ctx.lineWidth=mine?2.2:1.6;ctx.setLineDash(mine?[]:[3,2]);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}}
   {const tp=typeof tripPos==="function"?tripPos(Date.now()):null,pl=tp||S.loc;if(pl&&visible(pl.lon,pl.lat)){const [px,py]=proj([pl.lon,pl.lat]);
     if(tp&&!S.trip.local){ctx.beginPath();path({type:"LineString",coordinates:[[S.trip.from.lon,S.trip.from.lat],[S.trip.to.lon,S.trip.to.lat]]});ctx.setLineDash([2,5]);ctx.strokeStyle=C.ink;ctx.globalAlpha=.6;ctx.lineWidth=1.5;ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}
     ctx.beginPath();ctx.arc(px,py,7,0,7);ctx.fillStyle="#be185d";ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#fff";ctx.stroke();
@@ -1815,7 +1817,7 @@ function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
-  if(n>0){for(let i=0;i<n-1;i++){simDay(true);if(i<48)govHour(true);bankHour(true);cardCover()}govHour(false);bankHour(false);cardCover();S.debt=bankDebt();S.hour=h;endDay()}
+  if(n>0){for(let i=0;i<n-1;i++){simDay(true);if(i<48){govHour(true);if(typeof polHour==="function")polHour(true)}bankHour(true);cardCover()}govHour(false);if(typeof polHour==="function")polHour(false);bankHour(false);cardCover();S.debt=bankDebt();S.hour=h;endDay()}
   return g+sold}
 /* ---------- governments & laws ---------- */
 const PARTIES={
@@ -2772,6 +2774,78 @@ function careerHtml(){const C=career(),r=C.rank,j=JK[S.job.k],c=CITIES[S.job.cit
   if(!top){h+=`<div class="ph-sub" style="margin-top:10px">Tasks</div><div class="ph-rows">`;for(const t of C.tasks){const T=CAREER.T[t.k];h+=`<div><span>${T.n(t.h)}</span><b>${t.k==="study"?(t.v?"done":"—"):Math.min(t.h,t.v).toFixed(1)+"/"+t.h} · +${T.p}%</b></div>`}
     h+=`</div><button class="buy" data-ph="promo" ${why?"disabled":""} style="width:100%;margin-top:8px;background:#1e3a8a!important;color:#fff;border-color:#3b82f6">${why||`Request promotion (${Math.round(C.ch)}%)`}</button>`}
   return h}
+/* ---------- player politics: run for office, lead a country, extend influence over others ---------- */
+const GOVCFG={
+  offices:[ // nw = minimum net worth, cost = campaign cost per unit of country size, win = base election chance, pay = salary per unit of size per hour
+    {n:"Councillor",nw:1e6,cost:25e3,win:.6,pay:150},
+    {n:"Minister",nw:15e6,cost:250e3,win:.45,pay:1200},
+    {n:"Leader",nw:75e6,cost:1.5e6,win:.35,pay:6000}],
+  minHold:1,        // days in an office before running for the next one
+  loseCd:3,         // days before you can run again after losing
+  apprStart:60,apprDrift:-.35,apprNoise:2,apprJail:-3,apprOut:15, // approval: start, hourly drift, random swing, per hour in prison, removed below this
+  prCost:.04,prGain:8, // PR campaign: share of the office's campaign cost, approval gained
+  taxCd:1,taxAppr:[3,1,0,-3,-6], // leader tax change cooldown (days) and one-off approval change per tax band (10%..30%)
+  annexCost:4e6,annexStep:.3, // influence cost per unit of target size; +30% per country already controlled
+  annexWin:.5,annexStepWin:-.04,annexCd:2,annexFailAppr:-12,annexAppr:4,
+  share:3000,       // income per unit of controlled country size per hour
+  loyStart:60,loyDrift:-.4,loyLowAppr:-1.5,loyLose:12,loyCost:.015,loyGain:15, // loyalty of controlled countries
+};
+function pol(){const p=S.pol=S.pol||{};if(p.r==null)p.r=-1;if(!p.c)p.c=null;if(p.appr==null)p.appr=GOVCFG.apprStart;if(!p.since)p.since=0;if(!p.cd)p.cd=0;if(!p.taxCd)p.taxCd=0;if(!p.acd)p.acd=0;if(!p.ctrl||typeof p.ctrl!=="object")p.ctrl={};if(p.tax==null)p.tax=null;return p}
+const polHere=()=>CITIES[(S.loc||{city:0}).city].country;
+const polCost=(r,n)=>Math.round(GOVCFG.offices[r].cost*ctyScale(n));
+const polLeader=()=>{const p=pol();return p.r===GOVCFG.offices.length-1};
+const annexCost=n=>Math.round(GOVCFG.annexCost*ctyScale(n)*(1+GOVCFG.annexStep*Object.keys(pol().ctrl).length));
+const annexChance=()=>{const p=pol(),C=GOVCFG;return Math.max(.1,Math.min(.85,C.annexWin+C.annexStepWin*Object.keys(p.ctrl).length+(p.appr-50)/200))};
+function polIncome(){const p=S.pol;if(!p||p.r==null||p.r<0||!p.c)return 0;let v=GOVCFG.offices[p.r].pay*ctyScale(p.c);for(const n in p.ctrl)v+=GOVCFG.share*ctyScale(n);return v}
+function logPol(m,good){S.log.unshift("Government: "+m);S.log=S.log.slice(0,3);if(typeof toast==="function")toast(m)}
+function polChance(r){const p=pol(),{nw}=totals(),O=GOVCFG.offices[r];return Math.max(.05,Math.min(.9,O.win+Math.min(.15,Math.log10(Math.max(1,nw/O.nw))*.08)+(p.r>=0?(p.appr-50)/250:0)))}
+function polRun(){const p=pol(),C=GOVCFG,now=Date.now(),r=p.r+1,O=C.offices[r];if(!O)return;
+  const n=p.r>=0?p.c:polHere();
+  if(typeof jailed==="function"&&jailed())return toast("You can't campaign from prison");
+  if(S.trip)return toast("Finish your trip first");
+  if(polHere()!==n)return toast(`You must be in ${n} to campaign`);
+  if(now<p.cd)return toast("Campaign cooldown: "+fmtDur(p.cd-now));
+  if(p.r>=0&&now-p.since<C.minHold*DAYMS)return toast("Serve a little longer first: "+fmtDur(p.since+C.minHold*DAYMS-now));
+  const {nw}=totals(),cost=polCost(r,n);if(nw<O.nw)return toast(`Need net worth ${fmt(O.nw)}`);if(S.cash<cost)return toast(`Campaign costs ${fmt(cost)}`);
+  const ch=polChance(r);S.cash-=cost;
+  if(Math.random()<ch){p.r=r;p.c=n;p.since=now;p.appr=Math.max(p.r>0?p.appr:0,C.apprStart);logPol(`You won! You are now ${O.n} of ${n}`);if(typeof confetti==="function")confetti(60,innerWidth/2,innerHeight/3)}
+  else{p.cd=now+C.loseCd*DAYMS;if(p.r>=0)p.appr=Math.max(0,p.appr-5);logPol(`You lost the race for ${O.n} of ${n} (${Math.round(ch*100)}% chance)`)}}
+function polPR(){const p=pol();if(p.r<0)return;const c=Math.round(polCost(p.r,p.c)*GOVCFG.prCost);if(S.cash<c)return toast(`PR campaign costs ${fmt(c)}`);if(p.appr>=95)return toast("Approval is already maxed");S.cash-=c;p.appr=Math.min(95,p.appr+GOVCFG.prGain);toast(`Approval +${GOVCFG.prGain}`)}
+function polResign(){const p=pol();if(p.r<0)return;logPol(`You stepped down as ${GOVCFG.offices[p.r].n} of ${p.c}`);polFall()}
+function polFall(){const p=pol();if(p.r===GOVCFG.offices.length-1){for(const n in p.ctrl)p.ctrl[n].loy=Math.min(p.ctrl[n].loy,40)}p.r=-1;p.tax=null;p.cd=Date.now()+GOVCFG.loseCd*DAYMS}
+function polSetTax(t){const p=pol(),C=GOVCFG,now=Date.now();if(!polLeader())return;if(now<p.taxCd)return toast("Tax change cooldown: "+fmtDur(p.taxCd-now));t=Math.max(0,Math.min(4,t));const g=gov(p.c);if(g.laws.tax===t)return;
+  g.laws.tax=t;p.tax=t;p.taxCd=now+C.taxCd*DAYMS;p.appr=Math.max(0,Math.min(95,p.appr+C.taxAppr[t]));logPol(`${p.c} corporate tax set to ${LAWS.tax.v[t]}`)}
+function polAnnex(n){const p=pol(),C=GOVCFG,now=Date.now();if(!polLeader()||n===p.c||p.ctrl[n]||!COUNTRIES.includes(n))return;
+  if(now<p.acd)return toast("Influence cooldown: "+fmtDur(p.acd-now));const cost=annexCost(n);if(S.cash<cost)return toast(`Needs ${fmt(cost)}`);
+  const ch=annexChance();S.cash-=cost;p.acd=now+C.annexCd*DAYMS;
+  if(Math.random()<ch){p.ctrl[n]={since:now,loy:C.loyStart};p.appr=Math.min(95,p.appr+C.annexAppr);logPol(`${n} joined your sphere of influence`);if(typeof confetti==="function")confetti(80,innerWidth/2,innerHeight/3)}
+  else{p.appr=Math.max(0,p.appr+C.annexFailAppr);logPol(`${n} rejected your influence bid (${Math.round(ch*100)}% chance)`)}}
+function polLoyal(n){const p=pol(),c=p.ctrl[n];if(!c)return;const v=Math.round(annexCost(n)*GOVCFG.loyCost);if(S.cash<v)return toast(`Aid package costs ${fmt(v)}`);if(c.loy>=100)return toast("Loyalty is maxed");S.cash-=v;c.loy=Math.min(100,c.loy+GOVCFG.loyGain);toast(`${n} loyalty +${GOVCFG.loyGain}`)}
+function polRelease(n){const p=pol();if(p.ctrl[n]){delete p.ctrl[n];logPol(`You released ${n}`)}}
+function polHour(quiet){const p=S.pol;if(!p)return;pol();const C=GOVCFG;
+  if(p.r>=0){p.appr=Math.max(0,Math.min(95,p.appr+C.apprDrift+(Math.random()-.5)*C.apprNoise+(typeof jailed==="function"&&jailed()?C.apprJail:0)));
+    if(p.appr<C.apprOut){const o=C.offices[p.r].n;polFall();if(!quiet)logPol(`Approval collapsed: you were removed as ${o}`);else S.log.unshift(`Government: removed from office`)}
+    else if(polLeader()&&p.tax!=null){const g=gov(p.c);g.laws.tax=p.tax}}
+  for(const n in p.ctrl){const c=p.ctrl[n];c.loy=Math.max(0,Math.min(100,c.loy+C.loyDrift+(!polLeader()||p.appr<35?C.loyLowAppr:0)));
+    if(c.loy<C.loyLose&&Math.random()<.25){delete p.ctrl[n];if(!quiet)logPol(`${n} broke away from your influence`)}}}
+function govApp(){const p=pol(),C=GOVCFG,now=Date.now(),{nw}=totals(),here=polHere(),O=C.offices,lead=polLeader();
+  const btn=(a,t,dis,x,bg)=>`<button class="buy" data-ph="${a}"${x!=null?` data-k="${x}"`:""} style="width:100%;margin-top:6px;color:#fff;background:${bg||"#7c2d12"}!important;border-color:#f59e0b" ${dis?"disabled":""}>${t}</button>`;
+  let h=p.r>=0?`<div class="ph-big" style="font-size:20px">${O[p.r].n}</div><div class="ph-sub">${p.c}</div>
+    <div class="ph-rows"><div><span>Approval</span><b style="color:${p.appr<30?"#f87171":p.appr<50?"#fbbf24":"#4ade80"}">${Math.round(p.appr)}%</b></div><div><span>Salary</span><b>${fmt(O[p.r].pay*ctyScale(p.c))}/hr</b></div><div><span>Removed below</span><b>${C.apprOut}%</b></div>${p.ctrl&&Object.keys(p.ctrl).length?`<div><span>Influence income</span><b>${fmt(polIncome()-O[p.r].pay*ctyScale(p.c))}/hr</b></div>`:""}</div>
+    ${btn("polpr",`PR campaign · ${fmt(Math.round(polCost(p.r,p.c)*C.prCost))} (+${C.prGain}%)`,p.appr>=95)}`
+    :`<div class="ph-big" style="font-size:20px">Private citizen</div><div class="ph-sub">Run for office in ${here}</div>`;
+  const r=p.r+1,n=p.r>=0?p.c:here;
+  if(O[r]){const cost=polCost(r,n),cd=Math.max(0,p.cd-now),hold=p.r>=0?Math.max(0,p.since+C.minHold*DAYMS-now):0;
+    h+=`<div class="ph-rows" style="margin-top:10px"><div><span>Next office</span><b>${O[r].n} of ${n}</b></div><div><span>Net worth needed</span><b style="color:${nw>=O[r].nw?"#4ade80":"#f87171"}">${fmt(O[r].nw)}</b></div><div><span>Campaign</span><b>${fmt(cost)}</b></div><div><span>Win chance</span><b>${Math.round(polChance(r)*100)}%</b></div>${cd?`<div><span>Cooldown</span><b>${fmtDur(cd)}</b></div>`:""}${hold?`<div><span>Eligible in</span><b>${fmtDur(hold)}</b></div>`:""}</div>
+    ${btn("polrun",`Run for ${O[r].n}`,cd||hold||nw<O[r].nw||S.cash<cost||here!==n)}${here!==n?`<p class="ph-sub">Travel to ${n} to campaign.</p>`:""}`}
+  if(lead){const g=gov(p.c),tc=Math.max(0,p.taxCd-now);
+    h+=`<div class="ph-sub" style="margin-top:12px">Corporate tax in ${p.c}${tc?" · change in "+fmtDur(tc):""}</div><div class="ph-seg">${LAWS.tax.v.map((v,i)=>`<button data-ph="poltax" data-k="${i}" aria-pressed="${g.laws.tax===i}" ${tc?"disabled":""}>${v}</button>`).join("")}</div>`;
+    const acd=Math.max(0,p.acd-now),ch=annexChance(),list=COUNTRIES.filter(x=>x!==p.c&&!p.ctrl[x]).sort((a,b)=>ctyScale(a)-ctyScale(b));
+    h+=`<div class="ph-sub" style="margin-top:12px">Extend influence · ${Math.round(ch*100)}% success${acd?" · ready in "+fmtDur(acd):""}</div><div class="ph-rows">${list.map(x=>{const c=annexCost(x);return `<div><span>${x}<br><small style="opacity:.7">+${fmt(C.share*ctyScale(x))}/hr</small></span><button class="buy" data-ph="polannex" data-k="${x}" style="color:#fff;background:#7c2d12!important;border-color:#f59e0b;padding:4px 8px" ${acd||S.cash<c?"disabled":""}>${fmt(c)}</button></div>`}).join("")}</div>`}
+  const ck=Object.keys(p.ctrl);if(ck.length)h+=`<div class="ph-sub" style="margin-top:12px">Your sphere of influence</div><div class="ph-rows">${ck.map(x=>{const c=p.ctrl[x];return `<div><span>${x} · loyalty <b style="color:${c.loy<25?"#f87171":"#4ade80"}">${Math.round(c.loy)}</b></span><span><button class="buy" data-ph="polloy" data-k="${x}" style="color:#fff;background:#14532d!important;border-color:#22c55e;padding:4px 8px">Aid ${fmt(Math.round(annexCost(x)*C.loyCost))}</button> <button class="buy" data-ph="polrel" data-k="${x}" style="color:#fff;background:#374151!important;padding:4px 8px">Release</button></span></div>`}).join("")}</div>`;
+  if(p.r>=0)h+=btn("polquit","Resign",0,null,"#374151");
+  h+=`<p class="ph-sub" style="margin-top:8px">Ladder: ${O.map(o=>o.n).join(" → ")}. Approval drifts down; it falls faster in prison. Leaders set tax and can bring other countries into their sphere for a share of their economy. Countries with low loyalty break away.</p>`;
+  return h}
 let saveT=0;
 setInterval(()=>{if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -2791,7 +2865,7 @@ try{Object.assign(PH,JSON.parse(localStorage.getItem("meridian-phone")||"{}"),{e
 const phSave=()=>{try{localStorage.setItem("meridian-phone",JSON.stringify({open:PH.open,x:PH.x,y:PH.y}))}catch(e){}};
 let lastLog="";
 function trackNews(){const l=S.log[0];if(l&&l!==lastLog){lastLog=l;if(!S.news.length||S.news[0].t!==l){S.news.unshift({t:l,at:Date.now()});S.news=S.news.slice(0,40)}}}
-const ICO={shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
+const ICO={govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M3 10l9-6 9 6z"/>`,shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
  wallet:'<path d="M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z M3 7l12-3v3 M16 13.5h2"/>',
  news:'<path d="M4 5h13v14H6a2 2 0 0 1-2-2z M17 9h3v8a2 2 0 0 1-2 2 M7 9h7 M7 12h7 M7 15h5"/>',
  needs:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -2801,7 +2875,7 @@ const ICO={shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks
  market:'<path d="M4 19V9 M10 19V5 M16 19v-7 M22 19H2"/>',
  travel:'<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["wallet","Wallet","#0f766e"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"]];
+const APPS=[["wallet","Wallet","#0f766e"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 function phPlace(){const el=PH.el,w=el.offsetWidth,h=el.offsetHeight,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
@@ -2822,6 +2896,7 @@ function appHtml(k){const {inc,nw}=totals();
   if(k==="stocks")return mktApp();
   if(k==="shop")return shopApp();
   if(k==="obank")return obApp();
+  if(k==="govt")return govApp();
   if(k==="gig"){const g=gigState(),v=gigPay();return `<div class="ph-sub">${jailed()?"Prison labour":GIGS[g.i].n} · ${CITIES[(S.loc||{city:0}).city].name}</div>
     ${rideHtml()}
     <button data-ph="gigtap" style="width:100%;aspect-ratio:1.4;border:0;border-radius:18px;background:#b45309;color:#fff;font:inherit;font-size:22px;font-weight:700;cursor:pointer;margin:8px 0;touch-action:manipulation">${GIGS[g.i].v}<br><span style="font-size:15px;font-weight:600;opacity:.9">+${fmtc(v)}</span></button>
@@ -2851,6 +2926,7 @@ const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);ret
 PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;
   if(a==="unfold"){PH.open=true;PH.app=null}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="app"){PH.app=b.dataset.k}
   else if(a==="shoptab"){shopTab=b.dataset.k}
+  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
   else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
