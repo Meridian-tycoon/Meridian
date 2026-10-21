@@ -580,7 +580,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
     <div class="d">${b.d} ${lock?"":`<b style="color:${p<0?"var(--bad)":"var(--ink)"}">${fmt(p)}</b>/hr${pay?` · pays back in ${pay<48?pay+" h":(pay/24).toFixed(1)+" days"}`:p>0?" · never pays back after stock costs":" · loses money here"}`}${blk?`<br><b style="color:var(--bad)">${lock?"Locked: ":""}${blk}.</b>`:""}${!lock&&!blk&&bizRent(b,c)>pn?`<br><small style="color:var(--bad)">⚠ Renting: rent exceeds profit after stock costs</small>`:""}</div>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-buy="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k||blk?"disabled":""}>${lock?"Locked":"Buy "+fmt(k)}</button>${lock?"":`<button class="buy up" data-rent="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k*FIT||blk?"disabled":""} ${!blk&&bizRent(b,c)>pn?'title="Rent exceeds profit after stock costs" style="border-color:var(--bust,#c0392b)"':""}>Rent · ${fmt(k*FIT)} + ${fmt(bizRent(b,c))}/hr${!blk&&bizRent(b,c)>pn?" ⚠":""}</button>`}</span></div>`}
   if(!avail.length)h+=`<p class="d" style="color:var(--muted);padding:10px 0">You own every business type in ${c.name}.</p>`;
-  h+=`</div>`+cbHtml(c)+propsHtml(c)+`<div class="foot">${mine.length?`<button id="sellall">Sell everything here (75%)</button>`:""}</div>`;
+  h+=`</div>`+cbHtml(c)+propsHtml(c)+popHtml(c)+`<div class="foot">${mine.length?`<button id="sellall">Sell everything here (75%)</button>`:""}</div>`;
   sheet.innerHTML=h;
   $("#cls").onclick=closeSheet;
   sheet.querySelectorAll("[data-buy]").forEach(btn=>btn.onclick=()=>buy(c,btn.dataset.buy));
@@ -1784,7 +1784,7 @@ function renderPortfolio(){const{inc,nw}=totals();
     <div class="d">${n} business${n>1?"es":""} · <b>${fmt(cityProfit(c))}</b>/hr</div><span style="font-family:var(--mono);color:var(--muted)">›</span></div>`}
   h+=`</div><div class="sec">Find a city</div><input id="q" type="search" placeholder="Tokyo, Lagos, Montréal…" value="${query}" autocomplete="off"><div class="list" id="qres"></div>`;
   const board=[{n:"You",col:"var(--own)",nw,me:1},...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:r.nw,c:r.cities.length}))].sort((a,b)=>b.nw-a.nw);
-  h+=logiHtml();h+=govSummary();
+  h+=logiHtml();h+=govSummary();h+=popWorldHtml();
   h+=`<div class="sec">Leaderboard</div><div class="list">`+board.map((b,i)=>`<div class="row"><div class="n" style="${b.me?"color:var(--own)":""}">${i+1}. <span style="display:inline-block;width:9px;height:9px;background:${b.col};margin:0 6px 0 2px"></span>${b.n}</div>
     <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
   h+=bankHtml();
@@ -1892,7 +1892,7 @@ const hourOf=t=>Math.floor(t/DAYMS);
 /* business sales trickle in every second; accrue() settles any remainder via the same clock, so nothing is counted twice */
 function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=totals().inc*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
 function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
-  const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);if(typeof careerTick==="function")careerTick(dt/DAYMS);
+  const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);if(typeof popTick==="function")popTick(dt/DAYMS);if(typeof careerTick==="function")careerTick(dt/DAYMS);
   if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runFleet(now);const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
@@ -3072,8 +3072,8 @@ function wpnFire(k,id){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id],now=Dat
   m.wpn[k]--;const kill=w.enemyMax*W.enemy;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.min(100,w.front+W.front);w.weariness=Math.min(100,w.weariness+W.wear);
   p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const n in p.ctrl)p.ctrl[n].loy=Math.max(0,p.ctrl[n].loy+W.loy);for(const n in m.occ)m.occ[n].resist=Math.min(100,m.occ[n].resist+W.resist);
   m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city,from:p.c});
-  const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length;
-  const t=`${W.ico} ${W.n} hit ${c.name}, ${c.country}: enemy −${Math.round(kill)}, front +${W.front}${W.appr?`, approval ${W.appr}`:""}${W.loy?`, allies' loyalty ${W.loy}`:""}`;logPol(t);milLog(m,t);
+  const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,dead=popStrike(k,c);
+  const t=`${W.ico} ${W.n} hit ${c.name}, ${c.country}: ${fmtPop(dead)} killed, enemy −${Math.round(kill)}, front +${W.front}${W.appr?`, approval ${W.appr}`:""}${W.loy?`, allies' loyalty ${W.loy}`:""}`;logPol(t);milLog(m,t);
   toast(t+(mine?` · your businesses in ${c.name} are hit too`:""));
   if(w.front>=100||w.enemyStr<w.enemyMax*.05)milEndWar(c.country,"win");
   if(typeof PH!=="undefined"&&PH.open){PH.open=false}rotateTo(c,Math.max(V.k,2.5));wpnAnim()}
@@ -3735,6 +3735,39 @@ window.addEventListener("keyup",e=>{if(OFC.on)OFC.keys[e.key.toLowerCase()]=0},t
 window.addEventListener("blur",()=>{OFC.keys={}});
 window.addEventListener("resize",()=>{if(OFC.on)ofResize()});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-ofc]");if(!b||!sel)return;const hc=hqCity(sel.country);if(hc)ofEnter(hc)});
+/* ---------- population: real-world figures per country (UN WPP 2024 approx): [people, births per 1000/yr, deaths per 1000/yr] ---------- */
+const POPCFG={c:{"Argentina":[45.7e6,12.5,7.6],"Australia":[26.7e6,11.4,6.6],"Brazil":[211.1e6,12.3,7.1],"Canada":[39.7e6,9.6,8.0],"Chile":[19.7e6,10.6,6.6],"China":[1409e6,6.4,7.9],"Colombia":[52.9e6,12.8,6.0],"DR Congo":[109.3e6,40.4,8.6],"Egypt":[116.5e6,21.5,5.6],"France":[66.5e6,9.9,9.6],"Germany":[84.6e6,8.3,12.2],"Iceland":[0.39e6,11.8,6.6],"India":[1450.9e6,16.1,6.9],"Indonesia":[283.5e6,15.5,6.9],"Iraq":[46.0e6,25.8,4.1],"Italy":[59.0e6,6.4,11.2],"Japan":[123.8e6,5.9,12.7],"Kenya":[56.4e6,26.1,5.7],"Mexico":[130.9e6,14.4,6.7],"Mongolia":[3.5e6,20.9,6.1],"Morocco":[38.1e6,16.9,5.4],"Netherlands":[18.2e6,9.4,9.8],"New Zealand":[5.2e6,11.4,6.9],"Nigeria":[232.7e6,33.5,12.4],"Peru":[34.2e6,15.5,6.3],"Philippines":[115.8e6,17.9,6.4],"Poland":[38.5e6,7.6,11.4],"Saudi Arabia":[33.9e6,15.5,3.5],"Singapore":[5.9e6,8.0,5.9],"South Africa":[64.0e6,18.9,9.5],"South Korea":[51.7e6,4.6,7.1],"Spain":[47.9e6,6.9,9.2],"Sweden":[10.6e6,9.5,8.9],"Thailand":[71.7e6,7.5,8.6],"Türkiye":[87.5e6,12.8,6.0],"UAE":[11.0e6,9.6,1.8],"UK":[69.1e6,9.8,9.4],"USA":[345.4e6,10.8,9.1]},
+  def:[10e6,15,7.5], split:[.63,.29,.08],  // share of normal deaths: natural/old age, sickness, accidents
+  war:2e-5, occ:3e-6,                       // war deaths per person per day (×intensity), occupation deaths per person per day at 100 resistance
+  stormSick:.6, stormAcc:2,                 // extra sickness / accident deaths in a country while a storm sits on one of its cities
+  cityPop:[0,4e5,1.2e6,3.5e6,8e6,18e6], strike:{msl:.0004,gas:.02,nuke:.15}}; // people hit per strike, as a share of the struck city's population
+const POPCAUSE=[["nat","Natural / old age"],["sick","Sickness"],["acc","Accidents"],["war","War"]];
+function popOf(n){S.popn=S.popn&&typeof S.popn==="object"?S.popn:{};let p=S.popn[n];const R=POPCFG.c[n]||POPCFG.def;
+  if(!p||typeof p!=="object"||!(p.p>0))p=S.popn[n]={p:R[0],b:0,d:0,bt:0,dt:0,c:[0,0,0,0],ct:[0,0,0,0],day:S.day||0,fb:0,fd:[0,0,0,0]};
+  if(!Array.isArray(p.c))p.c=[0,0,0,0];if(!Array.isArray(p.ct))p.ct=[0,0,0,0];if(!Array.isArray(p.fd))p.fd=[0,0,0,0];for(const k of ["b","d","bt","dt","fb"])if(!(p[k]>=0))p[k]=0;return p}
+function popKill(n,i,x){const p=popOf(n);x=Math.min(Math.max(0,x),p.p);if(p.day!==(S.day||0)){p.day=S.day||0;p.d=0;p.b=0;p.ct=[0,0,0,0]}
+  p.fd[i]+=x;const w=Math.floor(p.fd[i]);p.fd[i]-=w;p.p-=w;p.d+=w;p.dt+=w;p.c[i]+=w;p.ct[i]+=w;return w}
+// days = game days elapsed (real hours); one call covers the whole gap, so offline catch-up is constant cost
+function popTick(days){if(!(days>0))return;days=Math.min(days,48);const now=Date.now(),M=S.pol&&S.pol.mil,C=POPCFG,today=S.day||0;
+  const storm={};if(typeof stormAt==="function")try{for(const c of CITIES)if(stormAt(c,now))storm[c.country]=1}catch(e){}
+  for(const n of COUNTRIES){const p=popOf(n),R=C.c[n]||C.def;
+    if(p.day!==today){p.day=today;p.b=0;p.d=0;p.ct=[0,0,0,0]}
+    const yr=days/365,base=p.p*R[2]/1000*yr,s=storm[n]?1:0;
+    p.fb+=p.p*R[1]/1000*yr;const bw=Math.floor(p.fb);p.fb-=bw;p.p+=bw;p.b+=bw;p.bt+=bw;
+    popKill(n,0,base*C.split[0]);popKill(n,1,base*C.split[1]*(1+s*C.stormSick));popKill(n,2,base*C.split[2]*(1+s*C.stormAcc));
+    if(M){const w=M.wars&&M.wars[n],o=M.occ&&M.occ[n];
+      if(w)popKill(n,3,p.p*C.war*days*(.5+(w.enemyMax>0?w.enemyStr/w.enemyMax:0))*(1+(w.weariness||0)/100));
+      if(o)popKill(n,3,p.p*C.occ*days*(o.resist||0)/100)}}}
+function popStrike(k,c){const f=POPCFG.strike[k];if(!f||!c)return 0;return popKill(c.country,3,POPCFG.cityPop[c.size]*f*(.8+Math.random()*.4))}
+const fmtPop=n=>{n=Math.round(n);const a=Math.abs(n);if(a>=1e9)return (n/1e9).toFixed(2)+"B";if(a>=1e6)return (n/1e6).toFixed(a>=1e8?0:1)+"M";if(a>=1e4)return (n/1e3).toFixed(1)+"K";return n.toLocaleString()};
+function popHtml(c){const n=c.country,p=popOf(n),R=POPCFG.c[n]||POPCFG.def,M=S.pol&&S.pol.mil,war=M&&(M.wars&&M.wars[n]?"at war":M.occ&&M.occ[n]?"under occupation":"");
+  return `<div class="sec">Population of ${n}</div><div class="meta"><div><span>People </span>${fmtPop(p.p)}</div><div><span>Births today </span>${fmtPop(p.b)}</div><div><span>Deaths today </span>${fmtPop(p.d)}</div></div>
+  <div class="list">${POPCAUSE.map(([k,t],i)=>`<div class="row"><div class="n">${t}${i===3&&war?` <span class="tag bust">${war}</span>`:""}</div><div class="d">${fmtPop(p.ct[i])} today · ${fmtPop(p.c[i])} in total</div></div>`).join("")}
+  <p class="d" style="font-size:12px;color:var(--muted);margin:4px 0">${R[1]} births and ${R[2]} deaths per 1,000 people a year. Since tracking began: ${fmtPop(p.bt)} born, ${fmtPop(p.dt)} died.</p></div>`}
+function popWorldHtml(){let P=0,b=0,d=0,bt=0,dt=0;const ct=[0,0,0,0];for(const n of COUNTRIES){const p=popOf(n);if(p.day!==(S.day||0))continue;P+=p.p;b+=p.b;d+=p.d;p.ct.forEach((v,i)=>ct[i]+=v)}
+  for(const n of COUNTRIES){const p=popOf(n);if(p.day!==(S.day||0))P+=p.p;bt+=p.bt;dt+=p.dt}
+  return `<div class="sec">World population</div><div class="meta"><div><span>People </span>${fmtPop(P)}</div><div><span>Born today </span>${fmtPop(b)}</div><div><span>Died today </span>${fmtPop(d)}</div></div>
+  <p class="d" style="font-size:12px;color:var(--muted);margin:4px 0">Across ${COUNTRIES.length} countries. Deaths today: ${POPCAUSE.map(([k,t],i)=>`${t.split(" /")[0].toLowerCase()} ${fmtPop(ct[i])}`).join(" · ")}. All-time: ${fmtPop(bt)} born, ${fmtPop(dt)} died.</p>`}
 let saveT=0;
 setInterval(()=>{if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
