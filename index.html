@@ -892,20 +892,19 @@ const EK=Object.fromEntries(EDU.map(e=>[e.k,e]));EK.clean={n:"Clean record (2 we
 const JREQ={clerk:["hs"],teller:["hs"],callcentre:["hs"],supervisor:["hs"],realtor:["hs"],cook:["food"],chef:["food","hs"],trucker:["cdl"],
   electrician:["trade"],dispatcher:["hs","clean"],corrections:["hs","seclic","clean"],paramedic:["para"],firefighter:["fire","clean"],police:["police","clean"],detective:["police","clean"],lawyer:["jd","clean"],security:["seclic","clean"],mechanic:["trade"],teacher:["bed"],nurse:["bsn"],accountant:["bba"],manager:["bba"],engineer:["bcs"],datasci:["msc"],banker:["mba"],director:["mba"],doctor:["md"],pilot:["atpl"]};
 S.edu=S.edu||{have:{},cur:null};
+if(S.edu.cur){S.edu.have[S.edu.cur.k]=Date.now();S.edu.cur=null}
 const hasEdu=k=>k==="clean"?!(S.rec||[]).some(r=>(Date.now()-r.t)/DAYMS<336):!!S.edu.have[k];
 const missing=j=>(JREQ[j.k]||[]).filter(k=>!hasEdu(k));
 const eduCost=(e,c)=>Math.round(e.c*COL(c));
 const uniCity=c=>c.size>=3;
-function runEdu(){const e=S.edu.cur;if(!e||Date.now()<e.end)return;S.edu.have[e.k]=Date.now();S.edu.cur=null;S.log.unshift(`Graduated: ${EK[e.k].n}`);S.log=S.log.slice(0,3);toast(`You earned your ${EK[e.k].n}!`)}
+function runEdu(){const e=S.edu.cur;if(!e)return;S.edu.have[e.k]=Date.now();S.edu.cur=null}
 function eduHtml(c){const E=S.edu;let h=`<div class="sec">Education</div><div class="list">`;
-  if(E.cur){const e=EK[E.cur.k],pct=Math.min(100,(1-(E.cur.end-Date.now())/(e.h*DAYMS))*100);
-    h+=`<div class="row"><div class="n">Studying: ${e.n}</div><div class="d">Done in ${fmtDur(E.cur.end-Date.now())}. You can keep working while you study.<div style="height:6px;background:var(--line);border-radius:3px;margin-top:6px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--own)"></div></div></div><button class="buy up" data-life="drop">Drop out</button></div>`}
   const got=EDU.filter(e=>hasEdu(e.k));if(got.length)h+=`<div class="row"><div class="n">Your credentials</div><div class="d">${got.map(e=>e.n).join(" · ")}</div><span></span></div>`;
   const here=S.loc&&S.loc.city===c.id&&!S.trip;
-  for(const e of EDU){if(hasEdu(e.k)||(E.cur&&E.cur.k===e.k))continue;const pre=e.req&&!hasEdu(e.req),noUni=e.uni&&!uniCity(c),p=eduCost(e,c);
-    const why=pre?`Needs ${EK[e.req].n}.`:noUni?"No university here (size 3+ cities).":!here?`Be in ${c.name} to enroll.`:E.cur?"Finish your current program first.":"";
-    h+=`<div class="row" style="${pre||noUni?"opacity:.55":""}"><div class="n">${e.n} <span class="tag" style="border:1px solid var(--line)">${e.t}</span></div><div class="d">${e.d} ${e.h} h · <b>${fmt(p)}</b>${why?` · ${why}`:""}</div>
-      <button class="buy up" data-life="enroll" data-e="${e.k}" ${why||S.cash<p?"disabled":""}>Enroll</button></div>`}
+  for(const e of EDU){if(hasEdu(e.k))continue;const pre=e.req&&!hasEdu(e.req),noUni=e.uni&&!uniCity(c),p=eduCost(e,c);
+    const why=pre?`Needs ${EK[e.req].n}.`:noUni?"No university here (size 3+ cities).":!here?`Be in ${c.name} to buy.`:"";
+    h+=`<div class="row" style="${pre||noUni?"opacity:.55":""}"><div class="n">${e.n} <span class="tag" style="border:1px solid var(--line)">${e.t}</span></div><div class="d">${e.d} Instant · <b>${fmt(p)}</b>${why?` · ${why}`:""}</div>
+      <button class="buy up" data-life="enroll" data-e="${e.k}" ${why||S.cash<p?"disabled":""}>Buy</button></div>`}
   return h+`</div>`}
 const JK=Object.fromEntries(JOBS.map(j=>[j.k,j]));
 const HOMES=[
@@ -982,8 +981,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-life]");if(!b
   else if(a==="buyhome"){const H=HK[S.home.k],p=homeBuy(H,c);if(S.cash<p)return;S.cash-=p;S.home.own=true;toast("You own your home now. No more rent.")}
   else if(a==="apply"){const j=JK[b.dataset.j];if(jailed()){toast("Not from prison");return}if(S.exp<j.exp||missing(j).length||!S.home||S.home.city!==c.id||S.app)return;
     S.app={k:j.k,city:c.id,t:Date.now()+90000,p:hireChance(j)};toast("Application sent. You'll hear back in about a minute and a half.")}
-  else if(a==="enroll"){const e=EK[b.dataset.e],p=eduCost(e,c);if(jailed()){toast("Not from prison");return}if(S.cash<p||S.edu.cur||(e.req&&!hasEdu(e.req))||(e.uni&&!uniCity(c)))return;S.cash-=p;S.edu.cur={k:e.k,end:Date.now()+e.h*DAYMS};toast(`Enrolled in ${e.n}`)}
-  else if(a==="drop"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}S.edu.cur=null;toast("You dropped out. No refund.")}
+  else if(a==="enroll"){const e=EK[b.dataset.e],p=eduCost(e,c);if(jailed()){toast("Not from prison");return}if(S.cash<p||hasEdu(e.k)||(e.req&&!hasEdu(e.req))||(e.uni&&!uniCity(c)))return;S.cash-=p;S.edu.have[e.k]=Date.now();S.log.unshift(`Earned: ${e.n}`);S.log=S.log.slice(0,3);toast(`You earned your ${e.n}!`)}
   else if(a.startsWith("lux")){const x=LUXK[b.dataset.k];if(!x)return;if(!Array.isArray(S.lux))S.lux=[];const o=S.lux.find(q=>q&&q.k===x.k);
     if(a==="luxbuy"){if(o||S.cash<x.cost)return;S.cash-=x.cost;S.lux.push({k:x.k,biz:false,vac:0});toast(`Bought: ${x.n}`)}
     else if(!o)return;
@@ -1678,7 +1676,7 @@ function upgradePlan(c){const o={...S.own[c.id]};let cash=S.cash,cost=0,gain=0;c
   for(;;){let best=null;for(const b of BIZ){const lv=o[b.k];if(!lv||lv>=MAXLV)continue;const k=upCost(b,c,lv);if(!best||k<best.k)best={b,k,lv}}
     if(!best||best.k>cash)break;cash-=best.k;cost+=best.k;gain+=profit(best.b,c,best.lv+1)-profit(best.b,c,best.lv);o[best.b.k]++;steps.push([best.b.k])}
   return{n:steps.length,cost,gain,steps}}
-const loanLimit=()=>{let a=0;if(!S.job&&!nOwnedSafe())return 0;for(const id in S.own)for(const b of BIZ){const lv=S.own[id][b.k];if(lv)a+=cost(b,CITIES[id])*lv}return Math.round(Math.max(S.job?wage(JK[S.job.k],CITIES[S.job.city])*150:0,a*.5))};
+const loanLimit=()=>{let a=0;if(!S.job&&!nOwnedSafe())return 0;for(const id in S.own)for(const b of BIZ){const lv=S.own[id][b.k];if(lv)a+=cost(b,CITIES[id])*lv}return Math.round(Math.max(S.job?wage(JK[S.job.k],CITIES[S.job.city])*(typeof rankMult==="function"?rankMult():1)*150:0,a*.5))};
 const loanStep=()=>Math.max(0,Math.min(loanLimit()-S.debt,Math.max(1000,Math.round(loanLimit()/4/1000)*1000)));
 /* ---------- portfolio ---------- */
 let mode="city", query="";
@@ -1973,7 +1971,7 @@ function creditScore(){const f=creditFactors();return Math.round(300+550*(.33*f.
 const scoreBand=s=>s>=800?["Exceptional","#15803d"]:s>=740?["Very good","#4d9f2a"]:s>=670?["Good","#a3a01c"]:s>=580?["Fair","#d97706"]:["Poor","#c2410c"];
 const loanRate=(s,type)=>(s>=800?.0008:s>=740?.0012:s>=670?.002:s>=580?.0035:.006)*(type==="business"?.8:1);
 const cardRate=s=>s>=740?.003:s>=670?.004:s>=580?.005:.007;
-function incomeHr(){let v=0;if(S.job)v+=wage(JK[S.job.k],CITIES[S.job.city]);for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(lv)v+=Math.max(0,profit(b,c,lv))}}return v}
+function incomeHr(){let v=0;if(S.job)v+=wage(JK[S.job.k],CITIES[S.job.city])*(typeof rankMult==="function"?rankMult():1);for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(lv)v+=Math.max(0,profit(b,c,lv))}}return v}
 function bizAssets(){let a=0;for(const id in S.own)for(const b of BIZ){const lv=S.own[id][b.k];if(lv)a+=cost(b,CITIES[id])*lv}return a}
 function bankDebt(){const b=B();return b.loans.reduce((a,l)=>a+l.bal,0)+(b.card?b.card.bal:0)}
 const amort=(P,r,n)=>r?P*r/(1-Math.pow(1+r,-n)):P/n;
@@ -1985,7 +1983,8 @@ function loanMax(type){const s=creditScore(),inc=incomeHr(),m=s>=740?1.3:s>=670?
   if(type==="business")return Object.values(S.hq||{}).some(Boolean)?Math.round(bizAssets()*.6*m/1000)*1000:0;
   if(type==="mortgage")return S.home&&S.home.own?Math.round(homeBuy(HK[S.home.k],CITIES[S.home.city])*.8/100)*100:0;return 0}
 const owedOn=type=>B().loans.filter(l=>l.type===type).reduce((a,l)=>a+l.bal,0);
-const TERMN=["Short","Standard","Long"],bankTerm={};/* chosen term per loan type (UI only); longer = lower payment, more interest */
+const TERMN=["Short","Standard","Long"];/* chosen term per loan type, saved in S.bank.terms (default Standard); longer = lower payment, more interest */
+function bankTerm(k){const t=(B().terms||{})[k];return t===0||t===1||t===2?t:1}
 function applyLoan(type,amt,ti){const b=B(),s=creditScore(),T=LOANT[type],n=T.terms[ti]||T.term;b.inq.push(Date.now());
   if(s<T.min){toast(`Denied: needs a ${T.min}+ credit score`);return}
   const room=loanMax(type)-owedOn(type);if(amt>room){toast(`Denied: you can borrow up to ${fmt(Math.max(0,room))}`);return}
@@ -2031,14 +2030,14 @@ function bankHtml(){const b=B(),s=creditScore(),[band,col]=scoreBand(s),f=credit
     <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2;flex-direction:column"><button class="buy" data-bank="payall" data-id="${l.id}" data-fixed="1" ${S.cash<=0?"disabled":""}>Pay off ${fmt(Math.min(l.bal,Math.max(0,S.cash)))}</button></span></div>`;
   for(const k in LOANT){const T=LOANT[k],room=Math.max(0,loanMax(k)-owedOn(k)),r=loanRate(s,k)*(k==="mortgage"?.6:1);
     const opts=[.25,.5,1].map(x=>Math.round(room*x/100)*100).filter((v,i,a)=>v>=500&&a.indexOf(v)===i);
-    const ti=bankTerm[k]??1,n=T.terms[ti],top=opts[opts.length-1],ok=s>=T.min&&opts.length;
+    const ti=bankTerm(k),n=T.terms[ti],top=opts[opts.length-1],ok=s>=T.min&&opts.length;
     const chips=ok?`<span style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">${T.terms.map((t,i)=>`<button class="buy${i===ti?"":" up"}" data-bank="term" data-t="${k}" data-i="${i}" data-fixed="1" style="padding:2px 8px;font-size:11px">${TERMN[i]} ${t} h</button>`).join("")}</span>
       <span style="display:block;margin-top:3px">${fmt(top)} over ${n} h: ${fmt(amort(top,r,n))}/hr · ${fmt(amort(top,r,n)*n)} total</span>`:"";
     h+=`<div class="row"><div class="n">${T.n}</div><div class="d">${T.d} ${T.terms[0]}–${T.terms[2]} h terms · ${s<T.min?`<b>needs ${T.min}+ score</b>`:`${(r*100).toFixed(2)}%/hr · up to ${fmt(room)}`}${chips}</div>
       <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2;flex-direction:column">${s>=T.min?opts.map(v=>`<button class="buy up" data-bank="loan" data-t="${k}" data-a="${v}" data-fixed="1">${fmt(v)}</button>`).join(""):""}</span></div>`}
   return h+`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Miss 3 payments in a row and a loan goes to collections: 1.5× the rate, a 10% penalty and a big score hit. Every application is a hard inquiry.</p>`}
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-bank]");if(!b)return;const a=b.dataset.bank;
-  if(a==="card")applyCard();else if(a==="loan")applyLoan(b.dataset.t,+b.dataset.a,bankTerm[b.dataset.t]??1);else if(a==="term")bankTerm[b.dataset.t]=+b.dataset.i;else if(a==="payall")repayLoan(+b.dataset.id,true);
+  if(a==="card")applyCard();else if(a==="loan")applyLoan(b.dataset.t,+b.dataset.a,bankTerm(b.dataset.t));else if(a==="term"){const k=b.dataset.t,i=+b.dataset.i;if(LOANT[k]&&i>=0&&i<3){const bk=B();(bk.terms=bk.terms||{})[k]=i}}else if(a==="payall")repayLoan(+b.dataset.id,true);
   else if(a==="cardall")payCard(true);else if(a==="adv"){const c=B().card,v=Math.min(c.lim-c.bal,Math.round(c.lim/4));c.bal+=v*1.05;S.cash+=v;c.paidStmt=false;toast(`Cash advance ${fmt(v)} (5% fee)`)}
   S.debt=bankDebt();save();hud();renderSheet()});
 /* ---------- bank ownership (phase 1): found & run your own bank. S.ob = owned bank, S.bank = personal banking ---------- */
@@ -2349,7 +2348,7 @@ function arrest(reason,sev,c,quiet){c=c||CITIES[(S.loc||{city:0}).city];const po
   logCrime(`Arrested in ${c.name} for ${reason}. Sentence: ${Math.round(h)} h`);if(!quiet)toast(`Arrested: ${Math.round(h)} h in prison`);return true}
 function logCrime(m){S.log.unshift("Justice: "+m);S.log=S.log.slice(0,3)}
 function jailHtml(){if(!jailed())return"";const J=S.jail,c=CITIES[J.city],lc=Math.round(J.bail*.4);
-  return `<div class="welcome" style="background:#7f1d1d;color:#fff"><b>In prison · ${c.name}</b><br>${J.reason}. Released in <b>${fmtDur(J.until-Date.now())}</b>. No wages, travel, studying or job applications until then. Your businesses keep running.
+  return `<div class="welcome" style="background:#7f1d1d;color:#fff"><b>In prison · ${c.name}</b><br>${J.reason}. Released in <b>${fmtDur(J.until-Date.now())}</b>. No wages, travel, education or job applications until then. Your businesses keep running.
     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="buy" data-jail="bail" data-fixed="1" ${S.cash<J.bail?"disabled":""}>Post bail ${fmt(J.bail)}</button>${J.lawyer?"":`<button class="buy up" data-jail="lawyer" data-fixed="1" ${S.cash<lc?"disabled":""}>Hire lawyer ${fmt(lc)}</button>`}</div></div>`}
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-jail]");if(!b||!jailed())return;const J=S.jail;
   if(b.dataset.jail==="bail"){if(S.cash<J.bail)return;S.cash-=J.bail;S.jail=null;toast("Bail posted. You're free.");logCrime("Released on bail")}
@@ -2744,11 +2743,11 @@ function shopApp(){const g=gearOwn();let h=`<div class="ph-seg ob-seg" style="gr
   h+=GEAR.filter(x=>x.c===shopTab).map(x=>g[x.k]?`<button class="ph-item" data-ph="sellgear" data-k="${x.k}"><span>${x.n} · Owned<small>${x.e} · Sell for 50%</small></span><b>${fmt(x.p*.5)}</b></button>`:`<button class="ph-item" data-ph="buygear" data-k="${x.k}" ${S.cash<x.p?"disabled":""}><span>${x.n}<small>${x.e}</small></span><b>${fmt(x.p)}</b></button>`).join("");
   return h+`<p class="ph-sub">One of each. Comfort bonuses stack up to 25% slower drain per need.</p>`}
 /* ---------- career: ranks within a job, promotion tasks ---------- */
-var CAREER={slots:3,ranks:["","Senior ","Lead ","Head "],rankW:.12,minH:[6,16,36],need:60,max:95,cool:2,failKeep:.5,
+var CAREER={slots:3,ranks:["","Senior ","Lead ","Head "],rankW:.12,minH:[6,16,36],need:60,max:95,peak:90,cool:2,failKeep:.5,
  T:{shift:{n:h=>`Work ${h} h on site`,h:[3,5],p:12},present:{n:h=>`Stay in your work city ${h} h straight`,h:[2,3],p:8},well:{n:h=>`Keep Health/Food/Mind ≥ 60 for ${h} h`,h:[2,4],p:10},
-  peak:{n:h=>`Be in top shape (all needs ≥ 95) ${h} h`,h:[1,2],p:14},clean:{n:h=>`No arrests or records for ${h} h`,h:[12,24],p:10},study:{n:()=>"Finish an education course",h:[1,1],p:20}}};
+  peak:{n:h=>`Be in top shape (all needs ≥ ${CAREER.peak}%) ${h} h`,h:[1,2],p:14},clean:{n:h=>`No arrests or records for ${h} h`,h:[12,24],p:10},study:{n:()=>"Earn an education certificate",h:[1,1],p:20}}};
 function careerKey(){return S.job?S.job.k+"@"+S.job.city+"@"+S.job.since:""}
-function careerNewTask(skip){const ks=Object.keys(CAREER.T).filter(k=>!skip.includes(k)&&!(k==="study"&&!S.edu.cur&&EDU.every(e=>hasEdu(e.k))));const k=ks[Math.floor(Math.random()*ks.length)],t=CAREER.T[k];
+function careerNewTask(skip){const ks=Object.keys(CAREER.T).filter(k=>!skip.includes(k)&&!(k==="study"&&EDU.every(e=>hasEdu(e.k))));const k=ks[Math.floor(Math.random()*ks.length)],t=CAREER.T[k];
   return {k,h:t.h[0]+Math.floor(Math.random()*(t.h[1]-t.h[0]+1)),v:0,t:Date.now(),r:(S.rec||[]).length,e:Object.keys(S.edu.have).length}}
 function careerFill(C){while(C.tasks.length<CAREER.slots)C.tasks.push(careerNewTask(C.tasks.map(t=>t.k)))}
 function career(){let C=S.career;if(!C||typeof C!=="object")C=S.career={};const key=careerKey();
@@ -2759,7 +2758,7 @@ function careerTick(dt){if(!S.job){if(S.career)S.career.key="";return}const C=ca
   if(jailed()){if(C.ch||C.tasks.some(t=>t.v)){C.ch=0;C.tasks=[];careerFill(C)}return}
   const atWork=!S.trip&&S.loc&&S.loc.city===S.job.city,m=needMin(),rec=(S.rec||[]).length,edu=Object.keys(S.edu.have).length;
   for(const t of C.tasks){if(t.k==="shift"){if(atWork&&wageMult()>0)t.v+=dt}else if(t.k==="present")t.v=atWork?t.v+dt:0;else if(t.k==="well")t.v=m>=60?t.v+dt:0;
-    else if(t.k==="peak")t.v=m>=95?t.v+dt:0;else if(t.k==="clean"){if(rec>t.r){t.r=rec;t.v=0}else t.v+=dt}else if(t.k==="study")t.v=edu>t.e?1:0}
+    else if(t.k==="peak")t.v=m>=CAREER.peak?t.v+dt:0;else if(t.k==="clean"){if(rec>t.r){t.r=rec;t.v=0}else t.v+=dt}else if(t.k==="study")t.v=edu>t.e?1:0}
   const done=C.tasks.filter(t=>t.v>=t.h);if(done.length){for(const t of done){C.ch=Math.min(CAREER.max,C.ch+CAREER.T[t.k].p);toast(`Task done: +${CAREER.T[t.k].p}% promotion chance`)}C.tasks=C.tasks.filter(t=>t.v<t.h);careerFill(C)}}
 function careerAsk(){const C=career(),r=C.rank;if(!S.job||r>=CAREER.ranks.length-1||jailed())return;const inR=(Date.now()-C.since)/DAYMS;
   if(inR<CAREER.minH[r]||Date.now()<(C.cd||0)||C.ch<1)return;
