@@ -282,6 +282,10 @@ window.echarts={registerMap:function(n,g){window.__WORLD=g}};
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script>
 (function(){
+/* Online players (Firebase). Paste your Firebase web app config object here, e.g.
+   const FIREBASE_CONFIG={apiKey:"...",authDomain:"...",projectId:"...",storageBucket:"...",messagingSenderId:"...",appId:"..."};
+   Leave it null to keep the game fully offline (no network requests). See docs/online-setup.md. */
+const FIREBASE_CONFIG=null;
 const $=s=>document.querySelector(s);
 const fmt=n=>{const a=Math.abs(n),s=n<0?"-$":"$";
   if(a>=1e9)return s+(a/1e9).toFixed(2)+"B";if(a>=1e6)return s+(a/1e6).toFixed(2)+"M";if(a>=1e4)return s+(a/1e3).toFixed(1)+"K";return s+Math.round(a).toLocaleString()};
@@ -498,7 +502,7 @@ function drawNow(){applyView();
     if(sel===c){ctx.beginPath();ctx.arc(x,y,r+9,0,7);ctx.strokeStyle=C.acc;ctx.lineWidth=2.5;ctx.stroke()}
     if(V.k>1.8||c.size>=5||owned){ctx.font=(owned?"600 ":"")+"12px Figtree, system-ui, sans-serif";ctx.fillStyle=owned?C.own:C.ink;
       const cp=labelProfit(c);ctx.fillText(c.name+(owned&&cp?"  "+fmt(cp)+"/hr":""),x+r+4,y)}}
-  ctx.globalAlpha=1;if(typeof drawCityLights==="function")drawCityLights(ctx)}
+  ctx.globalAlpha=1;if(typeof drawOnline==="function")drawOnline(ctx);if(typeof drawCityLights==="function")drawCityLights(ctx)}
 /* drag to spin (with momentum), pinch or scroll to zoom, tap a city */
 const ptrs=new Map();let dragMoved=false,pinch0=null,lastMove=0,spinRaf=0;
 const degPerPx=()=>180/Math.PI/proj.scale();
@@ -580,7 +584,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
     <div class="d">${b.d} ${lock?"":`<b style="color:${p<0?"var(--bad)":"var(--ink)"}">${fmt(p)}</b>/hr${pay?` · pays back in ${pay<48?pay+" h":(pay/24).toFixed(1)+" days"}`:p>0?" · never pays back after stock costs":" · loses money here"}`}${blk?`<br><b style="color:var(--bad)">${lock?"Locked: ":""}${blk}.</b>`:""}${!lock&&!blk&&bizRent(b,c)>pn?`<br><small style="color:var(--bad)">⚠ Renting: rent exceeds profit after stock costs</small>`:""}</div>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-buy="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k||blk?"disabled":""}>${lock?"Locked":"Buy "+fmt(k)}</button>${lock?"":`<button class="buy up" data-rent="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k*FIT||blk?"disabled":""} ${!blk&&bizRent(b,c)>pn?'title="Rent exceeds profit after stock costs" style="border-color:var(--bust,#c0392b)"':""}>Rent · ${fmt(k*FIT)} + ${fmt(bizRent(b,c))}/hr${!blk&&bizRent(b,c)>pn?" ⚠":""}</button>`}</span></div>`}
   if(!avail.length)h+=`<p class="d" style="color:var(--muted);padding:10px 0">You own every business type in ${c.name}.</p>`;
-  h+=`</div>`+cbHtml(c)+propsHtml(c)+popHtml(c)+`<div class="foot">${mine.length?`<button id="sellall">Sell everything here (75%)</button>`:""}</div>`;
+  h+=`</div>`+cbHtml(c)+propsHtml(c)+popHtml(c)+onPlayersHere(c)+`<div class="foot">${mine.length?`<button id="sellall">Sell everything here (75%)</button>`:""}</div>`;
   sheet.innerHTML=h;
   $("#cls").onclick=closeSheet;
   sheet.querySelectorAll("[data-buy]").forEach(btn=>btn.onclick=()=>buy(c,btn.dataset.buy));
@@ -1017,7 +1021,7 @@ function renderLife(c){let h=cityHead(c);const hm=S.home,jb=S.job;
     ${cur?'<span class="tag boom" style="grid-row:1/3;grid-column:2">Current</span>':`<button class="buy${jb?" up":""}" data-life="apply" data-j="${j.k}" ${locked||!here||S.app?"disabled":""}>${jb?"Switch":"Apply"}</button>`}</div>`}
   h+=`</div>`;if(!hm||hm.city!==c.id)h+=`<p class="d" style="font-size:12px;color:var(--muted);padding:6px 0">${hm?"Move here to apply for these jobs.":"Rent a home here to apply."}</p>`;
   h+=eduHtml(c);h+=luxHtml();
-  sheet.innerHTML=h;$("#cls").onclick=closeSheet}
+  h+=onPlayersHere(c);sheet.innerHTML=h;$("#cls").onclick=closeSheet}
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-life]");if(!b||!sel)return;const c=sel,a=b.dataset.life;
   if(a==="rent"||a==="buy"){const H=HK[b.dataset.h],p=a==="buy"?homeBuy(H,c):0;if(S.cash<p)return;
     if(S.home&&S.home.city!==c.id&&S.job){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm move";return}S.job=null;S.app=null}
@@ -1798,7 +1802,7 @@ function renderPortfolio(){const{inc,nw}=totals();
     <div class="d">${n} business${n>1?"es":""} · <b>${fmt(cityProfit(c))}</b>/hr</div><span style="font-family:var(--mono);color:var(--muted)">›</span></div>`}
   h+=`</div><div class="sec">Find a city</div><input id="q" type="search" placeholder="Tokyo, Lagos, Montréal…" value="${query}" autocomplete="off"><div class="list" id="qres"></div>`;
   const board=[{n:"You",col:"var(--own)",nw,me:1},...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:r.nw,c:r.cities.length}))].sort((a,b)=>b.nw-a.nw);
-  h+=logiHtml();h+=govSummary();
+  h+=logiHtml();h+=govSummary();h+=onlineHtml();
   h+=`<div class="sec">Leaderboard</div><div class="list">`+board.map((b,i)=>`<div class="row"><div class="n" style="${b.me?"color:var(--own)":""}">${i+1}. <span style="display:inline-block;width:9px;height:9px;background:${b.col};margin:0 6px 0 2px"></span>${b.n}</div>
     <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
   h+=bankHtml();
@@ -1818,7 +1822,7 @@ function renderPortfolio(){const{inc,nw}=totals();
   $("#cls").onclick=closeSheet;
   sheet.querySelectorAll("[data-go]").forEach(r=>r.onclick=()=>flyTo(CITIES[r.dataset.go]));
   const q=$("#q");q.oninput=()=>{query=q.value;searchRes()};searchRes();
-  ptWire();
+  ptWire();onlineWire();
   const rs=$("#reset");rs.onclick=()=>{if(rs.dataset.arm){try{localStorage.removeItem(KEY)}catch(e){}location.reload()}else{rs.dataset.arm=1;rs.textContent="Tap again to erase everything"}};
 }
 function searchRes(){const box=$("#qres");if(!box)return;const s=query.trim().toLowerCase();
@@ -3816,6 +3820,69 @@ function popApp(){let P=0,b=0,d=0,bt=0,dt=0;const ct=[0,0,0,0],T=S.day||0,M=S.po
     <div class="ph-rows"><div><span>Born today</span><b>${fmtPop(b)}</b></div><div><span>Died today</span><b>${fmtPop(d)}</b></div>${POPCAUSE.map(([k,t],i)=>`<div><span>${t}</span><b>${fmtPop(ct[i])}</b></div>`).join("")}<div><span>All-time born</span><b>${fmtPop(bt)}</b></div><div><span>All-time died</span><b>${fmtPop(dt)}</b></div></div>
     <div class="ph-sub" style="margin-top:8px">By country · net change today</div>
     <div class="ph-list">${rows.map(r=>`<div><b style="display:block">${r.n} · ${fmtPop(r.p.p)}</b><span style="color:${r.net<0?"#fca5a5":"#86efac"}">${r.net<0?"−":"+"}${fmtPop(Math.abs(r.net))}</span> today${r.p.c[3]?` · ${fmtPop(r.p.c[3])} war dead`:""}${r.w}</div>`).join("")}</div>`}
+/* ---------- online: other players on the globe (Firebase; off while FIREBASE_CONFIG is empty) ---------- */
+const ONV="10.12.2",ON={ready:false,loading:false,err:"",user:null,players:[],db:null,auth:null,unsub:null,lastPub:0,lastSig:"",draft:{e:"",p:"",n:""},busy:false};
+const onEnabled=()=>!!(FIREBASE_CONFIG&&FIREBASE_CONFIG.apiKey&&FIREBASE_CONFIG.projectId);
+const onEsc=s=>String(s==null?"":s).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+function onProf(){S.online=S.online||{};if(typeof S.online.name!=="string")S.online.name=(S.name||"").slice(0,20);if(!/^#[0-9a-f]{6}$/i.test(S.online.col||""))S.online.col=["#2563eb","#db2777","#7c3aed","#ea580c","#059669","#ca8a04"][Math.floor(Math.random()*6)];return S.online}
+function onScript(u){return new Promise((ok,no)=>{const s=document.createElement("script");s.src=u;s.onload=ok;s.onerror=()=>no(new Error("load "+u));document.head.appendChild(s)})}
+async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
+  try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
+    const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;if(u){onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true)}onRefresh()});
+    ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;draw()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
+  }catch(e){ON.err="Online unavailable: "+(e&&e.message||e)}ON.loading=false;onRefresh()}
+function onRefresh(){if(mode==="pf"&&sheet.classList.contains("open")&&!(document.activeElement&&/^(INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}}
+function onPubData(){const p=onProf(),{nw}=totals(),ids=o=>Object.keys(o||{}).filter(k=>o[k]&&CITIES[k]&&(typeof o[k]!=="object"||Object.keys(o[k]).length)).map(Number).slice(0,100);
+  const rank=1+S.rivals.filter(r=>r.nw>nw).length;
+  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:Math.round(isFinite(nw)?nw:0),rank}}
+function onPublish(force){if(!ON.ready||!ON.user)return;const d=onPubData(),sig=JSON.stringify(d),n=Date.now();
+  if(!force&&!(n-ON.lastPub>=60000||(sig!==ON.lastSig&&n-ON.lastPub>=60000)))return;
+  if(!force&&sig===ON.lastSig&&n-ON.lastPub<300000)return;
+  ON.lastPub=n;ON.lastSig=sig;d.lastSeen=window.firebase.firestore.FieldValue.serverTimestamp();
+  ON.db.collection("players").doc(ON.user.uid).set(d).catch(e=>{ON.err="Couldn't publish: "+(e&&e.code||e)})}
+function onSeen(p){const t=p.lastSeen;return t&&t.toMillis?t.toMillis():typeof t==="number"?t:0}
+function onAlpha(p){const age=(Date.now()-onSeen(p))/864e5;return age>7?.3:1}
+function onCities(p){const s=new Set();if(Number.isInteger(p.home)&&CITIES[p.home])s.add(p.home);for(const i of Array.isArray(p.hq)?p.hq:[])if(CITIES[i])s.add(i);return[...s]}
+function playersAt(c){return ON.players.filter(p=>onCities(p).includes(c.id)||(Array.isArray(p.biz)&&p.biz.includes(c.id)))}
+function drawOnline(ctx){if(!ON.players.length)return;const by={};
+  for(const p of ON.players)for(const id of onCities(p))(by[id]=by[id]||[]).push(p);
+  ctx.textBaseline="middle";
+  for(const id in by){const c=CITIES[id];if(!c||c.sx<-1e3)continue;const list=by[id];
+    list.slice(0,4).forEach((p,i)=>{const x=c.sx+8+i*9,y=c.sy-9;ctx.globalAlpha=onAlpha(p);ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+4.5,y);ctx.lineTo(x,y+5);ctx.lineTo(x-4.5,y);ctx.closePath();
+      ctx.fillStyle=/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb";ctx.fill();ctx.lineWidth=1.2;ctx.strokeStyle="#fff";ctx.stroke()});
+    if(V.k>2.5){const p=list[0];ctx.globalAlpha=onAlpha(p);ctx.font="600 11px Figtree, system-ui, sans-serif";ctx.fillStyle=css("--ink");
+      ctx.fillText(String(p.name||"Player").slice(0,20)+(list.length>1?` +${list.length-1}`:""),c.sx+8+Math.min(4,list.length)*9,c.sy-9)}}
+  ctx.globalAlpha=1}
+function onPlayersHere(c){if(!ON.players.length)return"";const a=playersAt(c);if(!a.length)return"";
+  return `<div class="sec">Players here</div><div class="list">`+a.slice(0,12).map(p=>{const roles=[p.home===c.id?"home":"",(p.hq||[]).includes(c.id)?"HQ":"",(p.biz||[]).includes(c.id)?"business":""].filter(Boolean).join(" · "),age=(Date.now()-onSeen(p))/36e5;
+    return `<div class="row"><div class="n" style="${onAlpha(p)<1?"opacity:.55":""}"><span style="display:inline-block;width:9px;height:9px;transform:rotate(45deg);background:${/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb"};margin:0 6px 0 2px"></span>${onEsc(String(p.name||"Player").slice(0,20))}</div><div class="d">${roles} · seen ${age<1?"just now":age<48?Math.round(age)+"h ago":Math.round(age/24)+"d ago"}</div><span style="font-family:var(--mono);font-weight:600">${fmt(+p.nw||0)}</span></div>`}).join("")+`</div>`}
+function onlineHtml(){if(!onEnabled())return"";const p=onProf(),u=ON.user,inp="width:100%;box-sizing:border-box;font:inherit;padding:8px;margin-top:6px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink)";
+  let h=`<div class="sec">Online</div><div class="list"><div class="row" style="display:block">`;
+  if(!ON.ready)h+=`<div class="d">${ON.err?onEsc(ON.err):"Connecting…"}</div>`;
+  else if(u){h+=`<div class="n">Signed in · ${ON.players.length} other player${ON.players.length===1?"":"s"} on the map</div><div class="d">Others see your name, colour, home, HQ and business cities, net worth and rank. Never your email.</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="onname" maxlength="20" value="${onEsc(p.name)}" placeholder="Display name" style="${inp};margin-top:0;flex:1;min-width:0"><input id="oncol" type="color" value="${p.col}" style="width:40px;height:36px;padding:0;border:1px solid var(--line);border-radius:4px;background:none"></div>
+    <div style="display:flex;gap:8px;margin-top:8px"><button class="buy" data-on="save" style="flex:1">Save profile</button><button class="buy" data-on="out">Sign out</button></div>`}
+  else h+=`<div class="d">Create an account to appear on other players' globes and see theirs. Your save stays on this device.</div>
+    <input id="onname" maxlength="20" value="${onEsc(ON.draft.n||p.name)}" placeholder="Display name" style="${inp}">
+    <input id="onemail" type="email" autocomplete="email" value="${onEsc(ON.draft.e)}" placeholder="Email" style="${inp}">
+    <input id="onpass" type="password" autocomplete="current-password" placeholder="Password (6+ characters)" style="${inp}">
+    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="buy" data-on="up" style="flex:1">Create account</button><button class="buy" data-on="in" style="flex:1">Sign in</button><button class="buy" data-on="g" style="flex:1 0 100%">Sign in with Google</button></div>`;
+  if(ON.ready&&ON.err)h+=`<div class="d" style="color:var(--bad);margin-top:6px">${onEsc(ON.err)}</div>`;
+  return h+`</div></div>`}
+function onlineWire(){if(!onEnabled())return;const v=s=>{const e=$(s);return e?e.value:""};
+  ["#onname","#onemail"].forEach(s=>{const e=$(s);if(e)e.oninput=()=>{ON.draft.n=v("#onname");ON.draft.e=v("#onemail")}});
+  sheet.querySelectorAll("[data-on]").forEach(b=>b.onclick=async()=>{if(ON.busy||!ON.ready)return;const a=b.dataset.on;ON.err="";const nm=v("#onname").trim().slice(0,20);
+    try{ON.busy=true;
+      if(a==="save"){onProf().name=nm;const c=v("#oncol");if(/^#[0-9a-f]{6}$/i.test(c))S.online.col=c;save();onPublish(true);toast("Profile saved")}
+      else if(a==="out"){await ON.auth.signOut()}
+      else{if(nm)onProf().name=nm;
+        if(a==="g")await ON.auth.signInWithPopup(new window.firebase.auth.GoogleAuthProvider());
+        else{const e=v("#onemail").trim(),pw=$("#onpass")?$("#onpass").value:"";if(!e||pw.length<6){ON.err="Enter an email and a password of 6+ characters";ON.busy=false;onRefresh();return}
+          if(a==="up")await ON.auth.createUserWithEmailAndPassword(e,pw);else await ON.auth.signInWithEmailAndPassword(e,pw)}
+        ON.draft={e:"",p:"",n:""};save()}
+    }catch(e){ON.err=String(e&&e.message||e).replace(/^Firebase:\s*/,"").slice(0,140)}ON.busy=false;if(document.activeElement)document.activeElement.blur();onRefresh()})}
+if(onEnabled()){onInit();setInterval(()=>{if(ON.user)onPublish(false)},15000)}
 let saveT=0;
 setInterval(()=>{if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
