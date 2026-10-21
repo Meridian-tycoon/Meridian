@@ -377,7 +377,7 @@ const save=()=>{try{if(typeof ensurePositions==="function")ensurePositions();loc
 
 const cost=(b,c)=>Math.round(b.cost*1.3*PRICE[c.size]);
 const upCost=(b,c,lv)=>Math.round(cost(b,c)*0.8*Math.pow(1.4,lv-1));
-function evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="function"?stormMult(c):1)*(typeof strikeMult==="function"?strikeMult(c):1)}
+function evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="function"?stormMult(c):1)*(typeof strikeMult==="function"?strikeMult(c):1)*popDem(c)*sancMult()}
 /* rival companies */
 const RIVALS=[{n:"Halcyon Group",col:"#7c3aed"},{n:"Ironbridge Co.",col:"#b45309"},{n:"Sable & Finch",col:"#0369a1"},
  {n:"Northwind Holdings",col:"#be123c"},{n:"Kestrel Partners",col:"#047857"},{n:"Orchid Capital",col:"#a21caf"},{n:"Granite & Rowe",col:"#57534e"},{n:"Solano Group",col:"#ca8a04"}];
@@ -602,11 +602,11 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
   const sa=$("#sellall");if(sa)sa.onclick=()=>{if(sa.dataset.arm){sellAll(c)}else{sa.dataset.arm=1;sa.textContent="Tap again to confirm sale"}};
 }
 function buy(c,k){const b=BIZ.find(x=>x.k===k),p=cost(b,c);if(S.cash<p)return;setTimeout(()=>{if(SUP[k])toast("Order stock to start selling. Hire staff so it runs without you.")},1900);{const blk=bizBlock(b,c);if(blk){toast(blk);return}}if(S.lease[c.id])delete S.lease[c.id][k];
-  S.cash-=p;(S.own[c.id]=S.own[c.id]||{})[k]=1;toast(`Opened ${b.n} in ${c.name}`);commit()}
+  S.cash-=p;if(S.sched)delete S.sched[bkey(c,k)];if(S.wadj)delete S.wadj[bkey(c,k)];(S.own[c.id]=S.own[c.id]||{})[k]=1;toast(`Opened ${b.n} in ${c.name}`);commit()}
 function upgrade(c,k){const b=BIZ.find(x=>x.k===k),lv=S.own[c.id][k],p=upCost(b,c,lv);if(S.cash<p||lv>=MAXLV)return;
   S.cash-=p;S.own[c.id][k]=lv+1;toast(`${b.n} in ${c.name} → Lv ${lv+1}`);commit()}
 // forget per-business manager state (auto-restock switch, cash-short flag) once it's no longer yours
-function clearBizState(c,k){const key=bkey(c,k);if(S.auto2)delete S.auto2[key];if(S.mgrShort)delete S.mgrShort[key]}
+function clearBizState(c,k){const key=bkey(c,k);if(S.auto2)delete S.auto2[key];if(S.mgrShort)delete S.mgrShort[key];if(S.sched)delete S.sched[key];if(S.wadj)delete S.wadj[key]}
 function sellAll(c){const o=S.own[c.id];for(const k in o)clearBizState(c,k);let v=0;for(const b of BIZ){const lv=o[b.k];if(!lv)continue;let x=isLeased(c,b.k)?cost(b,c)*FIT:cost(b,c);for(let l=1;l<lv;l++)x+=upCost(b,c,l);v+=x*.75}
   if(S.mgr[c.id])v+=mgrCost(c)*.5;
   S.cash+=Math.round(v);delete S.own[c.id];delete S.mgr[c.id];if(S.menu)for(const k in MENUS)delete S.menu[bkey(c,k)];delete S.lease[c.id];toast(`Sold ${c.name} for ${fmt(v)}`);commit()}
@@ -684,7 +684,10 @@ const BASEVEH=JSON.parse(JSON.stringify({truck:{cap:40,spd:250},ship:{cap:400,sp
 function applyTechs(){VEH.truck.spd=BASEVEH.truck.spd*(hasTech("logi")?1.3:1);VEH.ship.cap=BASEVEH.ship.cap*(hasTech("container")?2:1);VEH.plane.spd=BASEVEH.plane.spd*(hasTech("aero")?1.4:1)}
 const techOut=o=>(["Farm","Ranch"].includes(o.cat)&&hasTech("mechfarm")?1.25:1)*(o.cat==="Factory"&&hasTech("robotics")&&!o.rp?1.2:1)*(hasTech("mars")?1.25:1);
 const techUp=o=>o.cat==="Factory"&&hasTech("renew")?.75:1;
-const rpRate=()=>2+S.sites.reduce((a,s)=>{const o=siteOp(s);return a+(o&&o.rp?o.rp*LAND[s.size][1]*thr(s)*(s.k==null?1:s.k):0)},0);
+/* research points accrue continuously but are paid out every 15 real minutes; RPX doubles all research output */
+const RPX=2,RPQ=DAYMS/4;
+function rpPay(){const q=Math.floor(Date.now()/RPQ);if(S.rpQ==null)S.rpQ=q;if(q>S.rpQ){S.rp=(S.rp||0)+(S.rpP||0);S.rpP=0;S.rpQ=q}}
+const rpRate=()=>RPX*2+RPX*S.sites.reduce((a,s)=>{const o=siteOp(s);return a+(o&&o.rp?o.rp*LAND[s.size][1]*thr(s)*(s.k==null?1:s.k):0)},0);
 const LAND={s:["Small plot",2],m:["Field",10],l:["Estate",40]};
 /* land is zoned: farmland, mining claims and industrial lots are separate plots */
 const ZONE={farm:{n:"Farmland",cats:["Farm","Ranch"],pm:1,d:"Crops and livestock. Cheapest land; best in small towns."},
@@ -722,7 +725,7 @@ function indAssets(){let a=0;for(const s of S.sites){const c=CITIES[s.city],ha=L
   for(const v of S.fleet)if(v.cargo)a+=v.cargo.q*G[v.cargo.g][1]*.9;return a}
 /* run production for h hours (chunked so chains flow) */
 function runIndustry(hours){let sold=0;const step=.25;let left=hours;
-  while(left>1e-6){const h=Math.min(step,left);left-=h;S.rp+=2*h;
+  while(left>1e-6){const h=Math.min(step,left);left-=h;S.rpP=(S.rpP||0)+RPX*2*h;
     for(const s of S.sites){const o=siteOp(s);if(!o)continue;const c=CITIES[s.city],em=ievM(s,o),cf=crewF(s),ha=effHa(s)*thr(s)*em*cf,inv=S.inv[c.id]=S.inv[c.id]||{};
       let k=1,why="";for(const g in (o.in||{})){const need=o.in[g]*ha*h,have=inv[g]||0;if(have<need&&have/need<k){k=have/need;why="Short of "+G[g][0].toLowerCase()}}
       let outT=0;for(const g in o.out)outT+=o.out[g]*ha*h;const space=whCap(c)-stored(c);if(outT>0&&space<outT&&space/outT<k){k=Math.max(0,space/outT);why="Warehouse full"}
@@ -730,13 +733,13 @@ function runIndustry(hours){let sold=0;const step=.25;let left=hours;
       if(cf===0){k=0;why=s.paused?"Paused":"No crew"}
       s.k=k;s.why=k>=.999?"":why;if(k<=0)continue;
       let pw=1;if(o.cat==="Factory"&&!o.out.power&&!o.rp){const need=2*ha*h*k;if((inv.power||0)>=need){inv.power-=need;pw=1.25}}s.pw=pw>1;
-      for(const g in (o.in||{}))inv[g]=(inv[g]||0)-o.in[g]*ha*h*k;for(const g in o.out)inv[g]=(inv[g]||0)+o.out[g]*ha*h*k*pw;if(o.rp)S.rp+=o.rp*ha*h*k}
+      for(const g in (o.in||{}))inv[g]=(inv[g]||0)-o.in[g]*ha*h*k;for(const g in o.out)inv[g]=(inv[g]||0)+o.out[g]*ha*h*k*pw;if(o.rp)S.rpP=(S.rpP||0)+RPX*o.rp*ha*h*k}
     for(const id in S.own){const c=CITIES[id],inv=S.inv[id];const su=S.sup[id]=S.sup[id]||{};
       for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||!USE[b.k]){continue}if(!inv){su[b.k]=0;continue}
         let f=1;for(const g in USE[b.k]){const need=USE[b.k][g]*lv*h;f=Math.min(f,(inv[g]||0)/need)}
         for(const g in USE[b.k])inv[g]=(inv[g]||0)-USE[b.k][g]*lv*h*f;su[b.k]=f}}
     for(const id in S.auto){const c=CITIES[id],inv=S.inv[id]||{};for(const g in S.auto[id]){if(!S.auto[id][g]||!(inv[g]>0)||(G[g][2]==="gov"&&!govOK(c))||!hasHQ(c))continue;sold+=sellGood(c,g,inv[g])*.97;inv[g]=0}}}
-  for(const id in S.inv)for(const g in S.inv[id])if(S.inv[id][g]<1e-6)delete S.inv[id][g];
+  rpPay();for(const id in S.inv)for(const g in S.inv[id])if(S.inv[id][g]<1e-6)delete S.inv[id][g];
   S.cash+=sold;S.earned=(S.earned||0)+sold;return sold}
 function depart(v,c,d,g,t){t=t||Date.now();const V=VEH[v.type],km=distKm(c,d),fuel=km*V.km*hqShip(c,d);if(S.cash<fuel)return false;S.cash-=fuel;
   let cargo=null;if(g){const inv=S.inv[c.id]||{},q=Math.min(V.cap,inv[g]||0);if(q>0){inv[g]-=q;if(inv[g]<1e-6)delete inv[g];cargo={g,q}}}
@@ -981,7 +984,12 @@ function luxHtml(){const own=luxList(),now=Date.now();let h=`<div class="sec">Lu
     h+=`<div class="row own"><div class="n">${x.n} <span class="tag boom">${o.biz?"Chartered":"Personal"}</span></div><div class="d">${o.biz?`Earning <b style="color:var(--good)">${fmt(net)}</b>/hr after upkeep`:`Upkeep ${fmt(x.up)}/hr${x.jet?" · free, 30% faster flights":""}${cd>0?" · next vacation in "+fmtDur(cd):""}`}</div>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${o.biz?"":`<button class="buy" data-life="luxvac" data-k="${x.k}" ${cd>0?"disabled":""}>Vacation</button>`}<button class="buy up" data-life="luxmode" data-k="${x.k}">${o.biz?"Keep for me":"Run as business"}</button><button class="buy up" data-life="luxsell" data-k="${x.k}">Sell ${fmt(x.cost*.8)}</button></span></div>`}
   return h+`</div>`}
-function hireChance(j){const rec=(S.rec||[]).some(r=>(Date.now()-r.t)/DAYMS<168)?.2:0;const lvl=EDU.filter(e=>hasEdu(e.k)&&/Bachelor|Master|Doctor/.test(e.t)).length;return Math.min(.95,.65-rec+Math.min(.1,lvl*.04)+(S.home&&S.home.k!=="room"?.1:0)+Math.min(.25,(S.exp-j.exp)*.01))}
+/* population drives the economy: a country's people vs its starting population (S.popn[n].p0). Growth lifts demand a little,
+   war/strike losses shrink markets and the job market. Bounded: demand ×0.80–1.10, hiring ×0.85–1.05. Reads S.popn directly (POPCFG is declared later). */
+function popRatio(n){const p=S.popn&&S.popn[n];return p&&p.p>0&&p.p0>0?p.p/p.p0:1}
+function popDem(c){return Math.max(.8,Math.min(1.1,1+2*(popRatio(c.country)-1)))}
+function popHire(c){return Math.max(.85,Math.min(1.05,1+1.5*(popRatio(c.country)-1)))}
+function hireChance(j,c){const rec=(S.rec||[]).some(r=>(Date.now()-r.t)/DAYMS<168)?.2:0;const lvl=EDU.filter(e=>hasEdu(e.k)&&/Bachelor|Master|Doctor/.test(e.t)).length;return Math.min(.95,.65-rec+Math.min(.1,lvl*.04)+(S.home&&S.home.k!=="room"?.1:0)+Math.min(.25,(S.exp-j.exp)*.01))*(c?popHire(c):1)}
 function checkApp(){runEdu();const a=S.app;if(!a||Date.now()<a.t)return;const j=JK[a.k],c=CITIES[a.city];S.app=null;
   if(Math.random()<a.p){S.job={k:a.k,city:a.city,since:Date.now()};S.log.unshift(`Hired: ${j.n} in ${c.name}, ${fmt(wage(j,c))}/hr`);toast(`You got the job: ${j.n}!`)}
   else{S.log.unshift(`${c.name}: the ${j.n.toLowerCase()} job went to someone else. Apply again.`);toast("Application turned down")}
@@ -1005,7 +1013,7 @@ function renderLife(c){let h=cityHead(c);const hm=S.home,jb=S.job;
   h+=`</div><div class="sec">Jobs in ${c.name}</div><div class="list">`;
   for(const j of jobsIn(c)){const w=wage(j,c),miss=missing(j),locked=S.exp<j.exp||miss.length>0,here=hm&&hm.city===c.id,cur=jb&&jb.k===j.k&&jb.city===c.id;
     h+=`<div class="row" style="${locked?"opacity:.55":""}"><div class="n">${j.n} <span style="font-family:var(--mono);font-weight:600">${fmt(w)}/hr</span></div>
-    <div class="d">${j.d}${j.exp?` Needs ${j.exp} h experience.`:" No experience needed."}${(JREQ[j.k]||[]).length?` Requires: ${JREQ[j.k].map(k=>(hasEdu(k)?"✓ ":"✗ ")+EK[k].n).join(", ")}.`:""}${!locked&&here&&!cur?` ${Math.round(hireChance(j)*100)}% chance.`:""}</div>
+    <div class="d">${j.d}${j.exp?` Needs ${j.exp} h experience.`:" No experience needed."}${(JREQ[j.k]||[]).length?` Requires: ${JREQ[j.k].map(k=>(hasEdu(k)?"✓ ":"✗ ")+EK[k].n).join(", ")}.`:""}${!locked&&here&&!cur?` ${Math.round(hireChance(j,c)*100)}% chance.`:""}</div>
     ${cur?'<span class="tag boom" style="grid-row:1/3;grid-column:2">Current</span>':`<button class="buy${jb?" up":""}" data-life="apply" data-j="${j.k}" ${locked||!here||S.app?"disabled":""}>${jb?"Switch":"Apply"}</button>`}</div>`}
   h+=`</div>`;if(!hm||hm.city!==c.id)h+=`<p class="d" style="font-size:12px;color:var(--muted);padding:6px 0">${hm?"Move here to apply for these jobs.":"Rent a home here to apply."}</p>`;
   h+=eduHtml(c);h+=luxHtml();
@@ -1017,7 +1025,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-life]");if(!b
     S.cash-=p;S.home={city:c.id,k:H.k,own:a==="buy"};toast(a==="buy"?`Bought a ${H.n.toLowerCase()} in ${c.name}`:`Moved into a ${H.n.toLowerCase()} in ${c.name}`)}
   else if(a==="buyhome"){const H=HK[S.home.k],p=homeBuy(H,c);if(S.cash<p)return;S.cash-=p;S.home.own=true;toast("You own your home now. No more rent.")}
   else if(a==="apply"){const j=JK[b.dataset.j];if(jailed()){toast("Not from prison");return}if(S.exp<j.exp||missing(j).length||!S.home||S.home.city!==c.id||S.app)return;
-    S.app={k:j.k,city:c.id,t:Date.now()+90000,p:hireChance(j)};toast("Application sent. You'll hear back in about a minute and a half.")}
+    S.app={k:j.k,city:c.id,t:Date.now()+90000,p:hireChance(j,c)};toast("Application sent. You'll hear back in about a minute and a half.")}
   else if(a==="enroll"){const e=EK[b.dataset.e],p=eduCost(e,c);if(jailed()){toast("Not from prison");return}if(S.cash<p||hasEdu(e.k)||(e.req&&!hasEdu(e.req))||(e.uni&&!uniCity(c)))return;S.cash-=p;S.edu.have[e.k]=Date.now();S.log.unshift(`Earned: ${e.n}`);S.log=S.log.slice(0,3);toast(`You earned your ${e.n}!`)}
   else if(a.startsWith("lux")){const x=LUXK[b.dataset.k];if(!x)return;if(!Array.isArray(S.lux))S.lux=[];const o=S.lux.find(q=>q&&q.k===x.k);
     if(a==="luxbuy"){if(o||S.cash<x.cost)return;S.cash-=x.cost;S.lux.push({k:x.k,biz:false,vac:0});toast(`Bought: ${x.n}`)}
@@ -1582,15 +1590,21 @@ const useRate=(b,lv,c)=>SUP[b.k]?SUP[b.k].r*(1+.55*(lv-1))*(c?menuU(c,b):1):0;  
 const unitCost=(b,c)=>SUP[b.k].c*PRICE[c.size];
 const stockOf=(c,k)=>S.stock[bkey(c,k)]||0;
 const opFactor=(c,b)=>{const k=bkey(c,b.k);return S.opf[k]==null?0:S.opf[k]};
-const selfRate=.6;                                    // running it yourself: 60% speed, only while you're there
-// h = real hours elapsed. Long gaps (offline catch-up) run in ≤1h steps so managers keep restocking
+const selfRate=.6;                                    // running it yourself: up to 60% speed, only while you're there
+// Unstaffed shops still pay 25% wages (bizWage), so for wage-heavy businesses a flat 60% beat staffing. Self-run output is capped at
+// 90% of the break-even rate 1-0.75·W/G (W = full wage, G = staffed gross before wages), so staffed always nets more than unstaffed.
+function selfOp(c,b,lv){const k=bkey(c,b.k),st=S.staff[k],o=S.opf[k];S.staff[k]=1;S.opf[k]=1;let W=0,G=0;
+  try{W=bizWage(b,c,lv);G=profit(b,c,lv)+W}finally{if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k]}
+  return G>0?Math.max(0,Math.min(selfRate,.9*(1-.75*W/G))):0}
+// h = real hours elapsed (capped at SHOPCAP). Long gaps (offline catch-up) run in ≤1h steps so managers keep restocking
 // and orders that arrived while away are delivered at the step they land. Online ticks are one step.
-function runShops(h){const now=Date.now();S.shopT=now;S.mgrShort=S.mgrShort||{};
-  const n=h>1?Math.min(168,Math.ceil(h)):1,sh=h/n;
+const SHOPCAP=48; // offline catch-up cap in game hours, same as earnings in accrue(): managers don't restock beyond it
+function runShops(h){const now=Date.now();S.shopT=now;S.mgrShort=S.mgrShort||{};h=Math.min(Math.max(0,h||0),SHOPCAP);
+  const n=h>1?Math.min(SHOPCAP,Math.ceil(h)):1,sh=h/n;
   for(let i=1;i<=n;i++)shopStep(sh,now-(n-i)*sh*DAYMS,now)}
 function shopStep(h,t,now){const short=[];
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv)continue;const key=bkey(c,b.k);
-    const op=isStaffed(c,b.k)?1:(tenantRun(b.k)?1:present(c)?selfRate:0);
+    const op=isStaffed(c,b.k)?1:(tenantRun(b.k)?1:present(c)?selfOp(c,b,lv):0);
     if(!SUP[b.k]){S.opf[key]=op;continue}
     const need=useRate(b,lv,c)*op*h,have=S.stock[key]||0;const f=need>0?Math.min(1,have/need):0;
     S.stock[key]=Math.max(0,have-need*f);S.opf[key]=op*(need>0?f:(have>0?1:0))}}
@@ -1784,7 +1798,7 @@ function renderPortfolio(){const{inc,nw}=totals();
     <div class="d">${n} business${n>1?"es":""} · <b>${fmt(cityProfit(c))}</b>/hr</div><span style="font-family:var(--mono);color:var(--muted)">›</span></div>`}
   h+=`</div><div class="sec">Find a city</div><input id="q" type="search" placeholder="Tokyo, Lagos, Montréal…" value="${query}" autocomplete="off"><div class="list" id="qres"></div>`;
   const board=[{n:"You",col:"var(--own)",nw,me:1},...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:r.nw,c:r.cities.length}))].sort((a,b)=>b.nw-a.nw);
-  h+=logiHtml();h+=govSummary();h+=popWorldHtml();
+  h+=logiHtml();h+=govSummary();
   h+=`<div class="sec">Leaderboard</div><div class="list">`+board.map((b,i)=>`<div class="row"><div class="n" style="${b.me?"color:var(--own)":""}">${i+1}. <span style="display:inline-block;width:9px;height:9px;background:${b.col};margin:0 6px 0 2px"></span>${b.n}</div>
     <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
   h+=bankHtml();
@@ -1855,7 +1869,7 @@ function openResearch(){mode="rs";sel=null;renderResearch();sheet.scrollTop=0;sh
 function renderResearch(){const done=TECH.filter(t=>hasTech(t.k)).length;
   let h=`<div class="shead"><div><h2>Research</h2><p>${done}/${TECH.length} technologies · ${S.sats?Math.floor(S.sats)+" satellites in orbit · ":""}${fmt(S.rp).replace("$","")} research points</p></div><button class="x" id="cls" aria-label="Close">×</button></div>
   <div class="meta"><div><span>Earning </span>${rpRate().toFixed(1)} RP/hr</div><div><span>From </span>HQ + ${S.sites.filter(x=>x.op&&OP[x.op].rp).length} labs</div></div>
-  <p class="d" style="font-size:12px;color:var(--muted);margin:0 0 6px">Build research labs on industrial lots to earn points faster. Each technology costs points and cash.</p>`;
+  <p class="d" style="font-size:12px;color:var(--muted);margin:0 0 6px">Build research labs on industrial lots to earn points faster. Each technology costs points and cash. Points are paid every 15 minutes${S.rpP>=.1?` (next: +${Math.floor(S.rpP)} RP)`:""}.</p>`;
   TIERS.forEach((tn,ti)=>{h+=`<div class="sec">Tier ${["I","II","III","IV","V"][ti]} · ${tn}</div><div class="list">`;
     for(const t of TECH.filter(x=>x.t===ti)){const st=hasTech(t.k)?"done":canResearch(t)?"open":"locked",afford=S.rp>=t.rp&&S.cash>=t.cash;
       const unl=OPS.filter(o=>o.req===t.k).map(o=>o.n);
@@ -2915,7 +2929,7 @@ function polAnnex(n){const p=pol(),C=GOVCFG,now=Date.now();if(!polLeader()||n===
   const ch=annexChance();S.cash-=cost;p.acd=now+C.annexCd*DAYMS;
   if(Math.random()<ch){p.ctrl[n]={since:now,loy:C.loyStart};p.appr=Math.min(95,p.appr+C.annexAppr);logPol(`${n} joined your sphere of influence`);if(typeof confetti==="function")confetti(80,innerWidth/2,innerHeight/3)}
   else{p.appr=Math.max(0,p.appr+C.annexFailAppr);logPol(`${n} rejected your influence bid (${Math.round(ch*100)}% chance)`)}}
-function polLoyal(n){const p=pol(),c=p.ctrl[n];if(!c)return;const v=Math.round(annexCost(n)*GOVCFG.loyCost);if(S.cash<v)return toast(`Aid package costs ${fmt(v)}`);if(c.loy>=100)return toast("Loyalty is maxed");S.cash-=v;c.loy=Math.min(100,c.loy+GOVCFG.loyGain);toast(`${n} loyalty +${GOVCFG.loyGain}`)}
+function polLoyal(n){const p=pol(),c=p.ctrl[n];if(!c)return;const v=Math.round(annexCost(n)*GOVCFG.loyCost);if(S.cash<v)return toast(`Aid package costs ${fmt(v)}`);if(Math.round(c.loy)>=100){c.loy=100;return toast("Loyalty is maxed")};S.cash-=v;c.loy=Math.min(100,c.loy+GOVCFG.loyGain);toast(`${n} loyalty +${GOVCFG.loyGain}`)}
 function polRelease(n){const p=pol();if(p.ctrl[n]){delete p.ctrl[n];logPol(`You released ${n}`)}}
 function polHour(quiet){const p=S.pol;if(!p)return;pol();const C=GOVCFG;
   if(p.r>=0){p.appr=Math.max(0,Math.min(95,p.appr+C.apprDrift+(Math.random()-.5)*C.apprNoise+(typeof jailed==="function"&&jailed()?C.apprJail:0)));
@@ -2941,7 +2955,7 @@ function govApp0(){const p=pol(),C=GOVCFG,now=Date.now(),{nw}=totals(),here=polH
     h+=`<div class="ph-sub" style="margin-top:12px">Corporate tax in ${p.c}${tc?" · change in "+fmtDur(tc):""}</div><div class="ph-seg">${LAWS.tax.v.map((v,i)=>`<button data-ph="poltax" data-k="${i}" aria-pressed="${g.laws.tax===i}" ${tc?"disabled":""}>${v}</button>`).join("")}</div>`;
     const acd=Math.max(0,p.acd-now),ch=annexChance(),list=COUNTRIES.filter(x=>x!==p.c&&!p.ctrl[x]).sort((a,b)=>ctyScale(a)-ctyScale(b));
     h+=`<div class="ph-sub" style="margin-top:12px">Extend influence · ${Math.round(ch*100)}% success${acd?" · ready in "+fmtDur(acd):""}</div><div class="ph-rows">${list.map(x=>{const c=annexCost(x);return `<div><span>${x}<br><small style="opacity:.7">+${fmt(C.share*ctyScale(x))}/hr</small></span><button class="buy" data-ph="polannex" data-k="${x}" style="color:#fff;background:#7c2d12!important;border-color:#f59e0b;padding:4px 8px" ${acd||S.cash<c?"disabled":""}>${fmt(c)}</button></div>`}).join("")}</div>`}
-  const ck=Object.keys(p.ctrl);if(ck.length)h+=`<div class="ph-sub" style="margin-top:12px">Your sphere of influence</div><div class="ph-rows">${ck.map(x=>{const c=p.ctrl[x];return `<div><span>${x} · loyalty <b style="color:${c.loy<25?"#f87171":"#4ade80"}">${Math.round(c.loy)}</b></span><span><button class="buy" data-ph="polloy" data-k="${x}" style="${c.loy>=100?"":"color:#fff;background:#14532d!important;"}border-color:#22c55e;padding:4px 8px" ${c.loy>=100?"disabled":""}>Aid ${fmt(Math.round(annexCost(x)*C.loyCost))}</button> <button class="buy" data-ph="polrel" data-k="${x}" style="color:#fff;background:#374151!important;padding:4px 8px">Release</button></span></div>`}).join("")}</div>`;
+  const ck=Object.keys(p.ctrl);if(ck.length)h+=`<div class="ph-sub" style="margin-top:12px">Your sphere of influence</div><div class="ph-rows">${ck.map(x=>{const c=p.ctrl[x];return `<div><span>${x} · loyalty <b style="color:${c.loy<25?"#f87171":"#4ade80"}">${Math.round(c.loy)}</b></span><span><button class="buy" data-ph="polloy" data-k="${x}" style="${Math.round(c.loy)>=100?"":"color:#fff;background:#14532d!important;"}border-color:#22c55e;padding:4px 8px" ${Math.round(c.loy)>=100?"disabled":""}>Aid ${fmt(Math.round(annexCost(x)*C.loyCost))}</button> <button class="buy" data-ph="polrel" data-k="${x}" style="color:#fff;background:#374151!important;padding:4px 8px">Release</button></span></div>`}).join("")}</div>`;
   if(p.r>=0)h+=btn("polquit","Resign",0,null,"#374151");
   h+=`<p class="ph-sub" style="margin-top:8px">Ladder: ${O.map(o=>o.n).join(" → ")}. Approval drifts down; it falls faster in prison. Controlling ${n}'s government through party donations adds +${Math.round(C.ctrlWin*100)}% to your win chance there. As Leader you also run its government (decrees, state contract); the Leader's tax setting always wins. Leaders set tax and can bring other countries into their sphere for a share of their economy. Countries with low loyalty break away.</p>`;
   return h}
@@ -2971,7 +2985,8 @@ function mil(){const p=pol(),m=p.mil=p.mil||{};if(!m.units||typeof m.units!=="ob
   if(m.morale==null)m.morale=MILCFG.moraleBase;if(m.supply==null)m.supply=MILCFG.supplyBase;if(!m.wars||typeof m.wars!=="object")m.wars={};if(!m.occ||typeof m.occ!=="object")m.occ={};
   if(!m.cd)m.cd=0;if(!Array.isArray(m.rep))m.rep=[];if(!Array.isArray(m.log))m.log=[];return m}
 const milTerrain=n=>{const cs=ctyCities(n),lat=cs.reduce((a,c)=>a+Math.abs(c.lat),0)/Math.max(1,cs.length),T=MILCFG.terrains;if(ctyScale(n)>60)return "urban";if(lat<15)return hashS(n)%2?"jungle":"plains";if(lat<32&&hashS(n)%3===0)return "desert";return T[hashS(n)%T.length]};
-const milEnemy=n=>Math.round(Math.max(MILCFG.enemyMin,ctyScale(n)*MILCFG.enemyStr)*(1-MILCFG.enemyVar+(hashS(n+"#")%100)/100*2*MILCFG.enemyVar));
+// spread ±enemyVar first, then the enemyMin floor, so enemyMin is a hard minimum
+const milEnemy=n=>Math.round(Math.max(MILCFG.enemyMin,ctyScale(n)*MILCFG.enemyStr*(1-MILCFG.enemyVar+(hashS(n+"#")%100)/100*2*MILCFG.enemyVar)));
 const milGar=()=>{const m=mil();let g=0;for(const n in m.occ)g+=m.occ[n].gar||0;return g};
 function milStr(ter){const m=mil(),U=MILCFG.units;let s=0;for(const k in U){const c=k==="inf"?Math.max(0,m.units.inf-milGar()):m.units[k];s+=c*U[k].str*(ter?U[k].t[ter]:1)}return s}
 function milUpkeep(){const m=S.pol&&S.pol.mil;if(!m)return 0;let v=0;for(const k in MILCFG.units)v+=(m.units[k]||0)*MILCFG.units[k].up;return polLeader()?v:v*MILCFG.reserveUp}
@@ -2994,11 +3009,12 @@ function milDeclare(n){const p=pol(),m=mil(),C=MILCFG,now=Date.now();if(!polLead
   if(now<m.cd)return toast("War cooldown: "+fmtDur(m.cd-now));if(milStr()<=0)return toast("Recruit an army first");const c=milWarCost(n);if(S.cash<c)return toast(`Mobilisation costs ${fmt(c)}`);
   S.cash-=c;m.cd=now+C.warCd*DAYMS;p.appr=Math.max(0,p.appr+C.warAppr);const e=milEnemy(n);
   m.wars[n]={since:now,front:C.frontStart,enemyStr:e,enemyMax:e,terrain:milTerrain(n),weariness:0,battles:[],pcd:0};logPol(`You declared war on ${n}`)}
-function milEndWar(n,kind){const p=pol(),m=mil(),C=MILCFG,w=m.wars[n];if(!w)return;delete m.wars[n];const big=annexCost(n)*C.repShare;
+function milEndWar(n,kind,quiet){const p=pol(),m=mil(),C=MILCFG,w=m.wars[n];if(!w)return;delete m.wars[n];const big=annexCost(n)*C.repShare;
   if(kind==="win"){m.occ[n]={since:Date.now(),resist:C.occResist,gar:0,calm:0};p.appr=Math.min(95,p.appr+C.winAppr);m.morale=Math.min(100,m.morale+10);logPol(`${n} capitulated — it is now under your occupation`)}
   else if(kind==="lose"){p.appr=Math.max(0,p.appr+C.lossAppr);m.morale=Math.max(0,m.morale-30);m.rep.push({to:n,left:big,per:big/C.repHours});logPol(`You lost the war with ${n}: you owe ${fmt(big)} in reparations`)}
   else if(kind==="theyPay"){S.cash+=big*.5;logPol(`Peace with ${n}: they pay you ${fmt(big*.5)}`)}
   else if(kind==="wePay"){const v=big*.5;m.rep.push({to:n,left:v,per:v/C.repHours});logPol(`Peace with ${n}: you pay ${fmt(v)} in reparations`)}
+  else if(quiet){S.log.unshift(`Government: White peace with ${n}`);S.log=S.log.slice(0,3)} // offline: the reload toast reports it once
   else logPol(`White peace with ${n}`);milLog(m,S.log[0].replace("Government: ",""))}
 function milPeace(n){const m=mil(),w=m.wars[n],now=Date.now();if(!w)return;if(now<w.pcd)return toast("They won't talk yet: "+fmtDur(w.pcd-now));
   w.pcd=now+MILCFG.peaceCd*DAYMS;const f=w.front,ch=Math.max(.15,Math.min(.9,.25+f/120+w.weariness/300));
@@ -3022,7 +3038,8 @@ function milHour(quiet){const p=S.pol;if(!p||!p.mil)return;const m=mil(),C=MILCF
     m.morale=Math.max(0,Math.min(100,m.morale+(mv>0?C.moraleWin:C.moraleLose)));
     w.weariness=Math.min(100,w.weariness+C.wearRate+(mv<0?.5:0));p.appr=Math.max(0,p.appr-C.wearAppr*w.weariness/10);
     w.battles.unshift({t:Date.now(),mv:Math.round(mv*10)/10,ps:Math.round(ps),es:Math.round(es)});w.battles=w.battles.slice(0,5);
-    if(quiet&&w.weariness>=100){milEndWar(n,"white");(S._offPeace=S._offPeace||[]).push(n);continue} // warOfflinePeace: exhausted war ends in white peace while away
+    if(lead)wpnRetal(n,w,quiet);
+    if(quiet&&w.weariness>=100){milEndWar(n,"white",true);(S._offPeace=S._offPeace||[]).push(n);continue} // warOfflinePeace: exhausted war ends in white peace while away
     if(w.front>=100||w.enemyStr<w.enemyMax*.05)milEndWar(n,"win");else if(w.front<=0||milStr()<=0)milEndWar(n,"lose")}
   m.supply=nw?sup/nw:C.supplyBase;
   for(const n in m.occ){const o=m.occ[n],need=Math.max(1,ctyScale(n)*.5);o.resist=Math.max(0,Math.min(100,o.resist+C.occDrift-C.occGar*2*Math.min(1.5,(o.gar||0)/need)+(lead?0:.5)+(Math.random()-.5)));
@@ -3055,9 +3072,19 @@ const WPNCFG={ // cost per weapon, build = game days, enemy = share of enemy max
   // r = scorch radius px at zoom 1, appr = approval change, loy = loyalty change in every controlled country, wear = weariness added, resist = resistance added in occupied countries
   w:{msl:{n:"Cruise missile",ico:"🚀",cost:3e6,build:.25,enemy:.06,front:3,city:.25,days:2,r:9,appr:-1,loy:0,wear:2,resist:0,col:"#f97316",need:"5 air wings",ok:m=>m.units.air>=5},
      gas:{n:"Gas bomb",ico:"☣",cost:12e6,build:.75,enemy:.14,front:7,city:.45,days:3,r:12,appr:-12,loy:-15,wear:10,resist:10,col:"#84cc16",need:"10 air wings",ok:m=>m.units.air>=10},
-     nuke:{n:"Nuclear warhead",ico:"☢",cost:400e6,build:4,enemy:.55,front:25,city:.85,days:5,r:22,appr:-30,loy:-35,wear:25,resist:25,col:"#facc15",need:"Rocketry tech and 20 air wings",ok:m=>hasTech("rocketry")&&m.units.air>=20}},
+     nuke:{n:"Nuclear warhead",ico:"☢",cost:400e6,build:4,enemy:.35,front:15,city:.85,days:5,r:22,appr:-30,loy:-35,wear:25,resist:25,col:"#facc15",need:"Rocketry tech and 20 air wings",ok:m=>hasTech("rocketry")&&m.units.air>=20}},
   queue:3,         // builds in progress at once
   stockMax:{msl:20,gas:6,nuke:2},
+  // strikes alone can't end a war: they never push the front past frontCap or the enemy below strFloor × max strength; battles must finish it
+  frontCap:85,strFloor:.15,
+  ownHit:.5,       // your own strikes hit your businesses in the target city at half the city damage (enemy strikes hit in full)
+  // enemy retaliation: chance per war per game hour (× enemy strength left), cooldown in game days after a strike of that kind,
+  // gas only once you used WMD on them or weariness > 50; nukes only if you nuked them and their max strength ≥ nukeMin.
+  // hit: city = share of WPN city damage, front = front lost, appr = your approval, loy = loyalty in a struck controlled country
+  ret:{odds:{msl:.12,gas:.05,nuke:.05},cd:{msl:4,gas:12,nuke:48},minPow:.15,nukeMin:40,
+       hit:{msl:{city:.8,front:1,appr:-1,loy:-2},gas:{city:.9,front:3,appr:-4,loy:-6},nuke:{city:1,front:6,appr:-8,loy:-12}}},
+  // world reaction to your WMD use: demand/income in all your cities falls by f for `days` game days (worst one wins, timers extend)
+  sanc:{gas:{f:.08,days:2},nuke:{f:.2,days:4}},
   animMs:3200};    // launch animation length (real ms)
 function wpn(){const m=mil();if(!m.wpn||typeof m.wpn!=="object")m.wpn={};for(const k in WPNCFG.w)if(!(m.wpn[k]>=0))m.wpn[k]=0;if(!Array.isArray(m.wq))m.wq=[];if(!Array.isArray(m.strikes))m.strikes=[];return m}
 function wpnTick(){const m=wpn(),now=Date.now();let done=0;for(let i=m.wq.length-1;i>=0;i--){const q=m.wq[i];if(q.done<=now){if(WPNCFG.w[q.k])m.wpn[q.k]++;m.wq.splice(i,1);done++}}
@@ -3069,14 +3096,27 @@ function wpnBuild(k){const p=pol(),m=wpn(),W=WPNCFG.w[k];if(!W)return;if(!polLea
   m.wq.push({k,done:Date.now()+W.build*DAYMS});toast(`${W.n} in production · ready in ${fmtDur(W.build*DAYMS)}`)}
 function wpnFire(k,id){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id],now=Date.now();if(!W||!c)return;if(!polLeader())return toast("Only a Leader can order strikes");
   const w=m.wars[c.country];if(!w)return toast(`You're not at war with ${c.country}`);if(!m.wpn[k])return toast(`No ${W.n.toLowerCase()} in stock`);
-  m.wpn[k]--;const kill=w.enemyMax*W.enemy;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.min(100,w.front+W.front);w.weariness=Math.min(100,w.weariness+W.wear);
+  m.wpn[k]--;if(k!=="msl"){w.wmd=1;if(k==="nuke")w.nk=1;wpnSanction(k)}const kill=Math.max(0,Math.min(w.enemyMax*W.enemy,w.enemyStr-w.enemyMax*WPNCFG.strFloor)),f0=w.front;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.max(f0,Math.min(WPNCFG.frontCap,f0+W.front));const push=Math.round((w.front-f0)*10)/10;w.weariness=Math.min(100,w.weariness+W.wear);
   p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const n in p.ctrl)p.ctrl[n].loy=Math.max(0,p.ctrl[n].loy+W.loy);for(const n in m.occ)m.occ[n].resist=Math.min(100,m.occ[n].resist+W.resist);
-  m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city,from:p.c});
+  m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*WPNCFG.ownHit,from:p.c});
   const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,dead=popStrike(k,c);
-  const t=`${W.ico} ${W.n} hit ${c.name}, ${c.country}: ${fmtPop(dead)} killed, enemy −${Math.round(kill)}, front +${W.front}${W.appr?`, approval ${W.appr}`:""}${W.loy?`, allies' loyalty ${W.loy}`:""}`;logPol(t);milLog(m,t);
-  toast(t+(mine?` · your businesses in ${c.name} are hit too`:""));
-  if(w.front>=100||w.enemyStr<w.enemyMax*.05)milEndWar(c.country,"win");
+  const t=`${W.ico} ${W.n} hit ${c.name}, ${c.country}: ${fmtPop(dead)} killed, enemy −${Math.round(kill)}, front +${push}${W.appr?`, approval ${W.appr}`:""}${W.loy?`, allies' loyalty ${W.loy}`:""}`;logPol(t);milLog(m,t);
+  toast(t+(mine?` · your businesses in ${c.name} lose ${Math.round(W.city*WPNCFG.ownHit*100)}% demand for a while`:""));
   if(typeof PH!=="undefined"&&PH.open){PH.open=false}rotateTo(c,Math.max(V.k,2.5));wpnAnim()}
+// the world reacts to gas/nukes: sanctions-like hit to every city's demand for a while
+function wpnSanction(k){const m=mil(),X=WPNCFG.sanc[k];if(!X)return;const now=Date.now(),o=m.sanc&&m.sanc.until>now?m.sanc:{f:0,until:now};
+  m.sanc={f:Math.max(o.f,X.f),until:Math.max(o.until,now)+X.days*DAYMS};const t=`The world condemns your ${WPNCFG.w[k].n.toLowerCase()} strike: sanctions cut demand ${Math.round(m.sanc.f*100)}% for ${fmtDur(m.sanc.until-now)}`;logPol(t);milLog(m,t)}
+function sancMult(){const m=S.pol&&S.pol.mil,x=m&&m.sanc;return x&&x.until>Date.now()&&x.f>0?1-Math.min(.5,x.f):1}
+// enemy retaliation against your home and controlled countries during a war (called once per war per game hour)
+function wpnRetal(n,w,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,now=Date.now();if(!(w.rcd>=0))w.rcd=0;if(now<w.rcd)return;
+  const pw=w.enemyMax>0?w.enemyStr/w.enemyMax:0;if(pw<C.minPow)return;
+  const tg=[p.c,...Object.keys(p.ctrl||{})].filter(x=>x&&COUNTRIES.includes(x)),cs=CITIES.filter(c=>tg.includes(c.country));if(!cs.length)return;
+  let k=null;if(w.nk&&w.enemyMax>=C.nukeMin&&Math.random()<C.odds.nuke*pw)k="nuke";else if((w.wmd||w.weariness>50)&&Math.random()<C.odds.gas*pw)k="gas";else if(Math.random()<C.odds.msl*pw)k="msl";if(!k)return;
+  const W=WPNCFG.w[k],E=C.hit[k],c=cs[Math.floor(Math.random()*cs.length)];w.rcd=now+C.cd[k]*DAYMS;
+  m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*E.city,from:n,foe:1});
+  const dead=popStrike(k,c);w.front=Math.max(0,w.front-E.front);p.appr=Math.max(0,p.appr+E.appr);if(p.ctrl[c.country])p.ctrl[c.country].loy=Math.max(0,p.ctrl[c.country].loy+E.loy);
+  const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,t=`${W.ico} ${n} struck ${c.name} with a ${W.n.toLowerCase()}: ${fmtPop(dead)} killed, front −${E.front}, approval ${E.appr}${mine?" · your businesses there are hit":""}`;
+  S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);if(!quiet){toast(t);if(typeof wpnAnim==="function")wpnAnim()}}
 // demand multiplier for a struck city: each strike's damage fades linearly to 0 by its end time
 function strikeMult(c){const m=S.pol&&S.pol.mil;if(!m||!Array.isArray(m.strikes)||!m.strikes.length)return 1;const now=Date.now();let f=1;
   for(const s of m.strikes)if(s.city===c.id&&now<s.until)f*=1-s.dmg*Math.max(0,(s.until-now)/(s.until-s.t));return Math.max(.1,f)}
@@ -3099,9 +3139,10 @@ function wpnHtml(m,lead,sb,bx,urow){const C=WPNCFG,now=Date.now();wpnTick();
   let h=`<div class="ph-sub" style="margin-top:10px">Arsenal · production ${m.wq.length}/${C.queue}</div><div class="ph-rows">${Object.keys(C.w).map(k=>{const W=C.w[k],q=m.wq.filter(x=>x.k===k),ok=W.ok(m),full=m.wpn[k]+q.length>=C.stockMax[k];
     return urow(`${W.ico} ${W.n} <b>× ${m.wpn[k]}</b>`,`${ok?`build ${fmtDur(W.build*DAYMS)}`:`needs ${W.need}`}${q.length?` · ${q.length} building, next ${fmtDur(Math.max(0,Math.min(...q.map(x=>x.done))-now))}`:""}`,bx("wpnbuild",k,`Build · ${fmt(W.cost)}`,"#7f1d1d",!lead||!ok||full||m.wq.length>=C.queue||S.cash<W.cost,1))}).join("")}</div>`;
   const wk=Object.keys(m.wars),have=Object.keys(C.w).filter(k=>m.wpn[k]>0);
-  if(lead&&wk.length&&have.length)for(const n of wk)h+=`<div class="ph-sub" style="margin-top:8px">Strike ${n}</div><div class="ph-rows">${ctyCities(n).map(c=>{const sm=strikeMult(c);return urow(c.name,sm<1?`<span style="color:#f87171">damaged −${Math.round((1-sm)*100)}%</span>`:"",have.map(k=>bx("wpnfire",k+"|"+c.id,`${C.w[k].ico} ${m.wpn[k]}`,k==="nuke"?"#713f12":k==="gas"?"#3f6212":"#7c2d12",0,1)).join(""))}).join("")}</div>`;
+  if(lead&&wk.length&&have.length)for(const n of wk)h+=`<div class="ph-sub" style="margin-top:8px">Strike ${n}</div><div class="ph-rows">${ctyCities(n).map(c=>{const sm=strikeMult(c);return urow(c.name+(S.own[c.id]&&Object.keys(S.own[c.id]).length?` <small style="color:#fbbf24">· yours</small>`:""),sm<1?`<span style="color:#f87171">damaged −${Math.round((1-sm)*100)}%</span>`:"",have.map(k=>bx("wpnfire",k+"|"+c.id,`${C.w[k].ico} ${m.wpn[k]}`,k==="nuke"?"#713f12":k==="gas"?"#3f6212":"#7c2d12",0,1)).join(""))}).join("")}</div>`;
   else if(lead&&have.length)h+=`<p class="ph-sub">Declare war to use your weapons.</p>`;
-  h+=`<p class="ph-sub" style="margin-top:6px">Strikes cut enemy strength, push the front and wreck demand in the hit city for a few days (businesses there too, including yours). Gas and nukes cost heavy approval and the loyalty of every country in your sphere, and raise resistance in occupied lands.</p>`;
+  h+=`<p class="ph-sub" style="margin-top:6px">Strikes cut enemy strength, push the front (never past ${C.frontCap}: battles must finish a war) and wreck demand in the hit city for a few days (your businesses there lose ${Math.round(C.ownHit*100)}% of that). Gas and nukes cost heavy approval and the loyalty of every country in your sphere, and raise resistance in occupied lands. Enemies strike back at your own cities with missiles, and with gas or nukes if you used them first; the world answers WMD with sanctions.</p>`;
+  if(sancMult()<1)h+=`<p class="ph-sub" style="color:#f87171">Sanctions: demand −${Math.round((1-sancMult())*100)}% in all cities for ${fmtDur(m.sanc.until-now)}</p>`;
   return h}
 /* ---- HQ phone app: schedules, wage raises/cuts, firing (per business; S.sched / S.wadj keyed by bkey) ---- */
 const HRCFG={sched:[["Day",1,1],["Extended",1.35,1.5],["24h",1.7,2.2]], // [name, revenue x, wage x]
@@ -3110,9 +3151,11 @@ const hrSch=(c,b)=>HRCFG.sched[(S.sched||{})[bkey(c,b.k)]|0]||HRCFG.sched[0];
 const hrAdj=(c,b)=>Math.max(-HRCFG.maxDn,Math.min(HRCFG.maxUp,(S.wadj||{})[bkey(c,b.k)]|0));
 function hrOut(c,b){const a=hrAdj(c,b);return hrSch(c,b)[1]*(1+(a>0?HRCFG.upOut:HRCFG.dnOut)*a)}
 function hrPay(c,b){return hrSch(c,b)[2]*(1+HRCFG.step*hrAdj(c,b))}
-function hrDay(quiet){if(!S.wadj)return;for(const key in S.wadj){const a=S.wadj[key]|0;if(a>=0||!S.staff[key])continue;
-  if(Math.random()<HRCFG.quit*-a){delete S.staff[key];delete S.wadj[key];const [id,k]=key.split(":"),c=CITIES[id],bz=BIZ.find(x=>x.k===k);
-    const t=`Staff at your ${bz?bz.n:k}${c?" in "+c.name:""} quit over pay cuts`;S.log.unshift(t);S.log=S.log.slice(0,3);if(!quiet)toast(t)}}}
+function hrDay(quiet){if(!S.wadj)return;const q=[];for(const key in S.wadj){const a=S.wadj[key]|0;if(a>=0||!S.staff[key])continue;
+  if(Math.random()<HRCFG.quit*-a){delete S.staff[key];delete S.wadj[key];const [id,k]=key.split(":"),c=CITIES[id],bz=BIZ.find(x=>x.k===k);q.push(`${bz?bz.n:k}${c?" in "+c.name:""}`)}}
+  if(!q.length)return;const t=q.length===1?`Staff at your ${q[0]} quit over pay cuts`:`Staff quit over pay cuts at ${q.length} businesses: ${q.slice(0,3).join(", ")}${q.length>3?` +${q.length-3} more`:""}`;
+  // one summary line per day so quits don't push other news out of the 3-entry log; repeated days update the line instead of stacking
+  if(/quit over pay cuts/.test(S.log[0]||""))S.log[0]=t;else{S.log.unshift(t);S.log=S.log.slice(0,3)}if(!quiet)toast(t)}
 function hrAct(a,key){const [id,k]=key.split(":"),c=CITIES[id],b=BIZ.find(x=>x.k===k);if(!c||!b||!(S.own[id]||{})[k])return;
   if(a==="hrsch"){S.sched[key]=((S.sched[key]|0)+1)%HRCFG.sched.length;if(!S.sched[key])delete S.sched[key];toast(`${b.n}: ${hrSch(c,b)[0]} hours`)}
   else if(a==="hrup"||a==="hrdn"){const v=Math.max(-HRCFG.maxDn,Math.min(HRCFG.maxUp,(S.wadj[key]|0)+(a==="hrup"?1:-1)));if(v)S.wadj[key]=v;else delete S.wadj[key]}
@@ -3743,8 +3786,8 @@ const POPCFG={c:{"Argentina":[45.7e6,12.5,7.6],"Australia":[26.7e6,11.4,6.6],"Br
   cityPop:[0,4e5,1.2e6,3.5e6,8e6,18e6], strike:{msl:.0004,gas:.02,nuke:.15}}; // people hit per strike, as a share of the struck city's population
 const POPCAUSE=[["nat","Natural / old age"],["sick","Sickness"],["acc","Accidents"],["war","War"]];
 function popOf(n){S.popn=S.popn&&typeof S.popn==="object"?S.popn:{};let p=S.popn[n];const R=POPCFG.c[n]||POPCFG.def;
-  if(!p||typeof p!=="object"||!(p.p>0))p=S.popn[n]={p:R[0],b:0,d:0,bt:0,dt:0,c:[0,0,0,0],ct:[0,0,0,0],day:S.day||0,fb:0,fd:[0,0,0,0]};
-  if(!Array.isArray(p.c))p.c=[0,0,0,0];if(!Array.isArray(p.ct))p.ct=[0,0,0,0];if(!Array.isArray(p.fd))p.fd=[0,0,0,0];for(const k of ["b","d","bt","dt","fb"])if(!(p[k]>=0))p[k]=0;return p}
+  if(!p||typeof p!=="object"||!(p.p>0))p=S.popn[n]={p:R[0],p0:R[0],b:0,d:0,bt:0,dt:0,c:[0,0,0,0],ct:[0,0,0,0],day:S.day||0,fb:0,fd:[0,0,0,0]};
+  if(!Array.isArray(p.c))p.c=[0,0,0,0];if(!Array.isArray(p.ct))p.ct=[0,0,0,0];if(!Array.isArray(p.fd))p.fd=[0,0,0,0];for(const k of ["b","d","bt","dt","fb"])if(!(p[k]>=0))p[k]=0;if(!(p.p0>0))p.p0=R[0];return p}
 function popKill(n,i,x){const p=popOf(n);x=Math.min(Math.max(0,x),p.p);if(p.day!==(S.day||0)){p.day=S.day||0;p.d=0;p.b=0;p.ct=[0,0,0,0]}
   p.fd[i]+=x;const w=Math.floor(p.fd[i]);p.fd[i]-=w;p.p-=w;p.d+=w;p.dt+=w;p.c[i]+=w;p.ct[i]+=w;return w}
 // days = game days elapsed (real hours); one call covers the whole gap, so offline catch-up is constant cost
@@ -3763,11 +3806,14 @@ const fmtPop=n=>{n=Math.round(n);const a=Math.abs(n);if(a>=1e9)return (n/1e9).to
 function popHtml(c){const n=c.country,p=popOf(n),R=POPCFG.c[n]||POPCFG.def,M=S.pol&&S.pol.mil,war=M&&(M.wars&&M.wars[n]?"at war":M.occ&&M.occ[n]?"under occupation":"");
   return `<div class="sec">Population of ${n}</div><div class="meta"><div><span>People </span>${fmtPop(p.p)}</div><div><span>Births today </span>${fmtPop(p.b)}</div><div><span>Deaths today </span>${fmtPop(p.d)}</div></div>
   <div class="list">${POPCAUSE.map(([k,t],i)=>`<div class="row"><div class="n">${t}${i===3&&war?` <span class="tag bust">${war}</span>`:""}</div><div class="d">${fmtPop(p.ct[i])} today · ${fmtPop(p.c[i])} in total</div></div>`).join("")}
-  <p class="d" style="font-size:12px;color:var(--muted);margin:4px 0">${R[1]} births and ${R[2]} deaths per 1,000 people a year. Since tracking began: ${fmtPop(p.bt)} born, ${fmtPop(p.dt)} died.</p></div>`}
-function popWorldHtml(){let P=0,b=0,d=0,bt=0,dt=0;const ct=[0,0,0,0];for(const n of COUNTRIES){const p=popOf(n);if(p.day!==(S.day||0))continue;P+=p.p;b+=p.b;d+=p.d;p.ct.forEach((v,i)=>ct[i]+=v)}
-  for(const n of COUNTRIES){const p=popOf(n);if(p.day!==(S.day||0))P+=p.p;bt+=p.bt;dt+=p.dt}
-  return `<div class="sec">World population</div><div class="meta"><div><span>People </span>${fmtPop(P)}</div><div><span>Born today </span>${fmtPop(b)}</div><div><span>Died today </span>${fmtPop(d)}</div></div>
-  <p class="d" style="font-size:12px;color:var(--muted);margin:4px 0">Across ${COUNTRIES.length} countries. Deaths today: ${POPCAUSE.map(([k,t],i)=>`${t.split(" /")[0].toLowerCase()} ${fmtPop(ct[i])}`).join(" · ")}. All-time: ${fmtPop(bt)} born, ${fmtPop(dt)} died.</p>`}
+  <p class="d" style="font-size:12px;color:var(--muted);margin:4px 0">${R[1]} births and ${R[2]} deaths per 1,000 people a year. Since tracking began: ${fmtPop(p.bt)} born, ${fmtPop(p.dt)} died. Market size ×${popDem(c).toFixed(2)} demand, ×${popHire(c).toFixed(2)} hiring vs. the starting population.</p></div>`}
+/* phone app: world population + every country */
+function popApp(){let P=0,b=0,d=0,bt=0,dt=0;const ct=[0,0,0,0],T=S.day||0,M=S.pol&&S.pol.mil;for(const n of COUNTRIES){const p=popOf(n);P+=p.p;bt+=p.bt;dt+=p.dt;if(p.day!==T)continue;b+=p.b;d+=p.d;p.ct.forEach((v,i)=>ct[i]+=v)}
+  const rows=COUNTRIES.map(n=>{const p=popOf(n),t=p.day===T,net=t?p.b-p.d:0,w=M&&(M.wars&&M.wars[n]?" · at war":M.occ&&M.occ[n]?" · occupied":"")||"";return {n,p,net,w}}).sort((x,y)=>y.p.p-x.p.p);
+  return `<div class="ph-big">${fmtPop(P)}</div><div class="ph-sub">people in ${COUNTRIES.length} countries</div>
+    <div class="ph-rows"><div><span>Born today</span><b>${fmtPop(b)}</b></div><div><span>Died today</span><b>${fmtPop(d)}</b></div>${POPCAUSE.map(([k,t],i)=>`<div><span>${t}</span><b>${fmtPop(ct[i])}</b></div>`).join("")}<div><span>All-time born</span><b>${fmtPop(bt)}</b></div><div><span>All-time died</span><b>${fmtPop(dt)}</b></div></div>
+    <div class="ph-sub" style="margin-top:8px">By country · net change today</div>
+    <div class="ph-list">${rows.map(r=>`<div><b style="display:block">${r.n} · ${fmtPop(r.p.p)}</b><span style="color:${r.net<0?"#fca5a5":"#86efac"}">${r.net<0?"−":"+"}${fmtPop(Math.abs(r.net))}</span> today${r.p.c[3]?` · ${fmtPop(r.p.c[3])} war dead`:""}${r.w}</div>`).join("")}</div>`}
 let saveT=0;
 setInterval(()=>{if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -3796,8 +3842,9 @@ const ICO={hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h
  weather:'<path d="M7 17a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.4A4 4 0 1 1 17 17z M9 20l-1 2 M13 20l-1 2"/>',
  market:'<path d="M4 19V9 M10 19V5 M16 19v-7 M22 19H2"/>',
  travel:'<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>',
+ pop:'<path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1 M16 5.2a3 3 0 0 1 0 5.6 M18 14.2a5 5 0 0 1 3 4.8v1"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"]];
+const APPS=[["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["pop","Population","#0369a1"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 function phPlace(){const el=PH.el,w=el.offsetWidth,h=el.offsetHeight,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
@@ -3820,6 +3867,7 @@ function appHtml(k){const {inc,nw}=totals();
   if(k==="obank")return obApp();
   if(k==="govt")return govApp();
   if(k==="hq")return hrApp();
+  if(k==="pop")return popApp();
   if(k==="gig"){const g=gigState(),v=gigPay();return `<div class="ph-sub">${jailed()?"Prison labour":GIGS[g.i].n} · ${CITIES[(S.loc||{city:0}).city].name}</div>
     ${rideHtml()}
     <button data-ph="gigtap" style="width:100%;aspect-ratio:1.4;border:0;border-radius:18px;background:#b45309;color:#fff;font:inherit;font-size:22px;font-weight:700;cursor:pointer;margin:8px 0;touch-action:manipulation">${GIGS[g.i].v}<br><span style="font-size:15px;font-weight:600;opacity:.9">+${fmtc(v)}</span></button>
@@ -3846,7 +3894,8 @@ function appHtml(k){const {inc,nw}=totals();
   return ""}
 const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);return `<button class="ph-item" data-ph="buyitem" data-k="${it.k}" ${S.cash<p?"disabled":""}><span>${it.n}<small>${NEEDS.filter(([q])=>it[q]).map(([q,n])=>(it[q]>0?"+":"")+it[q]+" "+n.toLowerCase()).join(", ")}</small></span><b>${fmt(p)}</b></button>`};
 ["touchstart","touchmove","wheel","scroll","pointerdown"].forEach(t=>PH.el.addEventListener(t,()=>{PH.touched=Date.now()},{passive:true,capture:true}));
-PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon",hrfire:"Tap again to fire",hqunlink:"Tap again"}[a]||(a==="wpnfire"&&!/^msl\|/.test(b.dataset.k)?"Tap again":null);if(cfm&&!b.dataset.arm){b.dataset.arm=1;b.textContent=cfm;if(a==="milab"||a==="wpnfire"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();return}
+PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon",hrfire:"Tap again to fire",hqunlink:"Tap again"}[a]||(a==="wpnfire"&&!/^msl\|/.test(b.dataset.k)?"Tap again":null);if(cfm&&!b.dataset.arm){const t0=b.textContent,w0=b.style.width,f0=b.style.flex;b.dataset.arm=1;b.textContent=cfm;if(a==="milab"||a==="wpnfire"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();
+    setTimeout(()=>{if(b.isConnected&&b.dataset.arm){delete b.dataset.arm;b.textContent=t0;b.style.width=w0;b.style.flex=f0}},4000);return} // disarm after 4 s
   if(a==="unfold"){PH.open=true;PH.app=null}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="app"){PH.app=b.dataset.k}
   else if(/^hr(sch|up|dn|fire|hire)$/.test(a)){hrAct(a,b.dataset.k);save();hud()}
   else if(a==="dash"){dxOpen();return}
