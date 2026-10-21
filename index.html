@@ -401,9 +401,9 @@ function menuNet(c,b,lv,id){menuOv={[c.id+":"+b.k]:id};try{return profit(b,c,lv)
 const USE={cart:{burgers:2},coffeecart:{bread:1},icecream:{bread:1},taco:{beef:1,bread:1},pretzel:{bread:2},noodle:{beef:1},smoothie:{bread:1},kiosk:{bread:3},shop:{bread:4,tools:1},rest:{burgers:5,beef:3},office:{electronics:.5},hotel:{bread:8,electronics:.5}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
-function profit(b,c,lv){if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(1+0.55*(lv-1))-bizWage(b,c,lv))}
+function profit(b,c,lv){if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)-bizWage(b,c,lv))}
 // hourly wages a business is charged inside profit(); HQ Employees shows the same figure
-function bizWage(b,c,lv){return b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1))}
+function bizWage(b,c,lv){return b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1))*(typeof hrPay==="function"?hrPay(c,b):1)}
 function cityProfit(c){const o=S.own[c.id]||{};let t=0;for(const b of BIZ)if(o[b.k])t+=profit(b,c,o[b.k]);return t}
 /* renting: anything you don't own pays hourly rent (value / 60 per hour). Leases with a payback under 60 days profit; the Rent button warns when rent exceeds Lv1 profit minus hourly stock cost. Rate is read live, so old saves just pay the new rate. */
 const RENT=1/60,FIT=.2;
@@ -1530,7 +1530,7 @@ setInterval(wxNews,30000);setTimeout(wxNews,2000);
 if(WX_TEST)window.__wx={stormAt,activeStorms,stormCenter,cities:CITIES,get city(){return stCity},get inStreet(){return inStreet}};
 
 /* ---------- running a business: stock, staff, managers and auto-restock ---------- */
-S.stock=S.stock||{};S.staff=S.staff||{};S.auto2=S.auto2||{};S.orders=S.orders||[];S.opf=S.opf||{};
+S.stock=S.stock||{};S.staff=S.staff||{};S.auto2=S.auto2||{};S.orders=S.orders||[];S.opf=S.opf||{};S.sched=S.sched||{};S.wadj=S.wadj||{};
 const SUP={cart:{u:"servings",r:50,c:0.91,n:"Sausages, buns and toppings"},
   coffeecart:{u:"cups",r:60,c:0.77,n:"Beans, milk and cups"},icecream:{u:"scoops",r:55,c:0.7,n:"Ice cream tubs and cones"},taco:{u:"tacos",r:80,c:0.98,n:"Tortillas, meat and salsa"},
   pretzel:{u:"pretzels",r:45,c:0.63,n:"Dough, salt and mustard"},noodle:{u:"bowls",r:60,c:0.91,n:"Noodles, broth and toppings"},smoothie:{u:"cups",r:50,c:0.84,n:"Fruit, yoghurt and cups"},kiosk:{u:"cups",r:160,c:1.0,n:"Coffee beans, milk and cups"},
@@ -1670,7 +1670,7 @@ setInterval(worldNews,4*60000);setTimeout(worldNews,20000);
 /* ---------- economy tick ---------- */
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
 let pops=[]; // floating income labels
-function simDay(quiet){const{nw}=totals();S.day++;driftPrices();
+function simDay(quiet){const{nw}=totals();S.day++;if(typeof hrDay==="function")hrDay(quiet);driftPrices();
   audits(quiet);simProps(quiet);
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||Math.random()>.004)continue;
     const kinds=[["Break-in at your",.04],["Equipment breakdown at your",.03],["Health inspection fine at your",.02],["Customer lawsuit against your",.06]],[t,f]=kinds[Math.floor(Math.random()*kinds.length)];
@@ -2442,7 +2442,7 @@ function confetti(n=40,x=innerWidth/2,y=innerHeight/2){if(matchMedia("(prefers-r
     d.animate([{transform:"translate(0,0) rotate(0)",opacity:1},{transform:`translate(${dx}px,${dy+500}px) rotate(${Math.random()*900}deg)`,opacity:0}],{duration:1100+Math.random()*700,easing:"cubic-bezier(.2,.6,.4,1)"}).onfinish=()=>d.remove()}}
 let _cashShown=null,_cashRaf=0;
 const cashFmt=v=>Math.abs(v)<(innerWidth<=440?1e4:1e6)?(v<0?"-$":"$")+Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):fmt(v);
-function tweenCash(){const el=$("#cash"),to=S.cash;if(_cashShown==null)_cashShown=to;const from=_cashShown;if(Math.abs(to-from)<.005){el.textContent=cashFmt(to);_cashShown=to;return}
+function tweenCash(){const el=$("#cash"),to=S.cash;if(_cashShown==null)_cashShown=to;const from=_cashShown;if(Math.abs(to-from)<.005){cancelAnimationFrame(_cashRaf);_cashRaf=0;el.textContent=cashFmt(to);_cashShown=to;return}
   const big=Math.abs(to-from)>Math.max(50,Math.abs(from)*.002);if(big){el.classList.remove("up","down");el.classList.add(to>from?"up":"down");clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove("up","down"),450)}
   cancelAnimationFrame(_cashRaf);const t0=performance.now(),dur=big?500:200;
   const step=t=>{const u=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-u,3);_cashShown=from+(to-from)*e;el.textContent=cashFmt(_cashShown);if(u<1)_cashRaf=requestAnimationFrame(step)};_cashRaf=requestAnimationFrame(step)}
@@ -2739,7 +2739,7 @@ function cbHtml(c){const mine=S.cbiz.filter(d=>d.city===c.id),tpl=cbTpl();if(!tp
   ${mine.map(d=>{const held=(S.own[c.id]||{})[d.k];return `<div class="row${held?" own":""}"><div><b>${esc((d.e?d.e+" ":"")+d.n)}</b><div class="d">${held?"You run it here: sell it first to delete":"Not owned or rented · deleting frees a slot (no refund)"}</div></div>${held?"":`<button class="cb-del" data-fixed="1" data-cbk="${d.k}">Delete</button>`}</div>`}).join("")}</div>`}
 function cbDel(c,k){const i=S.cbiz.findIndex(d=>d.k===k&&d.city===c.id);if(i<0)return;const d=S.cbiz[i];if((S.own[c.id]||{})[k]){toast("Sell it first");return}
   S.cbiz.splice(i,1);const j=BIZ.findIndex(x=>x.k===k);if(j>=0)BIZ.splice(j,1);delete SUP[k];delete STAFF[k];
-  const key=bkey(c,k);for(const o of [S.stock,S.opf,S.staff,S.auto2])delete o[key];
+  const key=bkey(c,k);for(const o of [S.stock,S.opf,S.staff,S.auto2,S.sched||{},S.wadj||{}])delete o[key];
   S.orders=S.orders.filter(o=>o.key!==key);if(S.lease[c.id])delete S.lease[c.id][k];toast(`${d.n} deleted`);commit()}
 sheet.addEventListener("click",e=>{const b=e.target.closest(".cb-del");if(!b||!sel)return;if(b.dataset.arm)cbDel(sel,b.dataset.cbk);else{b.dataset.arm=1;b.textContent="Tap again to delete"}});
 sheet.addEventListener("input",e=>{const id=e.target.id;if(id==="cb-n")cbForm.n=e.target.value;else if(id==="cb-e")cbForm.e=e.target.value});
@@ -2986,6 +2986,7 @@ function milHour(quiet){const p=S.pol;if(!p||!p.mil)return;const m=mil(),C=MILCF
     m.morale=Math.max(0,Math.min(100,m.morale+(mv>0?C.moraleWin:C.moraleLose)));
     w.weariness=Math.min(100,w.weariness+C.wearRate+(mv<0?.5:0));p.appr=Math.max(0,p.appr-C.wearAppr*w.weariness/10);
     w.battles.unshift({t:Date.now(),mv:Math.round(mv*10)/10,ps:Math.round(ps),es:Math.round(es)});w.battles=w.battles.slice(0,5);
+    if(quiet&&w.weariness>=100){milEndWar(n,"white");(S._offPeace=S._offPeace||[]).push(n);continue} // warOfflinePeace: exhausted war ends in white peace while away
     if(w.front>=100||w.enemyStr<w.enemyMax*.05)milEndWar(n,"win");else if(w.front<=0||milStr()<=0)milEndWar(n,"lose")}
   m.supply=nw?sup/nw:C.supplyBase;
   for(const n in m.occ){const o=m.occ[n],need=Math.max(1,ctyScale(n)*.5);o.resist=Math.max(0,Math.min(100,o.resist+C.occDrift-C.occGar*2*Math.min(1.5,(o.gar||0)/need)+(lead?0:.5)+(Math.random()-.5)));
@@ -3012,6 +3013,33 @@ function milApp(){const p=pol(),m=mil(),C=MILCFG,U=C.units,now=Date.now(),lead=p
   if(m.log.length)h+=`<div class="ph-sub" style="margin-top:10px">${m.log.slice(0,4).join("<br>")}</div>`;
   h+=`<p class="ph-sub" style="margin-top:8px">Each hour every war fights a battle: strength × terrain × morale × supply. Front 100 = capitulation and occupation, 0 = defeat and reparations. Garrison infantry to calm resistance; ${C.occDays} calm days and it joins your controlled countries.</p>`;
   return h}
+/* ---- HQ phone app: schedules, wage raises/cuts, firing (per business; S.sched / S.wadj keyed by bkey) ---- */
+const HRCFG={sched:[["Day",1,1],["Extended",1.35,1.5],["24h",1.7,2.2]], // [name, revenue x, wage x]
+  step:.1,maxUp:3,maxDn:3,upOut:.04,dnOut:.06,quit:.03}; // wage ±10%/step; output +4%/raise step, -6%/cut step; 3%/day quit risk per cut step
+const hrSch=(c,b)=>HRCFG.sched[(S.sched||{})[bkey(c,b.k)]|0]||HRCFG.sched[0];
+const hrAdj=(c,b)=>Math.max(-HRCFG.maxDn,Math.min(HRCFG.maxUp,(S.wadj||{})[bkey(c,b.k)]|0));
+function hrOut(c,b){const a=hrAdj(c,b);return hrSch(c,b)[1]*(1+(a>0?HRCFG.upOut:HRCFG.dnOut)*a)}
+function hrPay(c,b){return hrSch(c,b)[2]*(1+HRCFG.step*hrAdj(c,b))}
+function hrDay(quiet){if(!S.wadj)return;for(const key in S.wadj){const a=S.wadj[key]|0;if(a>=0||!S.staff[key])continue;
+  if(Math.random()<HRCFG.quit*-a){delete S.staff[key];delete S.wadj[key];const [id,k]=key.split(":"),c=CITIES[id],bz=BIZ.find(x=>x.k===k);
+    const t=`Staff at your ${bz?bz.n:k}${c?" in "+c.name:""} quit over pay cuts`;S.log.unshift(t);S.log=S.log.slice(0,3);if(!quiet)toast(t)}}}
+function hrAct(a,key){const [id,k]=key.split(":"),c=CITIES[id],b=BIZ.find(x=>x.k===k);if(!c||!b||!(S.own[id]||{})[k])return;
+  if(a==="hrsch"){S.sched[key]=((S.sched[key]|0)+1)%HRCFG.sched.length;if(!S.sched[key])delete S.sched[key];toast(`${b.n}: ${hrSch(c,b)[0]} hours`)}
+  else if(a==="hrup"||a==="hrdn"){const v=Math.max(-HRCFG.maxDn,Math.min(HRCFG.maxUp,(S.wadj[key]|0)+(a==="hrup"?1:-1)));if(v)S.wadj[key]=v;else delete S.wadj[key]}
+  else if(a==="hrfire"){delete S.staff[key];delete S.wadj[key];toast(`Fired the ${b.n} staff. It only opens while you're here now.`)}
+  else if(a==="hrhire"){S.staff[key]=1;toast(`Hired ${bizStaff(k,S.own[id][k])} staff. Wages start now.`)}}
+function hrApp(){let h="",n=0,pay=0;const btn=(a,k,t,bg,dis)=>`<button class="buy" data-ph="${a}" data-k="${k}" style="flex:1;min-width:0;padding-left:4px;padding-right:4px;color:#fff;background:${bg}!important;border-color:${bg}" ${dis?"disabled":""}>${t}</button>`;
+  for(const id in S.own){const o=S.own[id],c=CITIES[id];if(!c)continue;const mine=BIZ.filter(b=>o[b.k]);if(!mine.length)continue;
+    h+=`<div class="ph-sub" style="margin-top:10px">${c.name}</div>`;
+    for(const b of mine){const lv=o[b.k],key=bkey(c,b.k),st=isStaffed(c,b.k),w=bizWage(b,c,lv),a=hrAdj(c,b),sc=hrSch(c,b);n++;pay+=w;
+      h+=`<div class="ph-rows" style="margin-bottom:4px"><div><span><b>${b.n}</b></span><b style="color:${st?"#4ade80":"#f87171"}">${st?bizStaff(b.k,lv)+" staff":"Unstaffed"}</b></div>
+        <div><span>Wage</span><b>${w<100?fmtc(w):fmt(w)}/hr${a?` (${a>0?"+":""}${Math.round(a*HRCFG.step*100)}%)`:""}</b></div>
+        <div><span>Hours · output</span><b>${sc[0]} · ×${hrOut(c,b).toFixed(2)}</b></div>
+        <div><span>Profit</span><b>${fmt(profit(b,c,lv))}/hr</b></div></div>
+        <div style="display:flex;gap:4px;margin-bottom:6px">${btn("hrsch",key,"Hours: "+sc[0],"#334155")}${btn("hrup",key,"Raise","#15803d",a>=HRCFG.maxUp||!st)}${btn("hrdn",key,"Cut","#b45309",a<=-HRCFG.maxDn||!st)}${st?btn("hrfire",key,"Fire","#7f1d1d"):btn("hrhire",key,"Hire","#1d4ed8")}</div>`}}
+  if(!n)return `<div class="ph-sub">You don't own any businesses yet.</div>`;
+  return `<div class="ph-rows"><div><span>Businesses</span><b>${n}</b></div><div><span>Payroll</span><b>${fmt(pay)}/hr</b></div></div>
+    <div class="ph-sub" style="margin-top:6px;font-size:12px">Extended hours: ×1.35 sales, ×1.5 wages. 24h: ×1.7 sales, ×2.2 wages. Each raise +10% wages, +4% output. Each cut −10% wages, −6% output and a 3%/day chance staff quit.</div>`+h}
 let saveT=0;
 setInterval(()=>{if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -3031,7 +3059,7 @@ try{Object.assign(PH,JSON.parse(localStorage.getItem("meridian-phone")||"{}"),{e
 const phSave=()=>{try{localStorage.setItem("meridian-phone",JSON.stringify({open:PH.open,x:PH.x,y:PH.y}))}catch(e){}};
 let lastLog="";
 function trackNews(){const l=S.log[0];if(l&&l!==lastLog){lastLog=l;if(!S.news.length||S.news[0].t!==l){S.news.unshift({t:l,at:Date.now()});S.news=S.news.slice(0,40)}}}
-const ICO={govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M3 10l9-6 9 6z"/>`,shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
+const ICO={hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h.01 M16 9h.01"/>`,govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M3 10l9-6 9 6z"/>`,shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
  wallet:'<path d="M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z M3 7l12-3v3 M16 13.5h2"/>',
  news:'<path d="M4 5h13v14H6a2 2 0 0 1-2-2z M17 9h3v8a2 2 0 0 1-2 2 M7 9h7 M7 12h7 M7 15h5"/>',
  needs:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -3041,7 +3069,7 @@ const ICO={govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M
  market:'<path d="M4 19V9 M10 19V5 M16 19v-7 M22 19H2"/>',
  travel:'<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["wallet","Wallet","#0f766e"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"]];
+const APPS=[["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 function phPlace(){const el=PH.el,w=el.offsetWidth,h=el.offsetHeight,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
@@ -3063,6 +3091,7 @@ function appHtml(k){const {inc,nw}=totals();
   if(k==="shop")return shopApp();
   if(k==="obank")return obApp();
   if(k==="govt")return govApp();
+  if(k==="hq")return hrApp();
   if(k==="gig"){const g=gigState(),v=gigPay();return `<div class="ph-sub">${jailed()?"Prison labour":GIGS[g.i].n} · ${CITIES[(S.loc||{city:0}).city].name}</div>
     ${rideHtml()}
     <button data-ph="gigtap" style="width:100%;aspect-ratio:1.4;border:0;border-radius:18px;background:#b45309;color:#fff;font:inherit;font-size:22px;font-weight:700;cursor:pointer;margin:8px 0;touch-action:manipulation">${GIGS[g.i].v}<br><span style="font-size:15px;font-weight:600;opacity:.9">+${fmtc(v)}</span></button>
@@ -3089,8 +3118,9 @@ function appHtml(k){const {inc,nw}=totals();
   return ""}
 const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);return `<button class="ph-item" data-ph="buyitem" data-k="${it.k}" ${S.cash<p?"disabled":""}><span>${it.n}<small>${NEEDS.filter(([q])=>it[q]).map(([q,n])=>(it[q]>0?"+":"")+it[q]+" "+n.toLowerCase()).join(", ")}</small></span><b>${fmt(p)}</b></button>`};
 ["touchstart","touchmove","wheel","scroll","pointerdown"].forEach(t=>PH.el.addEventListener(t,()=>{PH.touched=Date.now()},{passive:true,capture:true}));
-PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon"}[a];if(cfm&&!b.dataset.arm){b.dataset.arm=1;b.textContent=cfm;if(a==="milab"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();return}
+PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon",hrfire:"Tap again to fire"}[a];if(cfm&&!b.dataset.arm){b.dataset.arm=1;b.textContent=cfm;if(a==="milab"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();return}
   if(a==="unfold"){PH.open=true;PH.app=null}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="app"){PH.app=b.dataset.k}
+  else if(/^hr(sch|up|dn|fire|hire)$/.test(a)){hrAct(a,b.dataset.k);save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
   else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
@@ -3259,11 +3289,11 @@ new MutationObserver(draw).observe(document.documentElement,{attributes:true,att
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeSheet()});
 /* offline: full pay for the time away, up to 48 hours, then a welcome-back summary */
 function catchUp(){const now0=Date.now(),away=now0-(S.acc||now0),cash0=S.cash,debt0=S.debt||0,hadStock=Object.keys(S.stock||{}).filter(k=>S.stock[k]>0);
-  const got=accrue();
+  const got=accrue();const offPeace=S._offPeace||[];delete S._offPeace;if(offPeace.length)setTimeout(()=>toast(`War weariness forced white peace with ${offPeace.join(", ")} while you were away`),600);
   S.last=Date.now();checkGoals();save();hud();draw();
   if(away>5*60000){const hrs=away/DAYMS,t=hrs>=1?hrs.toFixed(1)+" h":Math.round(away/60000)+" min";
     if(got>1){S.log.unshift(`While you were away (${t}): ${fmt(got)} earned`);S.log=S.log.slice(0,3);hud()}
-    const ran=hadStock.filter(k=>!(S.stock[k]>0));awaySummary({away,got,net:S.cash-cash0,debt:(S.debt||0)-debt0,ran,capped:away>48*DAYMS})}}
+    const ran=hadStock.filter(k=>!(S.stock[k]>0));awaySummary({away,got,net:S.cash-cash0,debt:(S.debt||0)-debt0,ran,capped:away>48*DAYMS,peace:offPeace})}}
 function awaySummary(r){let el=$("#away");if(!el){el=document.createElement("div");el.id="away";document.body.appendChild(el)}
   const nm=k=>{const [id,b]=k.split(":");const c=CITIES[id],bz=BIZ.find(x=>x.k===b);return (bz?bz.n:b)+(c?" in "+c.name:"")};
   const row=(a,b,col)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)"><span>${a}</span><b${col?` style="color:${col}"`:""}>${b}</b></div>`;
@@ -3271,6 +3301,7 @@ function awaySummary(r){let el=$("#away");if(!el){el=document.createElement("div
     <h3 style="margin:0 0 4px">While you were away</h3><p class="d" style="margin:0 0 10px;color:var(--muted)">Your empire kept running for ${fmtDur(r.away)}.</p>
     ${r.got>1?row("Earned",fmt(r.got),"var(--good)"):""}${row("Cash change",(r.net>=0?"+":"")+fmt(r.net),r.net>=0?"var(--good)":"var(--bad)")}${Math.abs(r.debt)>1?row("Debt change",(r.debt>0?"+":"")+fmt(r.debt),r.debt>0?"var(--bad)":"var(--good)"):""}
     ${r.ran.length?`<p style="margin:10px 0 4px;color:var(--bad)"><b>Ran out of stock:</b></p><div class="d">${r.ran.slice(0,5).map(nm).join("<br>")}${r.ran.length>5?`<br>and ${r.ran.length-5} more`:""}</div>`:""}
+    ${(r.peace||[]).length?`<p class="d" style="margin:10px 0 0"><b>White peace</b> (war weariness hit 100) with ${r.peace.join(", ")}.</p>`:""}
     ${r.capped?`<p class="d" style="margin:10px 0 0;color:var(--muted)">Offline earnings stop after 48 hours. Check in at least every two days to keep everything paid.</p>`:""}
     <button class="buy" data-away="x" style="margin-top:14px;width:100%">Back to work</button></div></div>`;
   el.onclick=e=>{if(e.target.dataset.away)el.innerHTML=""}}
