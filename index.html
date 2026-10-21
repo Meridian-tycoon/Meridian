@@ -218,7 +218,7 @@ button.buy:not(.up):not(:disabled){background:linear-gradient(180deg,color-mix(i
 @media (prefers-reduced-motion:reduce){#sheet.enter .row,#sheet.enter .sec,#daily,#rankup>div,#ptask,#ptask>div{animation:none}}
 /* ===== Movable windows + stats widget ===== */
 @media (min-width:820px){
-  #sheet.open,#sheet{left:var(--sx,auto);top:var(--sy,64px);right:auto;bottom:auto;width:420px;max-height:max(240px,calc(100vh - var(--sy,64px) - 70px));border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 40px rgba(0,0,0,.22)}
+  #sheet.open,#sheet{left:var(--sx,auto);top:var(--sy,64px);right:auto;bottom:auto;width:420px;max-height:calc(100vh - var(--sy,64px) - 70px);border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 40px rgba(0,0,0,.22)}
   #sheet:not([style*="--sx"]){right:12px}
   #sheet .shead{cursor:grab;position:sticky;top:0;background:var(--panel);z-index:2;padding-top:14px}
   #sheet .shead::before{content:"";position:absolute;left:50%;top:5px;width:34px;height:4px;margin-left:-17px;border-radius:2px;background:var(--line)}
@@ -3116,8 +3116,13 @@ function mkDrag(el,handle,key,get,set){let st=null;
   window.addEventListener("pointerup",e=>{if(!st||e.pointerId!==st.id)return;if(st.moved){el.classList.remove("dragging");const p=get();try{localStorage.setItem(key,JSON.stringify({x:p.x,y:p.y}))}catch(_){}}st=null})}
 (()=>{const wide=()=>matchMedia("(min-width:820px)").matches;let sp=null;try{sp=JSON.parse(localStorage.getItem("mer_sheetpos"))}catch(_){}
   const setS=(x,y)=>{sp={x,y};sheet.style.setProperty("--sx",x+"px");sheet.style.setProperty("--sy",y+"px")};
-  if(sp&&wide())setS(Math.min(sp.x,innerWidth-424),sp.y);
-  mkDrag(sheet,".shead","mer_sheetpos",()=>{if(!wide())return{off:1};const r=sheet.getBoundingClientRect();return{x:r.left,y:r.top}},setS)})();
+  /* keep the panel fully on screen: clamp its spot and height to the device */
+  const fit=()=>{if(!wide()){sheet.style.maxHeight="";sheet.style.removeProperty("--sx");sheet.style.removeProperty("--sy");return}
+    if(!sp)return;const par=sheet.offsetParent||document.body,W=par.clientWidth,H=par.clientHeight,w=sheet.offsetWidth||420;
+    const x=Math.max(4,Math.min(W-w-4,sp.x)),y=Math.max(4,Math.min(H-260,sp.y));setS(x,y);sheet.style.maxHeight=Math.max(200,H-y-32)+"px"};
+  if(sp)fit();window.addEventListener("resize",fit);
+  new MutationObserver(()=>{if(sheet.classList.contains("open"))fit()}).observe(sheet,{attributes:true,attributeFilter:["class"]});
+  mkDrag(sheet,".shead","mer_sheetpos",()=>{if(!wide())return{off:1};const r=sheet.getBoundingClientRect(),pr=(sheet.offsetParent||document.body).getBoundingClientRect();return{x:r.left-pr.left,y:r.top-pr.top}},setS)})();
 const SW={el:document.createElement("div"),open:true,x:innerWidth-252,y:innerHeight-330};
 try{Object.assign(SW,JSON.parse(localStorage.getItem("mer_statspos"))||{})}catch(_){}
 try{const f=localStorage.getItem("mer_statsfold");if(f!==null)SW.open=f!=="1";else if(innerWidth<820)SW.open=false}catch(_){}
