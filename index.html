@@ -1541,18 +1541,27 @@ const unitCost=(b,c)=>SUP[b.k].c*PRICE[c.size];
 const stockOf=(c,k)=>S.stock[bkey(c,k)]||0;
 const opFactor=(c,b)=>{const k=bkey(c,b.k);return S.opf[k]==null?0:S.opf[k]};
 const selfRate=.6;                                    // running it yourself: 60% speed, only while you're there
-function runShops(h){S.shopT=Date.now();
+// h = real hours elapsed. Long gaps (offline catch-up) run in ≤1h steps so managers keep restocking
+// and orders that arrived while away are delivered at the step they land. Online ticks are one step.
+function runShops(h){const now=Date.now();S.shopT=now;S.mgrShort=S.mgrShort||{};
+  const n=h>1?Math.min(168,Math.ceil(h)):1,sh=h/n;
+  for(let i=1;i<=n;i++)shopStep(sh,now-(n-i)*sh*DAYMS,now)}
+function shopStep(h,t,now){
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv)continue;const key=bkey(c,b.k);
     const op=isStaffed(c,b.k)?1:(tenantRun(b.k)?1:present(c)?selfRate:0);
     if(!SUP[b.k]){S.opf[key]=op;continue}
     const need=useRate(b,lv,c)*op*h,have=S.stock[key]||0;const f=need>0?Math.min(1,have/need):0;
     S.stock[key]=Math.max(0,have-need*f);S.opf[key]=op*(need>0?f:(have>0?1:0))}}
-  // deliveries
-  const now=Date.now();for(const o of S.orders.slice()){if(now<o.arr)continue;S.stock[o.key]=(S.stock[o.key]||0)+o.q;S.orders=S.orders.filter(x=>x!==o)}
+  // deliveries (t = simulated time of this step)
+  for(const o of S.orders.slice()){if(t<o.arr)continue;S.stock[o.key]=(S.stock[o.key]||0)+o.q;S.orders=S.orders.filter(x=>x!==o)}
   // managers restock automatically when stock drops under 2 hours
   for(const id in S.own){const c=CITIES[id];if(!S.mgr[c.id])continue;for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||!SUP[b.k])continue;const key=bkey(c,b.k);
-    if(!S.auto2[key]||S.orders.some(o=>o.key===key))continue;const r=useRate(b,lv,c);if((S.stock[key]||0)>=r*2)continue;
-    const q=Math.round(r*6),cost=q*unitCost(b,c)*1.1;if(S.cash<cost)continue;S.cash-=cost;S.orders.push({key,q,arr:now+ORDER_MIN*60000,auto:1})}}}
+    if(!S.auto2[key]||S.orders.some(o=>o.key===key))continue;const r=useRate(b,lv,c);if((S.stock[key]||0)>=r*2){delete S.mgrShort[key];continue}
+    const q=Math.round(r*6),cost=q*unitCost(b,c)*1.1;
+    if(S.cash<cost){const m=S.mgrShort[key]||(S.mgrShort[key]={n:0});
+      if(!m.n||now-m.n>3*DAYMS){m.n=now;const msg=`Manager couldn't restock ${b.n} in ${c.name}: needs ${cost<100?fmtC(cost):fmt(cost)}`;S.log.unshift(msg);S.log=S.log.slice(0,3);toast(msg)}
+      continue}
+    delete S.mgrShort[key];S.cash-=cost;S.orders.push({key,q,arr:t+ORDER_MIN*60000,auto:1})}}}
 function orderStock(c,b,q){const own=supMode()==="own"&&(S.own[c.id]||{}).trucking,cost=q*unitCost(b,c)*(own?1:1.06);if(S.cash<cost){toast(`That order costs ${fmt(cost)}`);return}
   S.cash-=cost;S.orders.push({key:bkey(c,b.k),q,arr:Date.now()+ORDER_MIN*60000*(own?.5:1)});toast(`Ordered ${q.toLocaleString()} ${SUP[b.k].u}. ${own?"Your trucks deliver":"Carrier delivers"} in ${own?ORDER_MIN/2:ORDER_MIN} min.`)}
 function menuHtml(c,b,lv){if(!MENUS[b.k])return "";const cur=menuOf(c,b.k),fee=Math.round(cost(b,c)*MENU_SW),base=SUP[b.k].r*(1+.55*(lv-1));
@@ -1579,6 +1588,7 @@ function opsHtml(c,b,lv){const key=bkey(c,b.k),st=isStaffed(c,b.k),staff=bizStaf
   if(sup){const q1=Math.round(r*2),q2=Math.round(r*8);h+=`<button class="buy up" data-ops="order" data-k="${b.k}" data-q="${q1}">+${q1.toLocaleString()} · ${fmt(q1*unitCost(b,c))}</button><button class="buy up" data-ops="order" data-k="${b.k}" data-q="${q2}">+${q2.toLocaleString()} · ${fmt(q2*unitCost(b,c))}</button>`}
   if(!tenantRun(b.k))h+=`<button class="buy${st?" up":""}" data-ops="staff" data-k="${b.k}">${st?`Let ${staff} staff go`:`Hire ${staff} staff`}</button>`;
   if(sup&&b.cx!=null){const sur=Math.max(0,Math.floor(stockOf(c,b.k)-r*4)),all=Math.floor(stockOf(c,b.k)),px=unitCost(b,c)*CB_OUT;h+=`<button class="buy up" data-fixed="1" data-ops="shipout" data-k="${b.k}" data-q="${sur}" ${sur<1?"disabled":""}>Ship out surplus ${sur.toLocaleString()} · +${fmtC(sur*px)}</button><button class="buy up" data-fixed="1" data-ops="shipout" data-k="${b.k}" data-q="${all}" ${all<1?"disabled":""}>Ship out all · +${fmtC(all*px)}</button>`}
+  if(sup&&S.mgr[c.id]&&S.auto2[key]&&(S.mgrShort||{})[key])h+=`<span class="ops-t" style="color:var(--bad)">⚠️ Manager couldn't restock — not enough cash</span>`;
   if(sup)h+=S.mgr[c.id]?`<label class="ops-t"><input type="checkbox" data-ops="auto" data-k="${b.k}" ${S.auto2[key]?"checked":""}> Manager auto-restocks</label>`:`<span class="ops-t" style="color:var(--muted)">Hire a city manager to auto-restock</span>`;
   return h+`</div></div>`}
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-ops]");if(!b||!sel||b.tagName==="INPUT")return;const c=sel,B=BIZ.find(x=>x.k===b.dataset.k),a=b.dataset.ops;
