@@ -24,6 +24,34 @@ service cloud.firestore {
         && validProfile(request.resource.data);
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
+    // Private cloud saves: only the owner can read or write their own save.
+    function validSave(d) {
+      return d.keys().hasOnly(['ver', 'sid', 'n', 'd', 'updated', 'at', 'device', 'nw', 'day', 'biz', 'len'])
+        && d.keys().hasAll(['ver', 'sid', 'n', 'd', 'updated'])
+        && d.ver is int && d.sid is string && d.sid.size() <= 40
+        && d.n is int && d.n >= 0 && d.n <= 30
+        && d.d is string && d.d.size() <= 700000
+        && d.updated == request.time
+        && (!('device' in d) || (d.device is string && d.device.size() <= 60))
+        && (!('at' in d) || d.at is number)
+        && (!('nw' in d) || d.nw is number)
+        && (!('day' in d) || d.day is number)
+        && (!('biz' in d) || d.biz is number)
+        && (!('len' in d) || d.len is int);
+    }
+    match /saves/{uid} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && validSave(request.resource.data);
+      match /parts/{part} {
+        allow read, delete: if request.auth != null && request.auth.uid == uid;
+        allow create, update: if request.auth != null && request.auth.uid == uid
+          && part.matches('^[0-9]{1,2}$')
+          && request.resource.data.keys().hasOnly(['sid', 'd'])
+          && request.resource.data.sid is string && request.resource.data.sid.size() <= 40
+          && request.resource.data.d is string && request.resource.data.d.size() <= 700000;
+      }
+    }
     match /{document=**} {
       allow read, write: if false;
     }
