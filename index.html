@@ -460,7 +460,7 @@ function drawNow(){applyView();
     S.rivals.forEach((rv,i)=>{if(rv.cities.includes(c.id)){ctx.fillStyle=RIVALS[i].col;ctx.fillRect(x-r-6-i*6,y+r+2,5,5)}});
     if(ev){ctx.beginPath();ctx.arc(x,y,r+5,0,7);ctx.strokeStyle=ev.m>1?C.good:C.bad;ctx.lineWidth=1.5;ctx.stroke()}
     ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=owned?C.own:C.ink;ctx.fill();
-    if(S.ob&&S.ob.hq===c.id){ctx.font="12px system-ui, sans-serif";ctx.textAlign="center";ctx.fillText("🏦",x-r-6,y-r-5);ctx.textAlign="start"}
+    if(S.ob&&S.ob.hq===c.id){const by=y-r-12;c.bky=by;ctx.beginPath();ctx.arc(x,by,9,0,7);ctx.fillStyle="#f59e0b";ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle="#1f2937";ctx.stroke();ctx.fillStyle="#000";ctx.font="13px system-ui, sans-serif";ctx.textAlign="center";ctx.fillText("🏦",x,by+1);ctx.textAlign="start"}
     if(sel===c){ctx.beginPath();ctx.arc(x,y,r+9,0,7);ctx.strokeStyle=C.acc;ctx.lineWidth=2.5;ctx.stroke()}
     if(V.k>1.8||c.size>=5||owned){ctx.font=(owned?"600 ":"")+"12px Figtree, system-ui, sans-serif";ctx.fillStyle=owned?C.own:C.ink;
       const cp=labelProfit(c);ctx.fillText(c.name+(owned&&cp?"  "+fmt(cp)+"/hr":""),x+r+4,y)}}
@@ -471,7 +471,7 @@ const degPerPx=()=>180/Math.PI/proj.scale();
 function clampPhi(){V.phi=Math.max(-89,Math.min(89,V.phi))}
 cv.addEventListener("pointerdown",e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});dragMoved=false;V.vl=V.vp=0;cancelAnimationFrame(spinRaf);flying=false;
   if(ptrs.size===2){const [a,b]=[...ptrs.values()];pinch0={d:Math.hypot(a.x-b.x,a.y-b.y),k:V.k}}});
-cv.addEventListener("pointermove",e=>{const p=ptrs.get(e.pointerId);if(!p){const bc=S.ob&&CITIES[S.ob.hq];if(bc){const r=cv.getBoundingClientRect(),hit=Math.hypot(e.clientX-r.left-bc.sx,e.clientY-r.top-bc.sy)<16,t=hit?S.ob.name+" HQ":"";if(cv.title!==t)cv.title=t}return}const dx=e.clientX-p.x,dy=e.clientY-p.y;
+cv.addEventListener("pointermove",e=>{const p=ptrs.get(e.pointerId);if(!p){const bc=S.ob&&CITIES[S.ob.hq];if(bc){const r=cv.getBoundingClientRect(),hit=Math.hypot(e.clientX-r.left-bc.sx,e.clientY-r.top-(bc.bky??bc.sy))<14,t=hit?S.ob.name+" HQ":"";if(cv.title!==t)cv.title=t}return}const dx=e.clientX-p.x,dy=e.clientY-p.y;
   if(ptrs.size===1){if(Math.abs(dx)+Math.abs(dy)>2)dragMoved=true;const f=degPerPx();V.lam+=dx*f;V.phi-=dy*f;clampPhi();
     const t=performance.now(),dt=Math.max(8,t-lastMove);V.vl=dx*f/dt*16;V.vp=-dy*f/dt*16;lastMove=t;draw()}
   p.x=e.clientX;p.y=e.clientY;
@@ -2649,7 +2649,7 @@ setTimeout(ptAsk,2500);
 S.cbiz=Array.isArray(S.cbiz)?S.cbiz:[];S.cbiz.forEach(d=>{if(!d.st)d.st="std"});
 const CB_SIZE={s:{n:"Small",m:.6},m:{n:"Standard",m:1},l:{n:"Large",m:1.8},xl:{n:"XL",m:3}},CB_FEE=.25,CB_MIN=2000,CB_MAX=3,CB_OUT=.8;
 const CB_STY={bud:{n:"Budget",g:.9,r:1.15,c:.85,u:1,d:"lower prices, more customers"},std:{n:"Standard",g:1,r:1,c:1,u:1,d:"balanced"},prem:{n:"Premium",g:1.25,r:.85,c:1.3,u:1.2,d:"higher prices, fewer customers"}};
-const CB_ICONS=["🏪","🍔","☕","🍦","🌮","🍜","🥤","🍕","🏨","🏢","💈","🏋️"];
+const CB_ICONS=["🏪","🍔","☕","🍦","🌮","🍜","🥤","🍕","🏨","🏢","💈","🏋️","🥐","🍣","🍺","🍷","🍩","🍗","🥗","💊","📚","💐","⛽","🚗","🎬","👗","💍","📱","🐾","🔨","🧺","🏦","🏥","🏫","🎮","🎵","💆","🌱","🛒","✂️"];
 const cbTpl=()=>BIZ.filter(x=>x.cx==null&&!x.co&&!x.tr&&!x.big).map(x=>x.k);
 // economics of a custom brand: size × style, then cost raised if needed so payback is never better than the template's
 function cbEcon(t,sz,st){const m=(CB_SIZE[sz]||CB_SIZE.m).m,y=CB_STY[st]||CB_STY.std,sp=SUP[t.k],sc=sp?sp.r*sp.c:0,
@@ -2668,7 +2668,7 @@ function cbHtml(c){const mine=S.cbiz.filter(d=>d.city===c.id),tpl=cbTpl();if(!tp
   const fee=cbFee(cbForm.t,cbForm.sz,c,cbForm.st),E=cbEcon(BIZ.find(x=>x.k===cbForm.t),cbForm.sz,cbForm.st),full=mine.length>=CB_MAX,esc=v=>String(v).replace(/[&<>"]/g,ch=>"&#"+ch.charCodeAt(0)+";");
   return `<div class="sec">Create custom business</div><div class="list"><div class="row" style="display:block"><div class="d">Start your own brand in ${c.name}. It copies a template's economics, then appears under "Open a business" here to buy or rent. Stock-based templates only sell while stocked: order stock in, ship surplus out at ${Math.round(CB_OUT*100)}% of cost. ${mine.length}/${CB_MAX} brands here.</div>
   <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"><input id="cb-e" maxlength="2" value="${esc(cbForm.e)}" style="width:3em;font-size:16px" aria-label="Icon"><input id="cb-n" maxlength="24" placeholder="Name" value="${esc(cbForm.n)}" style="flex:1;min-width:8em;font-size:16px" aria-label="Name"></div>
-  <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${CB_ICONS.map(i=>`<button type="button" class="cb-ic" data-ic="${i}" style="font-size:20px;min-width:40px;min-height:40px;padding:2px;${i===cbForm.e?"outline:2px solid var(--good)":""}" aria-label="Icon ${i}">${i}</button>`).join("")}</div>
+  <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;max-height:136px;overflow-y:auto">${CB_ICONS.map(i=>`<button type="button" class="cb-ic" data-ic="${i}" style="font-size:20px;min-width:40px;min-height:40px;padding:2px;${i===cbForm.e?"outline:2px solid var(--good)":""}" aria-label="Icon ${i}">${i}</button>`).join("")}</div>
   <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"><select id="cb-t" aria-label="Template">${tpl.map(k=>`<option value="${k}" ${k===cbForm.t?"selected":""}>Like a ${BIZ.find(x=>x.k===k).n}</option>`).join("")}</select>
   <select id="cb-sz" aria-label="Size">${Object.entries(CB_SIZE).map(([k,v])=>`<option value="${k}" ${k===cbForm.sz?"selected":""}>${v.n} (×${v.m})</option>`).join("")}</select>
   <select id="cb-st" aria-label="Style">${Object.entries(CB_STY).map(([k,v])=>`<option value="${k}" ${k===cbForm.st?"selected":""}>${v.n}: ${v.d}</option>`).join("")}</select></div>
