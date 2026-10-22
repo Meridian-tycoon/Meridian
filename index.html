@@ -2751,7 +2751,8 @@ setInterval(dailyCheck,30000);setTimeout(dailyCheck,1500);
    S.logi (lazy, sanitised by LG()): shared fleet {trucks, up{}}, board {offers, jobs, rep}, totals {done, earned, tons, late, hist[]} and one record per Trucking hub
    S.logi.hub[cityId] = {res (trucks reserved for this hub), cap (max trucks at once, 0 = no limit), pol (auto-dispatch policy, "" = default), dep, drv, last, done, earned, tons, late}.
    Every hub is a city where S.own[city].trucking > 0. Contracts leave from a hub; a truck is free for a hub when it is reserved for it or in the unreserved pool. */
-const LU={trucks:{n:"Buy a truck",d:"+1 truck in your shared contract fleet.",base:40000,g:1.35,max:40},
+const TRK_CEIL=1e6;
+const LU={trucks:{n:"Buy a truck",d:"+1 truck in your shared contract fleet.",base:40000,g:1.35,max:40}/* max = cap without a Trucking hub; with one the fleet is unlimited up to TRK_CEIL */,
   trailer:{n:"Bigger trailers",d:"+25% cargo per truck, so every contract pays 25% more.",base:120000,g:2.2,max:4},
   engine:{n:"Engine tuning",d:"Trucks deliver 15% faster per level.",base:90000,g:2,max:4},
   depot:{n:"Depot network",d:"+2 contract offers on every hub's board.",base:150000,g:2,max:4},
@@ -2764,7 +2765,7 @@ const TGOODS=["electronics","steel","bread","tools","beef","fuel","furniture","m
 let lgOk=null;
 function LG(){const l=S.logi=S.logi&&typeof S.logi==="object"&&!Array.isArray(S.logi)?S.logi:{};if(lgOk===l)return l;
   const num=(v,d,lo,hi)=>Number.isFinite(+v)&&v!==null&&v!==""&&v!==false?Math.max(lo,Math.min(hi,+v)):d,arr=a=>Array.isArray(a)?a:[];
-  l.trucks=Math.floor(num(l.trucks,2,1,LU.trucks.max+122));l.done=Math.floor(num(l.done,0,0,1e9));l.earned=num(l.earned,0,0,1e15);l.tons=num(l.tons,0,0,1e12);l.late=Math.floor(num(l.late,0,0,1e9));
+  l.trucks=Math.floor(num(l.trucks,2,1,TRK_CEIL));l.done=Math.floor(num(l.done,0,0,1e9));l.earned=num(l.earned,0,0,1e15);l.tons=num(l.tons,0,0,1e12);l.late=Math.floor(num(l.late,0,0,1e9));
   l.last=num(l.last,0,0,1e15);l.auto=l.auto!==false;
   if(!l.up||typeof l.up!=="object")l.up={};for(const k in LU)l.up[k]=Math.floor(num(l.up[k],0,0,LU[k].max));
   if(!l.rep||typeof l.rep!=="object")l.rep={};for(const k in l.rep)l.rep[k]=Math.floor(num(l.rep[k],0,0,50));
@@ -2783,7 +2784,12 @@ function hubFix(h,l){const num=(v,d,lo,hi)=>Number.isFinite(+v)&&v!==null&&v!=="
 function HB(id){const l=LG();let h=l.hub[id];if(!h)h=l.hub[id]={res:0,cap:0,pol:"",dep:0,drv:0,last:0,done:0,earned:0,tons:0,late:0};
   if(h.res>l.trucks)h.res=l.trucks;return h}
 const lvl=k=>LG().up[k]||0;
-const luCost=k=>{const u=LU[k],n=k==="trucks"?LG().trucks-2-ishTr():lvl(k);return Math.round(u.base*Math.pow(u.g,n))};
+/* trucks: original 1.35^n curve up to 40 bought, then linear: +5% of the 40th-truck price per extra truck (always finite) */
+const truckPrice=n=>{const u=LU.trucks,a=Math.min(Math.max(0,n),u.max),b=Math.max(0,n-u.max);const p=Math.round(u.base*Math.pow(u.g,a)*(1+b*.05));return Number.isFinite(p)&&p>=1?p:1e300};
+const luCost=k=>{const u=LU[k];if(k==="trucks")return truckPrice(LG().trucks-2-ishTr());return Math.round(u.base*Math.pow(u.g,lvl(k)))};
+const truckCap=()=>hubs().length?TRK_CEIL:LU.trucks.max;
+/* total price of q trucks bought in a row, and how many of q are affordable */
+function truckBulk(q){const l=LG(),n0=l.trucks-2-ishTr();let t=0,c=0;const room=Math.max(0,truckCap()-(l.trucks-ishTr()));q=Math.min(q,room);for(let i=0;i<q;i++){const p=truckPrice(n0+i);if(S.cash<t+p)break;t+=p;c++}return{q:c,cost:t,room}}
 const huCost=(id,k)=>Math.round(HU[k].base*Math.pow(HU[k].g,HB(id)[k]));
 const hubs=()=>CITIES.filter(c=>(S.own[c.id]||{}).trucking);
 const busyAt=id=>LG().jobs.filter(j=>j.from===id).length;
@@ -4909,9 +4915,12 @@ function txActive(){const l=LG(),now=Date.now();let h=`<div class="mdx-card"><di
     h+=`<div class="lx-it"><div class="m"><b>${dxE(CITIES[j.from].name)} → ${dxE(CITIES[j.to].name)}${j.late?`<span class="lx-tag y">DELAYED</span>`:""} <span style="color:#16a34a">${fmt(j.pay)}</span></b><span>${j.tons} t ${dxE(j.g)} for <b style="color:${RIVALS[j.ri].col}">${dxE(RIVALS[j.ri].n)}</b> · arrives in ${fmtDur(j.arr-now)}</span><div class="lx-bar"><i style="width:${p}%"></i></div></div></div>`}
   return h+`</div>`}
 function txFleet(tg){const l=LG();let res=0;for(const c of hubs())res+=HB(c.id).res;res=Math.min(res,l.trucks);
-  let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Shared fleet</h3><span class="lx-tag b">${l.trucks} trucks</span></div><div class="lx-it"><div class="m"><b>${l.jobs.length} busy · ${res} reserved · ${Math.max(0,l.trucks-res)} in the shared pool</b><span>Reserve trucks per hub on the Hubs tab. Unreserved trucks go to whichever hub asks first.</span></div></div>`;
-  for(const k in LU){const u=LU[k],n=k==="trucks"?l.trucks-ishTr():lvl(k),done=n>=u.max,cs=luCost(k);
-    h+=`<div class="lx-it"><div class="m"><b>${u.n}<span class="lx-tag">${k==="trucks"?n+" trucks":"Lv "+n+"/"+u.max}</span></b><span>${u.d}</span></div><div class="a"><button class="lx-btn" data-tx="up" data-k="${k}" ${done||S.cash<cs?"disabled":""}>${done?"Maxed":fmt(cs)}</button></div></div>`}
+  let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Shared fleet</h3><span class="lx-tag b">${l.trucks.toLocaleString()} trucks</span></div><div class="lx-it"><div class="m"><b>${l.jobs.length} busy · ${res} reserved · ${Math.max(0,l.trucks-res)} in the shared pool</b><span>Reserve trucks per hub on the Hubs tab. Unreserved trucks go to whichever hub asks first.</span></div></div>`;
+  for(const k in LU){const u=LU[k],n=k==="trucks"?l.trucks-ishTr():lvl(k);
+    if(k==="trucks"){const cap=truckCap(),done=n>=cap,cs=luCost(k);const btn=q=>{const bk=truckBulk(q);return `<button class="lx-btn" data-tx="up" data-k="trucks" data-n="${q}" ${done||bk.q<q?"disabled":""}>${q===1?(done?"Maxed":fmt(cs)):"x"+q+" · "+fmt(bk.cost)}</button>`};
+      h+=`<div class="lx-it"><div class="m"><b>${u.n}<span class="lx-tag">${n.toLocaleString()} trucks</span></b><span>${u.d}${hubs().length?" No limit with a Trucking company; each truck costs a little more.":" Capped at "+cap+" until you own a Trucking company."}</span></div><div class="a">${btn(1)}${btn(10)}${btn(100)}</div></div>`;continue}
+    const done=n>=u.max,cs=luCost(k);
+    h+=`<div class="lx-it"><div class="m"><b>${u.n}<span class="lx-tag">${"Lv "+n+"/"+u.max}</span></b><span>${u.d}</span></div><div class="a"><button class="lx-btn" data-tx="up" data-k="${k}" ${done||S.cash<cs?"disabled":""}>${done?"Maxed":fmt(cs)}</button></div></div>`}
   h+=`</div><div class="mdx-card"><div class="mdx-ch"><h3>Rival reputation</h3></div>`;
   const rs=(S.rivals||[]).map((r,i)=>i);
   h+=rs.length?rs.map(i=>{const r=repOf(i);return `<div class="lx-it"><div class="m"><b><span style="display:inline-block;width:9px;height:9px;background:${RIVALS[i].col};margin-right:6px"></span>${dxE(RIVALS[i].n)}<span class="lx-tag ${r>=30?"g":r>=10?"b":""}">${r>=30?"Preferred":r>=10?"Trusted":r?"Known":"New"}</span></b><span>${r} / 50 deliveries · +${r*2}% contract pay · ${Math.round(r*.4)}% cheaper hiring them</span><div class="lx-bar"><i style="width:${r*2}%"></i></div></div></div>`}).join(""):`<div class="mdx-empty">No rivals yet.</div>`;
@@ -4947,7 +4956,7 @@ function txAct(a,b){const tg=TGS(),l=LG(),id=+b.dataset.id;let done=false;
   else if(a==="res"&&hubs().some(c=>c.id===id)){const h=HB(id),d=+b.dataset.d;if(d>0&&trReserved(id)+h.res+1>l.trucks)return;h.res=Math.max(0,h.res+d);done=true}
   else if(a==="cap"&&hubs().some(c=>c.id===id)){const h=HB(id);h.cap=Math.max(0,Math.min(l.trucks,h.cap+ +b.dataset.d));done=true}
   else if(a==="hup"&&hubs().some(c=>c.id===id)&&HU[b.dataset.k]){const k=b.dataset.k,h=HB(id),cs=huCost(id,k);if(h[k]>=HU[k].max||S.cash<cs)return;S.cash-=cs;h[k]++;toast(`${HU[k].n}: ${CITIES[id].name} level ${h[k]}`);done=true}
-  else if(a==="up"&&LU[b.dataset.k]){const k=b.dataset.k,cs=luCost(k);if(S.cash<cs)return;if(k==="trucks"){if(l.trucks-ishTr()>=LU.trucks.max)return;l.trucks++}else{if(lvl(k)>=LU[k].max)return;l.up[k]=lvl(k)+1}S.cash-=cs;toast(`Bought ${LU[k].n.toLowerCase()}`);done=true}
+  else if(a==="up"&&LU[b.dataset.k]){const k=b.dataset.k,cs=luCost(k);if(k!=="trucks"&&S.cash<cs)return;if(k==="trucks"){const bk=truckBulk(Math.max(1,Math.min(100,Math.floor(+b.dataset.n)||1)));if(bk.q<1)return;l.trucks+=bk.q;S.cash-=bk.cost;toast(`Bought ${bk.q.toLocaleString()} truck${bk.q===1?"":"s"}`);done=true}else{if(lvl(k)>=LU[k].max)return;l.up[k]=lvl(k)+1;S.cash-=cs;toast(`Bought ${LU[k].n.toLowerCase()}`);done=true}}
   if(done){save();hud();if(PH.open)phRender()}
   tg.force=true;dxRender()}
 function txWire(el){
@@ -5042,7 +5051,7 @@ function ishBuy(k,q,fin){const i=ishC(k);if(!i)return"Unknown item";const s=ishW
     const debt=Math.round((tot-down)*(1+ISH_INT));S.cash-=down;s.fin.push({k,n:q,left:debt,pay:debt/ISH_TERM})}
   else{if(S.cash<tot)return`Need ${fmt(tot)}`;S.cash-=tot}
   s.own[k]=n+q;s.val[k]=(s.val[k]||0)+tot;s.st[k]=(s.st[k]||0)+q;s.spent+=tot;
-  if(i.tr){const l=LG();l.trucks=Math.min(l.trucks+i.tr*q,LU.trucks.max+122)}
+  if(i.tr){const l=LG();l.trucks=Math.min(l.trucks+i.tr*q,TRK_CEIL)}
   ISHV++;return""}
 function ishSell(k){const i=ishC(k),s=ishS(),n=s.own[k]||0;if(!i||!n)return"Nothing to sell";if(s.fin.some(f=>f.k===k))return"Pay off the finance deal first";
   if(i.tr){const l=LG();if(l.trucks-i.tr<Math.max(1,l.jobs.length))return"Trucks are out on contracts";l.trucks-=i.tr}
