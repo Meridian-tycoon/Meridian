@@ -1985,7 +1985,7 @@ function lawBan(c,b){return b.k==="casino"&&law(c,"casino")===1}
 function lawMult(c,b){let m=[1.06,1,.9][law(c,"wage")];
   if(RETAIL.includes(b.k))m*=[1,.97,.93][law(c,"tariff")];
   if(SMALL.includes(b.k)&&law(c,"grant"))m*=1.1;if(b.k==="prison")m*=[.7,1,1.4][law(c,"police")];
-  const g=gov(c.country);if(g.strike>Date.now())m*=.7;return m*warMult(c)}
+  const g=gov(c.country);if(g.strike>Date.now())m*=.7;return m*warMult(c)*dipMult(c)}
 const taxRateC=c=>[.1,.15,.2,.25,.3][law(c,"tax")];
 const rentLaw=c=>law(c,"rent")?.85:1;
 const jobLaw=c=>[.9,1,1.15][law(c,"wage")];
@@ -2012,7 +2012,7 @@ function govHour(quiet){const now=Date.now();uranHour(quiet);
     if(g.ctrl){if(g.contract){const v=contractPay(n);S.cash+=v;S.earned=(S.earned||0)+v}
       if(Math.random()<.004+(g.contract?.006:0))exposed(n,quiet)}
     if(now>=g.next)election(n,quiet)}
-  warHour(quiet)}
+  warHour(quiet);try{dipDay(quiet)}catch(e){}}
 function ownsIn(n){return ctyCities(n).some(c=>S.own[c.id]||S.hq&&S.hq[c.id]||S.sites.some(s=>s.city===c.id)||(S.props||[]).some(p=>p.city===c.id))}
 function election(n,quiet){const g=gov(n),ks=Object.keys(PARTIES);
   const w=ks.map(k=>(k===g.party?g.appr:(100-g.appr)/3)*(1+Math.log10(1+(g.don[k]||0)/donUnit(n))*.6));
@@ -2037,7 +2037,7 @@ function govHtml(c){const n=c.country,g=gov(n),P=PARTIES[g.party];let h=cityHead
   h+=`<div class="sec">Government of ${n}</div><div class="list"><div class="row"><div class="n"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${P.col};margin-right:6px"></span>${P.n}</div>
     <div class="d">${P.d} Approval ${Math.round(g.appr)}% · next election in ${fmtDur(g.next-Date.now()).replace(/^(\d+)h/,(m,x)=>x>=48?Math.floor(x/24)+"d "+(x%24)+"h":m)}${g.favor?` · you have their ear (+${Math.round(g.favor*100)}% lobbying)`:""}</div></div></div>`;
   if(g.strike>Date.now())h+=`<p class="d" style="color:#c33;font-size:13px;margin:6px 0">⚠ General strike: businesses earn 30% less for ${fmtDur(g.strike-Date.now())}.</p>`;
-  h+=conflictHtml(n);
+  h+=conflictHtml(n)+dipHtml(n);
   if(g.ctrl){h+=`<div class="sec">You control this government</div><div class="list"><div class="row"><div class="n">Puppet government</div><div class="d">Set any law for ${fmt(donUnit(n))} with no vote. Control lasts until the next election; fund the party again to keep it. Each hour there's a small chance a journalist exposes you.</div></div>
     <div class="row"><div class="n">State contract ${g.contract?"<b>ACTIVE</b>":""}</div><div class="d">Pays you ${fmt(contractPay(n))} an hour from public money, but more than doubles the exposure risk.</div><button class="buy" data-gov="contract" data-fixed="1">${g.contract?"Cancel":"Award to yourself"}</button></div></div>`}
   {const has=uranPermit(n),ok=uranStatus(),p=pol(),fee=uranFee(n);
@@ -2058,16 +2058,17 @@ function govHtml(c){const n=c.country,g=gov(n),P=PARTIES[g.party];let h=cityHead
     h+=`</div><div class="meta" style="margin-top:6px"><div><span>Control the next government </span>${top?`${PARTIES[top].n} ${fmt(have)} / ${fmt(need)}`:`give ${fmt(need)} to one party`}</div></div><div style="height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:4px 0"><div style="height:100%;width:${Math.min(100,have/need*100)}%;background:var(--own)"></div></div><div>`}
   h+=`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Donations raise a party's odds at the next election. If the party you funded most wins, lobbying gets easier for their whole term.</p>`;
   sheet.innerHTML=h}
-function govSummary(){const ns=COUNTRIES.filter(ownsIn);if(!ns.length)return conflictHtml(null);
-  return conflictHtml(null)+`<div class="sec">Governments</div><div class="list">`+ns.map(n=>{const g=gov(n),p=PARTIES[g.party],c=ctyCities(n)[0];
+function govSummary(){const ns=COUNTRIES.filter(ownsIn);if(!ns.length)return conflictHtml(null)+dipHtml(null);
+  return conflictHtml(null)+dipHtml(null)+`<div class="sec">Governments</div><div class="list">`+ns.map(n=>{const g=gov(n),p=PARTIES[g.party],c=ctyCities(n)[0];
     return `<div class="row link" data-go="${c.id}"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${p.col};margin-right:6px"></span>${n}</div><div class="d">${p.n} · tax ${LAWS.tax.v[g.laws.tax]} · min wage ${LAWS.wage.v[g.laws.wage].toLowerCase()}${g.laws.casino?" · casinos banned":""}${g.laws.rent?" · rent control":""}</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`}
-sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)return;if(!sel&&/peace|stoke/.test(b.dataset.gov)){warAct(+b.dataset.w,b.dataset.gov);hud();renderSheet();return}if(!sel)return;const c=sel;
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)return;if(!sel&&/peace|stoke|rally/.test(b.dataset.gov)){if(b.dataset.gov=="rally")dipRally();else warAct(+b.dataset.w,b.dataset.gov);hud();renderSheet();return}if(!sel)return;const c=sel;
   const g=gov(c.country),a=b.dataset.gov;
   if(a==="lobby")lobby(c,b.dataset.k,+b.dataset.dir);
   else if(a==="set"){const u=donUnit(c.country);if(S.cash<u||!g.ctrl)return;S.cash-=u;g.laws[b.dataset.k]+=+b.dataset.dir;logGov(`${c.country} decrees ${LAWS[b.dataset.k].n.toLowerCase()}: ${LAWS[b.dataset.k].v[g.laws[b.dataset.k]]}`);toast("Law changed")}
   else if(a==="upermit"){const n=c.country;if(uranPermit(n)){g.uPermit=0;toast("Permit given up")}else{const why=uranStatMsg();if(why){toast(why);return}const fee=uranFee(n);if(S.cash<fee){toast(`Need ${fmt(fee)} for the permit`);return}S.cash-=fee;g.uPermit=1;toast("Uranium mining permit granted")}}
   else if(a==="contract"){g.contract=g.contract?0:1;toast(g.contract?"Contract awarded":"Contract cancelled")}
   else if(a==="peace"||a==="stoke")warAct(+b.dataset.w,a);
+  else if(a==="rally")dipRally();
   else{const u=donUnit(c.country)*(+b.dataset.m||1);if(S.cash<u)return;S.cash-=u;g.don[b.dataset.p]=(g.don[b.dataset.p]||0)+u;toast(`Donated ${fmt(u)} to ${PARTIES[b.dataset.p].n}`)}
   hud();renderSheet()});
 /* ---------- government control & global conflicts ---------- */
@@ -2086,7 +2087,7 @@ function warHour(quiet){S.wars=S.wars||[];const ws=S.wars;
     const near=COUNTRIES.filter(b=>b!==a&&kmBetween(cap(a),cap(b))<5000&&!ws.some(w=>(w.a===a&&w.b===b)||(w.a===b&&w.b===a)));
     if(near.length){const b=near[Math.floor(Math.random()*near.length)];ws.push({id:(S.wid=(S.wid||0)+1),a,b,l:1});if(!quiet)logGov(`Tension rising between ${a} and ${b}`)}}
   const glob=tension();
-  for(const w of ws){const up=.05+glob/800,dn=w.l>=4?.05:.07,r=Math.random();
+  for(const w of ws){const up=.05+glob/800,dn=w.inv?0:w.l>=4?.05:.07,r=w.inv?.5:Math.random();
     if(r<up&&w.l<4){w.l++;if(!quiet)logGov(`${w.a}–${w.b}: escalates to ${WARL[w.l].toLowerCase()}`);
       if(w.l===4)for(const n of [w.a,w.b])gov(n).appr=Math.min(90,gov(n).appr+10)}
     else if(r>1-dn){w.l--;if(!quiet)logGov(w.l?`${w.a}–${w.b}: de-escalates to ${WARL[w.l].toLowerCase()}`:`${w.a} and ${w.b} sign a peace deal`)}
@@ -2106,6 +2107,132 @@ function conflictHtml(n){const ws=(S.wars||[]).filter(w=>!n||w.a===n||w.b===n).s
     <div class="d">${["","Markets jittery: −3% profit","Sanctions: −10% profit, land output +5%","Clashes: −20% profit, land output +10%","War: −40% profit, land output +20%, businesses can be damaged, no travel in"][w.l]}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="buy" data-gov="peace" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="buy" data-gov="stoke" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Sell arms ${fmt(c)}</button></div></div>`}
   return h+`</div>`}
+/* ---------- NPC governments: economy, diplomacy, conquest ("Diplomacy & power") ----------
+   MODEL (all state in S.dip, created lazily by dip(); every field has a safe default, so old saves load):
+   - One step per game day, run at the end of govHour (after warHour). Offline catch-up calls it in quiet mode (<=49 times), cost is O(countries + wars).
+   - ECONOMY: gdp[n] ($bn-like) starts at 10 x ctyScale(n) (+-15% by country hash). Daily growth r = 0.04% base
+     + 0.03% x (approval-50)/50 + 0.01% x (2-tax law) - 0.06% x warLvl(n) - 0.02% x ln(gdp/base) (pull back to its size) - 0.05% if ruled by another country.
+     Phases: each free country with no phase and off cooldown has a 2.4%/day chance (weighted by approval/war) of a boom (+0.15%/day) or recession (-0.15%/day) lasting 8-20 days, then a 15-day cooldown. A recession costs 0.15 approval/day, a boom adds 0.1.
+     Power(n) = gdp x (0.75 + approval/200) + 80% of the gdp of countries it rules. It never rescales player income; the only player-facing economic effect is the occupation malus below.
+   - DIPLOMACY reuses S.wars (l: 1 spat, 2 sanctions, 3 border clashes, 4 war; w.att = aggressor). Existing warHour keeps its own random starts/steps untouched.
+     On top: new rivalry 2.5%/day (aggressor drawn by power x party aggression, target a nearby country within 5000 km, weaker ones likelier), at most 8 wars, 3 days between starts.
+     Each war every day (not within 3 days of its last NPC step): escalate 3.5% x aggression, de-escalate 4% (x1.8 and escalation x0.6 when a side has approval < 30 or is in recession; x0.6 de-escalation otherwise).
+   - CONQUEST: a war at level 4 for >= 6 days, global cooldown 12 days, ratio = power(attacker)/power(defender) >= 1.5: daily chance min(12%, 3% x (ratio-0.5)).
+     At most max(2, 25% of countries) are ruled at once. Conquest sets S.dip.ruler[defender]=attacker, ends its wars, drops it from the player's sphere/occupation/wars, cuts government control and
+     puts the country at 35% approval. Ruled countries are liberated with 2%/day (+3% if the ruler is at war, +2% if the ruler's approval < 40) after 20 days.
+   - PLAYER COUNTRY (p.r>=0): a qualifying conquest roll starts an invasion instead: 3 days of warnings (stage 1), then stage 2 where the front (prog, starts at 30) moves daily by
+     8 x (attacker - defender)/max(...) + 0.5; defender = army strength x morale (halved if cash < 0) x 1.15 home bonus (+15% per nuke/ICBM held, a deterrent) + half of milEnemy(country) as home guard; attacker = milEnemy(invader) x clamp(ratio,1,2.5).
+     prog 100 = lost, 0 = repelled (war back to level 2, +8 approval, 25-day truce), 40 stalled days = stalemate. Tools: Fund talks (existing, lowering the war below level 3 ends it), Rally defences (50% of fund-talks cost, once a day: -20 front, or +10 fortification before the attack, max 40), your army.
+     Invasions only advance while you are online: quiet (offline) catch-up freezes and never starts them.
+   - FAIR CONSEQUENCE when the country falls: you lose office (polFall: 3-day cooldown before running again, not in an occupied country), pay a one-off 5% occupation levy on cash, your army goes to reserve (existing rules),
+     businesses are KEPT but earn -8% while the country is occupied (dipMult) until it is liberated or you retake it. You can run elsewhere meanwhile. Never game over.
+*/
+const DIPCFG={gdpK:10,g0:.0004,apprG:.0003,taxG:.0001,warG:-.0006,revert:.0002,ruledG:-.0005,
+  boom:.0015,rec:-.0015,phP:.024,phMin:8,phVar:12,phCd:15,
+  startP:.025,startCd:3,maxWars:8,nearKm:5000,escP:.035,deP:.04,stepCd:3,maxScan:12,
+  t4:6,ratio:1.5,conqP:.03,conqMax:.12,conqCd:12,ruledFrac:.25,libAfter:20,libP:.02,
+  warn:3,start:30,swing:8,mom:.5,rally:20,fort:10,fortMax:40,rallyCost:.5,stall:40,truce:25,repelAppr:8,home:.5,
+  levy:.05,occMult:.92,keep:8};
+const _dsc={},_dcen={};
+const dipScale=n=>_dsc[n]||(_dsc[n]=Math.max(1,ctyScale(n)));
+const dipBase=n=>DIPCFG.gdpK*dipScale(n);
+function dip(){const d=S.dip=S.dip&&typeof S.dip==="object"?S.dip:{};if(!(d.day>=0))d.day=0;
+  for(const k of ["gdp","ph","phc","gr","ruler","rsince","pcd"])if(!d[k]||typeof d[k]!=="object")d[k]={};
+  if(!Array.isArray(d.news))d.news=[];if(!(d.cd>=0))d.cd=0;if(!(d.ccd>=0))d.ccd=0;if(d.inv===undefined)d.inv=null;
+  for(const n in d.ruler){const r=d.ruler[n];if(!COUNTRIES.includes(n)||!COUNTRIES.includes(r)||r===n||d.ruler[r]===n)delete d.ruler[n];else if(!(d.rsince[n]>=0))d.rsince[n]=d.day} // odd saves: unknown countries, self-rule, 2-cycles
+  for(const n in d.ph){const ph=d.ph[n];if(!ph||!isFinite(ph.g)||!(ph.left>0))delete d.ph[n]} // drop corrupt phases from odd saves
+  for(const n of COUNTRIES)if(!(d.gdp[n]>0))d.gdp[n]=dipBase(n)*(.85+hashS(n+"g")%30/100);
+  return d}
+const dipRuler=n=>S.dip&&S.dip.ruler&&S.dip.ruler[n]||null;
+const dipMult=c=>dipRuler(c.country)?DIPCFG.occMult:1;
+const dipKey=(a,b)=>a<b?a+"|"+b:b+"|"+a;
+function dipPower(n){const d=dip();let v=d.gdp[n]*(.75+gov(n).appr/200);for(const m in d.ruler)if(d.ruler[m]===n)v+=.8*d.gdp[m];return v}
+function dipAggr(n){const g=gov(n),d=dip();return ({lab:.7,lib:.8,con:1,pop:1.4}[g.party]||1)*(g.appr<40?1.3:1)*(d.ph[n]&&d.ph[n].g<0?1.2:1)}
+function dipDist(a,b){const cen=n=>_dcen[n]||(_dcen[n]=milCenter(n)),[x1,y1]=cen(a),[x2,y2]=cen(b),r=Math.PI/180,h=Math.sin((y2-y1)*r/2)**2+Math.cos(y1*r)*Math.cos(y2*r)*Math.sin((x2-x1)*r/2)**2;return 12742*Math.asin(Math.min(1,Math.sqrt(h)))}
+const dipPlayerC=()=>{const p=S.pol;return p&&p.r>=0&&p.c?p.c:null};
+function dipSay(t,imp,quiet){const d=dip();d.news.unshift(`Day ${S.day}: ${t}`);d.news=d.news.slice(0,8);
+  if(!imp)return;if(quiet){S.log.unshift("World: "+t);S.log=S.log.slice(0,3)}else logGov(t)}
+const dipRel=(a,b)=>{const pc=dipPlayerC();return pc===a||pc===b||ownsIn(a)||ownsIn(b)};
+const dipWarOf=(n,by)=>(S.wars||[]).find(w=>(w.a===n&&w.b===by)||(w.a===by&&w.b===n));
+function dipGrow(n,d,C){const g=gov(n),base=dipBase(n);let ph=d.ph[n];
+  let r=C.g0+(g.appr-50)/50*C.apprG+(2-g.laws.tax)*C.taxG+C.warG*warLvl(n)-Math.log(d.gdp[n]/base)*C.revert+(d.ruler[n]?C.ruledG:0);
+  if(ph){r+=ph.g;g.appr=Math.max(5,Math.min(95,g.appr+(ph.g<0?-.15:.1)));if(--ph.left<=0){delete d.ph[n];d.phc[n]=d.day+C.phCd}}
+  else if(d.day>=(d.phc[n]||0)&&Math.random()<C.phP*(g.appr>60?1.3:g.appr<35?.8:1)){const rec=Math.random()<(warLvl(n)>=3||g.appr<35?.7:g.appr>60?.3:.5);
+    d.ph[n]={g:rec?C.rec:C.boom,left:C.phMin+Math.floor(Math.random()*C.phVar)};if(dipRel(n,n))dipSay(rec?`${n} slides into recession`:`${n} economy booms`,0,0)}
+  d.gr[n]=r;d.gdp[n]=Math.max(base*.4,Math.min(base*6,d.gdp[n]*(1+r)))}
+function dipConquer(a,b,quiet){const d=dip(),p=S.pol;d.ruler[b]=a;d.rsince[b]=d.day;d.ccd=d.day+DIPCFG.conqCd;
+  S.wars=(S.wars||[]).filter(w=>w.a!==b&&w.b!==b);d.gdp[b]*=.8;d.ph[b]={g:-.001,left:10};delete d.phc[b];
+  const g=gov(b);g.appr=35;if(g.ctrl&&!g.polCtrl)g.ctrl=false;g.contract=0;g.polCtrl=0;g.strike=0;
+  let mine="";if(p){if(p.ctrl&&p.ctrl[b]){delete p.ctrl[b];mine=" · it left your sphere of influence"}
+    const m=p.mil;if(m){if(m.occ&&m.occ[b]){const gr=m.occ[b].gar||0;delete m.occ[b];mine=" · your occupation ended"}if(m.wars&&m.wars[b]){delete m.wars[b];mine=" · your war with it ended"}}}
+  for(const m in d.ruler)if(d.ruler[m]===b)delete d.ruler[m]; // a ruled country's own subjects revert to independence
+  dipSay(`${a} conquers ${b}${mine}`,1,quiet)}
+function dipInvade(w,by,quiet){const d=dip(),n=dipPlayerC();d.inv={by,n,w:w.id,day:d.day,stage:1,prog:0,rcd:0,fort:0};w.inv=1;
+  const t=`WARNING: ${by} masses troops on ${n}'s border. Invasion in ${DIPCFG.warn} days: fund talks, rally defences, build an army`;dipSay(t,1,quiet);if(!quiet)toast(t)}
+function dipFall(by,quiet){const d=dip(),p=pol(),n=p.c,o=GOVCFG.offices[p.r].n,lv=Math.round(Math.max(0,S.cash)*DIPCFG.levy);S.cash-=lv;
+  d.inv=null;dipConquer(by,n,quiet);polFall();const t=`${by} occupies ${n}! You lose office as ${o}. Occupation levy ${fmt(lv)}; your businesses stay but earn ${Math.round((1-DIPCFG.occMult)*100)}% less until it is liberated`;
+  S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);if(!quiet)toast(t)}
+function dipInvDay(d,quiet){const C=DIPCFG,inv=d.inv,p=S.pol,w=inv&&(S.wars||[]).find(x=>x.id===inv.w);
+  if(!inv)return;if(typeof inv!=="object"){d.inv=null;return}if(!(inv.day>=0))inv.day=d.day;if(inv.stage===2&&!(inv.sd>=0))inv.sd=d.day;if(inv.stage===2&&!(inv.prog>=0))inv.prog=C.start; // odd saves
+  if(!p||p.r<0||p.c!==inv.n||d.ruler[inv.n]||d.ruler[inv.by]){if(w)w.inv=0;d.inv=null;return}
+  if(!w||w.l<3){if(w)w.inv=0;d.inv=null;d.pcd[dipKey(inv.n,inv.by)]=d.day+C.truce;dipSay(`${inv.by} stands down: the invasion of ${inv.n} is called off`,1,quiet);return}
+  if(quiet){inv.day++;if(inv.sd!=null)inv.sd++;return} // offline days freeze the warning countdown and the stalemate clock
+  w.l=Math.max(w.l,3);
+  if(inv.stage===1){if(d.day-inv.day>=C.warn){inv.stage=2;inv.sd=d.day;inv.prog=Math.max(5,C.start-(inv.fort||0));w.l=4;const t=`${inv.by} invades ${inv.n}! Hold the front`;dipSay(t,1,0);toast(t)}return}
+  const ratio=Math.max(1,Math.min(2.5,dipPower(inv.by)/Math.max(1,dipPower(inv.n)))),atk=milEnemy(inv.by)*ratio,m=p.mil;let army=0,det=1;
+  if(m){army=milStr(milTerrain(inv.n))*(.4+.6*m.morale/100)*(S.cash<0?.5:1);const wp=m.wpn||{};det=1+.15*((wp.nuke||0)+(wp.icbm||0))}
+  const def=(army*det*MILCFG.defBonus)+milEnemy(inv.n)*C.home,mv=Math.max(-1,Math.min(1,(atk-def)/Math.max(atk,def,1)))*C.swing+C.mom;
+  inv.prog=Math.max(0,Math.min(100,inv.prog+mv));inv.atk=Math.round(atk);inv.def=Math.round(def);
+  if(m&&army>0)milKill(m,.01); // fighting costs troops
+  if(inv.prog>=100)return dipFall(inv.by,quiet);
+  if(inv.prog<=0){w.inv=0;w.l=2;d.inv=null;d.pcd[dipKey(inv.n,inv.by)]=d.day+C.truce;p.appr=Math.min(95,p.appr+C.repelAppr);const t=`You repelled ${inv.by}'s invasion of ${inv.n}! Approval +${C.repelAppr}`;dipSay(t,1,0);toast(t);return}
+  if(d.day-inv.sd>=C.stall){w.inv=0;w.l=3;d.inv=null;d.pcd[dipKey(inv.n,inv.by)]=d.day+C.truce;dipSay(`The invasion of ${inv.n} stalls; ${inv.by} falls back to border clashes`,1,0)}}
+function dipRally(){const d=dip(),inv=d.inv;if(!inv)return;const w=(S.wars||[]).find(x=>x.id===inv.w);if(!w)return;if(d.day<(inv.rcd||0))return toast("Defences already rallied today");
+  const c=Math.round(warCost(w)*DIPCFG.rallyCost);if(S.cash<c)return toast(`Need ${fmt(c)}`);S.cash-=c;inv.rcd=d.day+1;
+  if(inv.stage===1)inv.fort=Math.min(DIPCFG.fortMax,(inv.fort||0)+DIPCFG.fort);else inv.prog=Math.max(1,inv.prog-DIPCFG.rally);toast(inv.stage===1?"Defences strengthened before the attack":"Defences rallied: front pushed back")}
+function dipDay(quiet){const C=DIPCFG,d=dip();d.day++;S.wars=S.wars||[];const ws=S.wars,p=S.pol;
+  for(const n of COUNTRIES)dipGrow(n,d,C);
+  // liberation, and countries you took back from a ruler are free again
+  for(const n in d.ruler){const by=d.ruler[n];
+    if(p&&((p.ctrl&&p.ctrl[n])||(p.mil&&p.mil.occ&&p.mil.occ[n]))){delete d.ruler[n];dipSay(`You free ${n} from ${by}`,1,quiet);continue}
+    if(d.day-d.rsince[n]>=C.libAfter&&Math.random()<C.libP+(warLvl(by)>=3?.03:0)+(gov(by).appr<40?.02:0)){delete d.ruler[n];d.rsince[n]=0;gov(n).appr=55;dipSay(`${n} throws off ${by}'s rule and regains independence`,1,quiet)}}
+  // new rivalry
+  if(d.day>=d.cd&&ws.length<C.maxWars&&Math.random()<C.startP){const fr=COUNTRIES.filter(n=>!d.ruler[n]);
+    if(fr.length>1){const wt=fr.map(n=>n===dipPlayerC()?0:dipPower(n)*dipAggr(n)),tot=wt.reduce((x,y)=>x+y,0);let r=Math.random()*tot,a=fr[fr.length-1];for(let i=0;i<fr.length;i++){r-=wt[i];if(r<=0){a=fr[i];break}}
+      const cand=fr.filter(b=>b!==a&&!dipWarOf(a,b)&&(d.pcd[dipKey(a,b)]||0)<=d.day&&dipDist(a,b)<C.nearKm);
+      if(cand.length){const w2=cand.map(b=>Math.max(.3,Math.min(3,dipPower(a)/dipPower(b)))),t2=w2.reduce((x,y)=>x+y,0);let r2=Math.random()*t2,b=cand[cand.length-1];for(let i=0;i<cand.length;i++){r2-=w2[i];if(r2<=0){b=cand[i];break}}
+        ws.push({id:(S.wid=(S.wid||0)+1),a,b,l:1,att:a,sc:d.day+C.stepCd});d.cd=d.day+C.startCd;
+        dipSay(`${a} accuses ${b} of ${["border violations","airspace incursions","backing rebels","insulting its envoy"][Math.floor(Math.random()*4)]}`,dipRel(a,b),quiet)}}}
+  // escalation / de-escalation / conquest
+  let n=0;for(const w of ws){if(++n>C.maxScan)break;if(w.l<1||d.ruler[w.a]||d.ruler[w.b])continue;
+    if(!w.att||w.att===dipPlayerC())w.att=(dipPower(w.a)>=dipPower(w.b)||w.b===dipPlayerC())&&w.a!==dipPlayerC()?w.a:w.b;const a=w.att,b=a===w.a?w.b:w.a;
+    w.t4=w.l>=4?(w.t4||0)+1:0;if(w.inv)continue;
+    const stress=gov(a).appr<30||gov(b).appr<30||(d.ph[a]&&d.ph[a].g<0)||(d.ph[b]&&d.ph[b].g<0);
+    if(w.l>=4&&w.t4>=C.t4&&d.day>=d.ccd&&Object.keys(d.ruler).length<Math.max(2,Math.floor(COUNTRIES.length*C.ruledFrac))&&(d.pcd[dipKey(a,b)]||0)<=d.day){
+      const ratio=dipPower(a)/dipPower(b);
+      if(ratio>=C.ratio&&Math.random()<Math.min(C.conqMax,C.conqP*(ratio-.5))){
+        if(b===dipPlayerC()){if(!quiet&&!d.inv){dipInvade(w,a,quiet);d.ccd=d.day+C.conqCd}}else dipConquer(a,b,quiet);continue}}
+    if(d.day<(w.sc||0))continue;const r=Math.random(),e=C.escP*dipAggr(a)*(stress?.6:1)*(w.l<3?1:.7),de=C.deP*(stress?1.8:.6);
+    if(r<e&&w.l<4){w.l++;w.sc=d.day+C.stepCd;const t=[,,`${a} imposes sanctions on ${b}`,`Border clashes between ${a} and ${b}`,`${a} declares war on ${b}`][w.l];
+      if(w.l===4)for(const m of [a,b])gov(m).appr=Math.min(90,gov(m).appr+5);dipSay(t,dipRel(a,b),quiet)}
+    else if(r>1-de){w.l--;w.sc=d.day+C.stepCd;if(w.l<1)d.pcd[dipKey(a,b)]=d.day+10;dipSay(w.l?`${a} and ${b} de-escalate to ${WARL[w.l].toLowerCase()}`:`${a} and ${b} agree to talks: the crisis ends`,dipRel(a,b),quiet)}}
+  S.wars=ws.filter(w=>w.l>0);
+  dipInvDay(d,quiet)}
+const dipPhase=n=>{const ph=S.dip&&S.dip.ph&&S.dip.ph[n];return ph?(ph.g>0?"BOOM":"RECESSION"):"STABLE"};
+function dipRows(n){const d=dip(),r=d.gr[n]||0,rk=COUNTRIES.slice().sort((a,b)=>dipPower(b)-dipPower(a)).indexOf(n)+1,ph=dipPhase(n);
+  const subj=Object.keys(d.ruler).filter(m=>d.ruler[m]===n),by=d.ruler[n];
+  return `<div class="n">${n} · GDP $${Math.round(d.gdp[n]).toLocaleString()}bn <span class="tag" style="background:${ph==="BOOM"?"#3a9":ph==="RECESSION"?"#d84a4a":"var(--line)"};color:${ph==="STABLE"?"inherit":"#fff"}">${ph}</span></div>
+    <div class="d">Growth ${r>=0?"+":""}${(r*3000).toFixed(1)}%/month · power rank #${rk} of ${COUNTRIES.length}${by?` · <b style="color:var(--bad)">ruled by ${by}</b>`:""}${subj.length?` · rules ${subj.join(", ")}`:""}</div>`}
+function dipInvHtml(){const d=dip(),inv=d.inv;if(!inv)return "";const w=(S.wars||[]).find(x=>x.id===inv.w);if(!w)return "";const c=Math.round(warCost(w)*DIPCFG.rallyCost);
+  return `<div class="row" style="border-left:3px solid var(--bad)"><div class="n">⚠ ${inv.by} ${inv.stage===1?"threatens":"is invading"} ${inv.n} <span class="tag" style="background:#9b1111;color:#fff">${inv.stage===1?"WARNING":"INVASION"}</span></div>
+    <div class="d">${inv.stage===1?`Attack in ${Math.max(0,DIPCFG.warn-(d.day-inv.day))} day(s)${inv.fort?` · fortified +${inv.fort}`:""}. `:`Front ${Math.round(inv.prog)}/100 (you lose the country at 100) · invader ${inv.atk||"?"} vs your defence ${inv.def||"?"}. `}Fund talks, rally defences, or raise an army (Gov › Military).</div>
+    ${inv.stage===2?`<div style="height:8px;border-radius:4px;background:#22c55e;overflow:hidden;margin:4px 0"><div style="height:100%;width:${Math.round(inv.prog)}%;background:#7f1d1d"></div></div>`:""}
+    <button class="buy" data-gov="rally" data-fixed="1" ${S.cash<c||d.day<(inv.rcd||0)?"disabled":""}>Rally defences ${fmt(c)}</button></div>`}
+function dipHtml(n){const d=dip();
+  if(n)return `<div class="sec">Diplomacy & power</div><div class="list"><div class="row">${dipRows(n)}</div>${n===(d.inv&&d.inv.n)?dipInvHtml():""}</div>`;
+  const top=COUNTRIES.slice().sort((a,b)=>dipPower(b)-dipPower(a)).slice(0,5);
+  return `<div class="sec">Diplomacy & power</div><div class="list">${dipInvHtml()}<div class="row"><div class="n">Great powers</div><div class="d">${top.map((x,i)=>`${i+1}. ${x} $${Math.round(d.gdp[x]).toLocaleString()}bn ${dipPhase(x)==="STABLE"?"":dipPhase(x).toLowerCase()}${d.ruler[x]?" (ruled by "+d.ruler[x]+")":""}`).join("<br>")}</div></div>
+    ${d.news.length?`<div class="row"><div class="n">World news</div><div class="d">${d.news.slice(0,5).join("<br>")}</div></div>`:""}</div>`}
 /* ---------- bank: credit score, loans, credit card ---------- */
 S.bank=S.bank||{lates:[],ontime:0,inq:[],loans:[],card:null,first:0,hist:[],lid:1};
 if(S.debt>0&&!S.bank.loans.length&&!S.bank.migrated){S.bank.loans.push({id:S.bank.lid++,type:"personal",bal:S.debt,rate:.003,pay:Math.max(10,S.debt/48),left:48,miss:0,start:Date.now()});S.bank.first=S.bank.first||Date.now()}
@@ -2972,6 +3099,7 @@ function polRun(){const p=pol(),C=GOVCFG,now=Date.now(),r=p.r+1,O=C.offices[r];i
   if(typeof jailed==="function"&&jailed())return toast("You can't campaign from prison");
   if(S.trip)return toast("Finish your trip first");
   if(polHere()!==n)return toast(`You must be in ${n} to campaign`);
+  if(dipRuler(n))return toast(`${n} is occupied by ${dipRuler(n)}`);
   if(now<p.cd)return toast("Campaign cooldown: "+fmtDur(p.cd-now));
   if(p.r>=0&&now-p.since<C.minHold*DAYMS)return toast("Serve a little longer first: "+fmtDur(p.since+C.minHold*DAYMS-now));
   const {nw}=totals(),cost=polCost(r,n);if(nw<O.nw)return toast(`Need net worth ${fmt(O.nw)}`);if(S.cash<cost)return toast(`Campaign costs ${fmt(cost)}`);
@@ -2999,7 +3127,13 @@ function polHour(quiet){const p=S.pol;if(!p)return;pol();const C=GOVCFG;
     if(c.loy<C.loyLose&&Math.random()<.25){delete p.ctrl[n];if(!quiet)logPol(`${n} broke away from your influence`)}}
   if(typeof milHour==="function")milHour(quiet)}
 function govApp(){const p=pol();const seg=`<div class="ph-seg" style="margin-bottom:8px"><button data-ph="govtab" data-k="pol" aria-pressed="${govTab==="pol"}">Politics</button><button data-ph="govtab" data-k="mil" aria-pressed="${govTab==="mil"}">Military</button></div>`;
-  if(govTab==="mil")return seg+milApp();return seg+govApp0()}
+  if(govTab==="mil")return seg+phInvCard()+milApp();return seg+phInvCard()+govApp0()}
+function phInvCard(){const d=dip(),inv=d.inv;if(!inv)return "";const w=(S.wars||[]).find(x=>x.id===inv.w);if(!w)return "";const rc=Math.round(warCost(w)*DIPCFG.rallyCost),tc=warCost(w),warn=inv.stage===1;
+  const bt=(a,t,dis)=>`<button class="buy" data-ph="${a}" style="flex:1;color:#fff;background:#7c2d12!important;border-color:#f59e0b" ${dis?"disabled":""}>${t}</button>`;
+  return `<div class="ph-card" style="border:1px solid #b91c1c;background:#7f1d1d33"><b>⚠ ${inv.by} ${warn?"threatens":"is invading"} ${inv.n}</b>
+    <span>${warn?`Warning: attack in ${Math.max(0,DIPCFG.warn-(d.day-inv.day))} day(s)${inv.fort?` · fortified +${inv.fort}`:""}`:`Front ${Math.round(inv.prog)}/100 · you lose the country at 100`}</span>
+    ${warn?"":`<div style="height:8px;border-radius:4px;background:#22c55e;overflow:hidden;margin:4px 0"><div style="height:100%;width:${Math.round(inv.prog)}%;background:#7f1d1d"></div></div>`}
+    <div style="display:flex;gap:6px;margin-top:4px">${bt("invrally",`Rally ${fmt(rc)}`,S.cash<rc||d.day<(inv.rcd||0))}${bt("invtalks",`Fund talks ${fmt(tc)}`,S.cash<tc)}</div></div>`}
 function govApp0(){const p=pol(),C=GOVCFG,now=Date.now(),{nw}=totals(),here=polHere(),O=C.offices,lead=polLeader();
   const btn=(a,t,dis,x,bg)=>`<button class="buy" data-ph="${a}"${x!=null?` data-k="${x}"`:""} style="width:100%;margin-top:6px;color:#fff;background:${bg||"#7c2d12"}!important;border-color:#f59e0b" ${dis?"disabled":""}>${t}</button>`;
   let h=p.r>=0?`<div class="ph-big" style="font-size:20px">${O[p.r].n}</div><div class="ph-sub">${p.c}</div>
@@ -4126,14 +4260,19 @@ function dmgLine(c){const l=dmgLvl(c);if(l<.005)return "";const e=S.dmg[c.id];
 // map: rubble/ash patch scaled to damage, green haze for gas, ruin ring + label for destroyed cities; persists until rebuilt
 const dmgLbl=[]; // label boxes already drawn this frame (reused array, no per-frame allocation beyond pushes)
 function drawDmg(ctx){const D=S.dmg;if(!D||typeof D!=="object")return;const zs=Math.min(2.5,.7+V.k*.3);dmgLbl.length=0;
+  // pass 1: reserve label boxes for DESTROYED cities first, so a destroyed label always wins over an earlier -X% label (boxes only; text is drawn in pass 2 above that city's blob)
+  for(const id in D){const c=CITIES[id];if(!c)continue;const l=dmgLvl(c);if(l<DMG.dead||!visible(c.lon,c.lat)||unhOn(c))continue;const [x,y]=proj([c.lon,c.lat]),R=(5+16*Math.sqrt(l))*zs,w=(`DESTROYED · ${fmtDur(dmgLeft(c))}`).length*5.8,ly=y+R+11;let hit=false;
+    for(let q=0;q<dmgLbl.length;q+=4){if(dmgLbl[q+3]&&Math.abs(x-dmgLbl[q])<(w+dmgLbl[q+2])/2+2&&Math.abs(ly-dmgLbl[q+1])<12){hit=true;break}}
+    if(!hit)dmgLbl.push(x,ly,w,+id+1)}
   for(const id in D){const c=CITIES[id];if(!c)continue;const l=dmgLvl(c);if(l<.005||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]),e=D[id],R=(5+16*Math.sqrt(l))*zs,gas=e.k==="gas";
     const gr=ctx.createRadialGradient(x,y,0,x,y,R);gr.addColorStop(0,gas?`rgba(60,80,10,${.35+.4*l})`:`rgba(25,20,18,${.4+.5*l})`);gr.addColorStop(.6,gas?`rgba(132,204,22,${.25*l+.1})`:`rgba(80,60,50,${.3*l+.15})`);gr.addColorStop(1,"rgba(80,60,50,0)");
     ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fillStyle=gr;ctx.fill();
     if(!gas&&l>=.1){ctx.fillStyle="rgba(15,12,10,.7)";for(let i=0;i<3+Math.round(6*l);i++){const a=(+id*7+i*2.39)%6.283,r=R*.55*((i*37%10)/10);ctx.beginPath();ctx.arc(x+Math.cos(a)*r,y+Math.sin(a)*r,1+1.6*l*zs,0,7);ctx.fill()}}
     if(l>=DMG.dead){ctx.save();ctx.beginPath();ctx.arc(x,y,R*.8,0,7);ctx.strokeStyle="#f43f5e";ctx.lineWidth=1.6;ctx.setLineDash([4,2]);ctx.stroke();ctx.setLineDash([]);ctx.restore()}
-    if(l>=.05&&!unhOn(c)){const t=l>=DMG.dead?`DESTROYED · ${fmtDur(dmgLeft(c))}`:`−${Math.round(l*100)}%`,w=t.length*5.8,ly=y+R+11;let hit=false; // skip a label that would sit on one already drawn (crowded countries at low zoom)
-      for(let q=0;q<dmgLbl.length;q+=4){if(Math.abs(x-dmgLbl[q])<(w+dmgLbl[q+2])/2+2&&Math.abs(ly-dmgLbl[q+1])<12){hit=true;break}}
-      if(!hit){dmgLbl.push(x,ly,w,0);ctx.font="bold 10px system-ui, sans-serif";ctx.textAlign="center";ctx.fillStyle=l>=DMG.dead?"#f43f5e":"#fca5a5";ctx.fillText(t,x,ly);ctx.textAlign="start"}}}}
+    if(l>=.05&&!unhOn(c)){const t=l>=DMG.dead?`DESTROYED · ${fmtDur(dmgLeft(c))}`:`−${Math.round(l*100)}%`,w=t.length*5.8,ly=y+R+11;let hit=false,dead=l>=DMG.dead; // skip a label that would sit on one already drawn (crowded countries at low zoom); a destroyed city draws iff pass 1 reserved its box
+      if(dead){hit=true;for(let q=3;q<dmgLbl.length;q+=4)if(dmgLbl[q]===+id+1){hit=false;break}}
+      else for(let q=0;q<dmgLbl.length;q+=4){if(Math.abs(x-dmgLbl[q])<(w+dmgLbl[q+2])/2+2&&Math.abs(ly-dmgLbl[q+1])<12){hit=true;break}}
+      if(!hit){if(!dead)dmgLbl.push(x,ly,w,0);ctx.font="bold 10px system-ui, sans-serif";ctx.textAlign="center";ctx.fillStyle=l>=DMG.dead?"#f43f5e":"#fca5a5";ctx.fillText(t,x,ly);ctx.textAlign="start"}}}}
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -4221,7 +4360,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="dash"){dxOpen();return}
   else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
-  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
+  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
   else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
@@ -4270,7 +4409,7 @@ PH.el.addEventListener("input",e=>{if(e.target.id!=="phc")return;const v=e.targe
   window.addEventListener("pointerup",e=>{if(!st||e.pointerId!==st.id)return;st=null;PH.el.classList.remove("dragging");
     if(PH.dragged){if(!PH.open){const w=PH.el.offsetWidth;PH.x=PH.x+w/2<innerWidth/2?4:innerWidth-w-4;phPlace()}phSave();setTimeout(()=>PH.dragged=false,0)}})})();
 window.addEventListener("resize",phPlace);
-setInterval(()=>{trackNews();if(PH.open&&Date.now()-(PH.touched||0)<3000)return;if(!PH.open||[null,"wallet","needs","job","weather","stocks"].includes(PH.app)||(PH.app==="travel"&&S.trip))phRender()},2000);
+setInterval(()=>{trackNews();if(PH.open&&Date.now()-(PH.touched||0)<3000)return;const gi=S.dip&&S.dip.inv?1:0,gch=gi||PH.gi;PH.gi=gi;if(!PH.open||(PH.app==="govt"&&gch)||[null,"wallet","needs","job","weather","stocks"].includes(PH.app)||(PH.app==="travel"&&S.trip))phRender()},2000);
 trackNews();phRender();
 /* movable windows: city sheet (desktop) + stats widget */
 function mkDrag(el,handle,key,get,set){let st=null;
