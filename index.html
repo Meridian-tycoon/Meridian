@@ -641,13 +641,13 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
   const ad=$("#ads");if(ad)ad.onclick=()=>{const k=adCost(c);if(S.cash<k)return;S.cash-=k;S.events[c.id]={m:1.4,d:5};toast(`Ads running in ${c.name} for 5 hours`);commit()};
   const ua=$("#upall");if(ua)ua.onclick=()=>{const pl=upgradePlan(c);for(const [k] of pl.steps){const b=BIZ.find(x=>x.k===k);S.cash-=upCost(b,c,S.own[c.id][k]);S.own[c.id][k]++}toast(`${pl.n} upgrades done in ${c.name}`);commit()};
   sheet.querySelectorAll("[data-bo]").forEach(btn=>btn.onclick=()=>{const i=+btn.dataset.bo,k=buyoutCost(c);if(S.cash<k)return;S.cash-=k;
-    S.rivals[i].cities=S.rivals[i].cities.filter(x=>x!==c.id);S.rivals[i].nw=Math.max(10000,S.rivals[i].nw-k*.5);toast(`Bought out ${RIVALS[i].n} in ${c.name}`);commit()});
+    S.rivals[i].cities=S.rivals[i].cities.filter(x=>x!==c.id);S.rivals[i].nw=Math.max(10000,S.rivals[i].nw-k*.5);toast(`Bought out ${RIVALS[i].n} in ${c.name}`);bigMove(`our company bought out ${RIVALS[i].n} in ${c.name} for ${fmt(k)}`,k,1);commit()});
   const hb=$("#hire");if(hb)hb.onclick=()=>{const mc=mgrCost(c);if(S.cash<mc)return;S.cash-=mc;S.mgr[c.id]=1;toast(`Manager hired in ${c.name}`);commit()};
   const fb=$("#fire");if(fb)fb.onclick=()=>{if(!fb.dataset.arm){fb.dataset.arm=1;fb.textContent="Tap again to fire";return}delete S.mgr[c.id];if(S.mgrShort)for(const b of BIZ)delete S.mgrShort[bkey(c,b.k)];toast(`Manager fired in ${c.name}. No refund.`);commit()};
   const sa=$("#sellall");if(sa)sa.onclick=()=>{if(sa.dataset.arm){sellAll(c)}else{sa.dataset.arm=1;sa.textContent="Tap again to confirm sale"}};
 }
 function buy(c,k){const b=BIZ.find(x=>x.k===k),p=cost(b,c);if(S.cash<p)return;{const blk=bizBlock(b,c);if(blk){toast(blk);return}}setTimeout(()=>{if(SUP[k])toast("Order stock to start selling. Hire staff so it runs without you.")},1900);if(S.lease[c.id])delete S.lease[c.id][k];
-  S.cash-=p;if(S.sched)delete S.sched[bkey(c,k)];if(S.wadj)delete S.wadj[bkey(c,k)];(S.own[c.id]=S.own[c.id]||{})[k]=1;toast(`Opened ${b.n} in ${c.name}`);commit()}
+  S.cash-=p;if(S.sched)delete S.sched[bkey(c,k)];if(S.wadj)delete S.wadj[bkey(c,k)];(S.own[c.id]=S.own[c.id]||{})[k]=1;toast(`Opened ${b.n} in ${c.name}`);bigMove(`our company opened a ${b.n.toLowerCase()} in ${c.name} for ${fmt(p)}`,p);commit()}
 function upgrade(c,k){const b=BIZ.find(x=>x.k===k),lv=S.own[c.id][k],p=upCost(b,c,lv);if(S.cash<p||lv>=MAXLV)return;
   S.cash-=p;S.own[c.id][k]=lv+1;toast(`${b.n} in ${c.name} → Lv ${lv+1}`);commit()}
 // forget per-business manager state (auto-restock switch, cash-short flag) once it's no longer yours
@@ -931,7 +931,7 @@ sheet.addEventListener("change",e=>{const t=e.target;if(t.id==="sf-g"||t.id==="s
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-act]");if(!b||b.tagName==="INPUT")return;
   if(b.dataset.tab){if(sel&&unhOn(sel))return;if(b.dataset.tab==="hq"&&typeof ofEnter==="function"&&!OFC.on&&sel&&hasHQ(sel)){ofEnter(hqCity(sel.country));return}tab=b.dataset.tab;shipForm=null;renderSheet();return}
   const c=sel;if(!c||unhOn(c))return;const a=b.dataset.act,id=+b.dataset.id;
-  if(a==="land"){const k=b.dataset.k,z=b.dataset.z,p=plotPrice(c,z,k);if(S.cash<p)return;S.cash-=p;S.sites.push({id:S.nid++,city:c.id,size:k,type:z,op:null});ensureWh(c);toast(`Bought ${LAND[k][1]} ha of ${ZONE[z].n.toLowerCase()} in ${c.name}`)}
+  if(a==="land"){const k=b.dataset.k,z=b.dataset.z,p=plotPrice(c,z,k);if(S.cash<p)return;S.cash-=p;S.sites.push({id:S.nid++,city:c.id,size:k,type:z,op:null});ensureWh(c);toast(`Bought ${LAND[k][1]} ha of ${ZONE[z].n.toLowerCase()} in ${c.name}`);bigMove(`our company bought ${LAND[k][1]} ha of ${ZONE[z].n.toLowerCase()} land in ${c.name} for ${fmt(p)}`,p)}
   else if(a==="build"){const s=S.sites.find(x=>x.id===id),o=OP[$("#op-"+id).value],p=o.build*LAND[s.size][1];if(o.gate==="uranium"){const w=uranNeed(c.country);if(w){toast(w);return}}if(S.cash<p){toast(`Need ${fmt(p)} to build that`);return}S.cash-=p;s.op=o.k;s.k=null;toast(`${o.n} built`)}
   else if(a==="clear"){const s=S.sites.find(x=>x.id===id);if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}const o=siteOp(s);S.cash+=o.build*LAND[s.size][1]*.3;s.op=null;toast("Demolished · 30% refunded")}
   else if(a==="leaseland"){const k=b.dataset.k,z=b.dataset.z;S.sites.push({id:S.nid++,city:c.id,size:k,type:z,op:null,lease:1});ensureWh(c);toast(`Renting ${LAND[k][1]} ha of ${ZONE[z].n.toLowerCase()} in ${c.name}`)}
@@ -1113,7 +1113,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-life]");if(!b
     S.app={k:j.k,city:c.id,t:Date.now()+90000,p:hireChance(j,c)};toast("Application sent. You'll hear back in about a minute and a half.")}
   else if(a==="enroll"){const e=EK[b.dataset.e],p=eduCost(e,c);if(jailed()){toast("Not from prison");return}if(S.cash<p||hasEdu(e.k)||(e.req&&!hasEdu(e.req))||(e.uni&&!uniCity(c)))return;S.cash-=p;S.edu.have[e.k]=Date.now();S.log.unshift(`Earned: ${e.n}`);S.log=S.log.slice(0,3);toast(`You earned your ${e.n}!`)}
   else if(a.startsWith("lux")){const x=LUXK[b.dataset.k];if(!x)return;if(!Array.isArray(S.lux))S.lux=[];const o=S.lux.find(q=>q&&q.k===x.k);
-    if(a==="luxbuy"){if(o||S.cash<x.cost)return;S.cash-=x.cost;S.lux.push({k:x.k,biz:false,vac:0});toast(`Bought: ${x.n}`)}
+    if(a==="luxbuy"){if(o||S.cash<x.cost)return;S.cash-=x.cost;S.lux.push({k:x.k,biz:false,vac:0});toast(`Bought: ${x.n}`);bigMove(`the leader acquired ${x.n} for ${fmt(x.cost)}`,x.cost)}
     else if(!o)return;
     else if(a==="luxsell"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm sale";return}S.cash+=x.cost*.8;S.lux=S.lux.filter(q=>q!==o);toast(`Sold ${x.n} for ${fmt(x.cost*.8)}`)}
     else if(a==="luxmode"){o.biz=!o.biz;toast(o.biz?`${x.n} is now chartered out`:`${x.n} is yours to enjoy`)}
@@ -1222,7 +1222,7 @@ function renderHQ(c){let h=cityHead(c);const o=S.own[c.id]||{},sites=S.sites.fil
 let hqTab="reg";
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-hq],[data-hqt]");if(!b||!sel)return;const c=sel;
   if(b.dataset.hqt){hqTab=b.dataset.hqt;renderSheet();return}const a=b.dataset.hq;
-  if(a==="open"){const hc=hqCity(c.country);if(hc){toast(`Your HQ in ${hc.name} already covers ${c.country}`);return}const p=hqCost(c);if(S.cash<p)return;S.cash-=p;S.hq[c.id]=1;toast(`HQ open in ${c.name}: covers all of ${c.country}`)}
+  if(a==="open"){const hc=hqCity(c.country);if(hc){toast(`Your HQ in ${hc.name} already covers ${c.country}`);return}const p=hqCost(c);if(S.cash<p)return;S.cash-=p;S.hq[c.id]=1;toast(`HQ open in ${c.name}: covers all of ${c.country}`);bigMove(`our company opened a new HQ in ${c.name} covering all of ${c.country}`,p,1)}
   else if(a==="link"||a==="unlink"){if(a==="unlink"&&!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to disconnect";return}hqLinkAct(b.dataset.a,b.dataset.b,a==="link")}
   else if(a==="regbiz"){const B=BIZ.find(x=>x.k===b.dataset.k),bc=CITIES[b.dataset.c]||c,p=regFeeBiz(B,bc);if(S.cash<p)return;S.cash-=p;(S.reg[bc.id]=S.reg[bc.id]||{})[B.k]=1;toast(`${B.n} registered`)}
   else if(a==="regsite"){const s=S.sites.find(x=>x.id===+b.dataset.id),p=regFeeSite(s);if(S.cash<p)return;S.cash-=p;s.reg=1;toast("Land registered")}
@@ -1260,7 +1260,7 @@ function propsHtml(c){const mine=S.props.filter(p=>p.city===c.id);
     <button class="buy" data-prop="buy" data-k="${P.k}" ${S.cash<k?"disabled":""}>Buy ${fmt(k)}</button></div>`}
   return h+`</div>`}
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-prop]");if(!b||!sel)return;const c=sel,a=b.dataset.prop,pr=S.props.find(x=>x.id===+b.dataset.id);
-  if(a==="buy"){const P=PK[b.dataset.k],k=propCost(P,c);if(S.cash<k)return;S.cash-=k;S.props.push({id:S.nid++,city:c.id,k:P.k,pct:75,occ:0,furn:0});toast(`Bought a ${P.n.toLowerCase()} in ${c.name}. Listed at 75% of market.`)}
+  if(a==="buy"){const P=PK[b.dataset.k],k=propCost(P,c);if(S.cash<k)return;S.cash-=k;S.props.push({id:S.nid++,city:c.id,k:P.k,pct:75,occ:0,furn:0});toast(`Bought a ${P.n.toLowerCase()} in ${c.name}. Listed at 75% of market.`);bigMove(`a ${P.n.toLowerCase()} in ${c.name} was bought for ${fmt(k)}`,k)}
   else if(a==="pct"){pr.pct=+b.dataset.v;if(pr.occ&&pr.pct>100&&Math.random()<.5){pr.occ=0;toast("The tenant refused the rent rise and left")}else toast(`Rent set to ${pr.pct}% of market`)}
   else if(a==="furn"){const P=PK[pr.k],k=P.furn*PRICE[c.size];if(S.cash<k)return;S.cash-=k;pr.furn=1;toast("Furnished: market rent +25%")}
   else if(a==="sell"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}S.cash+=propCost(PK[pr.k],c)*.8;S.props=S.props.filter(x=>x!==pr);toast("Property sold")}
@@ -1597,7 +1597,7 @@ function buyListing(o){if(S.sold&&S.sold[o.id])return closeOffer();if(S.cash<o.p
   const pr={id:S.nid++,city:o.c.id,k:o.P.k,pct:75,occ:0,furn:0};S.props.push(pr);
   S.pos[`prop:${pr.id}`]={lat:o.lat,lon:o.lon,city:o.c.id,addr:o.addr||""};
   closeOffer();save();hud();renderPins();if(sheet.classList.contains("open")&&sel)renderSheet();
-  toast(`Bought ${/^[aeiou]/i.test(o.P.n)?"an":"a"} ${o.P.n.toLowerCase()}${o.addr?" at "+o.addr:" in "+o.c.name} for ${fmt(o.price)}. Listed at 75% of market.`)}
+  toast(`Bought ${/^[aeiou]/i.test(o.P.n)?"an":"a"} ${o.P.n.toLowerCase()}${o.addr?" at "+o.addr:" in "+o.c.name} for ${fmt(o.price)}. Listed at 75% of market.`);bigMove(`a ${o.P.n.toLowerCase()} in ${o.c.name} was bought for ${fmt(o.price)}`,o.price)}
 $("#stback").onclick=leaveStreet;
 $("#stcityb").onclick=()=>{if(stCity){openCity(stCity)}};
 
@@ -2277,7 +2277,7 @@ function dipHtml(n){const d=dip();
   if(n)return `<div class="sec">Diplomacy & power</div><div class="list"><div class="row">${dipRows(n)}</div>${n===(d.inv&&d.inv.n)?dipInvHtml():""}</div>`;
   const top=COUNTRIES.slice().sort((a,b)=>dipPower(b)-dipPower(a)).slice(0,5);
   return `<div class="sec">Diplomacy & power</div><div class="list">${dipInvHtml()}<div class="row"><div class="n">Great powers</div><div class="d">${top.map((x,i)=>`${i+1}. ${x} $${Math.round(d.gdp[x]).toLocaleString()}bn ${dipPhase(x)==="STABLE"?"":dipPhase(x).toLowerCase()}${d.ruler[x]?" (ruled by "+d.ruler[x]+")":""}`).join("<br>")}</div></div>
-    ${d.news.length?`<div class="row"><div class="n">World news</div><div class="d">${d.news.slice(0,5).join("<br>")}</div></div>`:""}</div>`}
+    ${govNotesHtml()?`<div class="row"><div class="n">Government notices</div><div class="d">${govNotesHtml()}</div></div>`:""}${d.news.length?`<div class="row"><div class="n">World news</div><div class="d">${d.news.slice(0,5).join("<br>")}</div></div>`:""}</div>`}
 /* ---------- bank: credit score, loans, credit card ---------- */
 S.bank=S.bank||{lates:[],ontime:0,inq:[],loans:[],card:null,first:0,hist:[],lid:1};
 if(S.debt>0&&!S.bank.loans.length&&!S.bank.migrated){S.bank.loans.push({id:S.bank.lid++,type:"personal",bal:S.debt,rate:.003,pay:Math.max(10,S.debt/48),left:48,miss:0,start:Date.now()});S.bank.first=S.bank.first||Date.now()}
@@ -2316,7 +2316,7 @@ function applyLoan(type,amt,ti){const b=B(),s=creditScore(),T=LOANT[type],n=T.te
   if(s<T.min){toast(`Denied: needs a ${T.min}+ credit score`);return}
   const room=loanMax(type)-owedOn(type);if(amt>room){toast(`Denied: you can borrow up to ${fmt(Math.max(0,room))}`);return}
   const r=loanRate(s,type)*(type==="mortgage"?.6:1);b.loans.push({id:b.lid++,type,bal:amt,rate:r,pay:amort(amt,r,n),left:n,miss:0,start:Date.now()});
-  b.first=b.first||Date.now();S.cash+=amt;toast(`Approved: ${fmt(amt)} over ${n} h at ${(r*100).toFixed(2)}%/hr`);logBank(`${T.n} approved: ${fmt(amt)}`)}
+  b.first=b.first||Date.now();S.cash+=amt;toast(`Approved: ${fmt(amt)} over ${n} h at ${(r*100).toFixed(2)}%/hr`);bigMove(`our company took a ${fmt(amt)} ${T.n.toLowerCase()}`,amt);logBank(`${T.n} approved: ${fmt(amt)}`)}
 function applyCard(){const b=B(),s=creditScore();b.inq.push(Date.now());
   if(s<520){toast("Card denied: credit score too low");return}
   const lim=Math.max(500,Math.round((incomeHr()*40*(s>=740?2:s>=670?1.4:s>=580?1:.5))/100)*100);
@@ -2518,7 +2518,7 @@ function obTierUp(auto){const x=obNext();if(!x||!x.ok){if(!auto)toast("Not ready
 function obFound(name,hq){const C=BANKCFG,cost=C.license+C.minCapital;if(S.ob)return;if(totals().nw<C.unlockNW){toast(`Needs ${fmt(C.unlockNW)} net worth`);return}
   if(S.cash<cost){toast(`Needs ${fmt(cost)} cash (license + capital)`);return}const c=CITIES[hq]||CITIES[0];
   S.cash-=cost;S.ob={name:(name||"").trim().slice(0,28)||c.name+" Trust",hq:c.id,capital:C.minCapital,reserves:C.minCapital,t:Date.now()};obFix();
-  for(let i=0;i<5;i++)S.ob.customers.push(obCust());toast(`${S.ob.name} is open for business in ${c.name}!`);logBank(`Founded ${S.ob.name}`)}
+  for(let i=0;i<5;i++)S.ob.customers.push(obCust());toast(`${S.ob.name} is open for business in ${c.name}!`);bigMove(`our company founded ${S.ob.name} bank in ${c.name}`,cost,1);logBank(`Founded ${S.ob.name}`)}
 function obEmerg(v){const o=S.ob;if(!o)return;if(v>0){v=Math.min(v,obT().minCap+o.deposits*BANKCFG.emergMax-o.emerg);if(v<1){toast("Emergency credit limit reached");return}
     o.emerg+=v;o.reserves+=v;toast(`Borrowed ${fmt(v)} from the central bank`)}
   else{v=Math.min(o.emerg,Math.max(0,o.reserves));if(v<1){toast(o.emerg?"No reserves to repay with":"Nothing to repay");return}o.emerg-=v;o.reserves-=v;toast(`Repaid ${fmt(v)} to the central bank`)}o.capital=obEquity()}
@@ -3163,7 +3163,15 @@ const GOVCFG={
   exposeCd:24,      // hours after a journalist exposes you before a Leader regains control of the government
   loyStart:60,loyDrift:-.4,loyLowAppr:-1.5,loyLose:12,loyCost:.015,loyGain:15, // loyalty of controlled countries
 };
-function pol(){const p=S.pol=S.pol||{};if(p.r==null)p.r=-1;if(!p.c)p.c=null;if(p.appr==null)p.appr=GOVCFG.apprStart;if(!p.since)p.since=0;if(!p.cd)p.cd=0;if(!p.taxCd)p.taxCd=0;if(!p.acd)p.acd=0;if(!p.ctrl||typeof p.ctrl!=="object")p.ctrl={};if(p.tax==null)p.tax=null;if(!p.exCd)p.exCd=0;return p}
+function pol(){const p=S.pol=S.pol||{};if(p.r==null)p.r=-1;if(!p.c)p.c=null;if(p.appr==null)p.appr=GOVCFG.apprStart;if(!p.since)p.since=0;if(!p.cd)p.cd=0;if(!p.taxCd)p.taxCd=0;if(!p.acd)p.acd=0;if(!p.ctrl||typeof p.ctrl!=="object")p.ctrl={};if(p.tax==null)p.tax=null;if(!p.exCd)p.exCd=0;if(!Array.isArray(p.notes))p.notes=[];return p}
+/* Big moves by a player who holds office are announced in the News app (S.news) and the Government notices (S.pol.notes) */
+function bigMove(txt,amt,always){const p=S.pol;if(!p||!(p.r>=0)||!p.c)return;const O=GOVCFG.offices[p.r];if(!O)return;
+  if(!always){let nw=0;try{nw=totals().nw}catch(e){}if(!(amt>=Math.max(250e3,.03*nw)))return}
+  const t=`${O.n} of ${p.c}: ${txt}`.slice(0,200),now=Date.now();pol();
+  if(p.notes[0]&&p.notes[0].t===t)return;
+  p.notes.unshift({t,at:now});p.notes=p.notes.slice(0,12);
+  S.news=S.news||[];if(!S.news.length||S.news[0].t!==t){S.news.unshift({t,at:now});S.news=S.news.slice(0,40)}}
+function govNotesHtml(){const p=S.pol;if(!p||!(p.r>=0)||!Array.isArray(p.notes)||!p.notes.length)return "";return p.notes.slice(0,5).map(n=>`<div>${n.t}</div>`).join("")}
 const polHere=()=>CITIES[(S.loc||{city:0}).city].country;
 const polCost=(r,n)=>Math.round(GOVCFG.offices[r].cost*ctyScale(n));
 const polLeader=()=>{const p=pol();return p.r===GOVCFG.offices.length-1};
@@ -3206,7 +3214,7 @@ function polHour(quiet){const p=S.pol;if(!p)return;pol();const C=GOVCFG;
     if(c.loy<C.loyLose&&Math.random()<.25){delete p.ctrl[n];if(!quiet)logPol(`${n} broke away from your influence`)}}
   if(typeof milHour==="function")milHour(quiet)}
 function govApp(){const p=pol();const seg=`<div class="ph-seg" style="margin-bottom:8px"><button data-ph="govtab" data-k="pol" aria-pressed="${govTab==="pol"}">Politics</button><button data-ph="govtab" data-k="mil" aria-pressed="${govTab==="mil"}">Military</button></div>`;
-  if(govTab==="mil")return seg+phInvCard()+milApp();return seg+phInvCard()+govApp0()}
+  const gn=govNotesHtml(),nh=gn?`<div class="ph-card"><b>Government notices</b><span>${gn}</span></div>`:"";if(govTab==="mil")return seg+phInvCard()+milApp()+nh;return seg+phInvCard()+govApp0()+nh}
 function phInvCard(){const d=dip(),inv=d.inv;if(!inv)return "";const w=(S.wars||[]).find(x=>x.id===inv.w);if(!w)return "";const rc=Math.round(warCost(w)*DIPCFG.rallyCost),tc=warCost(w),warn=inv.stage===1;
   const bt=(a,t,dis)=>`<button class="buy" data-ph="${a}" style="flex:1;color:#fff;background:#7c2d12!important;border-color:#f59e0b" ${dis?"disabled":""}>${t}</button>`;
   return `<div class="ph-card" style="border:1px solid #b91c1c;background:#7f1d1d33"><b>⚠ ${inv.by} ${warn?"threatens":"is invading"} ${inv.n}</b>
@@ -4047,7 +4055,7 @@ function ofPanelRender(){const pn=OFC.el&&OFC.el.querySelector(".opn");if(!pn||!
   else{h+=`<div class="osec">Floor</div><div class="osw">${OFC_FLOORS.map((c,i)=>`<button data-of="floor" data-i="${i}" aria-pressed="${d.floor===i}" style="background:${c[1]}">${c[0]}</button>`).join("")}</div><div class="osec">Walls</div><div class="osw">${OFC_WALLS.map((c,i)=>`<button data-of="wall" data-i="${i}" aria-pressed="${d.wall===i}" style="background:${c[1]}">${c[0]}</button>`).join("")}</div>`}
   pn.innerHTML=h+"</div>";const b=pn.querySelector(".obody");if(b)b.scrollTop=sc}
 function ofBuy(k){const it=OFFICE_ITEMS[k];if(!it)return;if(S.cash<it.price){toast(`Need ${fmt(it.price)} for that`);return}const d=ofData(OFC.key);
-  S.cash-=it.price;d.inv[k]=(d.inv[k]||0)+1;save();hud();ofCash();toast(`Bought ${it.name}. Walk to a spot and place it.`);ofStartPlace(k)}
+  S.cash-=it.price;d.inv[k]=(d.inv[k]||0)+1;bigMove(`the leader bought ${it.name} for ${fmt(it.price)}`,it.price);save();hud();ofCash();toast(`Bought ${it.name}. Walk to a spot and place it.`);ofStartPlace(k)}
 function ofInvSell(k){const d=ofData(OFC.key),it=OFFICE_ITEMS[k];if(!(d.inv[k]>0))return;const fr=!!(d.freeInv&&d.freeInv[k]>=d.inv[k]);const v=fr?0:Math.round(it.price*.5);
   d.inv[k]--;if(!d.inv[k])delete d.inv[k];if(fr){d.freeInv[k]--;if(!d.freeInv[k])delete d.freeInv[k]}S.cash+=v;save();hud();ofCash();ofPanelRender();toast(v?`Sold ${it.name} for ${fmt(v)}`:`${it.name} removed`)}
 function ofInvPlace(k){const d=ofData(OFC.key);if(!(d.inv[k]>0))return;ofStartPlace(k)}
@@ -4956,7 +4964,7 @@ function txAct(a,b){const tg=TGS(),l=LG(),id=+b.dataset.id;let done=false;
   else if(a==="res"&&hubs().some(c=>c.id===id)){const h=HB(id),d=+b.dataset.d;if(d>0&&trReserved(id)+h.res+1>l.trucks)return;h.res=Math.max(0,h.res+d);done=true}
   else if(a==="cap"&&hubs().some(c=>c.id===id)){const h=HB(id);h.cap=Math.max(0,Math.min(l.trucks,h.cap+ +b.dataset.d));done=true}
   else if(a==="hup"&&hubs().some(c=>c.id===id)&&HU[b.dataset.k]){const k=b.dataset.k,h=HB(id),cs=huCost(id,k);if(h[k]>=HU[k].max||S.cash<cs)return;S.cash-=cs;h[k]++;toast(`${HU[k].n}: ${CITIES[id].name} level ${h[k]}`);done=true}
-  else if(a==="up"&&LU[b.dataset.k]){const k=b.dataset.k,cs=luCost(k);if(k!=="trucks"&&S.cash<cs)return;if(k==="trucks"){const bk=truckBulk(Math.max(1,Math.min(100,Math.floor(+b.dataset.n)||1)));if(bk.q<1)return;l.trucks+=bk.q;S.cash-=bk.cost;toast(`Bought ${bk.q.toLocaleString()} truck${bk.q===1?"":"s"}`);done=true}else{if(lvl(k)>=LU[k].max)return;l.up[k]=lvl(k)+1;S.cash-=cs;toast(`Bought ${LU[k].n.toLowerCase()}`);done=true}}
+  else if(a==="up"&&LU[b.dataset.k]){const k=b.dataset.k,cs=luCost(k);if(k!=="trucks"&&S.cash<cs)return;if(k==="trucks"){const bk=truckBulk(Math.max(1,Math.min(100,Math.floor(+b.dataset.n)||1)));if(bk.q<1)return;l.trucks+=bk.q;S.cash-=bk.cost;toast(`Bought ${bk.q.toLocaleString()} truck${bk.q===1?"":"s"}`);bigMove(`our logistics fleet added ${bk.q.toLocaleString()} truck${bk.q===1?"":"s"} for ${fmt(bk.cost)}`,bk.cost);done=true}else{if(lvl(k)>=LU[k].max)return;l.up[k]=lvl(k)+1;S.cash-=cs;toast(`Bought ${LU[k].n.toLowerCase()}`);bigMove(`our logistics arm invested in ${LU[k].n.toLowerCase()} for ${fmt(cs)}`,cs);done=true}}
   if(done){save();hud();if(PH.open)phRender()}
   tg.force=true;dxRender()}
 function txWire(el){
