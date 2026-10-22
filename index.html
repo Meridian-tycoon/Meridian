@@ -1993,7 +1993,7 @@ new MutationObserver(()=>{if(!sheet.firstElementChild||sheet.firstElementChild.c
   sheet.addEventListener("pointercancel",()=>{y0=null;sheet.style.transform=""})})();
 const hourOf=t=>Math.floor(t/DAYMS);
 /* business sales trickle in every second; accrue() settles any remainder via the same clock, so nothing is counted twice */
-function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=totals().inc*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
+function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=(totals().inc+(typeof ishFinHr==="function"?ishFinHr():0))*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
 function accrue(){if(S.dead)return 0;const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);if(typeof popTick==="function")popTick(dt/DAYMS);if(typeof careerTick==="function")careerTick(dt/DAYMS);
   if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runFleet(now);const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}try{lxTick(now)}catch(e){console.warn("lxTick",e)}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
@@ -5000,7 +5000,7 @@ function ishS(){let s=S.ish;if(!s||typeof s!=="object"||Array.isArray(s))s=S.ish
   s.v=1;s.wk=Math.floor(num(s.wk,0,0,1e9));s.t=num(s.t,Date.now(),0,1e15);s.spent=num(s.spent,0,0,1e15);ishOk=s;ishEv=-1;return s}
 function ishN(k){try{return ishS().own[k]||0}catch(e){return 0}}
 const ishDim=n=>n>0?1+ISH_DIM*(n-1):0;
-function ishTr(){let t=0;const s=ishS();for(const i of ISH)if(i.tr)t+=i.tr*(s.own[i.k]||0);return t}
+function ishTr(){let t=0;const s=ishS();for(const i of ISH)if(i.tr)t+=i.tr*(s.own[i.k]||0);try{return Math.min(t,LG().trucks)}catch(e){return t}}
 /* summed effects of everything owned (cached; ISHV is bumped on every change) */
 function ishE(){if(!ISH)return ISH_Z;const s=ishS();if(ishEc&&ishEv===ISHV&&ishOk===s)return ishEc;const e=Object.assign({},ISH_Z);
   for(const i of ISH){const n=s.own[i.k]||0;if(!n)continue;const m=ishDim(n);for(const k in i.eff){if(k==="pay"||k==="spd")continue;e[k]+=i.eff[k]*m}}
@@ -5025,10 +5025,13 @@ function ishMk(cat){const x=ISH_CATS.findIndex(c=>c[0]===cat)+1,w=ishWeek();retu
 function ishWk(){const s=ishS(),w=ishWeek();if(s.wk!==w){s.wk=w;s.st={}}return s}
 const ishLeft=i=>i.lim-(ishWk().st[i.k]||0);
 const ishDisc=q=>q>=10?.12:q>=5?.08:q>=3?.04:0;
-function ishQuote(i,q){const s=ishS(),n=s.own[i.k]||0,mk=ishMk(i.cat);let t=0;for(let j=0;j<q;j++)t+=i.cost*mk*Math.pow(1.05,n+j);return Math.round(t*(1-ishDisc(q)))}
-function ishReq(i){const m=[];if(i.sz>ishSize())m.push(`city size ${i.sz}+`);if(i.tech&&!hasTech(i.tech))m.push(`research: ${TK[i.tech]?TK[i.tech].n:i.tech}`);if(i.prev&&!ishN(i.prev))m.push(`own a ${ISHC[i.prev].n.toLowerCase()}`);return m}
+/* profit-percentage items: price follows what they are worth (about ISH_PB days of the profit they lift), never below 10% of list */
+const ISH_PB=50;let ishScC=null;
+function ishScale(i){if(!(i.eff.biz||i.eff.ret))return 1;const key=(S.day||1)+"|"+ISHV+"|"+Object.keys(S.own).length,c=ishScC&&ishScC.key===key?ishScC:(ishScC={key});if(c[i.k]==null)c[i.k]=Math.max(.1,ishWorth(i,1)*ISH_PB/i.cost);return c[i.k]}
+function ishQuote(i,q){const s=ishS(),n=s.own[i.k]||0,mk=ishMk(i.cat),sc=ishScale(i);let t=0;for(let j=0;j<q;j++)t+=i.cost*sc*mk*Math.pow(1.05,n+j);return Math.round(t*(1-ishDisc(q)))}
+function ishReq(i){const m=[];if(i.sz>ishSize())m.push(`city size ${i.sz}+`);if(i.tech&&!hasTech(i.tech))m.push(`research: ${TK[i.tech]?TK[i.tech].n:i.tech}`);if(i.prev&&!ishN(i.prev))m.push(`own ${/^[aeiou]|^ERP/i.test(ISHC[i.prev].n)?"an":"a"} ${/^[A-Z]{2}/.test(ISHC[i.prev].n)?ISHC[i.prev].n:ISHC[i.prev].n.toLowerCase()}`);return m}
 function ishTick(){try{const s=ishS(),now=Date.now(),dt=Math.max(0,Math.min(now-(s.t||now),48*DAYMS));s.t=now;if(!dt)return;const h=dt/DAYMS;
-  for(const f of s.fin)f.left-=f.pay*h;s.fin=s.fin.filter(f=>f.left>.5);
+  for(const f of s.fin){let p=Math.min(f.left,f.pay*h);if(f.left-p<=.5)p=f.left;f.left-=p;S.cash-=p}s.fin=s.fin.filter(f=>f.left>.5); // the only place loan payments are billed (capped at the balance); saleTick leaves them out of totals().inc
   const e=ishE();if(e.rp>0)S.rpP=(S.rpP||0)+e.rp*h}catch(err){console.warn("ishTick",err)}}
 setInterval(ishTick,4000);
 /* ---- buying and selling ---- */
@@ -5049,8 +5052,8 @@ function ishSell(k){const i=ishC(k),s=ishS(),n=s.own[k]||0;if(!i||!n)return"Noth
 function ishC(k){return ISHC[k]}
 /* ---- UI ---- */
 function ISS(){return DX.is=DX.is||{cat:"veh",q:1,fin:false,note:"",nt:0,force:false}}
-function ishWorth(i){const n=ishN(i.k),m=n?ISH_DIM:1,e=i.eff;let v=0;
-  try{if(e.ret||e.biz){for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(lv)v+=profit(b,c,lv)*((e.biz||0)+(e.ret&&RETAIL.includes(b.k)?e.ret:0))*m/Math.max(1,ishBiz(b))}}}
+function ishWorth(i,z){const n=z?0:ishN(i.k),m=n?ISH_DIM:1,e=i.eff;let v=0;
+  try{if(e.ret||e.biz){for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(lv)v+=Math.max(0,profit(b,c,lv))*((e.biz||0)+(e.ret&&RETAIL.includes(b.k)?e.ret:0))*m/Math.max(1,ishBiz(b))}}}
     if(e.farm||e.mine||e.fac){for(const s of S.sites){const o=siteOp(s);if(!o)continue;const x=o.cat==="Farm"||o.cat==="Ranch"?e.farm:o.cat==="Mine"?e.mine:o.cat==="Factory"&&!o.rp?e.fac:0;if(x)v+=Math.max(0,siteEst(s)+indUpkeepOf(s))*x*m/ishOut(o)}}
     if(e.upk)v+=indUpkeep()/Math.max(.05,1-ishE().upk)*e.upk*m}catch(err){}
   return v}
