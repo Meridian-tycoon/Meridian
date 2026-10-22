@@ -1808,7 +1808,7 @@ setInterval(worldNews,4*60000);setTimeout(worldNews,20000);
 /* ---------- economy tick ---------- */
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
 let pops=[]; // floating income labels
-function simDay(quiet){const{nw}=totals();S.day++;if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}
+function simDay(quiet){const{nw}=totals();S.day++;if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}
   audits(quiet);simProps(quiet);
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||Math.random()>.004)continue;
     const kinds=[["Break-in at your",.04],["Equipment breakdown at your",.03],["Health inspection fine at your",.02],["Customer lawsuit against your",.06]],[t,f]=kinds[Math.floor(Math.random()*kinds.length)];
@@ -4674,6 +4674,26 @@ function lxOrdRule(o){const a=[];if(o.to.k==="wh"){if(o.min>0)a.push(`refill whe
   if(o.keep>0)a.push(`keep ${lxg(o.keep)} at source`);a.push(`batch ≥ ${lxg(o.bat||1)}`);a.push(o.car==="own"?"own fleet only":o.car==="hire"?"hired carriers":"own fleet, else hired");return a.join(" · ")}
 function lxEtaJob(j){let t=0;for(const v of S.fleet)if(v.job===j.id&&v.arr)t=Math.max(t,v.arr-Date.now());const A=CITIES[j.from],B=CITIES[j.to];
   if(j.left>1e-6){const vs=S.fleet.filter(v=>v.job===j.id);if(vs.length){const lg2=lxLegs(vs,A,B,j.left,j.g);t+=lg2.last}}return t}
+/* stock-level history: S.lx.sth = ring buffer of the last 30 game days {d,u,c,v} (tonnes stored, warehouse capacity, stock value). Missing on old saves -> starts empty. */
+function lxSnap(){const X=LX();if(!Array.isArray(X.sth))X.sth=[];let u=0,c=0,v=0;for(const id in S.wh){const ct=CITIES[id];if(!ct)continue;c+=whCap(ct);u+=stored(ct)}
+  for(const id in S.inv){const ct=CITIES[id];if(!ct)continue;for(const g in S.inv[id]){const q=S.inv[id][g];if(q>0&&G[g])v+=q*px(ct,g)}}
+  const r={d:S.day||0,u:Math.round(u*10)/10,c:Math.round(c),v:Math.round(v)},l=X.sth[X.sth.length-1];if(l&&l.d===r.d)X.sth[X.sth.length-1]=r;else X.sth.push(r);if(X.sth.length>30)X.sth=X.sth.slice(-30)}
+function lxLvl(p){return p>=90?"#dc2626":p>=70?"#d97706":p<15?"#94a3b8":"#16a34a"}
+function lxSpark(a,k,col){const W=300,H=60;if(a.length<2)return `<div class="lx-sub" style="margin:6px 0">Chart fills in as game days pass (${a.length}/2 days recorded).</div>`;
+  const mx=Math.max(1,...a.map(r=>Math.max(r[k],k==="u"?r.c:0))),x=i=>(i/(a.length-1)*W).toFixed(1),y=n=>(H-2-n/mx*(H-6)).toFixed(1);
+  const pts=a.map((r,i)=>x(i)+","+y(r[k])).join(" "),cap=k==="u"?`<polyline points="${a.map((r,i)=>x(i)+","+y(r.c)).join(" ")}" fill="none" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>`:"";
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:64px;display:block;margin-top:6px" role="img" aria-label="${k==="u"?"Tonnes stored":"Stock value"} over the last ${a.length} days">${cap}<polygon points="0,${H} ${pts} ${W},${H}" fill="${col}" fill-opacity=".12"/><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+   <div style="display:flex;justify-content:space-between;font:500 11px Figtree,sans-serif;color:#94a3b8"><span>Day ${a[0].d}</span><span>Day ${a[a.length-1].d}</span></div>`}
+function lxLevels(){const X=LX(),a=Array.isArray(X.sth)?X.sth.filter(r=>r&&typeof r.u==="number"):[],ws=[];
+  for(const id in S.wh){const c=CITIES[id];if(!c)continue;const cp=whCap(c),u=stored(c);ws.push({c,cp,u,p:cp?Math.min(100,u/cp*100):0})}
+  if(!ws.length&&!a.length)return "";ws.sort((x,y)=>y.p-x.p);
+  let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Stock levels</h3><span class="lx-sub" style="margin:0 0 0 auto">${["#94a3b8","Low","#16a34a","OK","#d97706","70%+","#dc2626","90%+"].reduce((s,v,i,A)=>i%2?s:s+`<span style="display:inline-flex;align-items:center;gap:3px;margin-left:8px"><i style="width:8px;height:8px;border-radius:2px;background:${v}"></i>${A[i+1]}</span>`,"")}</span></div>`;
+  for(const w of ws.slice(0,12))h+=`<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;gap:8px;font:600 12.5px Figtree,sans-serif;color:#0f172a"><span>${dxE(w.c.name)}</span><span style="color:#475569;font-weight:500;white-space:nowrap">${fmtT(w.u)} / ${fmtT(w.cp)} · ${Math.round(w.p)}%</span></div><div class="lx-bar" style="height:10px;border-radius:5px"><i style="width:${w.p.toFixed(1)}%;background:${lxLvl(w.p)}"></i></div></div>`;
+  if(ws.length>12)h+=`<div class="lx-sub">+${ws.length-12} more warehouses</div>`;
+  const l=a[a.length-1],f=a[0];
+  h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:14px;margin-top:10px"><div><div class="lx-sub" style="margin:0">Tonnes stored · last ${a.length} day${a.length===1?"":"s"}${l&&a.length>1?` · ${l.u>=f.u?"+":""}${fmtT(l.u-f.u)}`:""}${a.length>1?` · <span style="font-weight:500">dashed = capacity</span>`:""}</div>${lxSpark(a,"u","#2563eb")}</div>
+   <div><div class="lx-sub" style="margin:0">Stock value${l&&a.length>1?` · ${l.v>=f.v?"+":"−"}${fmt(Math.abs(l.v-f.v))}`:""}</div>${lxSpark(a,"v","#0f766e")}</div></div></div>`;
+  return h}
 function lxPage(lg){const X=LX(),now=Date.now(),tabs=[["ov","Overview"],["send","Send"],["ord","Orders",X.ord.filter(o=>o.on).length],["fleet","Fleet",X.jobs.length+X.sh.length],["hist","History"]];
   let h=`<div class="lx-tabs" role="tablist">${tabs.map(t=>`<button role="tab" data-lx="tab" data-v="${t[0]}" aria-selected="${lg.tab===t[0]}" class="${lg.tab===t[0]?"on":""}">${t[1]}${t[2]?`<b>${t[2]}</b>`:""}</button>`).join("")}</div>`;
   if(lg.note&&now-lg.nt<9000)h+=`<div class="lx-note">${dxE(lg.note)}</div>`;
@@ -4688,14 +4708,14 @@ function lxOverview(lg){const X=LX();let used=0,cap=0,whn=0,val=0;const by={},ci
   for(const s of X.sh){trN++;if(s.k==="g")addT(s.g,s.q);else trV+=s.q*(SUP[s.g]?SUP[s.g].c:1)}
   for(const s of S.hired||[]){trN++;if(G[s.g])addT(s.g,s.q)}
   let h=`<div class="lx-k"><div><span>Stored</span><b>${fmtT(used)}</b><small>of ${fmtT(cap)} · ${whn} warehouse${whn===1?"":"s"}</small></div><div><span>Stock value</span><b>${fmt(val)}</b><small>at local prices</small></div>
-    <div><span>In transit</span><b>${trN}</b><small>loads on the move · ${fmt(trV)}</small></div><div><span>Standing orders</span><b>${X.ord.filter(o=>o.on).length}/${X.ord.length}</b><small>${X.jobs.length+X.sh.length} shipments of yours</small></div></div>`+fxCard();
+    <div><span>In transit</span><b>${trN}</b><small>loads on the move · ${fmt(trV)}</small></div><div><span>Standing orders</span><b>${X.ord.filter(o=>o.on).length}/${X.ord.length}</b><small>${X.jobs.length+X.sh.length} shipments of yours</small></div></div>`+lxLevels()+fxCard();
   h+=`<div class="mdx-card"><div class="mdx-ch"><h3>Stock everywhere</h3><div class="mdx-seg" style="margin-left:auto"><button data-lx="ov" data-v="item" class="${lg.ov==="item"?"on":""}">By item</button><button data-lx="ov" data-v="city" class="${lg.ov==="city"?"on":""}">By city</button></div></div>`;
   if(lg.ov==="city"){if(!cities.length)h+=`<div class="mdx-empty">No stock in any warehouse yet. Mines, farms and factories deliver into the warehouse of their city.</div>`;
     for(const x of cities.sort((a,b)=>b.cv-a.cv).slice(0,40)){const c=x.c,cp=whCap(c),pc=cp?Math.min(100,stored(c)/cp*100):0,sn=S.sites.filter(s=>s.city===c.id&&s.op).length;
-      h+=`<div class="lx-it"><div class="m"><b>${dxE(c.name)}</b><span>${fmtT(stored(c))} / ${fmtT(cp)} · ${lxg(storedU(c))} units · ${fmt(x.cv)}${sn?` · ${sn} plot${sn>1?"s":""} running`:""}</span><div class="lx-bar"><i style="width:${pc}%"></i></div><small>${x.gs.slice(0,5).map(a=>`${lxN(a[0])} ${lxg(a[1])}`).join(" · ")}${x.gs.length>5?` · +${x.gs.length-5} more`:""}</small></div><div class="a"><button class="lx-btn" data-lx="from" data-c="${c.id}">Send from here</button></div></div>`}}
+      h+=`<div class="lx-it"><div class="m"><b>${dxE(c.name)}</b><span>${fmtT(stored(c))} / ${fmtT(cp)} · ${lxg(storedU(c))} units · ${fmt(x.cv)}${sn?` · ${sn} plot${sn>1?"s":""} running`:""}</span><div class="lx-bar"><i style="width:${pc}%;background:${lxLvl(pc)}"></i></div><small>${x.gs.slice(0,5).map(a=>`${lxN(a[0])} ${lxg(a[1])}`).join(" · ")}${x.gs.length>5?` · +${x.gs.length-5} more`:""}</small></div><div class="a"><button class="lx-btn" data-lx="from" data-c="${c.id}">Send from here</button></div></div>`}}
   else{const rows=Object.values(by).filter(r=>r.q>=.05||r.tr>0).sort((a,b)=>b.v-a.v);if(!rows.length)h+=`<div class="mdx-empty">Nothing in stock. Build mines, farms or factories, or buy goods in a city market.</div>`;
     for(const r of rows){r.at.sort((a,b)=>b[1]-a[1]);h+=`<div class="lx-it"><div class="m"><b>${dxE(lxN(r.g))}</b><span class="lx-t">${lxg(r.q)} units · ${fmt(r.v)}${r.tr>0?` <span class="lx-tag b">${lxg(r.tr)} in transit</span>`:""}</span>
-      <small>${r.at.slice(0,4).map(a=>`${dxE(a[0].name)} ${lxg(a[1])}`).join(" · ")}${r.at.length>4?` · +${r.at.length-4} more`:""}</small></div>${r.q>=.05?`<div class="a"><button class="lx-btn" data-lx="pick" data-v="g:${r.g}">Send</button></div>`:""}</div>`}}
+      <div class="lx-bar"><i style="width:${(val>0?Math.max(2,r.v/val*100):0).toFixed(1)}%;background:#0f766e"></i></div><small>${val>0?Math.round(r.v/val*100)+"% of stock value · ":""}${r.at.slice(0,4).map(a=>`${dxE(a[0].name)} ${lxg(a[1])}`).join(" · ")}${r.at.length>4?` · +${r.at.length-4} more`:""}</small></div>${r.q>=.05?`<div class="a"><button class="lx-btn" data-lx="pick" data-v="g:${r.g}">Send</button></div>`:""}</div>`}}
   h+=`</div>`;
   const stk={};for(const id in S.own){const c=CITIES[id];if(!c)continue;for(const bk in S.own[id])if(SUP[bk]){const q=stockOf(c,bk);if(q>=1){const e=stk[bk]=stk[bk]||{bk,q:0,v:0,n:0};e.q+=q;e.n++;e.v+=q*unitCost(BIZ.find(x=>x.k===bk)||{k:bk},c)}}}
   const sr=Object.values(stk);
