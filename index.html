@@ -356,7 +356,7 @@ const CASINO_CITIES=["Montréal"],bigOK=c=>isBigCity(c)||CASINO_CITIES.includes(
 /* why a business can't be opened in a city ("" if it can). Used by every buy/rent path. */
 const CARTS=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie"],CART_MAX=5,isCart=k=>CARTS.includes(k);
 const cartCount=c=>CARTS.filter(k=>(S.own[c.id]||{})[k]).length,licCost=c=>5000*Math.max(1,c.size||1);
-function bizBlock(b,c){if(b.cx!=null&&b.cx!==c.id)return `${b.n} is your own brand from ${(CITIES[b.cx]||{}).name}; it only trades there`;if(b.big&&!bigOK(c))return `${b.n}s only open in big cities (size ${BIGCITY}, e.g. ${CITIES.filter(isBigCity).slice(0,3).map(x=>x.name).join(", ")}) or in ${CASINO_CITIES.join(", ")}`;
+function bizBlock(b,c){if(unhOn(c))return `${c.name} is uninhabitable for ${unhLeft(c)} after an ICBM strike`;if(b.cx!=null&&b.cx!==c.id)return `${b.n} is your own brand from ${(CITIES[b.cx]||{}).name}; it only trades there`;if(b.big&&!bigOK(c))return `${b.n}s only open in big cities (size ${BIGCITY}, e.g. ${CITIES.filter(isBigCity).slice(0,3).map(x=>x.name).join(", ")}) or in ${CASINO_CITIES.join(", ")}`;
   if(b.co&&!hasHQ(c))return `${b.n}s need an HQ in this city`;if(lawBan(c,b))return `Gambling is banned in ${c.country}`;
   if(isCart(b.k)&&!S.lic?.[c.id]&&!(S.own[c.id]||{})[b.k]&&cartCount(c)>=CART_MAX)return `${CART_MAX} carts max — buy a street vendor license`;
   if(b.k==="airport"&&!hasAirport(c))return `${c.name} has no airport site`;if(b.k==="port"&&c.size<3)return "Seaports need a size 3+ city";return ""}
@@ -382,6 +382,10 @@ const save=()=>{if(save.lock)return;try{if(typeof ensurePositions==="function")e
 const cost=(b,c)=>Math.round(b.cost*1.3*PRICE[c.size]);
 // carts climb faster (1.7x per level) so upgrades never pay back quicker than a new cart; others keep 1.4x
 const upCost=(b,c,lv)=>Math.round(cost(b,c)*0.8*Math.pow(isCart(b.k)?1.7:1.4,lv-1));
+/* uninhabitable cities: an ICBM strike sets S.unh[cityId] = timestamp when the city recovers. 6 game months = 6*30 game days (the game counts 30-day months, e.g. ELECT = 90 days = 3 months). */
+const UNH_DAYS=6*30;
+function unhOn(c){const u=S.unh;return !!(c&&u&&typeof u==="object"&&u[c.id]>Date.now())}
+const unhLeft=c=>{const d=Math.max(0,Math.ceil(((S.unh||{})[c.id]-Date.now())/DAYMS));return d>=30?`${Math.floor(d/30)} mo ${d%30} d`:`${d} d`};
 function evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="function"?stormMult(c):1)*(typeof strikeMult==="function"?strikeMult(c):1)*popDem(c)*sancMult()}
 /* rival companies */
 const RIVALS=[{n:"Halcyon Group",col:"#7c3aed"},{n:"Ironbridge Co.",col:"#b45309"},{n:"Sable & Finch",col:"#0369a1"},
@@ -413,7 +417,7 @@ function menuNet(c,b,lv,id){menuOv={[c.id+":"+b.k]:id};try{return profit(b,c,lv)
 const USE={cart:{burgers:2},coffeecart:{bread:1},icecream:{bread:1},taco:{beef:1,bread:1},pretzel:{bread:2},noodle:{beef:1},smoothie:{bread:1},kiosk:{bread:3},shop:{bread:4,tools:1},rest:{burgers:5,beef:3},office:{electronics:.5},hotel:{bread:8,electronics:.5}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
-function profit(b,c,lv){if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)-bizWage(b,c,lv))}
+function profit(b,c,lv){if(unhOn(c))return 0;if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)-bizWage(b,c,lv))}
 // hourly wages a business is charged inside profit(); HQ Employees shows the same figure
 function bizWage(b,c,lv){return b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1))*(typeof hrPay==="function"?hrPay(c,b):1)}
 function cityProfit(c){const o=S.own[c.id]||{};let t=0;for(const b of BIZ)if(o[b.k])t+=profit(b,c,o[b.k]);return t}
@@ -423,8 +427,8 @@ const isLeased=(c,k)=>!!((S.lease||{})[c.id]||{})[k];
 /* transport hubs (tr) earn far less than cost/60 in some city sizes, so their rent is capped at 80% of baseline Lv1 profit there (no rivals/events/perks): leasing nets >=20%, buying still keeps 100%. */
 const rentBase=(b,c)=>Math.round(b.gross*.85*(b.k==="airport"||b.k==="airline"?(c.size>=5?1.25:c.size<=2?.8:1):1)*DEMAND[c.size]-b.up*1.15*PRICE[c.size]);
 const bizRent=(b,c)=>{const r=Math.round(cost(b,c)*RENT);return b.tr?Math.max(0,Math.min(r,Math.round(Math.min(rentBase(b,c),potential(b,c,1))*.8))):r};
-function rentTotal(){let r=0;for(const id in S.lease||{})for(const k in S.lease[id]){if(!S.lease[id][k]||!(S.own[id]||{})[k])continue;r+=bizRent(BIZ.find(b=>b.k===k),CITIES[id])}
-  for(const s of S.sites||[])if(s.lease)r+=Math.round(plotPrice(CITIES[s.city],zoneOf(s)||"farm",s.size)*RENT);return r}
+function rentTotal(){let r=0;for(const id in S.lease||{})for(const k in S.lease[id]){if(!S.lease[id][k]||!(S.own[id]||{})[k]||unhOn(CITIES[id]))continue;r+=bizRent(BIZ.find(b=>b.k===k),CITIES[id])}
+  for(const s of S.sites||[])if(s.lease&&!unhOn(CITIES[s.city]))r+=Math.round(plotPrice(CITIES[s.city],zoneOf(s)||"farm",s.size)*RENT);return r}
 function totals(){let inc=0,assets=0;
   for(const c of CITIES){const o=S.own[c.id];if(!o)continue;
     for(const b of BIZ){const lv=o[b.k];if(!lv)continue;inc+=profit(b,c,lv);
@@ -557,7 +561,9 @@ function rotateTo(c,k,done){const l0=V.lam,p0=V.phi,k0=V.k;let l1=-c.lon;while(l
 const sheet=$("#sheet");
 function openCity(c){const fresh=mode!=="city"||sel!==c;mode="city";if(sel!==c)shipForm=null;sel=c;renderSheet();if(fresh)sheet.scrollTop=0;sheet.classList.add("open");draw()}
 function closeSheet(){sel=null;sheet.classList.remove("open","full");draw()}
-function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.contains("open"))renderResearch();return}if(mode==="pf"){if(sheet.classList.contains("open"))renderPortfolio();return}if(!sel)return;const c=sel,o=S.own[c.id]||{},ev=S.events[c.id];if(tab==="life"){renderLife(c);return}if(tab==="hq"){renderHQ(c);return}if(tab==="gov"){govHtml(c);return}if(tab!=="biz"){renderInd(c);return}
+/* the one new-game path: erase this slot's local save and reload. Locks saving/cloud upload first so nothing (pagehide upload, autosave) rewrites the old game; the cloud save document and the online account are not touched. */
+function startNewGame(){save.lock=true;if(typeof CS!=="undefined")CS.busy=true;try{localStorage.removeItem(KEY)}catch(e){}location.reload()}
+function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.contains("open"))renderResearch();return}if(mode==="pf"){if(sheet.classList.contains("open"))renderPortfolio();return}if(!sel)return;const c=sel,o=S.own[c.id]||{},ev=S.events[c.id];if(unhOn(c)){renderUnh(c);return}if(tab==="life"){renderLife(c);return}if(tab==="hq"){renderHQ(c);return}if(tab==="gov"){govHtml(c);return}if(tab!=="biz"){renderInd(c);return}
   let h=`<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}${typeof stormAt==="function"&&stormAt(c)?`<span class="tag bust">STORM</span>`:""}</h2>
     <p>${c.country} · market size ${"●".repeat(c.size)}${"○".repeat(5-c.size)}</p></div>
     <button class="x" id="cls" aria-label="Close">×</button></div>
@@ -729,9 +735,9 @@ const slv=s=>s.lv||1,thr=s=>(1+.3*(slv(s)-1))*(s.op?techOut(OP[s.op]):1),supCost
 const IEV={drought:{n:"Drought",cats:["Farm","Ranch"],m:.4},bumper:{n:"Bumper harvest",cats:["Farm"],m:1.5},strike:{n:"Miners' strike",cats:["Mine"],m:0},rich:{n:"Rich vein found",cats:["Mine"],m:1.6},outage:{n:"Power outage",cats:["Factory"],m:.3}};
 const ievM=(s,o)=>{const e=S.iev[s.city];return e&&IEV[e.t].cats.includes(o.cat)?IEV[e.t].m:1};
 const effHa=s=>s.reg?LAND[s.size][1]:Math.min(2,LAND[s.size][1]);
-function siteEst(s){const o=siteOp(s);if(!o)return 0;const c=CITIES[s.city],ha=effHa(s)*thr(s)*ievM(s,o)*(typeof crewF==="function"?crewF(s):1);let v=0;
+function siteEst(s){const o=siteOp(s);if(!o||unhOn(CITIES[s.city]))return 0;const c=CITIES[s.city],ha=effHa(s)*thr(s)*ievM(s,o)*(typeof crewF==="function"?crewF(s):1);let v=0;
   for(const g in o.out)v+=o.out[g]*px(c,g);for(const g in (o.in||{}))v-=o.in[g]*px(c,g);return Math.round(v*ha-(s.crew?1:.2)*o.up*techUp(o)*LAND[s.size][1]*(1+.15*(slv(s)-1)))}
-function indUpkeep(){let u=0;for(const s of S.sites){const o=siteOp(s);if(o)u+=(s.crew?1:.2)*o.up*techUp(o)*LAND[s.size][1]*(1+.15*(slv(s)-1))}return u}
+function indUpkeep(){let u=0;for(const s of S.sites){const o=siteOp(s);if(o&&!unhOn(CITIES[s.city]))u+=(s.crew?1:.2)*o.up*techUp(o)*LAND[s.size][1]*(1+.15*(slv(s)-1))}return u}
 function indAssets(){let a=0;for(const s of S.sites){const c=CITIES[s.city],ha=LAND[s.size][1];if(!s.lease)a+=haPrice(c)*(ZONE[zoneOf(s)]||{pm:1}).pm*ha*.75;const o=siteOp(s);if(o)a+=o.build*ha*.5}
   for(const v of S.fleet)a+=VEH[v.type].cost*.6;
   for(const id in S.inv)for(const g in S.inv[id])a+=S.inv[id][g]*G[g][1]*.9;
@@ -739,7 +745,7 @@ function indAssets(){let a=0;for(const s of S.sites){const c=CITIES[s.city],ha=L
 /* run production for h hours (chunked so chains flow) */
 function runIndustry(hours){let sold=0;const step=.25;let left=hours;
   while(left>1e-6){const h=Math.min(step,left);left-=h;S.rpP=(S.rpP||0)+RPX*2*h;
-    for(const s of S.sites){const o=siteOp(s);if(!o)continue;const c=CITIES[s.city],em=ievM(s,o),cf=crewF(s),ha=effHa(s)*thr(s)*em*cf,inv=S.inv[c.id]=S.inv[c.id]||{};
+    for(const s of S.sites){const o=siteOp(s);if(!o)continue;if(unhOn(CITIES[s.city])){s.k=0;s.why="Uninhabitable";continue}const c=CITIES[s.city],em=ievM(s,o),cf=crewF(s),ha=effHa(s)*thr(s)*em*cf,inv=S.inv[c.id]=S.inv[c.id]||{};
       let k=1,why="";for(const g in (o.in||{})){const need=o.in[g]*ha*h,have=inv[g]||0;if(have<need&&have/need<k){k=have/need;why="Short of "+G[g][0].toLowerCase()}}
       let outT=0;for(const g in o.out)outT+=o.out[g]*ha*h;const space=whCap(c)-stored(c);if(outT>0&&space<outT&&space/outT<k){k=Math.max(0,space/outT);why="Warehouse full"}
       if(em===0){k=0;why=IEV[S.iev[s.city].t].n}
@@ -747,11 +753,11 @@ function runIndustry(hours){let sold=0;const step=.25;let left=hours;
       s.k=k;s.why=k>=.999?"":why;if(k<=0)continue;
       let pw=1;if(o.cat==="Factory"&&!o.out.power&&!o.rp){const need=2*ha*h*k;if((inv.power||0)>=need){inv.power-=need;pw=1.25}}s.pw=pw>1;
       for(const g in (o.in||{}))inv[g]=(inv[g]||0)-o.in[g]*ha*h*k;for(const g in o.out)inv[g]=(inv[g]||0)+o.out[g]*ha*h*k*pw;if(o.rp)S.rpP=(S.rpP||0)+RPX*o.rp*ha*h*k}
-    for(const id in S.own){const c=CITIES[id],inv=S.inv[id];const su=S.sup[id]=S.sup[id]||{};
+    for(const id in S.own){const c=CITIES[id],inv=S.inv[id];if(unhOn(c))continue;const su=S.sup[id]=S.sup[id]||{};
       for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||!USE[b.k]){continue}if(!inv){su[b.k]=0;continue}
         let f=1;for(const g in USE[b.k]){const need=USE[b.k][g]*lv*h;f=Math.min(f,(inv[g]||0)/need)}
         for(const g in USE[b.k])inv[g]=(inv[g]||0)-USE[b.k][g]*lv*h*f;su[b.k]=f}}
-    for(const id in S.auto){const c=CITIES[id],inv=S.inv[id]||{};for(const g in S.auto[id]){if(!S.auto[id][g]||!(inv[g]>0)||(G[g][2]==="gov"&&!govOK(c))||!hasHQ(c))continue;sold+=sellGood(c,g,inv[g])*.97;inv[g]=0}}}
+    for(const id in S.auto){const c=CITIES[id],inv=S.inv[id]||{};if(unhOn(c))continue;for(const g in S.auto[id]){if(!S.auto[id][g]||!(inv[g]>0)||(G[g][2]==="gov"&&!govOK(c))||!hasHQ(c))continue;sold+=sellGood(c,g,inv[g])*.97;inv[g]=0}}}
   rpPay();for(const id in S.inv)for(const g in S.inv[id])if(S.inv[id][g]<1e-6)delete S.inv[id][g];
   S.cash+=sold;S.earned=(S.earned||0)+sold;return sold}
 function depart(v,c,d,g,t){t=t||Date.now();const V=VEH[v.type],km=distKm(c,d),fuel=km*V.km*hqShip(c,d);if(S.cash<fuel)return false;S.cash-=fuel;
@@ -857,8 +863,8 @@ function shipInfo(){const i=$("#sf-info");if(!i||!sel)return;const v=S.fleet.fin
 sheet.addEventListener("change",e=>{const t=e.target;if(t.id==="sf-g"||t.id==="sf-d")shipInfo();
   if(t.dataset.act==="auto"&&sel){(S.auto[sel.id]=S.auto[sel.id]||{})[t.dataset.g]=t.checked;save();toast(t.checked?`Auto-selling ${G[t.dataset.g][0].toLowerCase()} in ${sel.name}`:"Auto-sell off")}});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-act]");if(!b||b.tagName==="INPUT")return;
-  if(b.dataset.tab){if(b.dataset.tab==="hq"&&typeof ofEnter==="function"&&!OFC.on&&sel&&hasHQ(sel)){ofEnter(hqCity(sel.country));return}tab=b.dataset.tab;shipForm=null;renderSheet();return}
-  const c=sel;if(!c)return;const a=b.dataset.act,id=+b.dataset.id;
+  if(b.dataset.tab){if(sel&&unhOn(sel))return;if(b.dataset.tab==="hq"&&typeof ofEnter==="function"&&!OFC.on&&sel&&hasHQ(sel)){ofEnter(hqCity(sel.country));return}tab=b.dataset.tab;shipForm=null;renderSheet();return}
+  const c=sel;if(!c||unhOn(c))return;const a=b.dataset.act,id=+b.dataset.id;
   if(a==="land"){const k=b.dataset.k,z=b.dataset.z,p=plotPrice(c,z,k);if(S.cash<p)return;S.cash-=p;S.sites.push({id:S.nid++,city:c.id,size:k,type:z,op:null});ensureWh(c);toast(`Bought ${LAND[k][1]} ha of ${ZONE[z].n.toLowerCase()} in ${c.name}`)}
   else if(a==="build"){const s=S.sites.find(x=>x.id===id),o=OP[$("#op-"+id).value],p=o.build*LAND[s.size][1];if(S.cash<p){toast(`Need ${fmt(p)} to build that`);return}S.cash-=p;s.op=o.k;s.k=null;toast(`${o.n} built`)}
   else if(a==="clear"){const s=S.sites.find(x=>x.id===id);if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}const o=siteOp(s);S.cash+=o.build*LAND[s.size][1]*.3;s.op=null;toast("Demolished · 30% refunded")}
@@ -1096,7 +1102,7 @@ const bizStaff=(k,lv)=>Math.ceil(STAFF[k]*(1+.5*(lv-1)));
 function hqTotalUpkeep(){let u=0;for(const id in S.hq)if(S.hq[id]&&CITIES[id])u+=hqUpkeep(CITIES[id]);return u+hqNetUp()}
 /* split this hour's taxable profit into registered vs unregistered */
 function taxableRates(){let reg=0,un=0;const wr=c=>taxRateC(c)/TAX_REG,wu=c=>(taxRateC(c)+.2)/TAX_UNREG;
-  for(const pr of S.props||[]){if(!pr.occ)continue;const c=CITIES[pr.city],v=askRent(pr)*rentLaw(c);if(hasHQ(c))reg+=v*wr(c);else un+=v*wu(c)}
+  for(const pr of S.props||[]){if(!pr.occ||unhOn(CITIES[pr.city]))continue;const c=CITIES[pr.city],v=askRent(pr)*rentLaw(c);if(hasHQ(c))reg+=v*wr(c);else un+=v*wu(c)}
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv)continue;const p=Math.max(0,profit(b,c,lv));if(bizReg(c,b.k))reg+=p*wr(c);else un+=p*wu(c)}}
   for(const s of S.sites){const c=CITIES[s.city],p=Math.max(0,siteEst(s));if(s.reg)reg+=p*wr(c);else un+=p*wu(c)}
   return{reg,un}}
@@ -1171,7 +1177,7 @@ const mktRent=(pr)=>{const P=PK[pr.k],c=CITIES[pr.city];return Math.round(P.rent
 const askRent=pr=>Math.round(mktRent(pr)*pr.pct/100);
 const fillP=pct=>pct<=60?.9:pct<=75?.45:pct<=100?.15:.04;
 const leaveP=pct=>pct<=75?.005:pct<=100?.015:.06;
-function propIncome(){return S.props.reduce((a,pr)=>a+(pr.occ?askRent(pr)*(typeof rentLaw==="function"?rentLaw(CITIES[pr.city]):1):0),0)}
+function propIncome(){return S.props.reduce((a,pr)=>a+(pr.occ&&!unhOn(CITIES[pr.city])?askRent(pr)*(typeof rentLaw==="function"?rentLaw(CITIES[pr.city]):1):0),0)}
 function propAssets(){return S.props.reduce((a,pr)=>{const P=PK[pr.k],c=CITIES[pr.city];return a+propCost(P,c)*.8+(pr.furn?P.furn*PRICE[c.size]*.5:0)},0)}
 function simProps(quiet){for(const pr of S.props){const c=CITIES[pr.city],P=PK[pr.k];
   if(!pr.occ){if(Math.random()<fillP(pr.pct)){pr.occ=1;if(!quiet){S.log.unshift(`New tenant: ${P.n} in ${c.name} at ${fmt(askRent(pr))}/hr`);S.log=S.log.slice(0,3)}}}
@@ -1836,7 +1842,7 @@ function renderPortfolio(){const{inc,nw}=totals();
   sheet.querySelectorAll("[data-go]").forEach(r=>r.onclick=()=>flyTo(CITIES[r.dataset.go]));
   const q=$("#q");q.oninput=()=>{query=q.value;searchRes()};searchRes();
   ptWire();onlineWire();
-  const rs=$("#reset");rs.onclick=()=>{if(rs.dataset.arm){try{localStorage.removeItem(KEY)}catch(e){}location.reload()}else{rs.dataset.arm=1;rs.textContent="Tap again to erase everything"}};
+  const rs=$("#reset");rs.onclick=()=>{if(rs.dataset.arm){startNewGame()}else{rs.dataset.arm=1;rs.textContent="Tap again to erase everything"}};
 }
 function searchRes(){const box=$("#qres");if(!box)return;const s=query.trim().toLowerCase();
   if(!s){box.innerHTML="";return}
@@ -1922,7 +1928,7 @@ new MutationObserver(()=>{if(!sheet.firstElementChild||sheet.firstElementChild.c
 const hourOf=t=>Math.floor(t/DAYMS);
 /* business sales trickle in every second; accrue() settles any remainder via the same clock, so nothing is counted twice */
 function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=totals().inc*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
-function accrue(){const now=Date.now();if(!S.acc)S.acc=now;
+function accrue(){if(S.dead)return 0;const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);if(typeof popTick==="function")popTick(dt/DAYMS);if(typeof careerTick==="function")careerTick(dt/DAYMS);
   if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runFleet(now);const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
@@ -3091,9 +3097,10 @@ const WPNCFG={ // cost per weapon, build = game days, enemy = share of enemy max
   // r = scorch radius px at zoom 1, appr = approval change, loy = loyalty change in every controlled country, wear = weariness added, resist = resistance added in occupied countries
   w:{msl:{n:"Cruise missile",ico:"🚀",cost:3e6,build:.25,enemy:.06,front:3,city:.25,days:2,r:9,appr:-1,loy:0,wear:2,resist:0,col:"#f97316",need:"5 air wings",ok:m=>m.units.air>=5},
      gas:{n:"Gas bomb",ico:"☣",cost:12e6,build:.75,enemy:.14,front:7,city:.45,days:3,r:12,appr:-12,loy:-15,wear:10,resist:10,col:"#84cc16",need:"10 air wings",ok:m=>m.units.air>=10},
-     nuke:{n:"Nuclear warhead",ico:"☢",cost:400e6,build:4,enemy:.35,front:15,city:.85,days:5,r:22,appr:-30,loy:-35,wear:25,resist:25,col:"#facc15",need:"Rocketry tech and 20 air wings",ok:m=>hasTech("rocketry")&&m.units.air>=20}},
+     nuke:{n:"Nuclear warhead",ico:"☢",cost:400e6,build:4,enemy:.35,front:15,city:.85,days:5,r:22,appr:-30,loy:-35,wear:25,resist:25,col:"#facc15",need:"Rocketry tech and 20 air wings",ok:m=>hasTech("rocketry")&&m.units.air>=20},
+     icbm:{n:"ICBM",ico:"☠",cost:2.5e9,build:12,enemy:.6,front:30,city:1,days:UNH_DAYS,r:34,appr:-45,loy:-50,wear:40,resist:40,col:"#f43f5e",need:"Rocketry tech and 40 air wings",ok:m=>hasTech("rocketry")&&m.units.air>=40}},
   queue:3,         // builds in progress at once
-  stockMax:{msl:20,gas:6,nuke:2},
+  stockMax:{msl:20,gas:6,nuke:2,icbm:1},
   // strikes alone can't end a war: they never push the front past frontCap or the enemy below strFloor × max strength; battles must finish it
   frontCap:85,strFloor:.15,nukeCap:98, // a nuke may push the front to 98, which wins the war
   
@@ -3101,10 +3108,10 @@ const WPNCFG={ // cost per weapon, build = game days, enemy = share of enemy max
   // enemy retaliation: chance per war per game hour (× enemy strength left), cooldown in game days after a strike of that kind,
   // gas only once you used WMD on them or weariness > 50; nukes only if you nuked them and their max strength ≥ nukeMin.
   // hit: city = share of WPN city damage, front = front lost, appr = your approval, loy = loyalty in a struck controlled country
-  ret:{odds:{msl:.12,gas:.05,nuke:.05},cd:{msl:4,gas:12,nuke:48},minPow:.15,nukeMin:40,
-       hit:{msl:{city:.8,front:1,appr:-1,loy:-2},gas:{city:.9,front:3,appr:-4,loy:-6},nuke:{city:1,front:6,appr:-8,loy:-12}}},
+  ret:{odds:{msl:.12,gas:.05,nuke:.05,icbm:.003},cd:{msl:4,gas:12,nuke:48,icbm:120},minPow:.15,nukeMin:40,icbmMin:60, // icbm: only after YOU fired one at them (w.ic), never while you're offline, ~0.3%/day x their strength left
+       hit:{msl:{city:.8,front:1,appr:-1,loy:-2},gas:{city:.9,front:3,appr:-4,loy:-6},nuke:{city:1,front:6,appr:-8,loy:-12},icbm:{city:1,front:10,appr:-15,loy:-25}}},
   // world reaction to your WMD use: demand/income in all your cities falls by f for `days` game days (worst one wins, timers extend)
-  sanc:{gas:{f:.12,days:3},nuke:{f:.25,days:5}},
+  sanc:{gas:{f:.12,days:3},nuke:{f:.25,days:5},icbm:{f:.4,days:10}},
   animMs:3200};    // launch animation length (real ms)
 function wpn(){const m=mil();if(!m.wpn||typeof m.wpn!=="object")m.wpn={};for(const k in WPNCFG.w)if(!(m.wpn[k]>=0))m.wpn[k]=0;if(!Array.isArray(m.wq))m.wq=[];if(!Array.isArray(m.strikes))m.strikes=[];return m}
 function wpnTick(){const m=wpn(),now=Date.now();let done=0;for(let i=m.wq.length-1;i>=0;i--){const q=m.wq[i];if(q.done<=now){if(WPNCFG.w[q.k])m.wpn[q.k]++;m.wq.splice(i,1);done++}}
@@ -3114,16 +3121,36 @@ function wpnBuild(k){const p=pol(),m=wpn(),W=WPNCFG.w[k];if(!W)return;if(!polLea
   if(m.wpn[k]+m.wq.filter(q=>q.k===k).length>=WPNCFG.stockMax[k])return toast(`Stockpile limit: ${WPNCFG.stockMax[k]} ${W.n.toLowerCase()}s`);
   if(S.cash<W.cost)return toast(`${W.n} costs ${fmt(W.cost)}`);S.cash-=W.cost;
   m.wq.push({k,done:Date.now()+W.build*DAYMS});toast(`${W.n} in production · ready in ${fmtDur(W.build*DAYMS)}`)}
-function wpnFire(k,id){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id],now=Date.now();if(!W||!c)return;if(!polLeader())return toast("Only a Leader can order strikes");
+function wpnFire(k,id,sure){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id],now=Date.now();if(!W||!c)return;if(!polLeader())return toast("Only a Leader can order strikes");
+  if(k==="icbm"&&present(c)&&!sure)return toast(`You are in ${c.name}: an ICBM here would kill you`);
   const w=m.wars[c.country];if(!w)return toast(`You're not at war with ${c.country}`);if(!m.wpn[k])return toast(`No ${W.n.toLowerCase()} in stock`);
-  m.wpn[k]--;if(k!=="msl"){w.wmd=1;if(k==="nuke")w.nk=1;wpnSanction(k)}const kill=Math.max(0,Math.min(w.enemyMax*W.enemy,w.enemyStr-w.enemyMax*WPNCFG.strFloor)),f0=w.front;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.max(f0,Math.min(k==="nuke"?WPNCFG.nukeCap:WPNCFG.frontCap,f0+W.front));const push=Math.round((w.front-f0)*10)/10;w.weariness=Math.min(100,w.weariness+W.wear);
+  m.wpn[k]--;if(k!=="msl"){w.wmd=1;if(k==="nuke"||k==="icbm")w.nk=1;if(k==="icbm")w.ic=1;wpnSanction(k)}const kill=Math.max(0,Math.min(w.enemyMax*W.enemy,w.enemyStr-w.enemyMax*WPNCFG.strFloor)),f0=w.front;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.max(f0,Math.min(k==="nuke"||k==="icbm"?WPNCFG.nukeCap:WPNCFG.frontCap,f0+W.front));const push=Math.round((w.front-f0)*10)/10;w.weariness=Math.min(100,w.weariness+W.wear);
   p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const n in p.ctrl)p.ctrl[n].loy=Math.max(0,p.ctrl[n].loy+W.loy);for(const n in m.occ)m.occ[n].resist=Math.min(100,m.occ[n].resist+W.resist);
   m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*WPNCFG.ownHit,from:p.c});
   const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,dead=popStrike(k,c);
   const t=`${W.ico} ${W.n} hit ${c.name}, ${c.country}: ${fmtPop(dead)} killed, enemy −${Math.round(kill)}, front +${push}${W.appr?`, approval ${W.appr}`:""}${W.loy?`, allies' loyalty ${W.loy}`:""}`;logPol(t);milLog(m,t);
   toast(t+(mine?` · your businesses in ${c.name} lose ${Math.round(W.city*WPNCFG.ownHit*100)}% demand for a while`:""));
-  if(k==="nuke"&&w.front>=WPNCFG.nukeCap&&m.wars[c.country])milEndWar(c.country,"win");
-  if(typeof PH!=="undefined"&&PH.open){PH.open=false}rotateTo(c,Math.max(V.k,2.5));wpnAnim()}
+  if((k==="nuke"||k==="icbm")&&w.front>=WPNCFG.nukeCap&&m.wars[c.country])milEndWar(c.country,"win");
+  if(typeof PH!=="undefined"&&PH.open){PH.open=false}rotateTo(c,Math.max(V.k,2.5));wpnAnim();
+  if(k==="icbm")unhStrike(c,p.c)}
+/* ICBM impact: the city is uninhabitable until S.unh[id]. Blast radius = the struck city only. If the player is physically in it (present(c)), the game is over. */
+function unhStrike(c,by){S.unh=S.unh&&typeof S.unh==="object"?S.unh:{};S.unh[c.id]=Date.now()+UNH_DAYS*DAYMS;
+  if(S.trip&&S.trip.to&&S.trip.to.city===c.id){S.trip=null;toast(`Your trip to ${c.name} was cancelled: the city is gone`)} // inbound traveller turns back, stays at the origin
+  if(sel===c&&mode==="city")renderSheet();
+  if(present(c)){S.dead={city:c.id,name:c.name,country:c.country,by:by||"",t:Date.now()};save();showGameOver()}}
+function showGameOver(){const d=S.dead;if(!d||$("#gameover"))return;const el=document.createElement("div");el.id="gameover";
+  el.style.cssText="position:fixed;inset:0;z-index:10000;background:rgba(10,0,0,.92);display:flex;align-items:center;justify-content:center;padding:16px";
+  const you=d.by&&S.pol&&d.by===S.pol.c&&!d.foe;
+  el.innerHTML=`<div role="alertdialog" aria-modal="true" style="background:var(--panel);color:var(--ink);border-radius:14px;max-width:360px;width:100%;padding:20px;box-shadow:0 18px 50px rgba(0,0,0,.6);border:2px solid #f43f5e;text-align:center">
+    <div style="font-size:44px;line-height:1">☠</div><h3 style="margin:8px 0 4px;color:#f43f5e">GAME OVER</h3>
+    <p style="margin:0 0 10px">${you?`An ICBM launched on your orders hit ${d.name}, ${d.country}, while you were standing in it.`:`${d.by?d.by+" struck back with":"A"} an ICBM that hit ${d.name}, ${d.country}, while you were standing in it.`} Nobody survived.</p>
+    <p class="d" style="margin:0 0 14px;color:var(--muted)">Your empire dies with you. Starting again erases this game on this device and begins a fresh one. Your online account stays.</p>
+    <button class="buy" id="gobtn" style="width:100%">Start a new game</button></div>`;
+  document.body.appendChild(el);$("#gobtn").onclick=()=>startNewGame()}
+function renderUnh(c){sheet.innerHTML=`<div class="shead"><div><h2>${c.name}<span class="tag bust">UNINHABITABLE</span></h2><p>${c.country} · ICBM strike</p></div><button class="x" id="cls" aria-label="Close">×</button></div>
+  <div class="meta"><div><span>Recovers in </span>${unhLeft(c)}</div><div><span>Demand </span>×0</div><div><span>Yours </span>${fmt(0)}/hr</div></div>
+  <p class="d" style="margin:10px 0;color:var(--muted)">☠ Nobody lives here any more. Your businesses, land and offices in ${c.name} earn nothing, and nothing can be bought, built or visited until the radiation clears (${UNH_DAYS} game days after the strike). Then the city recovers.</p>`;
+  $("#cls").onclick=closeSheet}
 // the world reacts to gas/nukes: sanctions-like hit to every city's demand for a while
 function wpnSanction(k){const m=mil(),X=WPNCFG.sanc[k];if(!X)return;const now=Date.now(),o=m.sanc&&m.sanc.until>now?m.sanc:{f:0,until:now};
   m.sanc={f:Math.max(o.f,X.f),until:Math.max(o.until,now)+X.days*DAYMS};const t=`The world condemns your ${WPNCFG.w[k].n.toLowerCase()} strike: sanctions cut demand ${Math.round(m.sanc.f*100)}% for ${fmtDur(m.sanc.until-now)}`;logPol(t);milLog(m,t)}
@@ -3132,10 +3159,10 @@ function sancMult(){const m=S.pol&&S.pol.mil,x=m&&m.sanc;return x&&x.until>Date.
 function wpnRetal(n,w,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,now=Date.now();if(!(w.rcd>=0))w.rcd=0;if(now<w.rcd)return;
   const pw=w.enemyMax>0?w.enemyStr/w.enemyMax:0;if(pw<C.minPow)return;
   const tg=[p.c,...Object.keys(p.ctrl||{})].filter(x=>x&&COUNTRIES.includes(x)),cs=CITIES.filter(c=>tg.includes(c.country));if(!cs.length)return;
-  let k=null;if(w.nk&&w.enemyMax>=C.nukeMin&&Math.random()<C.odds.nuke*pw)k="nuke";else if((w.wmd||w.weariness>50)&&Math.random()<C.odds.gas*pw)k="gas";else if(Math.random()<C.odds.msl*pw)k="msl";if(!k)return;
+  let k=null;if(!quiet&&w.ic&&w.enemyMax>=C.icbmMin&&Math.random()<C.odds.icbm*pw)k="icbm";else if(w.nk&&w.enemyMax>=C.nukeMin&&Math.random()<C.odds.nuke*pw)k="nuke";else if((w.wmd||w.weariness>50)&&Math.random()<C.odds.gas*pw)k="gas";else if(Math.random()<C.odds.msl*pw)k="msl";if(!k)return;
   const W=WPNCFG.w[k],E=C.hit[k],c=cs[Math.floor(Math.random()*cs.length)];w.rcd=now+C.cd[k]*DAYMS;
   m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*E.city,from:n,foe:1});
-  const dead=popStrike(k,c);w.front=Math.max(0,w.front-E.front);p.appr=Math.max(0,p.appr+E.appr);if(p.ctrl[c.country])p.ctrl[c.country].loy=Math.max(0,p.ctrl[c.country].loy+E.loy);
+  const dead=popStrike(k,c);if(k==="icbm"){w.rcd=now+C.cd.icbm*DAYMS;unhStrike(c,n);if(S.dead)S.dead.foe=1}w.front=Math.max(0,w.front-E.front);p.appr=Math.max(0,p.appr+E.appr);if(p.ctrl[c.country])p.ctrl[c.country].loy=Math.max(0,p.ctrl[c.country].loy+E.loy);
   const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,t=`${W.ico} ${n} struck ${c.name} with a ${W.n.toLowerCase()}: ${fmtPop(dead)} killed, front −${E.front}, approval ${E.appr}${mine?" · your businesses there are hit":""}`;
   S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);if(!quiet){toast(t);if(typeof wpnAnim==="function")wpnAnim()}}
 // demand multiplier for a struck city: each strike's damage fades linearly to 0 by its end time
@@ -3152,7 +3179,7 @@ function drawStrikes(ctx){const m=S.pol&&S.pol.mil;if(!m||!Array.isArray(m.strik
     // lingering scorch: dark core and coloured halo, fading over the strike's days
     const a=.25+.6*fade,gr=ctx.createRadialGradient(x,y,0,x,y,R);gr.addColorStop(0,`rgba(20,10,5,${a})`);gr.addColorStop(.55,`rgba(120,30,10,${a*.7})`);gr.addColorStop(1,"rgba(120,30,10,0)");
     ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fillStyle=gr;ctx.fill();ctx.beginPath();ctx.arc(x,y,R*.9,0,7);ctx.strokeStyle=W.col;ctx.globalAlpha=.35+.5*fade;ctx.lineWidth=1.4;ctx.setLineDash([2,3]);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
-    ctx.font="11px system-ui, sans-serif";ctx.textAlign="center";ctx.fillStyle=W.col;ctx.fillText(W.ico,x,y-R-6);ctx.textAlign="start";
+    ctx.font="11px system-ui, sans-serif";ctx.textAlign="center";ctx.fillStyle=W.col;ctx.fillText(W.ico,x,y-R-6);if(s.k==="icbm"&&unhOn(c)){ctx.font="bold 10px system-ui, sans-serif";ctx.fillText("UNINHABITABLE · "+unhLeft(c),x,y+R+12)}ctx.textAlign="start";
     // impact flash + expanding shock ring
     const ia=age-fl,il=WPNCFG.animMs-fl;if(ia>=0&&ia<il){const u=ia/il;ctx.beginPath();ctx.arc(x,y,R*(.3+2.2*u),0,7);ctx.strokeStyle=W.col;ctx.globalAlpha=1-u;ctx.lineWidth=3*(1-u)+1;ctx.stroke();
       ctx.beginPath();ctx.arc(x,y,R*(.9-.6*u),0,7);ctx.fillStyle="#fff7d6";ctx.globalAlpha=(1-u)*.9;ctx.fill();ctx.globalAlpha=1}}}
@@ -3160,9 +3187,9 @@ function wpnHtml(m,lead,sb,bx,urow){const C=WPNCFG,now=Date.now();wpnTick();
   let h=`<div class="ph-sub" style="margin-top:10px">Arsenal · production ${m.wq.length}/${C.queue}</div><div class="ph-rows">${Object.keys(C.w).map(k=>{const W=C.w[k],q=m.wq.filter(x=>x.k===k),ok=W.ok(m),full=m.wpn[k]+q.length>=C.stockMax[k];
     return urow(`${W.ico} ${W.n} <b>× ${m.wpn[k]}</b>`,`${ok?`build ${fmtDur(W.build*DAYMS)}`:`needs ${W.need}`}${q.length?` · ${q.length} building, next ${fmtDur(Math.max(0,Math.min(...q.map(x=>x.done))-now))}`:""}`,bx("wpnbuild",k,`Build · ${fmt(W.cost)}`,"#7f1d1d",!lead||!ok||full||m.wq.length>=C.queue||S.cash<W.cost,1))}).join("")}</div>`;
   const wk=Object.keys(m.wars),have=Object.keys(C.w).filter(k=>m.wpn[k]>0);
-  if(lead&&wk.length&&have.length)for(const n of wk)h+=`<div class="ph-sub" style="margin-top:8px">Strike ${n}</div><div class="ph-rows">${ctyCities(n).map(c=>{const sm=strikeMult(c);return urow(c.name+(S.own[c.id]&&Object.keys(S.own[c.id]).length?` <small style="color:#fbbf24">· yours</small>`:""),sm<1?`<span style="color:#f87171">damaged −${Math.round((1-sm)*100)}%</span>`:"",have.map(k=>bx("wpnfire",k+"|"+c.id,`${C.w[k].ico} ${m.wpn[k]}`,k==="nuke"?"#713f12":k==="gas"?"#3f6212":"#7c2d12",0,1)).join(""))}).join("")}</div>`;
+  if(lead&&wk.length&&have.length)for(const n of wk)h+=`<div class="ph-sub" style="margin-top:8px">Strike ${n}</div><div class="ph-rows">${ctyCities(n).map(c=>{const sm=strikeMult(c);return urow(c.name+(S.own[c.id]&&Object.keys(S.own[c.id]).length?` <small style="color:#fbbf24">· yours</small>`:""),sm<1?`<span style="color:#f87171">damaged −${Math.round((1-sm)*100)}%</span>`:"",have.map(k=>bx("wpnfire",k+"|"+c.id,`${C.w[k].ico} ${m.wpn[k]}`,k==="icbm"?"#881337":k==="nuke"?"#713f12":k==="gas"?"#3f6212":"#7c2d12",0,1)).join(""))}).join("")}</div>`;
   else if(lead&&have.length)h+=`<p class="ph-sub">Declare war to use your weapons.</p>`;
-  h+=`<p class="ph-sub" style="margin-top:6px">Strikes cut enemy strength, push the front (never past ${C.frontCap}, or ${C.nukeCap} with a nuke, which wins the war) and wreck demand in the hit city for a few days (your businesses there lose ${Math.round(C.ownHit*100)}% of that). Gas and nukes cost heavy approval and the loyalty of every country in your sphere, and raise resistance in occupied lands. Enemies strike back at your own cities with missiles, and with gas or nukes if you used them first; the world answers WMD with sanctions.</p>`;
+  h+=`<p class="ph-sub" style="margin-top:6px">Strikes cut enemy strength, push the front (never past ${C.frontCap}, or ${C.nukeCap} with a nuke or ICBM, which wins the war) and wreck demand in the hit city for a few days (your businesses there lose ${Math.round(C.ownHit*100)}% of that). Gas and nukes cost heavy approval and the loyalty of every country in your sphere, and raise resistance in occupied lands. Enemies strike back at your own cities with missiles, and with gas or nukes if you used them first; the world answers WMD with sanctions. An ICBM makes the whole city uninhabitable for 6 game months (no income, no travel, no building); if you are standing in the city you strike, you die and the game is over. After you fire one, a rival may very rarely answer in kind.</p>`;
   if(sancMult()<1)h+=`<p class="ph-sub" style="color:#f87171">Sanctions: demand −${Math.round((1-sancMult())*100)}% in all cities for ${fmtDur(m.sanc.until-now)}</p>`;
   return h}
 /* ---- HQ phone app: schedules, wage raises/cuts, firing (per business; S.sched / S.wadj keyed by bkey) ---- */
@@ -3804,7 +3831,7 @@ const POPCFG={c:{"Argentina":[45.7e6,12.5,7.6],"Australia":[26.7e6,11.4,6.6],"Br
   def:[10e6,15,7.5], split:[.63,.29,.08],  // share of normal deaths: natural/old age, sickness, accidents
   war:2e-5, occ:3e-6,                       // war deaths per person per day (×intensity), occupation deaths per person per day at 100 resistance
   stormSick:.6, stormAcc:2,                 // extra sickness / accident deaths in a country while a storm sits on one of its cities
-  cityPop:[0,4e5,1.2e6,3.5e6,8e6,18e6], strike:{msl:.0004,gas:.02,nuke:.15}}; // people hit per strike, as a share of the struck city's population
+  cityPop:[0,4e5,1.2e6,3.5e6,8e6,18e6], strike:{msl:.0004,gas:.02,nuke:.15,icbm:.6}}; // people hit per strike, as a share of the struck city's population
 const POPCAUSE=[["nat","Natural / old age"],["sick","Sickness"],["acc","Accidents"],["war","War"]];
 function popOf(n){S.popn=S.popn&&typeof S.popn==="object"?S.popn:{};let p=S.popn[n];const R=POPCFG.c[n]||POPCFG.def;
   if(!p||typeof p!=="object"||!(p.p>0))p=S.popn[n]={p:R[0],p0:R[0],b:0,d:0,bt:0,dt:0,c:[0,0,0,0],ct:[0,0,0,0],day:S.day||0,fb:0,fd:[0,0,0,0]};
@@ -4034,7 +4061,7 @@ document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest
 addEventListener("resize",()=>{if(tutStep>=0)tutShow(tutStep)});
 setTimeout(()=>{if(S.tut===0)tutShow(0)},1500);
 let saveT=0;
-setInterval(()=>{if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
+setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
   $("#clk").title="Where you are";$("#clk").textContent=jailed()?"in prison · "+fmtDur(S.jail.until-Date.now()):S.trip?(S.trip.local?"on the way":(S.trip.mode==="plane"?"flying to ":"travelling to ")+CITIES[S.trip.to.city].name)+" · "+fmtDur(S.trip.arr-Date.now()):"in "+CITIES[S.loc.city].name;
   if(mode==="pf"&&saveT%5===0&&sheet.classList.contains("open")&&!(document.activeElement&&/^(SELECT|INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}
@@ -4113,14 +4140,14 @@ function appHtml(k){const {inc,nw}=totals();
   return ""}
 const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);return `<button class="ph-item" data-ph="buyitem" data-k="${it.k}" ${S.cash<p?"disabled":""}><span>${it.n}<small>${NEEDS.filter(([q])=>it[q]).map(([q,n])=>(it[q]>0?"+":"")+it[q]+" "+n.toLowerCase()).join(", ")}</small></span><b>${fmt(p)}</b></button>`};
 ["touchstart","touchmove","wheel","scroll","pointerdown"].forEach(t=>PH.el.addEventListener(t,()=>{PH.touched=Date.now()},{passive:true,capture:true}));
-PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon",hrfire:"Tap again to fire",hqunlink:"Tap again",xfsend:"Tap again to send"}[a]||(a==="wpnfire"&&!/^msl\|/.test(b.dataset.k)?"Tap again":null);if(cfm&&!b.dataset.arm){const t0=b.textContent,w0=b.style.width,f0=b.style.flex;b.dataset.arm=1;b.textContent=cfm;if(a==="milab"||a==="wpnfire"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();
+PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon",hrfire:"Tap again to fire",hqunlink:"Tap again",xfsend:"Tap again to send"}[a]||(a==="wpnfire"&&!/^msl\|/.test(b.dataset.k)?(/^icbm\|/.test(b.dataset.k)&&S.loc&&!S.trip&&S.loc.city===+b.dataset.k.split("|")[1]?"Tap = YOU DIE":"Tap again"):null);if(cfm&&!b.dataset.arm){const t0=b.textContent,w0=b.style.width,f0=b.style.flex;b.dataset.arm=1;b.textContent=cfm;if(a==="milab"||a==="wpnfire"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();
     setTimeout(()=>{if(b.isConnected&&b.dataset.arm){delete b.dataset.arm;b.textContent=t0;b.style.width=w0;b.style.flex=f0}},4000);return} // disarm after 4 s
   if(a==="unfold"){PH.open=true;PH.app=null}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="app"){PH.app=b.dataset.k}
   else if(/^hr(sch|up|dn|fire|hire)$/.test(a)){hrAct(a,b.dataset.k);save();hud()}
   else if(a==="dash"){dxOpen();return}
   else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
-  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id);save();hud()}
+  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
   else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
@@ -4223,7 +4250,7 @@ function rideOptions(from,to){const km=Math.hypot((to.lat-from.lat)*111,(to.lon-
   o.push({m:"taxi",n:"Taxi",price:+(4+1.9*km).toFixed(2),sec:15+km*8});
   if(S.car)o.push({m:"drive",n:"Your car",price:+(km*CK[S.car.k].fuel).toFixed(2),sec:10+km*7/CK[S.car.k].f});
   return{km,o}}
-function startTrip(dest,opt,local){if(jailed()){toast("You can't travel from prison");return false}if(!local&&dest&&dest.city!=null&&warLvl(CITIES[dest.city].country)>=4){toast(`${CITIES[dest.city].country} is at war: transport there is suspended`);return false}
+function startTrip(dest,opt,local){if(jailed()){toast("You can't travel from prison");return false}if(!local&&dest&&dest.city!=null&&unhOn(CITIES[dest.city])){toast(`${CITIES[dest.city].name} is uninhabitable for ${unhLeft(CITIES[dest.city])}: nobody can travel there`);return false}if(!local&&dest&&dest.city!=null&&warLvl(CITIES[dest.city].country)>=4){toast(`${CITIES[dest.city].country} is at war: transport there is suspended`);return false}
   {const here=S.loc?S.own[S.loc.city]||{}:{},there=dest&&dest.city!=null&&!local?S.own[dest.city]||{}:{},anyAir=Object.values(S.own).some(o=>o.airline);let f=1,why="";
     if(opt.m==="plane"&&typeof luxJet==="function"&&luxJet()){f=0;why="your private jet";opt={...opt,min:opt.min*.7}}
     else if(opt.m==="plane"){if(anyAir){f*=.5;why="your airline"}if(here.airport||there.airport){f*=.75;why=why?why+" + your airport":"your airport"}}
@@ -4305,7 +4332,7 @@ function awaySummary(r){let el=$("#away");if(!el){el=document.createElement("div
     ${r.capped?`<p class="d" style="margin:10px 0 0;color:var(--muted)">Offline earnings stop after 48 hours. Check in at least every two days to keep everything paid.</p>`:""}
     <button class="buy" data-away="x" style="margin-top:14px;width:100%">Back to work</button></div></div>`;
   el.onclick=e=>{if(e.target.dataset.away)el.innerHTML=""}}
-resize();catchUp();hud();
+resize();catchUp();hud();if(S.dead)showGameOver();
 if(!S.log.length){S.log=["You start with nothing. Tap a city, open Jobs & home, rent a room and apply for work."];hud()}
 if(!world)toast("Map outline didn't load. Cities still work.");
 })();
