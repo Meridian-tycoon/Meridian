@@ -26,3 +26,5 @@ Signed-in players' saves are also stored privately in Firestore at `saves/{uid}`
 ## Money transfers
 
 Signed-in players can send cash to each other from the Bank app on the phone ($1 to $1,000,000 per transfer). Each transfer is a `transfers/{id}` document that the recipient's game credits and then deletes. This needs the `match /transfers/{id}` block in `firestore.rules`: **re-publish the rules** (Firebase console → Firestore → Rules, paste `firestore.rules`, Publish), otherwise sends fail and the sender is refunded. Saves are client-side, so this is not cheat-proof.
+
+The rules require `amt` to be a whole number (`amt is int`, 1 to 1,000,000); the game always sends whole dollars. If cheating ever becomes a problem, the next step is a server-side check: a Cloud Function (needs the paid Blaze plan) that validates each new transfer against a per-sender rate limit (e.g. N transfers / $ per hour) and a server-held balance, deleting or flagging bad ones. Not built yet. Whenever `firestore.rules` changes, re-publish it.
