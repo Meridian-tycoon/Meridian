@@ -716,7 +716,7 @@ const TECH=[
  {k:"mars",t:4,n:"Mars colony",d:"The final project. Everything you run earns 25% more.",rp:50000,cash:1e9,req:["spaceport"]}];
 const TK=Object.fromEntries(TECH.map(t=>[t.k,t]));
 const canResearch=t=>!hasTech(t.k)&&(t.req||[]).every(hasTech);
-const BASEVEH=JSON.parse(JSON.stringify({truck:{cap:40,spd:250},ship:{cap:400,spd:120},plane:{cap:25,spd:900}}));
+const BASEVEH=JSON.parse(JSON.stringify({truck:{cap:30,spd:400},ship:{cap:3000,spd:250},plane:{cap:60,spd:2500}}));
 function applyTechs(){VEH.truck.spd=BASEVEH.truck.spd*(hasTech("logi")?1.3:1);VEH.ship.cap=BASEVEH.ship.cap*(hasTech("container")?2:1);VEH.plane.spd=BASEVEH.plane.spd*(hasTech("aero")?1.4:1)}
 const techOut=o=>(["Farm","Ranch"].includes(o.cat)&&hasTech("mechfarm")?1.25:1)*(o.cat==="Factory"&&hasTech("robotics")&&!o.rp?1.2:1)*(hasTech("mars")?1.25:1);
 const techUp=o=>o.cat==="Factory"&&hasTech("renew")?.75:1;
@@ -732,7 +732,26 @@ const ZONE={farm:{n:"Farmland",cats:["Farm","Ranch"],pm:1,d:"Crops and livestock
   ind:{n:"Industrial lot",cats:["Factory"],pm:2.2,d:"Zoned for mills, plants and factories."}};
 const zoneOf=s=>s.type||(s.op?Object.keys(ZONE).find(z=>ZONE[z].cats.includes(OP[s.op].cat)):null);
 const plotPrice=(c,z,k)=>Math.round(haPrice(c)*ZONE[z].pm*LAND[k][1]);
-const VEH={truck:{n:"Truck",cap:40,spd:250,cost:15000,km:.4},ship:{n:"Cargo ship",cap:400,spd:120,cost:120000,km:1.5},plane:{n:"Cargo plane",cap:25,spd:900,cost:250000,km:5}};
+/* ---------- freight: what a stock unit weighs, and what vehicles carry ----------
+   WEIGHT. Stock is counted in units; one unit of good g weighs TPU[g] tonnes (chargeable weight: bulky-but-light goods are volume-limited, so they are
+   billed at the weight of the space they take, never below 0.05 t). Bulk (grain, ore, coal, sand, flour, steel, oil, fuel, uranium, power as battery packs) is 1 t/unit;
+   livestock 0.5 (one head), beef 0.4, glass 0.8, plastics 0.6, tools 0.5, bread 0.3, burgers 0.15, medicine and electronics 0.1, microchips 0.05;
+   cars 3 (a car and the room it takes on a hauler), aerospace parts 2, robots 1.5; military: drones 1.5, satellites 5, rocket engines 8, armoured vehicles 20, launches 30.
+   Unlisted goods weigh 1 t. VEH.cap is the PAYLOAD IN TONNES: units per load = cap / TPU[g] (capU). Cargo already in vehicles, S.lx jobs and queued shipments stays in units
+   and is never rescaled, so no goods are created or destroyed; capacity only limits NEW loads (an old load bigger than today's capacity just delivers as it is).
+   PAYLOAD (t): semi-trailer 30 t, small cargo ship 3,000 t (container tech doubles it), freighter plane 60 t. SPEED is km per game day (1 real hour).
+   COST. V.km is the running cost per km of a full load (fuel, crew, port/airport fees); an empty or part-loaded vehicle pays FUELFIX of it plus the rest in proportion to load (vFuel).
+   Full-load cost per tonne-km (V.km/V.cap): truck $0.010, ship $0.0010 (container tech halves it), plane $0.10: ship 10x cheaper than truck, plane 10x dearer (real: about 1 : 10 : 100 in the same ratios).
+   Game money is ~1/10 of real, so these are real $/t-km /10. Before: per unit-km truck $0.010, ship $0.00375, plane $0.20; a 1 t/unit good on a truck costs exactly what it did. */
+const TPU={wheat:1,corn:1,cattle:.5,ore:1,coal:1,sand:1,flour:1,beef:.4,steel:1,glass:.8,bread:.3,burgers:.15,tools:.5,electronics:.1,power:1,oil:1,fuel:1,plastics:.6,cars:3,chips:.05,medicine:.1,aero:2,robots:1.5,uranium:1,armored:20,drones:1.5,engines:8,satellites:5,launches:30};
+const tpu=g=>TPU[g]>0?TPU[g]:1;
+const FUELFIX=.4,LEGSPD={truck:250,ship:120};
+const VEH={truck:{n:"Truck",cap:30,spd:400,cost:15000,km:.3},ship:{n:"Cargo ship",cap:3000,spd:250,cost:250000,km:3},plane:{n:"Cargo plane",cap:60,spd:2500,cost:360000,km:6}};
+const capU=(t,g)=>VEH[t].cap/tpu(g);                       // units of g one vehicle of type t loads
+const fmtT=t=>t>=1e4?Math.round(t/1e3)+"K t":t>=1e3?(t/1e3).toFixed(1)+"K t":(Math.round(t*10)/10).toLocaleString()+" t";
+const vFuel=(t,km,tons,c,d)=>{const V=VEH[t];return km*V.km*(FUELFIX+(1-FUELFIX)*Math.max(0,Math.min(1,tons/V.cap)))*hqShip(c,d)};
+/* contract and hire pacing stays on the old travel-time scale (x research bonuses), so rival contracts and carriers pay and take what they always did */
+const legPace=t=>LEGSPD[t]*VEH[t].spd/BASEVEH[t].spd;
 const ISLAND=new Set(["Reykjavík","Auckland","Tokyo","Manila","Jakarta"].map(n=>CITIES.findIndex(c=>c.name===n)).filter(i=>i>=0));
 const landmass=c=>ISLAND.has(c.id)?"i"+c.id:c.lon<-30?"am":(c.lat<-10&&c.lon>110)?"oc":"afeu";
 const reg=c=>c.lon<-30?"am":c.lat<-10&&c.lon>100?"oc":c.lon<60&&c.lat<36&&c.lon>-20?"af":c.lon<50?"eu":"as";
@@ -782,11 +801,12 @@ function runIndustry(hours){let sold=0;const step=.25;let left=hours;
 /* travel time of one leg in ms (trucking company / port bonuses included); shared by depart() and the Logistics hub's quotes */
 function legMs(v,c,d){const t=v.type;return distKm(c,d)/VEH[t].spd*DAYMS*(t==="truck"&&(S.own[c.id]||{}).trucking?.75:t==="ship"&&(S.own[c.id]||{}).port?.8:1)}
 /* esc = cargo already taken out of stock by the caller (Logistics hub shipments); otherwise g loads up to the vehicle's capacity from the city's stock */
-function depart(v,c,d,g,t,esc){t=t||Date.now();const V=VEH[v.type],km=distKm(c,d),fuel=km*V.km*hqShip(c,d);if(S.cash<fuel)return false;S.cash-=fuel;
-  let cargo=null;if(esc)cargo=esc;else if(g){const inv=S.inv[c.id]||{},q=Math.min(V.cap,inv[g]||0);if(q>0){inv[g]-=q;if(inv[g]<1e-6)delete inv[g];cargo={g,q}}}
+function depart(v,c,d,g,t,esc){t=t||Date.now();const km=distKm(c,d);let pq=0;if(esc)pq=esc.q;else if(g)pq=Math.min(capU(v.type,g),(S.inv[c.id]||{})[g]||0);
+  const fuel=vFuel(v.type,km,pq*(g||esc?tpu(esc?esc.g:g):0),c,d);if(S.cash<fuel)return false;S.cash-=fuel;
+  let cargo=null;if(esc)cargo=esc;else if(g){const inv=S.inv[c.id]||{},q=pq;if(q>0){inv[g]-=q;if(inv[g]<1e-6)delete inv[g];cargo={g,q}}}
   Object.assign(v,{from:c.id,dest:d.id,cargo,dep:t,arr:t+legMs(v,c,d),city:null});return true}
 function routeStep(v,t){const r=v.route;if(!r||v.arr)return;const A=CITIES[r.from],B=CITIES[r.to];let ok=true;if(unhOn(A)||unhOn(B))return; /* paused while an end is uninhabitable */
-  if(v.city===r.from){const have=(S.inv[r.from]||{})[r.g]||0;if(have>=Math.min(VEH[v.type].cap,VEH[v.type].cap*.5))ok=depart(v,A,B,r.g,t)}
+  if(v.city===r.from){const have=(S.inv[r.from]||{})[r.g]||0;if(have>=Math.min(capU(v.type,r.g)*.5,{truck:20,ship:200,plane:12.5}[v.type]))ok=depart(v,A,B,r.g,t)}
   else if(v.city===r.to)ok=depart(v,B,A,r.back||"",t);
   if(!ok){v.route=null;S.log.unshift(`Route stopped: not enough cash for fuel (#${v.id})`);S.log=S.log.slice(0,3)}}
 function runFleet(now){for(const v of S.fleet){let guard=0;
@@ -859,15 +879,16 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
       h+=`<div class="sec">Your own fleet · parked here</div><div class="list">`;
       if(!here.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">No vehicles here.</p>`;
       for(const v of here){const V=VEH[v.type];
-        h+=v.job?`<div class="row own"><div class="n">${V.n} #${v.id} <span class="tag boom">JOB</span></div><div class="d">Working a Logistics shipment (release it on the Logistics page to send it elsewhere)</div><span></span></div>`:v.route?`<div class="row own"><div class="n">${V.n} #${v.id} <span class="tag boom">ROUTE</span></div><div class="d">${unhOn(CITIES[v.route.to])?`Paused: ${CITIES[v.route.to].name} is uninhabitable for ${unhLeft(CITIES[v.route.to])}`:`Waiting to load ${G[v.route.g][0].toLowerCase()} for ${CITIES[v.route.to].name}`}</div><button class="buy up" data-act="stoproute" data-id="${v.id}">Stop route</button></div>`:`<div class="row own"><div class="n">${V.n} #${v.id}</div><div class="d">Carries ${V.cap} units · ${V.spd} km/h</div><button class="buy" data-act="ship" data-id="${v.id}">${shipForm===v.id?"Cancel":"Send"}</button></div>`;
+        h+=v.job?`<div class="row own"><div class="n">${V.n} #${v.id} <span class="tag boom">JOB</span></div><div class="d">Working a Logistics shipment (release it on the Logistics page to send it elsewhere)</div><span></span></div>`:v.route?`<div class="row own"><div class="n">${V.n} #${v.id} <span class="tag boom">ROUTE</span></div><div class="d">${unhOn(CITIES[v.route.to])?`Paused: ${CITIES[v.route.to].name} is uninhabitable for ${unhLeft(CITIES[v.route.to])}`:`Waiting to load ${G[v.route.g][0].toLowerCase()} for ${CITIES[v.route.to].name}`}</div><button class="buy up" data-act="stoproute" data-id="${v.id}">Stop route</button></div>`:`<div class="row own"><div class="n">${V.n} #${v.id}</div><div class="d">Carries ${fmtT(V.cap)} · ${V.spd} km/day</div><button class="buy" data-act="ship" data-id="${v.id}">${shipForm===v.id?"Cancel":"Send"}</button></div>`;
         if(shipForm===v.id)h+=shipFormHtml(c,v)}
       h+=`</div>`;
       if(incoming.length)h+=`<div class="sec">Arriving</div><div class="list">`+incoming.map(v=>`<div class="row"><div class="n">${VEH[v.type].n} #${v.id}</div><div class="d">${v.cargo?`${Math.round(v.cargo.q)} ${G[v.cargo.g][0].toLowerCase()} · `:"empty · "}from ${CITIES[v.from].name} · in ${fmtDur(v.arr-Date.now())}</div><span></span></div>`).join("")+`</div>`;
       h+=`<div class="sec">Buy vehicles</div><div class="list">`;
-      for(const k in VEH){const V=VEH[k];h+=`<div class="row"><div class="n">${V.n}</div><div class="d">${V.cap} units · ${V.spd} km/h · ${fmt(V.km)}/km fuel${k==="truck"?" · roads only, same continent":k==="ship"?" · cheap bulk, slow":" · fastest, anywhere"}</div>
+      for(const k in VEH){const V=VEH[k];h+=`<div class="row"><div class="n">${V.n}</div><div class="d">${fmtT(V.cap)} (${lxg(V.cap)} units of 1 t goods) · ${V.spd} km/day · ${fmtc(V.km)}/km full load ($${(V.km/V.cap).toFixed(4)}/t-km)${k==="truck"?" · roads only, same continent":k==="ship"?" · cheap bulk, slow":" · fastest, anywhere"}</div>
         <button class="buy" data-act="veh" data-k="${k}" ${S.cash<V.cost?"disabled":""}>Buy ${fmt(V.cost)}</button></div>`}
       h+=`</div>`}}
   sheet.innerHTML=h;$("#cls").onclick=closeSheet}
+const inv0=(c,g)=>(S.inv[c.id]||{})[g]||0;
 function shipDests(c,v){return CITIES.filter(d=>d!==c&&hasWh(d)&&(v.type!=="truck"||landmass(d)===landmass(c)))}
 function shipFormHtml(c,v){const inv=S.inv[c.id]||{},V=VEH[v.type],ds=shipDests(c,v);
   if(!ds.length)return `<p class="d" style="font-size:12px;color:var(--muted);padding:6px 0 10px">${v.type==="truck"?"No other warehouse on this continent. Trucks can't cross oceans; open a warehouse in a nearby city.":"Open a warehouse in another city to ship there."}</p>`;
@@ -877,13 +898,13 @@ function shipFormHtml(c,v){const inv=S.inv[c.id]||{},V=VEH[v.type],ds=shipDests(
      <option value="">Nothing (move empty)</option>${goods.map(g=>`<option value="${g}">${G[g][0]} (${gq(inv[g])} here)</option>`).join("")}</select></label>
    <label>Destination <select id="sf-d" style="width:100%;font:inherit;padding:6px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px">
      ${ds.map(d=>`<option value="${d.id}">${d.name} · ${Math.round(distKm(c,d)).toLocaleString()} km · ${fmtDur(distKm(c,d)/V.spd*DAYMS)}</option>`).join("")}</select></label>
-   <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="sf-r"> Repeat as a route: return, reload when half full, go again</label>
+   <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="sf-r"> Repeat as a route: return, reload when there is a worthwhile load, go again</label>
    <label>Bring back on the return leg <select id="sf-b" style="width:100%;font:inherit;padding:6px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px"><option value="">Nothing</option>${GK.map(g=>`<option value="${g}">${G[g][0]}</option>`).join("")}</select></label>
    <div id="sf-info" class="d" style="color:var(--muted)"></div>
-   <button class="buy" data-act="go" data-id="${v.id}">Load up to ${V.cap} and go</button></div>`}
+   <button class="buy" data-act="go" data-id="${v.id}">Load up to ${fmtT(V.cap)} and go</button></div>`}
 function shipInfo(){const i=$("#sf-info");if(!i||!sel)return;const v=S.fleet.find(x=>x.id===shipForm);if(!v)return;const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,c=sel;
-  const km=distKm(c,d),fuel=km*V.km*hqShip(c,d),q=g?Math.min(V.cap,(S.inv[c.id]||{})[g]||0):0;
-  i.innerHTML=`Fuel ${fmt(fuel)}${hqShip(c,d)<1?" (HQ link −25%)":""} · arrives in ${fmtDur(km/V.spd*DAYMS)}${g?` · ${Math.floor(q)} ${G[g][0].toLowerCase()} sells for ${fmt(px(d,g))} there vs ${fmt(px(c,g))} here (${px(d,g)*q-px(c,g)*q-fuel>=0?"+":""}${fmt(px(d,g)*q-px(c,g)*q-fuel)} trip profit)`:""}`}
+  const km=distKm(c,d),q=g?Math.min(capU(v.type,g),(S.inv[c.id]||{})[g]||0):0,fuel=vFuel(v.type,km,q*(g?tpu(g):0),c,d);
+  i.innerHTML=`${g?`Load ${lxg(Math.floor(q))} units (${fmtT(q*tpu(g))} of ${fmtT(V.cap)}) · `:""}Fuel ${fmt(fuel)}${hqShip(c,d)<1?" (HQ link −25%)":""} · arrives in ${fmtDur(km/V.spd*DAYMS)}${g?` · ${Math.floor(q)} ${G[g][0].toLowerCase()} sells for ${fmt(px(d,g))} there vs ${fmt(px(c,g))} here (${px(d,g)*q-px(c,g)*q-fuel>=0?"+":""}${fmt(px(d,g)*q-px(c,g)*q-fuel)} trip profit)`:""}`}
 sheet.addEventListener("change",e=>{const t=e.target;if(t.id==="sf-g"||t.id==="sf-d")shipInfo();
   if(t.dataset.act==="auto"&&sel){(S.auto[sel.id]=S.auto[sel.id]||{})[t.dataset.g]=t.checked;save();toast(t.checked?`Auto-selling ${G[t.dataset.g][0].toLowerCase()} in ${sel.name}`:"Auto-sell off")}});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-act]");if(!b||b.tagName==="INPUT")return;
@@ -901,9 +922,9 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q,B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q>whCap(c)){toast("Not enough warehouse space");return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
   else if(a==="veh"){const k=b.dataset.k,V=VEH[k];if(S.cash<V.cost)return;S.cash-=V.cost;S.fleet.push({id:S.nid++,type:k,city:c.id});toast(`${V.n} ready in ${c.name}`)}
   else if(a==="ship"){shipForm=shipForm===id?null:id;renderSheet();shipInfo();return}
-  else if(a==="go"){const v=S.fleet.find(x=>x.id===id);if(!v||v.job||v.arr||v.cargo){toast("That vehicle is busy");return}const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,km=distKm(c,d),fuel=km*V.km*hqShip(c,d);
-    if(S.cash<fuel){toast(`Need ${fmt(fuel)} for fuel`);return}S.cash-=fuel;
-    S.cash+=fuel;depart(v,c,d,g);const rep=$("#sf-r")&&$("#sf-r").checked;v.route=rep&&g?{from:c.id,to:d.id,g,back:$("#sf-b").value}:null;
+  else if(a==="go"){const v=S.fleet.find(x=>x.id===id);if(!v||v.job||v.arr||v.cargo){toast("That vehicle is busy");return}const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,km=distKm(c,d),fuel=vFuel(v.type,km,g?Math.min(capU(v.type,g),inv0(c,g))*tpu(g):0,c,d);
+    if(S.cash<fuel){toast(`Need ${fmt(fuel)} for fuel`);return}
+    depart(v,c,d,g);const rep=$("#sf-r")&&$("#sf-r").checked;v.route=rep&&g?{from:c.id,to:d.id,g,back:$("#sf-b").value}:null;
     shipForm=null;toast(rep&&g?`Route set: ${c.name} ⇄ ${d.name}`:`${V.n} #${v.id} left for ${d.name}`)}
   else if(a==="stoproute"){const v=S.fleet.find(x=>x.id===id);v.route=null;toast("Route cancelled. Vehicle parks after this trip.")}
   else if(a==="slv"){const s=S.sites.find(x=>x.id===id);if(!s.reg){toast("Register this land at your HQ to upgrade it");return}const _=0,k=supCost(s);if(S.cash<k)return;S.cash-=k;s.lv=slv(s)+1;toast(`${OP[s.op].n}: ${(EQ[OP[s.op].cat]||[])[s.lv-1]||"Mk "+s.lv} installed`)}
@@ -2724,7 +2745,7 @@ function makeOffer(){const H=hubs();if(!H.length||!S.rivals||!S.rivals.length)re
   const pay=Math.round(km*tons*.05*(1+.25*lvl("trailer"))*(1+repOf(ri)*.02)*(1+.1*(lvTr-1))*(.8+Math.random()*.5)*PRICE[from.size]);
   const g=["electronics","steel","bread","tools","beef","fuel","furniture","medicine"][Math.floor(Math.random()*8)];
   return{id:LG().nid++,ri,from:from.id,to:to.id,km,tons,g,pay,exp:Date.now()+(20+Math.random()*40)*60000}}
-const jobDur=o=>Math.max(8*60000,o.km/VEH.truck.spd*DAYMS/4/Math.pow(1.15,lvl("engine")));
+const jobDur=o=>Math.max(8*60000,o.km/legPace("truck")*DAYMS/4/Math.pow(1.15,lvl("engine")));
 function acceptOffer(id,quiet){const l=LG(),o=l.offers.find(x=>x.id===id);if(!o||freeTrucks()<1)return false;
   l.offers=l.offers.filter(x=>x!==o);const d=jobDur(o)*(Math.random()<.08?1.4:1);l.jobs.push({...o,dep:Date.now(),arr:Date.now()+d});
   if(!quiet)toast(`Contract accepted: ${CITIES[o.from].name} → ${CITIES[o.to].name}`);return true}
@@ -2755,7 +2776,8 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-logi]");if(!b
   save();hud();renderSheet()});
 /* ---------- hire an AI logistics company instead of using your own network ---------- */
 const CARR=i=>{const h=hashS(RIVALS[i].n);return{rate:.0035*(.8+(h%50)/100),spd:.8+((h>>4)%60)/100,rel:.92+((h>>9)%8)/100}};
-function carrierQuote(i,c,d,q){const C=CARR(i),km=distKm(c,d),sea=landmass(c)!==landmass(d),base=sea?VEH.ship.spd*1.3:VEH.truck.spd;
+/* q = units of the good (g); the fee is per tonne-km, with a 0.25 t/unit floor so light goods are not almost free (g omitted: q is already a weight) */
+function carrierQuote(i,c,d,q,g){q=g&&G[g]?q*Math.max(.25,tpu(g)):q;const C=CARR(i),km=distKm(c,d),sea=landmass(c)!==landmass(d),base=sea?legPace("ship")*1.3:legPace("truck");
   return{km,sea,price:Math.max(150,Math.round(km*q*C.rate*(sea?.7:1)*(1-Math.min(.2,(LG().rep[i]||0)*.004)))),ms:Math.max(5*60000,km/(base*C.spd)*DAYMS),rel:C.rel}}
 S.hired=S.hired||[];
 function runHired(now){for(const h of S.hired.filter(x=>now>=x.arr)){const d=CITIES[h.to];ensureWh(d);
@@ -2766,19 +2788,19 @@ let hireF={g:"",d:"",q:0};
 function hireHtml(c){const inv=S.inv[c.id]||{},goods=GK.filter(g=>inv[g]>=1),ds=CITIES.filter(d=>d!==c&&hasWh(d));
   let h=`<div class="sec">Hire a logistics company</div>`;
   if(!goods.length||!ds.length)return h+`<p class="d" style="color:var(--muted);font-size:13px">${!ds.length?"Open a warehouse in another city to ship there.":"Nothing in this warehouse to ship."} Rival carriers can move your goods anywhere, even overseas, without you owning any vehicles.</p>`;
-  if(!goods.includes(hireF.g))hireF.g=goods[0];if(!ds.some(d=>d.id==hireF.d))hireF.d=ds[0].id;const d=CITIES[hireF.d],q=Math.max(1,Math.min(inv[hireF.g]||0,hireF.q||inv[hireF.g]));
+  if(!goods.includes(hireF.g))hireF.g=goods[0];if(hireF.d===""||!ds.some(d=>d.id==hireF.d))hireF.d=ds[0].id;const d=CITIES[hireF.d],q=Math.max(1,Math.min(inv[hireF.g]||0,hireF.q||inv[hireF.g]));
   const sel=`width:100%;font:inherit;padding:6px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px`;
   h+=`<div style="display:grid;gap:8px;padding:6px 0;font-size:13px"><label>Cargo <select data-hf="g" style="${sel}">${goods.map(g=>`<option value="${g}" ${g===hireF.g?"selected":""}>${G[g][0]} (${gq(inv[g])} here)</option>`).join("")}</select></label>
     <label>Destination <select data-hf="d" style="${sel}">${ds.map(x=>`<option value="${x.id}" ${x.id==hireF.d?"selected":""}>${x.name} · ${Math.round(distKm(c,x)).toLocaleString()} km</option>`).join("")}</select></label>
     <label>Quantity <input data-hf="q" type="number" min="1" max="${Math.floor(inv[hireF.g])}" value="${Math.floor(q)}" style="${sel}"></label></div><div class="list">`;
-  S.rivals.forEach((rv,i)=>{const Q=carrierQuote(i,c,d,q);
+  S.rivals.forEach((rv,i)=>{const Q=carrierQuote(i,c,d,q,hireF.g);
     h+=`<div class="row"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${RIVALS[i].col};margin-right:6px"></span>${RIVALS[i].n} <span style="font-family:var(--mono)">${fmt(Q.price)}</span></div>
       <div class="d">${Q.sea?"🚢 by sea":"🚚 by road"} · ${fmtDur(Q.ms)} · ${Math.round(Q.rel*100)}% reliable${LG().rep[i]?" · loyalty discount":""}</div>
       <button class="buy" data-hire="${i}" data-fixed="1" ${S.cash<Q.price?"disabled":""}>Hire</button></div>`});
   return h+`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Lost shipments are refunded. What you pay goes to that rival's company.</p>`}
 sheet.addEventListener("change",e=>{const f=e.target.closest("[data-hf]");if(!f)return;hireF[f.dataset.hf]=f.dataset.hf==="q"?+f.value:f.value;if(f.dataset.hf==="g")hireF.q=0;renderSheet()});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-hire]");if(!b||!sel)return;const c=sel,i=+b.dataset.hire,inv=S.inv[c.id]||{},q=Math.max(1,Math.min(inv[hireF.g]||0,hireF.q||inv[hireF.g]));
-  const d=CITIES[hireF.d],Q=carrierQuote(i,c,d,q);if(S.cash<Q.price||!(inv[hireF.g]>=1))return;S.cash-=Q.price;inv[hireF.g]-=q;if(inv[hireF.g]<1e-6)delete inv[hireF.g];
+  const d=CITIES[hireF.d],Q=carrierQuote(i,c,d,q,hireF.g);if(S.cash<Q.price||!(inv[hireF.g]>=1))return;S.cash-=Q.price;inv[hireF.g]-=q;if(inv[hireF.g]<1e-6)delete inv[hireF.g];
   S.rivals[i].nw+=Q.price;S.hired.push({ri:i,from:c.id,to:d.id,g:hireF.g,q,price:Q.price,dep:Date.now(),arr:Date.now()+Q.ms,lost:Math.random()>Q.rel});
   toast(`${RIVALS[i].n} is shipping it: arrives in ${fmtDur(Q.ms)}`);hireF.q=0;save();hud();renderSheet()});
 /* supplier deliveries for shops: through your own network or a hired carrier */
@@ -4282,7 +4304,7 @@ function drawDmg(ctx){const D=S.dmg;if(!D||typeof D!=="object")return;const zs=M
    - Nothing parallel is invented. Goods still live in S.inv (city warehouses; mines/factories/farms drop output there and factories/shops/plots
      draw inputs from the warehouse of their own city). So "send ore to the steel mill" = move ore into that city's warehouse.
    - OWN FLEET: a shipment of q units reserves (escrows) q out of the source warehouse at once, as job {id,g,q,left,got,ret,from,to,kind,vs,cost,val,p0,ord}.
-     Vehicles listed in job.vs (v.job = job id) pull loads of <= VEH cap out of job.left via the existing depart(v,c,d,"",t,{g,q,job}), so fuel, speed, tech and
+     Vehicles listed in job.vs (v.job = job id) pull loads of <= capU(type,good) units (VEH payload tonnes / TPU weight) out of job.left via the existing depart(v,c,d,"",t,{g,q,job}), so fuel, speed, tech and
      trucking/port bonuses, HQ-link discount and the on-map animation are the normal ones. After delivery (runFleet -> lxDeliver/lxVeh) an idle vehicle drives back
      empty (fuel paid) for the next load until left = 0; trips = ceil(q / capacity), split over every vehicle on the job. Chains run on the arrival timestamps, so offline catch-up is exact.
    - HIRED: rival carriers (carrierQuote, fee goes to that rival) take the whole quantity in one go: S.lx.sh = [{id,k:"g"|"s",g|bk,q,from,to,kind,ri,price,dep,arr,lost,ord}].
@@ -4325,9 +4347,9 @@ function lxIncoming(d,g){const X=LX();let t=0;
   for(const h of S.hired||[])if(h.to===d.id&&!h.lost&&(!g||h.g===g))t+=h.q;return t}
 function lxSpace(d){return hasWh(d)?Math.max(0,whCap(d)-stored(d)-lxIncoming(d)):0}
 /* ----- shipping plans (pure: no state is changed) ----- */
-function lxLegs(vs,c,d,q){const km=distKm(c,d),st=vs.map(v=>({t:0,n:0,cap:VEH[v.type].cap,leg:legMs(v,c,d),fuel:km*VEH[v.type].km*hqShip(c,d)}));
+function lxLegs(vs,c,d,q,g){const km=distKm(c,d),w=g?tpu(g):1,st=vs.map(v=>({t:0,n:0,cap:capU(v.type,g||""),leg:legMs(v,c,d),ret:vFuel(v.type,km,0,c,d),ty:v.type}));
   let rem=q,trips=0,last=0,fuel=0,f1=0,first=Infinity,guard=0;
-  while(rem>1e-9&&guard++<400){let b=st[0];for(const x of st)if(x.t<b.t)b=x;const ld=Math.min(b.cap,rem);rem-=ld;trips++;fuel+=b.fuel+(b.n>0?b.fuel:0);if(b.n===0)f1+=b.fuel;
+  while(rem>1e-9&&guard++<400){let b=st[0];for(const x of st)if(x.t<b.t)b=x;const ld=Math.min(b.cap,rem),of=vFuel(b.ty,km,ld*w,c,d);rem-=ld;trips++;fuel+=of+(b.n>0?b.ret:0);if(b.n===0)f1+=of;
     const arr=b.t+b.leg;last=Math.max(last,arr);first=Math.min(first,arr);b.t=arr+b.leg;b.n++}
   return{trips,last,first:first===Infinity?0:first,fuel,f1,cap:st.reduce((a,x)=>a+x.cap,0)}}
 /* item {t:"g",g} (warehouse goods) or {t:"s",bk} (business stock units); kind wh|mkt|new; spec own:all | own:<id> | hire:<i> */
@@ -4338,8 +4360,8 @@ function lxPlan(item,c,d,q,kind,spec){const P={ok:false,why:"",mode:"",km:distKm
   if(m==="own"){if(item.t!=="g"){P.why="Business stock goes by hired carrier";return P}
     let vs=lxIdle(c).filter(v=>lxVehOK(v,c,d));if(x!=="all")vs=vs.filter(v=>v.id===+x);
     if(!vs.length){P.why=lxIdle(c).length?"Trucks can't cross oceans":`No idle vehicle in ${c.name}`;return P}
-    const lg2=lxLegs(vs,c,d,q);Object.assign(P,{mode:"own",vs,cap:lg2.cap,trips:lg2.trips,first:lg2.first,last:lg2.last,total:lg2.fuel,f1:lg2.f1,lab:vs.length>1?`${vs.length} vehicles`:`${VEH[vs[0].type].n} #${vs[0].id}`})}
-  else if(m==="hire"){const i=+x;if(!S.rivals[i]||!RIVALS[i]){P.why="Pick a carrier";return P}const Q=carrierQuote(i,c,d,q*(item.t==="s"?lxc().stkW:1));
+    const lg2=lxLegs(vs,c,d,q,item.g);Object.assign(P,{mode:"own",vs,cap:lg2.cap,trips:lg2.trips,first:lg2.first,last:lg2.last,total:lg2.fuel,f1:lg2.f1,lab:vs.length>1?`${vs.length} vehicles`:`${VEH[vs[0].type].n} #${vs[0].id}`})}
+  else if(m==="hire"){const i=+x;if(!S.rivals[i]||!RIVALS[i]){P.why="Pick a carrier";return P}const Q=carrierQuote(i,c,d,item.t==="s"?q*lxc().stkW:q,item.t==="s"?"":item.g);
     Object.assign(P,{mode:"hire",i,cap:q,trips:1,first:Q.ms,last:Q.ms,total:Q.price,f1:Q.price,rel:Q.rel,lab:RIVALS[i].n,sea:Q.sea})}
   else{P.why="Pick a carrier";return P}
   /* destination rules (numbers above stay visible so the player can compare carriers) */
@@ -4375,9 +4397,9 @@ function lxVeh(v,t){const X=LX(),j=X.jobs.find(x=>x.id===v.job);if(!j){v.job=0;r
   if(v.arr||v.cargo||v.route||v.city==null||!CITIES[v.city])return;const A=CITIES[j.from],B=CITIES[j.to],V=VEH[v.type];j.why="";
   if(j.left>1e-6){
     if(v.city===j.from){const why=lxBlock(A,B)||(!lxVehOK(v,A,B)?"Trucks can't cross oceans":"");if(why){j.why=why;return}
-      const q=Math.min(V.cap,j.left),fuel=distKm(A,B)*V.km*hqShip(A,B);
+      const q=Math.min(capU(v.type,j.g),j.left),fuel=vFuel(v.type,distKm(A,B),q*tpu(j.g),A,B);
       if(depart(v,A,B,"",t,{g:j.g,q,job:j.id})){j.left=j.left-q<1e-6?0:j.left-q;j.cost+=fuel}else j.why="Not enough cash for fuel"}
-    else{const C=CITIES[v.city],why=lxBlock(C,A);if(why){j.why=why;return}const fuel=distKm(C,A)*V.km*hqShip(C,A);if(depart(v,C,A,"",t))j.cost+=fuel;else j.why="Not enough cash for fuel"}}
+    else{const C=CITIES[v.city],why=lxBlock(C,A);if(why){j.why=why;return}const fuel=vFuel(v.type,distKm(C,A),0,C,A);if(depart(v,C,A,"",t))j.cost+=fuel;else j.why="Not enough cash for fuel"}}
   else v.job=0;
   lxDone(j)}
 function lxDone(j){if(j.left>1e-6)return;if(S.fleet.some(x=>x.cargo&&x.cargo.job===j.id))return;lxFinish(j,true,"")}
@@ -4527,7 +4549,7 @@ function lxOrdText(o){const D=CITIES[o.to.city],gl=lxc().grp[o.g]?lxc().grp[o.g]
 function lxOrdRule(o){const a=[];if(o.to.k==="wh"){if(o.min>0)a.push(`refill when under ${lxg(o.min)}`);if(o.tgt>0)a.push(`up to ${lxg(o.tgt)}`);if(!(o.min>0)&&!(o.tgt>0))a.push("send all surplus")}else a.push("sell all surplus");
   if(o.keep>0)a.push(`keep ${lxg(o.keep)} at source`);a.push(`batch ≥ ${lxg(o.bat||1)}`);a.push(o.car==="own"?"own fleet only":o.car==="hire"?"hired carriers":"own fleet, else hired");return a.join(" · ")}
 function lxEtaJob(j){let t=0;for(const v of S.fleet)if(v.job===j.id&&v.arr)t=Math.max(t,v.arr-Date.now());const A=CITIES[j.from],B=CITIES[j.to];
-  if(j.left>1e-6){const vs=S.fleet.filter(v=>v.job===j.id);if(vs.length){const lg2=lxLegs(vs,A,B,j.left);t+=lg2.last}}return t}
+  if(j.left>1e-6){const vs=S.fleet.filter(v=>v.job===j.id);if(vs.length){const lg2=lxLegs(vs,A,B,j.left,j.g);t+=lg2.last}}return t}
 function lxPage(lg){const X=LX(),now=Date.now(),tabs=[["ov","Overview"],["send","Send"],["ord","Orders",X.ord.filter(o=>o.on).length],["fleet","Fleet",X.jobs.length+X.sh.length],["hist","History"]];
   let h=`<div class="lx-tabs" role="tablist">${tabs.map(t=>`<button role="tab" data-lx="tab" data-v="${t[0]}" aria-selected="${lg.tab===t[0]}" class="${lg.tab===t[0]?"on":""}">${t[1]}${t[2]?`<b>${t[2]}</b>`:""}</button>`).join("")}</div>`;
   if(lg.note&&now-lg.nt<9000)h+=`<div class="lx-note">${dxE(lg.note)}</div>`;
@@ -4568,14 +4590,14 @@ function lxSendTab(lg){const F=lxForm(lg),f=lg.f;if(!F.items.length)return `<div
    <label>What${sel("item",F.items.map(x=>lxOpt(x.v,x.l,f.item)).join(""))}</label>
    <label>From${sel("from",F.holders.map(x=>lxOpt(x.c.id,`${x.c.name} · ${lxg(x.q)}`,f.from)).join(""))}</label>
    <div><label>Quantity <small style="font-weight:500">(${lxg(F.avail)} available)</small><input class="lx-in" type="number" inputmode="numeric" min="1" max="${Math.max(1,Math.floor(F.avail))}" step="1" data-lxf="q" value="${F.q>=1?Math.round(F.q):F.q.toFixed(2)}"></label>
-    <div class="lx-pre" style="margin-top:6px">${[25,50,100].map(p=>`<button class="lx-btn" data-lx="pct" data-p="${p}">${p}%</button>`).join("")}${P&&P.mode==="own"&&P.cap?`<button class="lx-btn" data-lx="load">1 load (${lxg(P.cap/Math.max(1,P.vs.length))})</button>`:""}</div></div>
+    <div class="lx-pre" style="margin-top:6px">${[25,50,100].map(p=>`<button class="lx-btn" data-lx="pct" data-p="${p}">${p}%</button>`).join("")}${P&&P.mode==="own"&&P.cap?`<button class="lx-btn" data-lx="load">1 load (${lxg(P.cap/Math.max(1,P.vs.length))} u)</button>`:""}</div></div>
    <div class="lx-row2"><label>Send to${sel("dt",F.dts.map(x=>lxOpt(x[0],x[1],f.dt)).join(""))}</label>
    <label>${f.dt==="mkt"?"Market":"City"}${F.dests.length?sel("to",F.dests.map(x=>lxOpt(x.d.id,x.l,f.to)).join("")):`<select class="lx-in" disabled><option>${f.dt==="mkt"?"No market can buy this (needs an HQ there)":f.dt==="new"?"Every city has a warehouse":"No destination"}</option></select>`}</label></div>
    <label>Carrier${F.cars.length?sel("car",F.cars.map(x=>lxOpt(x.v,x.l,f.car)).join("")):`<select class="lx-in" disabled><option>Pick a destination first</option></select>`}</label>`;
   if(d&&P){const here=it.t==="g"?px(c,it.g):0,there=it.t==="g"?px(d,it.g):0,q=F.q,w=it.t==="s";
     h+=`<div class="lx-pv"><div><span>Route</span><b>${dxE(c.name)} → ${dxE(d.name)} · ${Math.round(P.km).toLocaleString()} km</b></div>
      <div><span>Carrier</span><b>${dxE(P.lab||"—")}${P.mode==="hire"?` · ${Math.round(P.rel*100)}% reliable`:""}</b></div>
-     <div><span>Capacity · trips</span><b>${P.mode==="own"?`${lxg(P.cap)} per wave · ${P.trips} trip${P.trips>1?"s":""}`:P.mode==="hire"?"carrier fleet · 1 delivery":"—"}</b></div>
+     <div><span>Capacity · trips</span><b>${P.mode==="own"?`${fmtT(P.cap*(it.t==="g"?tpu(it.g):1))} (${lxg(P.cap)} units) per wave · ${P.trips} trip${P.trips>1?"s":""}`:P.mode==="hire"?"carrier fleet · 1 delivery":"—"}</b></div>
      <div><span>Arrives</span><b>${P.last?(P.trips>1?`first ${dxIn(P.first)} · all ${dxIn(P.last)}`:dxIn(P.last)):"—"}</b></div>
      <div><span>${P.mode==="own"?"Fuel (est. all trips)":"Fee"}</span><b>${P.total?fmt(P.total):"—"}${P.extra?` + ${fmt(P.extra)} warehouse`:""}</b></div>
      ${!w&&f.dt==="mkt"?`<div><span>Sells for ~</span><b>${fmt(lxSellEst(d,it.g,q))} (${fmt(here*q)} here)</b></div>`:!w?`<div><span>Worth there</span><b>${fmt(there*q)} vs ${fmt(here*q)} here</b></div>`:""}
@@ -4606,7 +4628,7 @@ function lxOrdersTab(lg){const X=LX();let h="";
   return h+`</div>`}
 function lxFleetTab(lg){const X=LX(),now=Date.now();let h="";
   const idle=S.fleet.filter(v=>!v.arr).length;
-  h+=`<div class="lx-k"><div><span>Vehicles</span><b>${S.fleet.length}</b><small>${idle} idle · ${S.fleet.length-idle} moving</small></div><div><span>Own jobs</span><b>${X.jobs.length}</b><small>shipments in progress</small></div><div><span>Hired</span><b>${X.sh.length}</b><small>with rival carriers</small></div><div><span>Capacity</span><b>${lxg(S.fleet.reduce((a,v)=>a+VEH[v.type].cap,0))}</b><small>units per wave</small></div></div>`;
+  h+=`<div class="lx-k"><div><span>Vehicles</span><b>${S.fleet.length}</b><small>${idle} idle · ${S.fleet.length-idle} moving</small></div><div><span>Own jobs</span><b>${X.jobs.length}</b><small>shipments in progress</small></div><div><span>Hired</span><b>${X.sh.length}</b><small>with rival carriers</small></div><div><span>Capacity</span><b>${fmtT(S.fleet.reduce((a,v)=>a+VEH[v.type].cap,0))}</b><small>per wave</small></div></div>`;
   h+=`<div class="mdx-card"><div class="mdx-ch"><h3>Shipments</h3></div>`;
   if(!X.jobs.length&&!X.sh.length)h+=`<div class="mdx-empty">No shipments in progress. Use the Send tab or a standing order.</div>`;
   for(const j of X.jobs){const A=CITIES[j.from],B=CITIES[j.to],pct=Math.min(100,j.got/Math.max(1e-6,j.q)*100);
@@ -4623,8 +4645,8 @@ function lxFleetTab(lg){const X=LX(),now=Date.now();let h="";
       else if(v.job){tag=`<span class="lx-tag b">JOB</span>`;acts=`<button class="lx-btn" data-lx="vrel" data-id="${v.id}">Release</button>`}
       else if(!v.cargo)acts=`<button class="lx-btn" data-lx="vmv" data-id="${v.id}">${mv?"Close":"Move empty…"}</button>`}
     if(v.arr&&v.job)tag=`<span class="lx-tag b">JOB</span>`;else if(v.arr&&v.route)tag=`<span class="lx-tag g">ROUTE</span>`;
-    h+=`<div class="lx-it"><div class="m"><b>${V.n} #${v.id}${tag}</b><span>${st}</span><small>${V.cap} units · ${V.spd} km/h · ${"$"+V.km}/km</small></div><div class="a">${acts}</div></div>`;
-    if(mv){const c=CITIES[v.city],ds=CITIES.filter(d=>d!==c&&hasWh(d)&&lxVehOK(v,c,d));h+=`<div class="lx-it" style="padding-top:0"><div class="m"><select class="lx-in" data-lxm="to">${ds.length?ds.map(d=>lxOpt(d.id,`${d.name} · ${Math.round(distKm(c,d)).toLocaleString()} km · ${fmt(distKm(c,d)*V.km*hqShip(c,d))} fuel`,lg.mv.to)).join(""):`<option>No reachable warehouse city</option>`}</select></div><div class="a"><button class="lx-btn pri" data-lx="vgo" data-id="${v.id}" ${ds.length?"":"disabled"}>Go</button></div></div>`}}
+    h+=`<div class="lx-it"><div class="m"><b>${V.n} #${v.id}${tag}</b><span>${st}</span><small>${fmtT(V.cap)} (${lxg(V.cap)} units of 1 t goods) · ${V.spd} km/day · ${"$"+V.km}/km</small></div><div class="a">${acts}</div></div>`;
+    if(mv){const c=CITIES[v.city],ds=CITIES.filter(d=>d!==c&&hasWh(d)&&lxVehOK(v,c,d));h+=`<div class="lx-it" style="padding-top:0"><div class="m"><select class="lx-in" data-lxm="to">${ds.length?ds.map(d=>lxOpt(d.id,`${d.name} · ${Math.round(distKm(c,d)).toLocaleString()} km · ${fmt(vFuel(v.type,distKm(c,d),0,c,d))} fuel`,lg.mv.to)).join(""):`<option>No reachable warehouse city</option>`}</select></div><div class="a"><button class="lx-btn pri" data-lx="vgo" data-id="${v.id}" ${ds.length?"":"disabled"}>Go</button></div></div>`}}
   if(S.fleet.length>40)h+=`<div class="mdx-empty">+${S.fleet.length-40} more vehicles</div>`;
   const wh=CITIES.filter(c=>hasWh(c));if(!wh.some(c=>c.id===lg.bc))lg.bc=wh.length?wh[0].id:-1;
   if(wh.length)h+=`<div class="lx-it"><div class="m"><b>Buy a vehicle</b><select class="lx-in" data-lxm="bc" style="margin-top:6px">${wh.map(c=>lxOpt(c.id,c.name,lg.bc)).join("")}</select></div><div class="a">${Object.keys(VEH).map(k=>`<button class="lx-btn" data-lx="vbuy" data-k="${k}" ${S.cash<VEH[k].cost?"disabled":""}>${VEH[k].n} ${fmt(VEH[k].cost)}</button>`).join("")}</div></div>`;
