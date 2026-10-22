@@ -758,10 +758,14 @@ const reg=c=>c.lon<-30?"am":c.lat<-10&&c.lon>100?"oc":c.lon<60&&c.lat<36&&c.lon>
 applyTechs();
 const deps=c=>c.dep||["ore","coal","sand","oil"].filter((r,i)=>((c.id*37+i*11+c.size)%7)<(r==="oil"?2:3)-(c.size>=5?1:0));
 const haPrice=c=>Math.round(900*PRICE[c.size]*PRICE[c.size]);
+/* WAREHOUSE SPACE IS IN TONNES: 400 t x 2^level (a 1 t/unit good fills it exactly as the old 400 units did). Stock stays in units; stored() is its weight in tonnes (units x tpu), storedU() the unit count.
+   Old saves keep their units; a warehouse already over capacity just takes no new goods (room is clamped at 0, nothing is removed). Deliveries already en route still unload (they never checked room on arrival). */
 const whCap=c=>S.wh[c.id]==null?0:400*Math.pow(2,S.wh[c.id]);
 const whCost=c=>Math.round(3000*PRICE[c.size]);
 const whUp=c=>Math.round(4000*PRICE[c.size]*Math.pow(2,S.wh[c.id]||0));
-const stored=c=>{const v=S.inv[c.id]||{};let t=0;for(const g in v)t+=v[g];return t};
+const stored=c=>{const v=S.inv[c.id]||{};let t=0;for(const g in v)if(v[g]>0)t+=v[g]*tpu(g);return t};
+const storedU=c=>{const v=S.inv[c.id]||{};let t=0;for(const g in v)t+=v[g];return t};
+const whRoom=c=>Math.max(0,whCap(c)-stored(c));                    // free tonnes, never negative
 const hasWh=c=>S.wh[c.id]!=null;
 function ensureWh(c){if(!hasWh(c)){S.wh[c.id]=0;S.inv[c.id]=S.inv[c.id]||{}}}
 function cityF(c,g){const t=G[g][2];if(t==="gov")return 1;if(t==="raw"){if(deps(c).includes(g))return .75;if(["wheat","corn","cattle"].includes(g))return c.size<=2?.85:1.1;return 1.2}
@@ -784,7 +788,7 @@ function runIndustry(hours){let sold=0;const step=.25;let left=hours;
   while(left>1e-6){const h=Math.min(step,left);left-=h;S.rpP=(S.rpP||0)+RPX*2*h;
     for(const s of S.sites){const o=siteOp(s);if(!o)continue;if(unhOn(CITIES[s.city])){s.k=0;s.why="Uninhabitable";continue}const c=CITIES[s.city],em=ievM(s,o),cf=crewF(s),ha=effHa(s)*thr(s)*em*cf,inv=S.inv[c.id]=S.inv[c.id]||{};
       let k=1,why="";for(const g in (o.in||{})){const need=o.in[g]*ha*h,have=inv[g]||0;if(have<need&&have/need<k){k=have/need;why="Short of "+G[g][0].toLowerCase()}}
-      let outT=0;for(const g in o.out)outT+=o.out[g]*ha*h;const space=whCap(c)-stored(c);if(outT>0&&space<outT&&space/outT<k){k=Math.max(0,space/outT);why="Warehouse full"}
+      let outT=0;for(const g in o.out)outT+=o.out[g]*ha*h*tpu(g);const space=whCap(c)-stored(c);if(outT>0&&space<outT&&space/outT<k){k=Math.max(0,space/outT);why="Warehouse full"}
       if(em===0){k=0;why=IEV[S.iev[s.city].t].n}
       if(cf===0){k=0;why=s.paused?"Paused":"No crew"}
       if(o.gate==="uranium"&&!uranPermit(c.country)){k=0;why="Permit revoked"}
@@ -859,15 +863,15 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
   else{const inv=S.inv[c.id]||{},cap=whCap(c),used=stored(c);
     if(!hasWh(c))h+=`<div class="row" style="border-bottom:1px solid var(--line)"><div class="n">Open a warehouse</div><div class="d">Stores goods, lets you trade on the local market and receive shipments. Comes free with your first land here.</div><button class="buy" data-act="wh" ${S.cash<whCost(c)?"disabled":""}>Open ${fmt(whCost(c))}</button></div>`;
     else{const pct=Math.min(100,used/cap*100);
-      h+=`<div class="sec">Warehouse · ${gq(used)} / ${cap.toLocaleString()} units</div><div class="bar" style="height:6px"><i style="width:${pct}%;background:${pct>90?"var(--bad)":"var(--own)"}"></i></div>
+      h+=`<div class="sec">Warehouse · ${fmtT(used)} / ${fmtT(cap)}${used>cap+1e-6?" · over capacity":""}</div><div class="bar" style="height:6px"><i style="width:${pct}%;background:${pct>90?"var(--bad)":"var(--own)"}"></i></div>
       <div class="list" style="margin-top:6px">`;
       const have=GK.filter(g=>inv[g]>=.05);
       if(!have.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">Empty. Production lands here, and shipments arrive here.</p>`;
       for(const g of have){const p=px(c,g),au=(S.auto[c.id]||{})[g];
-        h+=`<div class="row own"><div class="n">${G[g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(inv[g])}</span></div>
+        h+=`<div class="row own"><div class="n">${G[g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(inv[g])} · ${fmtT(inv[g]*tpu(g))}</span></div>
         <div class="d">${G[g][2]==="gov"?(govOK(c)?"Government buyer pays ":"<b style='color:var(--bad)'>No government buyer here.</b> Worth "):"Sells here for "}<b>${fmt(p)}</b> each · worth <b>${fmt(inv[g]*p)}</b> ${hasHQ(c)?` · <label><input type="checkbox" data-act="auto" data-g="${g}" ${au?"checked":""}> auto-sell</label>`:" · street sale only: 20 at a time, 70% price"}</div>
         <button class="buy up" data-act="sell" data-g="${g}">${hasHQ(c)?"Sell all":"Sell 20"}</button></div>`}
-      h+=`</div><div class="row"><div class="n">Expand warehouse</div><div class="d">Doubles space to ${(cap*2).toLocaleString()} units.</div><button class="buy up" data-act="whup" ${S.cash<whUp(c)?"disabled":""}>${fmt(whUp(c))}</button></div>`;
+      h+=`</div><div class="row"><div class="n">Expand warehouse</div><div class="d">Doubles space to ${fmtT(cap*2)}. Goods are weighed in tonnes (armoured vehicles 20 t each, microchips 0.05 t).</div><button class="buy up" data-act="whup" ${S.cash<whUp(c)?"disabled":""}>${fmt(whUp(c))}</button></div>`;
       h+=marketHtml(c);h+=`<div class="sec">Local market · buy at +15%</div>${hasHQ(c)?"":`<p class="d" style="color:var(--bad);font-size:12px;margin:0 0 4px">No registered company here. Open an HQ in ${c.name} to sell in bulk, auto-sell, buy by the hundred, and sell to the government.</p>`}<div class="list">`;
       for(const g of GK.filter(g=>G[g][2]!=="gov")){const p=px(c,g)*1.15,base=G[g][1],cheap=p<base*1.05;
         h+=`<div class="row"><div class="n">${G[g][0]}</div><div class="d"><b style="color:${cheap?"var(--good)":"var(--ink)"}">${fmt(p)}</b> each${cheap?" · good price":""}</div>
@@ -919,7 +923,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="wh"){const p=whCost(c);if(S.cash<p)return;S.cash-=p;ensureWh(c);toast(`Warehouse open in ${c.name}`)}
   else if(a==="whup"){const p=whUp(c);if(S.cash<p)return;S.cash-=p;S.wh[c.id]++;toast("Warehouse expanded")}
   else if(a==="sell"){if(G[b.dataset.g][2]==="gov"&&!govOK(c)){toast(hasTech("govlic")?"Government buyers are only in cities of size 4+":"Research the Defense contractor licence to sell this");return}if(G[b.dataset.g][2]==="gov"&&!hasHQ(c)){toast("Government contracts need a registered company: open an HQ here");return}const g=b.dataset.g,street=!hasHQ(c),q=street?Math.min(20,S.inv[c.id][g]||0):(S.inv[c.id][g]||0),v=sellGood(c,g,q)*(street?.7:1);S.cash+=v;S.earned=(S.earned||0)+v;S.inv[c.id][g]-=q;if(S.inv[c.id][g]<1e-6)delete S.inv[c.id][g];toast(`Sold ${gq(q)} ${G[g][0].toLowerCase()} for ${fmt(v)}`)}
-  else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q,B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q>whCap(c)){toast("Not enough warehouse space");return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
+  else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q,B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q*tpu(g)>whCap(c)+1e-9){toast(`Not enough warehouse space: ${fmtT(whRoom(c))} free, ${q} ${G[g][0].toLowerCase()} weigh ${fmtT(q*tpu(g))}`);return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
   else if(a==="veh"){const k=b.dataset.k,V=VEH[k];if(S.cash<V.cost)return;S.cash-=V.cost;S.fleet.push({id:S.nid++,type:k,city:c.id});toast(`${V.n} ready in ${c.name}`)}
   else if(a==="ship"){shipForm=shipForm===id?null:id;renderSheet();shipInfo();return}
   else if(a==="go"){const v=S.fleet.find(x=>x.id===id);if(!v||v.job||v.arr||v.cargo){toast("That vehicle is busy");return}const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,km=distKm(c,d),fuel=vFuel(v.type,km,g?Math.min(capU(v.type,g),inv0(c,g))*tpu(g):0,c,d);
@@ -4227,7 +4231,7 @@ const TIPS={
  land:"Deposits shows what is under this city's ground. Mines need a matching deposit, and oil wells need an oil deposit plus Oil drilling research. Search oil, coal, ore, sand or uranium on the empire screen to find cities that have one.",
  power:"“No power” is fine: the factory still runs. With electricity it makes +25%. Build a coal power plant (uses coal), a nuclear power plant (uses uranium, needs research) or a solar farm in the same city; its power goes into that city's depot and factories there use it automatically.",
  biz:"Businesses earn profit every hour, even while you are away. Upgrade them for more. Some need a company HQ in the city first (HQ tab).",
- depot:"The depot stores goods your land produces in this city. When it is full, production slows. Sell goods here or ship them to another city.",
+ depot:"The depot stores goods your land produces in this city. Its space is counted in tonnes (a unit of ore is 1 t, an armoured vehicle 20 t, a microchip 0.05 t). When it is full, production slows. Sell goods here or ship them to another city.",
  research:"Each research costs points and cash. Points build up on their own; research labs add more. The production list on the empire screen shows which research each building needs.",
  bank:"Your credit score decides what the bank lends you. Loan payments come out of your cash every hour, so borrow only for things that earn more than that.",
  stocks:"Prices move all the time and every trade pays a small fee, so quick back-and-forth trading usually loses money.",
@@ -4340,12 +4344,13 @@ function lxBlock(c,d){if(unhOn(c))return `${c.name} is uninhabitable for ${unhLe
 function lxIdle(c){return S.fleet.filter(v=>v.city===c.id&&!v.arr&&!v.route&&!v.job&&!v.cargo)}
 function lxVehOK(v,c,d){return v.type!=="truck"||landmass(c)===landmass(d)}
 /* units already heading for a warehouse (escrow not yet launched, in vehicles, hired) */
-function lxIncoming(d,g){const X=LX();let t=0;
-  for(const j of X.jobs)if(j.to===d.id&&j.kind==="wh"&&(!g||j.g===g))t+=j.left;
-  for(const v of S.fleet){const c=v.cargo;if(c&&v.arr&&v.dest===d.id&&!c.rc&&(!g||c.g===g)){const j=c.job&&X.jobs.find(x=>x.id===c.job);if(!j||j.kind==="wh")t+=c.q}}
-  for(const s of X.sh)if(s.k==="g"&&s.to===d.id&&s.kind==="wh"&&(!g||s.g===g))t+=s.q;
-  for(const h of S.hired||[])if(h.to===d.id&&!h.lost&&(!g||h.g===g))t+=h.q;return t}
-function lxSpace(d){return hasWh(d)?Math.max(0,whCap(d)-stored(d)-lxIncoming(d)):0}
+function lxIncoming(d,g,wt){const X=LX();let t=0;const W=wt?tpu:()=>1;
+  for(const j of X.jobs)if(j.to===d.id&&j.kind==="wh"&&(!g||j.g===g))t+=j.left*W(j.g);
+  for(const v of S.fleet){const c=v.cargo;if(c&&v.arr&&v.dest===d.id&&!c.rc&&(!g||c.g===g)){const j=c.job&&X.jobs.find(x=>x.id===c.job);if(!j||j.kind==="wh")t+=c.q*W(c.g)}}
+  for(const s of X.sh)if(s.k==="g"&&s.to===d.id&&s.kind==="wh"&&(!g||s.g===g))t+=s.q*W(s.g);
+  for(const h of S.hired||[])if(h.to===d.id&&!h.lost&&(!g||h.g===g))t+=h.q*W(h.g);return t}
+function lxSpace(d){return hasWh(d)?Math.max(0,whCap(d)-stored(d)-lxIncoming(d,"",1)):0}   // free TONNES incl. inbound
+const lxSpaceU=(d,g)=>lxSpace(d)/tpu(g);                                                  // free room in units of good g
 /* ----- shipping plans (pure: no state is changed) ----- */
 function lxLegs(vs,c,d,q,g){const km=distKm(c,d),w=g?tpu(g):1,st=vs.map(v=>({t:0,n:0,cap:capU(v.type,g||""),leg:legMs(v,c,d),ret:vFuel(v.type,km,0,c,d),ty:v.type}));
   let rem=q,trips=0,last=0,fuel=0,f1=0,first=Infinity,guard=0;
@@ -4367,8 +4372,8 @@ function lxPlan(item,c,d,q,kind,spec){const P={ok:false,why:"",mode:"",km:distKm
   /* destination rules (numbers above stay visible so the player can compare carriers) */
   if(item.t==="g"){
     if(kind==="mkt"){if(!lxCanSell(d,item.g))P.why=!hasHQ(d)?`Selling in bulk needs an HQ in ${d.country}`:`${d.name} has no government buyer (needs the licence and a size 4+ city)`}
-    else if(kind==="new"){if(hasWh(d))P.why="That city already has a warehouse";else{P.extra=whCost(d);if(q>400)P.why="A new warehouse holds 400 units (expand it later)"}}
-    else if(!hasWh(d))P.why="No warehouse there";else{const sp=lxSpace(d);if(q>sp+1e-6)P.why=`Warehouse in ${d.name} has room for ${lxg(sp)} more`}}
+    else if(kind==="new"){if(hasWh(d))P.why="That city already has a warehouse";else{P.extra=whCost(d);if(q*tpu(item.g)>400)P.why=`A new warehouse holds 400 t (expand it later); this is ${fmtT(q*tpu(item.g))}`}}
+    else if(!hasWh(d))P.why="No warehouse there";else{const sp=lxSpace(d),w=tpu(item.g);if(q*w>sp+1e-6)P.why=`Warehouse in ${d.name} has room for ${fmtT(sp)} (${lxg(Math.floor(sp/w))} units); this is ${fmtT(q*w)}`}}
   else if(!(S.own[d.id]||{})[item.bk])P.why=`You don't run that business in ${d.name}`;
   if(!P.why&&S.cash<P.f1+P.extra)P.why=`Needs ${fmt(P.f1+P.extra)} cash now`;
   P.ok=!P.why;return P}
@@ -4448,7 +4453,7 @@ function lxRunOrd(o,max,quiet){const X=LX(),D=CITIES[o.to&&o.to.city];let made=0
     const src=[];for(const id in S.inv){const c=CITIES[id];if(!c||c===D)continue;if(o.sc.t==="city"&&c.id!==+o.sc.v)continue;if(o.sc.t==="reg"&&reg(c)!==o.sc.v)continue;
       const av=(S.inv[id][g]||0)-Math.max(0,o.keep||0);if(av>=Math.max(1,o.bat||1))src.push({c,av,km:distKm(c,D)})}
     src.sort((a,b)=>a.km-b.km);
-    for(const s of src){if(made>=max||need<=0)break;let q=Math.min(s.av,need);if(o.to.k==="wh")q=Math.min(q,lxSpace(D));q=q>=1?Math.floor(q):q;const bt=Math.min(Math.max(1,o.bat||1),isFinite(need)?Math.max(1,Math.floor(need)):Infinity);if(q<bt){why=o.to.k==="wh"&&lxSpace(D)<bt?`Warehouse in ${D.name} is full`:"Batch too small";continue}
+    for(const s of src){if(made>=max||need<=0)break;let q=Math.min(s.av,need);if(o.to.k==="wh")q=Math.min(q,lxSpaceU(D,g));q=q>=1?Math.floor(q):q;const bt=Math.min(Math.max(1,o.bat||1),isFinite(need)?Math.max(1,Math.floor(need)):Infinity);if(q<bt){why=o.to.k==="wh"&&lxSpaceU(D,g)<bt?`Warehouse in ${D.name} is full`:"Batch too small";continue}
       const A=lxAuto(item,s.c,D,q,o.car||"auto",o.to.k);if(!A.P){why=A.why;continue}
       const r=lxExec(item,s.c,D,q,o.to.k,A.P,o.id);if(!r){why="Could not start";continue}made++;sent+=q;need-=q}}
   o.why=sent?`Sent ${lxg(sent)} on ${made} shipment${made>1?"s":""}`:why||"Nothing to send";if(sent){o.last=Date.now();o.n=(o.n||0)+made}return made}
@@ -4528,13 +4533,13 @@ function lxForm(lg){const f=lg.f,F={items:[],holders:[],dts:[],dests:[],cars:[],
   F.dts=it.t==="g"?[["wh","Warehouse / consumer"],["mkt","Sell at a market"],["new","Open a new warehouse"]]:[["biz","Another branch of this business"]];
   if(!F.dts.some(x=>x[0]===f.dt))f.dt=F.dts[0][0];F.kind=f.dt==="biz"?"wh":f.dt;
   const c=F.c;
-  if(f.dt==="wh"){for(const d of CITIES)if(d!==c&&hasWh(d)){const cons=lxConsumers(d,it.g);F.dests.push({d,k:cons.length?0:1,s:distKm(c,d),l:`${d.name} · ${Math.round(distKm(c,d)).toLocaleString()} km · room ${lxg(lxSpace(d))}${cons.length?" · feeds "+cons.slice(0,2).join(", "):""}`})}}
+  if(f.dt==="wh"){for(const d of CITIES)if(d!==c&&hasWh(d)){const cons=lxConsumers(d,it.g);F.dests.push({d,k:cons.length?0:1,s:distKm(c,d),l:`${d.name} · ${Math.round(distKm(c,d)).toLocaleString()} km · room ${fmtT(lxSpace(d))} (${lxg(Math.floor(lxSpaceU(d,it.g)))} units)${cons.length?" · feeds "+cons.slice(0,2).join(", "):""}`})}}
   else if(f.dt==="mkt"){for(const d of CITIES)if(d!==c&&lxCanSell(d,it.g)){const p=px(d,it.g);F.dests.push({d,k:0,s:-p,l:`${d.name} · ${fmt(p)} each · ${Math.round(distKm(c,d)).toLocaleString()} km`})}}
   else if(f.dt==="new"){for(const d of CITIES)if(d!==c&&!hasWh(d)){const own=!!S.own[d.id]&&Object.keys(S.own[d.id]).length;F.dests.push({d,k:own?0:1,s:distKm(c,d),l:`${d.name} · ${Math.round(distKm(c,d)).toLocaleString()} km · +${fmt(whCost(d))} warehouse${own?" · your business is there":""}`})}}
   else for(const d of CITIES)if(d!==c&&(S.own[d.id]||{})[it.bk])F.dests.push({d,k:0,s:distKm(c,d),l:`${d.name} · ${Math.round(distKm(c,d)).toLocaleString()} km`});
   F.dests.sort((a,b)=>a.k-b.k||a.s-b.s);if(F.dests.length>150)F.dests.length=150;
   if(!F.dests.some(x=>x.d.id===+f.to))f.to=F.dests.length?F.dests[0].d.id:-1;F.d=F.dests.length?CITIES[f.to]:null;
-  if(F.d&&!(f.q>0)&&F.kind==="wh"&&it.t==="g"&&F.avail>=1){const sp=Math.floor(lxSpace(F.d));if(sp>=1)F.q=Math.min(F.q,sp)}
+  if(F.d&&!(f.q>0)&&F.kind==="wh"&&it.t==="g"&&F.avail>=1){const sp=Math.floor(lxSpaceU(F.d,it.g));if(sp>=1)F.q=Math.min(F.q,sp)}
   if(F.d){const q=F.q,specs=[];
     if(it.t==="g"){const vs=lxIdle(c).filter(v=>lxVehOK(v,c,F.d));if(vs.length>1)specs.push("own:all");for(const v of vs)specs.push("own:"+v.id)}
     for(let i=0;i<S.rivals.length;i++)specs.push("hire:"+i);
@@ -4563,12 +4568,12 @@ function lxOverview(lg){const X=LX();let used=0,cap=0,whn=0,val=0;const by={},ci
   for(const j of X.jobs)if(j.left>0){addT(j.g,j.left)}
   for(const s of X.sh){trN++;if(s.k==="g")addT(s.g,s.q);else trV+=s.q*(SUP[s.g]?SUP[s.g].c:1)}
   for(const s of S.hired||[]){trN++;if(G[s.g])addT(s.g,s.q)}
-  let h=`<div class="lx-k"><div><span>Stored</span><b>${lxg(used)}</b><small>of ${lxg(cap)} · ${whn} warehouse${whn===1?"":"s"}</small></div><div><span>Stock value</span><b>${fmt(val)}</b><small>at local prices</small></div>
+  let h=`<div class="lx-k"><div><span>Stored</span><b>${fmtT(used)}</b><small>of ${fmtT(cap)} · ${whn} warehouse${whn===1?"":"s"}</small></div><div><span>Stock value</span><b>${fmt(val)}</b><small>at local prices</small></div>
     <div><span>In transit</span><b>${trN}</b><small>loads on the move · ${fmt(trV)}</small></div><div><span>Standing orders</span><b>${X.ord.filter(o=>o.on).length}/${X.ord.length}</b><small>${X.jobs.length+X.sh.length} shipments of yours</small></div></div>`;
   h+=`<div class="mdx-card"><div class="mdx-ch"><h3>Stock everywhere</h3><div class="mdx-seg" style="margin-left:auto"><button data-lx="ov" data-v="item" class="${lg.ov==="item"?"on":""}">By item</button><button data-lx="ov" data-v="city" class="${lg.ov==="city"?"on":""}">By city</button></div></div>`;
   if(lg.ov==="city"){if(!cities.length)h+=`<div class="mdx-empty">No stock in any warehouse yet. Mines, farms and factories deliver into the warehouse of their city.</div>`;
     for(const x of cities.sort((a,b)=>b.cv-a.cv).slice(0,40)){const c=x.c,cp=whCap(c),pc=cp?Math.min(100,stored(c)/cp*100):0,sn=S.sites.filter(s=>s.city===c.id&&s.op).length;
-      h+=`<div class="lx-it"><div class="m"><b>${dxE(c.name)}</b><span>${lxg(stored(c))} / ${lxg(cp)} units · ${fmt(x.cv)}${sn?` · ${sn} plot${sn>1?"s":""} running`:""}</span><div class="lx-bar"><i style="width:${pc}%"></i></div><small>${x.gs.slice(0,5).map(a=>`${lxN(a[0])} ${lxg(a[1])}`).join(" · ")}${x.gs.length>5?` · +${x.gs.length-5} more`:""}</small></div><div class="a"><button class="lx-btn" data-lx="from" data-c="${c.id}">Send from here</button></div></div>`}}
+      h+=`<div class="lx-it"><div class="m"><b>${dxE(c.name)}</b><span>${fmtT(stored(c))} / ${fmtT(cp)} · ${lxg(storedU(c))} units · ${fmt(x.cv)}${sn?` · ${sn} plot${sn>1?"s":""} running`:""}</span><div class="lx-bar"><i style="width:${pc}%"></i></div><small>${x.gs.slice(0,5).map(a=>`${lxN(a[0])} ${lxg(a[1])}`).join(" · ")}${x.gs.length>5?` · +${x.gs.length-5} more`:""}</small></div><div class="a"><button class="lx-btn" data-lx="from" data-c="${c.id}">Send from here</button></div></div>`}}
   else{const rows=Object.values(by).filter(r=>r.q>=.05||r.tr>0).sort((a,b)=>b.v-a.v);if(!rows.length)h+=`<div class="mdx-empty">Nothing in stock. Build mines, farms or factories, or buy goods in a city market.</div>`;
     for(const r of rows){r.at.sort((a,b)=>b[1]-a[1]);h+=`<div class="lx-it"><div class="m"><b>${dxE(lxN(r.g))}</b><span class="lx-t">${lxg(r.q)} units · ${fmt(r.v)}${r.tr>0?` <span class="lx-tag b">${lxg(r.tr)} in transit</span>`:""}</span>
       <small>${r.at.slice(0,4).map(a=>`${dxE(a[0].name)} ${lxg(a[1])}`).join(" · ")}${r.at.length>4?` · +${r.at.length-4} more`:""}</small></div>${r.q>=.05?`<div class="a"><button class="lx-btn" data-lx="pick" data-v="g:${r.g}">Send</button></div>`:""}</div>`}}
