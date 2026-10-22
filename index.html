@@ -386,7 +386,7 @@ const upCost=(b,c,lv)=>Math.round(cost(b,c)*0.8*Math.pow(isCart(b.k)?1.7:1.4,lv-
 const UNH_DAYS=6*30;
 function unhOn(c){const u=S.unh;return !!(c&&u&&typeof u==="object"&&u[c.id]>Date.now())}
 const unhLeft=c=>{const d=Math.max(0,Math.ceil(((S.unh||{})[c.id]-Date.now())/DAYMS));return d>=30?`${Math.floor(d/30)} mo ${d%30} d`:`${d} d`};
-function evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="function"?stormMult(c):1)*(typeof strikeMult==="function"?strikeMult(c):1)*popDem(c)*sancMult()}
+function evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="function"?stormMult(c):1)*(typeof strikeMult==="function"?strikeMult(c):1)*(typeof dmgMult==="function"?dmgMult(c):1)*popDem(c)*sancMult()}
 /* rival companies */
 const RIVALS=[{n:"Halcyon Group",col:"#7c3aed"},{n:"Ironbridge Co.",col:"#b45309"},{n:"Sable & Finch",col:"#0369a1"},
  {n:"Northwind Holdings",col:"#be123c"},{n:"Kestrel Partners",col:"#047857"},{n:"Orchid Capital",col:"#a21caf"},{n:"Granite & Rowe",col:"#57534e"},{n:"Solano Group",col:"#ca8a04"}];
@@ -491,6 +491,7 @@ function drawNow(){applyView();
     else{ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.fill()}}
   if(typeof drawNight==="function"){drawTraffic(ctx,C)}
   if(typeof drawStorms==="function")drawStorms(ctx,C);
+  if(typeof drawDmg==="function")drawDmg(ctx);
   if(typeof drawStrikes==="function")drawStrikes(ctx);
   if(S.pol&&(S.pol.r>=0||S.pol.ctrl&&Object.keys(S.pol.ctrl).length)){const lead=S.pol.r>=0?S.pol.c:null;for(const c of CITIES){const mine=c.country===lead,inf=S.pol.ctrl&&S.pol.ctrl[c.country];if(!mine&&!inf||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]);
     ctx.beginPath();ctx.arc(x,y,9,0,7);ctx.strokeStyle=mine?"#f59e0b":"#fb923c";ctx.globalAlpha=.85;ctx.lineWidth=mine?2.2:1.6;ctx.setLineDash(mine?[]:[3,2]);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}}
@@ -564,10 +565,10 @@ function closeSheet(){sel=null;sheet.classList.remove("open","full");draw()}
 /* the one new-game path: erase this slot's local save and reload. Locks saving/cloud upload first so nothing (pagehide upload, autosave) rewrites the old game; the cloud save document and the online account are not touched. */
 function startNewGame(){save.lock=true;if(typeof CS!=="undefined")CS.busy=true;try{localStorage.removeItem(KEY)}catch(e){}location.reload()}
 function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.contains("open"))renderResearch();return}if(mode==="pf"){if(sheet.classList.contains("open"))renderPortfolio();return}if(!sel)return;const c=sel,o=S.own[c.id]||{},ev=S.events[c.id];if(unhOn(c)){renderUnh(c);return}if(tab==="life"){renderLife(c);return}if(tab==="hq"){renderHQ(c);return}if(tab==="gov"){govHtml(c);return}if(tab!=="biz"){renderInd(c);return}
-  let h=`<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}${typeof stormAt==="function"&&stormAt(c)?`<span class="tag bust">STORM</span>`:""}</h2>
+  let h=`<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}${typeof stormAt==="function"&&stormAt(c)?`<span class="tag bust">STORM</span>`:""}${dmgLvl(c)>=DMG.dead?`<span class="tag bust">DESTROYED</span>`:dmgLvl(c)>=.05?`<span class="tag bust">DAMAGED</span>`:""}</h2>
     <p>${c.country} · market size ${"●".repeat(c.size)}${"○".repeat(5-c.size)}</p></div>
     <button class="x" id="cls" aria-label="Close">×</button></div>
-    <div class="meta"><div><span>Land price </span>×${PRICE[c.size]}</div><div><span>Demand </span>×${(DEMAND[c.size]*evMult(c)*compMult(c)).toFixed(2)}</div><div><span>Yours </span>${fmt(cityProfit(c))}/hr</div></div>`+tabsHtml();
+    <div class="meta"><div><span>Land price </span>×${PRICE[c.size]}</div><div><span>Demand </span>×${(DEMAND[c.size]*evMult(c)*compMult(c)).toFixed(2)}</div><div><span>Yours </span>${fmt(cityProfit(c))}/hr</div></div>${dmgLine(c)}`+tabsHtml();
   const mine=BIZ.filter(b=>o[b.k]),avail=BIZ.filter(b=>!o[b.k]&&(b.cx==null||b.cx===c.id));
   if(mine.length){h+=`<div class="sec">Your businesses here</div><div class="list">`;
     for(const b of mine){const lv=o[b.k],p=profit(b,c,lv);const uc=upCost(b,c,lv);
@@ -736,7 +737,7 @@ function px(c,g){return G[g][1]*cityF(c,g)*((S.px[c.id]||{})[g]||1)}
 const siteOp=s=>s.op&&OP[s.op];
 const slv=s=>s.lv||1,thr=s=>(1+.3*(slv(s)-1))*(s.op?techOut(OP[s.op]):1),supCost=s=>Math.round(OP[s.op].build*LAND[s.size][1]*.6*slv(s));
 const IEV={drought:{n:"Drought",cats:["Farm","Ranch"],m:.4},bumper:{n:"Bumper harvest",cats:["Farm"],m:1.5},strike:{n:"Miners' strike",cats:["Mine"],m:0},rich:{n:"Rich vein found",cats:["Mine"],m:1.6},outage:{n:"Power outage",cats:["Factory"],m:.3}};
-const ievM=(s,o)=>{const e=S.iev[s.city];return e&&IEV[e.t].cats.includes(o.cat)?IEV[e.t].m:1};
+const ievM=(s,o)=>{const e=S.iev[s.city];return (e&&IEV[e.t].cats.includes(o.cat)?IEV[e.t].m:1)*(typeof dmgMult==="function"?dmgMult(CITIES[s.city]):1)};
 const effHa=s=>s.reg?LAND[s.size][1]:Math.min(2,LAND[s.size][1]);
 function siteEst(s){const o=siteOp(s);if(!o||unhOn(CITIES[s.city]))return 0;const c=CITIES[s.city],ha=effHa(s)*thr(s)*ievM(s,o)*(typeof crewF==="function"?crewF(s):1);let v=0;
   for(const g in o.out)v+=o.out[g]*px(c,g);for(const g in (o.in||{}))v-=o.in[g]*px(c,g);return Math.round(v*ha-(s.crew?1:.2)*o.up*techUp(o)*LAND[s.size][1]*(1+.15*(slv(s)-1)))}
@@ -792,8 +793,8 @@ const gq=n=>n>=1e4?(n/1e3).toFixed(1)+"K":n>=100?Math.round(n).toLocaleString():
 /* ---------- industry + warehouse tabs ---------- */
 let tab=S.job||nOwnedSafe()?"biz":"life",shipForm=null;function nOwnedSafe(){for(const id in S.own)if(Object.keys(S.own[id]).length)return true;return false}
 function tabsHtml(){return `<div class="tabs" role="tablist">${[["life","Life"],["hq","HQ"],["biz","Business"],["ind","Land"],["wh","Depot"],["gov","Gov"]].map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")}</div>`}
-function cityHead(c){const ev=S.events[c.id];return `<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}${typeof stormAt==="function"&&stormAt(c)?`<span class="tag bust">STORM</span>`:""}</h2>
-  <p>${c.country} · market size ${"●".repeat(c.size)}${"○".repeat(5-c.size)}</p></div><button class="x" id="cls" aria-label="Close">×</button></div>`}
+function cityHead(c){const ev=S.events[c.id];return `<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}${typeof stormAt==="function"&&stormAt(c)?`<span class="tag bust">STORM</span>`:""}${typeof dmgLvl==="function"&&dmgLvl(c)>=DMG.dead?`<span class="tag bust">DESTROYED</span>`:typeof dmgLvl==="function"&&dmgLvl(c)>=.05?`<span class="tag bust">DAMAGED</span>`:""}</h2>
+  <p>${c.country} · market size ${"●".repeat(c.size)}${"○".repeat(5-c.size)}</p></div><button class="x" id="cls" aria-label="Close">×</button></div>${typeof dmgLine==="function"?dmgLine(c):""}`}
 function opLabel(o){const f=x=>Object.entries(x||{}).map(([g,q])=>`${q} ${G[g][0].toLowerCase()}`).join(" + ");return (o.in?f(o.in)+" → ":"")+(o.rp?o.rp+" research points":f(o.out))+" per ha/hr"}
 function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.sites.filter(s=>s.city===c.id);
   h+=`<div class="meta"><div><span>Land </span>${fmt(hp)}/ha</div><div><span>Deposits </span>${d.length?d.map(g=>G[g][0]).join(", "):"none"}</div></div>${S.iev[c.id]?`<div class="welcome" style="background:${IEV[S.iev[c.id].t].m>1?"var(--good)":"var(--bad)"}">${IEV[S.iev[c.id].t].n}: ${IEV[S.iev[c.id].t].cats.join(" & ").toLowerCase()} output ×${IEV[S.iev[c.id].t].m} for ${S.iev[c.id].d}h</div>`:""}`+tabsHtml();
@@ -1108,7 +1109,7 @@ const bizStaff=(k,lv)=>Math.ceil(STAFF[k]*(1+.5*(lv-1)));
 function hqTotalUpkeep(){let u=0;for(const id in S.hq)if(S.hq[id]&&CITIES[id]&&!unhOn(CITIES[id]))u+=hqUpkeep(CITIES[id]);return u+hqNetUp()}
 /* split this hour's taxable profit into registered vs unregistered */
 function taxableRates(){let reg=0,un=0;const wr=c=>taxRateC(c)/TAX_REG,wu=c=>(taxRateC(c)+.2)/TAX_UNREG;
-  for(const pr of S.props||[]){if(!pr.occ||unhOn(CITIES[pr.city]))continue;const c=CITIES[pr.city],v=askRent(pr)*rentLaw(c);if(hasHQ(c))reg+=v*wr(c);else un+=v*wu(c)}
+  for(const pr of S.props||[]){if(!pr.occ||unhOn(CITIES[pr.city]))continue;const c=CITIES[pr.city],v=askRent(pr)*rentLaw(c)*dmgMult(c);if(hasHQ(c))reg+=v*wr(c);else un+=v*wu(c)}
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv)continue;const p=Math.max(0,profit(b,c,lv));if(bizReg(c,b.k))reg+=p*wr(c);else un+=p*wu(c)}}
   for(const s of S.sites){const c=CITIES[s.city],p=Math.max(0,siteEst(s));if(s.reg)reg+=p*wr(c);else un+=p*wu(c)}
   return{reg,un}}
@@ -1183,7 +1184,7 @@ const mktRent=(pr)=>{const P=PK[pr.k],c=CITIES[pr.city];return Math.round(P.rent
 const askRent=pr=>Math.round(mktRent(pr)*pr.pct/100);
 const fillP=pct=>pct<=60?.9:pct<=75?.45:pct<=100?.15:.04;
 const leaveP=pct=>pct<=75?.005:pct<=100?.015:.06;
-function propIncome(){return S.props.reduce((a,pr)=>a+(pr.occ&&!unhOn(CITIES[pr.city])?askRent(pr)*(typeof rentLaw==="function"?rentLaw(CITIES[pr.city]):1):0),0)}
+function propIncome(){return S.props.reduce((a,pr)=>a+(pr.occ&&!unhOn(CITIES[pr.city])?askRent(pr)*(typeof rentLaw==="function"?rentLaw(CITIES[pr.city]):1)*(typeof dmgMult==="function"?dmgMult(CITIES[pr.city]):1):0),0)}
 function propAssets(){return S.props.reduce((a,pr)=>{const P=PK[pr.k],c=CITIES[pr.city];return a+propCost(P,c)*.8+(pr.furn?P.furn*PRICE[c.size]*.5:0)},0)}
 function simProps(quiet){for(const pr of S.props){const c=CITIES[pr.city],P=PK[pr.k];
   if(!pr.occ){if(Math.random()<fillP(pr.pct)){pr.occ=1;if(!quiet){S.log.unshift(`New tenant: ${P.n} in ${c.name} at ${fmt(askRent(pr))}/hr`);S.log=S.log.slice(0,3)}}}
@@ -3115,12 +3116,19 @@ function milApp(){const p=pol(),m=mil(),C=MILCFG,U=C.units,now=Date.now(),lead=p
 /* ---------- strategic weapons for Leaders: build a stockpile, strike cities of countries you're at war with; damage shows on the globe ---------- */
 const WPNCFG={ // cost per weapon, build = game days, enemy = share of enemy max strength destroyed, front = front push, city = demand lost at the hit city (fades to 0 over days),
   // r = scorch radius px at zoom 1, appr = approval change, loy = loyalty change in every controlled country, wear = weariness added, resist = resistance added in occupied countries
-  w:{msl:{n:"Cruise missile",ico:"🚀",cost:3e6,build:.25,enemy:.06,front:3,city:.25,days:2,r:9,appr:-1,loy:0,wear:2,resist:0,col:"#f97316",need:"5 air wings",ok:m=>m.units.air>=5},
-     gas:{n:"Gas bomb",ico:"☣",cost:12e6,build:.75,enemy:.14,front:7,city:.45,days:3,r:12,appr:-12,loy:-15,wear:10,resist:10,col:"#84cc16",need:"10 air wings",ok:m=>m.units.air>=10},
-     nuke:{n:"Nuclear warhead",ico:"☢",cost:400e6,build:4,enemy:.35,front:15,city:.85,days:5,r:22,appr:-30,loy:-35,wear:25,resist:25,col:"#facc15",need:"Rocketry tech and 20 air wings",ok:m=>hasTech("rocketry")&&m.units.air>=20},
-     icbm:{n:"ICBM",ico:"☠",cost:2.5e9,build:12,enemy:.6,front:30,city:1,days:UNH_DAYS,r:34,appr:-45,loy:-50,wear:40,resist:40,col:"#f43f5e",need:"Rocketry tech and 40 air wings",ok:m=>hasTech("rocketry")&&m.units.air>=40}},
+  // Real-world scale (rounded public encyclopedic orders of magnitude, not exact): A = area of severe damage in km², mort = share of people killed inside it,
+  // struct = share of that area physically wrecked (gas leaves buildings standing), fly = typical flight time in game hours (shown; impact stays instant), yld = shown yield class.
+  // Costs keep the game's economy (real ICBM/warhead costs would be trivial next to late-game cash); only the ordering msl < gas < nuke < icbm follows reality.
+  w:{msl:{n:"Cruise missile",ico:"🚀",cost:2e6,build:.25,enemy:.06,front:3,city:.15,days:2,r:6, // real: Tomahawk-class ≈ $2M, ≈450 kg conventional warhead (wrecks a building/compound, a few blocks: ≈0.05 km²), ≈880 km/h over ≈1,600 km → ≈2 h flight, tens of deaths
+       A:.05,mort:.01,struct:1,fly:2,yld:"450 kg conventional",appr:-1,loy:0,wear:2,resist:0,col:"#f97316",need:"5 air wings",ok:m=>m.units.air>=5},
+     gas:{n:"Gas bomb",ico:"☣",cost:6e6,build:.75,enemy:.14,front:7,city:.45,days:3,r:12, // real: nerve-agent air bomb, small blast, contaminates ≈1–several km² downwind (wind-dependent); Halabja 1988 ≈3–5K dead, Ghouta 2013 hundreds–≈1.4K; was 12e6 (cheap in reality, priced as a covert programme)
+       A:2,mort:.02,struct:.3,fly:1,yld:"agent cloud ≈2 km²",appr:-12,loy:-15,wear:10,resist:10,col:"#84cc16",need:"10 air wings",ok:m=>m.units.air>=10},
+     nuke:{n:"Nuclear warhead",ico:"☢",cost:400e6,build:4,enemy:.35,front:15,city:.85,days:5,r:22, // real: ≈300 kt class (modern warheads ≈100 kt–1 Mt); 5 psi blast radius ≈4 km → ≈50 km² devastated plus burns/fallout; Hiroshima (15 kt) ≈70–140K dead
+       A:50,mort:.45,struct:1,fly:1,yld:"≈300 kt",appr:-30,loy:-35,wear:25,resist:25,col:"#facc15",need:"Rocketry tech and 20 air wings",ok:m=>hasTech("rocketry")&&m.units.air>=20},
+     icbm:{n:"ICBM",ico:"☠",cost:2.5e9,build:12,enemy:.6,front:30,city:1,days:UNH_DAYS,r:34, // real: ≈30 min flight at ≈7 km/s, one or several (MIRV) ≈300 kt–1 Mt warheads; a 1 Mt 5 psi radius ≈7 km (≈150 km²) → a salvo ≈500 km², a whole metro area
+       A:500,mort:.6,struct:1,fly:.5,yld:"several × 300 kt–1 Mt",appr:-45,loy:-50,wear:40,resist:40,col:"#f43f5e",need:"Rocketry tech and 40 air wings",ok:m=>hasTech("rocketry")&&m.units.air>=40}},
   queue:3,         // builds in progress at once
-  stockMax:{msl:20,gas:6,nuke:2,icbm:1},
+  stockMax:{msl:20,gas:6,nuke:2,icbm:1}, // kept for balance (real arsenals: thousands of cruise missiles, hundreds of ICBMs)
   // strikes alone can't end a war: they never push the front past frontCap or the enemy below strFloor × max strength; battles must finish it
   frontCap:85,strFloor:.15,nukeCap:98, // a nuke may push the front to 98, which wins the war
   
@@ -3147,8 +3155,8 @@ function wpnFire(k,id,sure){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id],no
   m.wpn[k]--;if(k!=="msl"){w.wmd=1;if(k==="nuke"||k==="icbm")w.nk=1;if(k==="icbm")w.ic=1;wpnSanction(k)}const kill=Math.max(0,Math.min(w.enemyMax*W.enemy,w.enemyStr-w.enemyMax*WPNCFG.strFloor)),f0=w.front;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.max(f0,Math.min(k==="nuke"||k==="icbm"?WPNCFG.nukeCap:WPNCFG.frontCap,f0+W.front));const push=Math.round((w.front-f0)*10)/10;w.weariness=Math.min(100,w.weariness+W.wear);
   p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const n in p.ctrl)p.ctrl[n].loy=Math.max(0,p.ctrl[n].loy+W.loy);for(const n in m.occ)m.occ[n].resist=Math.min(100,m.occ[n].resist+W.resist);
   m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*WPNCFG.ownHit,from:p.c});
-  const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,dead=popStrike(k,c);
-  const t=`${W.ico} ${W.n} hit ${c.name}, ${c.country}: ${fmtPop(dead)} killed, enemy −${Math.round(kill)}, front +${push}${W.appr?`, approval ${W.appr}`:""}${W.loy?`, allies' loyalty ${W.loy}`:""}`;logPol(t);milLog(m,t);
+  const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,dead=dmgStrike(k,c,1),dl=dmgLvl(c);
+  const t=`${W.ico} ${W.n} hit ${c.name}, ${c.country}: ${fmtPop(dead)} killed, city ${dmgWord(dl)} ${dmgPct(dl)}, enemy −${Math.round(kill)}, front +${push}${W.appr?`, approval ${W.appr}`:""}${W.loy?`, allies' loyalty ${W.loy}`:""}`;logPol(t);milLog(m,t);
   toast(t+(mine?` · your businesses in ${c.name} lose ${Math.round(W.city*WPNCFG.ownHit*100)}% demand for a while`:""));
   if((k==="nuke"||k==="icbm")&&w.front>=WPNCFG.nukeCap&&m.wars[c.country])milEndWar(c.country,"win");
   if(typeof PH!=="undefined"&&PH.open){PH.open=false}rotateTo(c,Math.max(V.k,2.5));wpnAnim();
@@ -3169,7 +3177,7 @@ function showGameOver(){const d=S.dead;if(!d||$("#gameover"))return;const el=doc
   document.body.appendChild(el);$("#gobtn").onclick=()=>startNewGame()}
 function renderUnh(c){sheet.innerHTML=`<div class="shead"><div><h2>${c.name}<span class="tag bust">UNINHABITABLE</span></h2><p>${c.country} · ICBM strike</p></div><button class="x" id="cls" aria-label="Close">×</button></div>
   <div class="meta"><div><span>Recovers in </span>${unhLeft(c)}</div><div><span>Demand </span>×0</div><div><span>Yours </span>${fmt(0)}/hr</div></div>
-  <p class="d" style="margin:10px 0;color:var(--muted)">☠ Nobody lives here any more. Your businesses, land and offices in ${c.name} earn nothing, and nothing can be bought, built or visited until the radiation clears (${UNH_DAYS} game days after the strike). Then the city recovers.</p>`;
+  <p class="d" style="margin:10px 0;color:var(--muted)">☠ Nobody lives here any more. Your businesses, land and offices in ${c.name} earn nothing, and nothing can be bought, built or visited until the radiation clears (${UNH_DAYS} game days after the strike). Then the city rebuilds from ${Math.round(dmgLvl(c)*100)}% damage, taking about ${dmgRepDays((S.dmg||{})[c.id]&&S.dmg[c.id].l0||1)} more game days.</p>`;
   $("#cls").onclick=closeSheet}
 // the world reacts to gas/nukes: sanctions-like hit to every city's demand for a while
 function wpnSanction(k){const m=mil(),X=WPNCFG.sanc[k];if(!X)return;const now=Date.now(),o=m.sanc&&m.sanc.until>now?m.sanc:{f:0,until:now};
@@ -3182,7 +3190,7 @@ function wpnRetal(n,w,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,now=Date.now();i
   let k=null;if(!quiet&&w.ic&&w.enemyMax>=C.icbmMin&&Math.random()<C.odds.icbm*pw)k="icbm";else if(w.nk&&w.enemyMax>=C.nukeMin&&Math.random()<C.odds.nuke*pw)k="nuke";else if((w.wmd||w.weariness>50)&&Math.random()<C.odds.gas*pw)k="gas";else if(Math.random()<C.odds.msl*pw)k="msl";if(!k)return;
   const W=WPNCFG.w[k],E=C.hit[k],c=cs[Math.floor(Math.random()*cs.length)];w.rcd=now+C.cd[k]*DAYMS;
   m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*E.city,from:n,foe:1});
-  const dead=popStrike(k,c);if(k==="icbm"){w.rcd=now+C.cd.icbm*DAYMS;unhStrike(c,n);if(S.dead)S.dead.foe=1}w.front=Math.max(0,w.front-E.front);p.appr=Math.max(0,p.appr+E.appr);if(p.ctrl[c.country])p.ctrl[c.country].loy=Math.max(0,p.ctrl[c.country].loy+E.loy);
+  const dead=dmgStrike(k,c,0);if(k==="icbm"){w.rcd=now+C.cd.icbm*DAYMS;unhStrike(c,n);if(S.dead)S.dead.foe=1}w.front=Math.max(0,w.front-E.front);p.appr=Math.max(0,p.appr+E.appr);if(p.ctrl[c.country])p.ctrl[c.country].loy=Math.max(0,p.ctrl[c.country].loy+E.loy);
   const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,t=`${W.ico} ${n} struck ${c.name} with a ${W.n.toLowerCase()}: ${fmtPop(dead)} killed, front −${E.front}, approval ${E.appr}${mine?" · your businesses there are hit":""}`;
   S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);if(!quiet){toast(t);if(typeof wpnAnim==="function")wpnAnim()}}
 // demand multiplier for a struck city: each strike's damage fades linearly to 0 by its end time
@@ -3205,11 +3213,11 @@ function drawStrikes(ctx){const m=S.pol&&S.pol.mil;if(!m||!Array.isArray(m.strik
       ctx.beginPath();ctx.arc(x,y,R*(.9-.6*u),0,7);ctx.fillStyle="#fff7d6";ctx.globalAlpha=(1-u)*.9;ctx.fill();ctx.globalAlpha=1}}}
 function wpnHtml(m,lead,sb,bx,urow){const C=WPNCFG,now=Date.now();wpnTick();
   let h=`<div class="ph-sub" style="margin-top:10px">Arsenal · production ${m.wq.length}/${C.queue}</div><div class="ph-rows">${Object.keys(C.w).map(k=>{const W=C.w[k],q=m.wq.filter(x=>x.k===k),ok=W.ok(m),full=m.wpn[k]+q.length>=C.stockMax[k];
-    return urow(`${W.ico} ${W.n} <b>× ${m.wpn[k]}</b>`,`${ok?`build ${fmtDur(W.build*DAYMS)}`:`needs ${W.need}`}${q.length?` · ${q.length} building, next ${fmtDur(Math.max(0,Math.min(...q.map(x=>x.done))-now))}`:""}`,bx("wpnbuild",k,`Build · ${fmt(W.cost)}`,"#7f1d1d",!lead||!ok||full||m.wq.length>=C.queue||S.cash<W.cost,1))}).join("")}</div>`;
+    return urow(`${W.ico} ${W.n} <b>× ${m.wpn[k]}</b>`,`${ok?`build ${fmtDur(W.build*DAYMS)}`:`needs ${W.need}`} · ${W.yld}, flight ${fmtDur(W.fly*DAYMS)}${q.length?` · ${q.length} building, next ${fmtDur(Math.max(0,Math.min(...q.map(x=>x.done))-now))}`:""}`,bx("wpnbuild",k,`Build · ${fmt(W.cost)}`,"#7f1d1d",!lead||!ok||full||m.wq.length>=C.queue||S.cash<W.cost,1))}).join("")}</div>`;
   const wk=Object.keys(m.wars),have=Object.keys(C.w).filter(k=>m.wpn[k]>0);
-  if(lead&&wk.length&&have.length)for(const n of wk)h+=`<div class="ph-sub" style="margin-top:8px">Strike ${n}</div><div class="ph-rows">${ctyCities(n).map(c=>{const sm=strikeMult(c);return urow(c.name+(S.own[c.id]&&Object.keys(S.own[c.id]).length?` <small style="color:#fbbf24">· yours</small>`:""),sm<1?`<span style="color:#f87171">damaged −${Math.round((1-sm)*100)}%</span>`:"",have.map(k=>bx("wpnfire",k+"|"+c.id,`${C.w[k].ico} ${m.wpn[k]}`,k==="icbm"?"#881337":k==="nuke"?"#713f12":k==="gas"?"#3f6212":"#7c2d12",0,1)).join(""))}).join("")}</div>`;
+  if(lead&&wk.length&&have.length)for(const n of wk)h+=`<div class="ph-sub" style="margin-top:8px">Strike ${n}</div><div class="ph-rows">${ctyCities(n).map(c=>{const sm=strikeMult(c)*dmgMult(c);return urow(c.name+(S.own[c.id]&&Object.keys(S.own[c.id]).length?` <small style="color:#fbbf24">· yours</small>`:""),sm<1?`<span style="color:#f87171">damaged −${Math.round((1-sm)*100)}%</span>`:"",have.map(k=>bx("wpnfire",k+"|"+c.id,`${C.w[k].ico} ${m.wpn[k]}`,k==="icbm"?"#881337":k==="nuke"?"#713f12":k==="gas"?"#3f6212":"#7c2d12",0,1)).join(""))}).join("")}</div>`;
   else if(lead&&have.length)h+=`<p class="ph-sub">Declare war to use your weapons.</p>`;
-  h+=`<p class="ph-sub" style="margin-top:6px">Strikes cut enemy strength, push the front (never past ${C.frontCap}, or ${C.nukeCap} with a nuke or ICBM, which wins the war) and wreck demand in the hit city for a few days (your businesses there lose ${Math.round(C.ownHit*100)}% of that). Gas and nukes cost heavy approval and the loyalty of every country in your sphere, and raise resistance in occupied lands. Enemies strike back at your own cities with missiles, and with gas or nukes if you used them first; the world answers WMD with sanctions. An ICBM makes the whole city uninhabitable for 6 game months (no income, no travel, no building); if you are standing in the city you strike, you die and the game is over. After you fire one, a rival may very rarely answer in kind.</p>`;
+  h+=`<p class="ph-sub" style="margin-top:6px">Strikes cut enemy strength, push the front (never past ${C.frontCap}, or ${C.nukeCap} with a nuke or ICBM, which wins the war) and wreck demand in the hit city for a few days (your businesses there lose ${Math.round(C.ownHit*100)}% of that). Every strike also leaves lasting damage scaled to the weapon's blast area against the city's size: it cuts demand, factory output and rents there until rebuilt (days for a missile hit, months for a nuked city); a nuke flattens a small town but only the centre of a megacity. Gas and nukes cost heavy approval and the loyalty of every country in your sphere, and raise resistance in occupied lands. Enemies strike back at your own cities with missiles, and with gas or nukes if you used them first; the world answers WMD with sanctions. An ICBM makes the whole city uninhabitable for 6 game months (no income, no travel, no building); if you are standing in the city you strike, you die and the game is over. After you fire one, a rival may very rarely answer in kind.</p>`;
   if(sancMult()<1)h+=`<p class="ph-sub" style="color:#f87171">Sanctions: demand −${Math.round((1-sancMult())*100)}% in all cities for ${fmtDur(m.sanc.until-now)}</p>`;
   return h}
 /* ---- HQ phone app: schedules, wage raises/cuts, firing (per business; S.sched / S.wadj keyed by bkey) ---- */
@@ -3851,7 +3859,7 @@ const POPCFG={c:{"Argentina":[45.7e6,12.5,7.6],"Australia":[26.7e6,11.4,6.6],"Br
   def:[10e6,15,7.5], split:[.63,.29,.08],  // share of normal deaths: natural/old age, sickness, accidents
   war:2e-5, occ:3e-6,                       // war deaths per person per day (×intensity), occupation deaths per person per day at 100 resistance
   stormSick:.6, stormAcc:2,                 // extra sickness / accident deaths in a country while a storm sits on one of its cities
-  cityPop:[0,4e5,1.2e6,3.5e6,8e6,18e6], strike:{msl:.0004,gas:.02,nuke:.15,icbm:.6}}; // people hit per strike, as a share of the struck city's population
+  cityPop:[0,4e5,1.2e6,3.5e6,8e6,18e6], strike:{msl:.0004,gas:.02,nuke:.15,icbm:.6}}; // legacy table, unused: deaths now = cityPop × dmgHit (area hit) × WPNCFG mort (see DMG)
 const POPCAUSE=[["nat","Natural / old age"],["sick","Sickness"],["acc","Accidents"],["war","War"]];
 function popOf(n){S.popn=S.popn&&typeof S.popn==="object"?S.popn:{};let p=S.popn[n];const R=POPCFG.c[n]||POPCFG.def;
   if(!p||typeof p!=="object"||!(p.p>0))p=S.popn[n]={p:R[0],p0:R[0],b:0,d:0,bt:0,dt:0,c:[0,0,0,0],ct:[0,0,0,0],day:S.day||0,fb:0,fd:[0,0,0,0]};
@@ -3869,7 +3877,7 @@ function popTick(days){if(!(days>0))return;days=Math.min(days,48);const now=Date
     if(M){const w=M.wars&&M.wars[n],o=M.occ&&M.occ[n];
       if(w)popKill(n,3,p.p*C.war*days*(.5+(w.enemyMax>0?w.enemyStr/w.enemyMax:0))*(1+(w.weariness||0)/100));
       if(o)popKill(n,3,p.p*C.occ*days*(o.resist||0)/100)}}}
-function popStrike(k,c){const f=POPCFG.strike[k];if(!f||!c)return 0;return popKill(c.country,3,POPCFG.cityPop[c.size]*f*(.8+Math.random()*.4))}
+function popStrike(k,c){const W=WPNCFG.w[k];if(!W||!c)return 0;return popKill(c.country,3,POPCFG.cityPop[c.size]*dmgHit(W,c)*W.mort*(.8+Math.random()*.4))}
 const fmtPop=n=>{n=Math.round(n);const a=Math.abs(n);if(a>=1e9)return (n/1e9).toFixed(2)+"B";if(a>=1e6)return (n/1e6).toFixed(a>=1e8?0:1)+"M";if(a>=1e4)return (n/1e3).toFixed(1)+"K";return n.toLocaleString()};
 function popHtml(c){const n=c.country,p=popOf(n),R=POPCFG.c[n]||POPCFG.def,M=S.pol&&S.pol.mil,war=M&&(M.wars&&M.wars[n]?"at war":M.occ&&M.occ[n]?"under occupation":"");
   return `<div class="sec">Population of ${n}</div><div class="meta"><div><span>People </span>${fmtPop(p.p)}</div><div><span>Births today </span>${fmtPop(p.b)}</div><div><span>Deaths today </span>${fmtPop(p.d)}</div></div>
@@ -4080,6 +4088,35 @@ document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest
 {let tq=0;const mo=new MutationObserver(()=>{if(tq)return;tq=setTimeout(()=>{tq=0;tipCheck()},400)});mo.observe(sheet,{childList:true});setTimeout(()=>mo.observe($("#phone"),{childList:true}),0)}
 addEventListener("resize",()=>{if(tutStep>=0)tutShow(tutStep)});
 setTimeout(()=>{if(S.tut===0)tutShow(0)},1500);
+/* ---------- lasting strike damage: S.dmg[cityId] = {l0: damage 0..1 at the strike, t: strike time, own: 1 if only the player's own strikes did it, k: heaviest weapon}
+   Current level decays linearly to 0 over dmgRepDays(l0) game days, starting when the city is habitable again (after S.unh for ICBM hits). Missing S.dmg = undamaged. */
+const DMG={core:[0,10,25,60,120,250], // dense economic core in km² by market size 1..5 (rounded; a megacity's built-up area is ~1,000–2,000 km², most value sits in the centre)
+  k:1.5,          // hit share = 1 − e^(−k·A/core): a 50 km² nuke covers a size-1 core (99%) but ≈26% of a size-5 core
+  rep:[7,113],    // repair days = 7 + 113 × damage: a light hit ≈1–2 weeks, a destroyed city ≈4 months (after any uninhabitable period)
+  out:.9,         // demand/output/rents fall by out × damage (× ownHit for damage only your own strikes caused)
+  dead:.9};       // damage at or above this = DESTROYED
+function dmgHit(W,c){return 1-Math.exp(-DMG.k*W.A/DMG.core[c.size||1])}
+const dmgRepDays=l=>Math.round(DMG.rep[0]+DMG.rep[1]*Math.min(1,l));
+function dmgLvl(c){const D=S.dmg,e=c&&D&&typeof D==="object"?D[c.id]:null;if(!e||!(e.l0>0))return 0;const l0=Math.min(1,+e.l0),st=Math.max(+e.t||0,+(S.unh||{})[c.id]||0),now=Date.now();if(now<=st)return l0;
+  return Math.max(0,l0*(1-(now-st)/(dmgRepDays(l0)*DAYMS)))}
+function dmgMult(c){const l=dmgLvl(c);if(!l)return 1;const e=S.dmg[c.id];return Math.max(.05,1-DMG.out*l*(e.own?WPNCFG.ownHit:1))}
+const dmgPct=l=>l<.01?(l*100).toFixed(2)+"%":Math.round(l*100)+"%";
+const dmgWord=l=>l>=DMG.dead?"destroyed":l>=.4?"devastated":l>=.1?"heavily damaged":l>=.02?"damaged":"lightly damaged";
+function dmgLeft(c){const e=(S.dmg||{})[c.id],l=dmgLvl(c);if(!e||!l)return 0;const st=Math.max(+e.t||0,+(S.unh||{})[c.id]||0);return Math.max(0,st+dmgRepDays(e.l0)*DAYMS-Date.now())}
+// a strike lands: add its damage (stacking 1−(1−a)(1−b)), restart repairs, kill people; mine = fired by the player. Returns deaths.
+function dmgStrike(k,c,mine){const W=WPNCFG.w[k];if(!W||!c)return 0;S.dmg=S.dmg&&typeof S.dmg==="object"?S.dmg:{};const cur=dmgLvl(c),o=S.dmg[c.id],add=dmgHit(W,c)*W.struct,
+  l=k==="icbm"?1:Math.min(1,1-(1-cur)*(1-add)),R=["msl","gas","nuke","icbm"],pk=o&&cur>0&&R.indexOf(o.k)>R.indexOf(k)?o.k:k;
+  S.dmg[c.id]={l0:Math.round(l*1e4)/1e4,t:Date.now(),own:mine&&(!o||cur<=0||o.own)?1:0,k:pk};return popStrike(k,c)}
+function dmgLine(c){const l=dmgLvl(c);if(l<.005)return "";const e=S.dmg[c.id];
+  return `<div class="welcome" style="background:var(--bad)">${l>=DMG.dead?"☠":"💥"} ${c.name} is ${dmgWord(l)}: ${dmgPct(l)} damage · demand, output and rents −${Math.round((1-dmgMult(c))*100)}%${e.own?" for you":""} · rebuilt in ${fmtDur(dmgLeft(c))}</div>`}
+// map: rubble/ash patch scaled to damage, green haze for gas, ruin ring + label for destroyed cities; persists until rebuilt
+function drawDmg(ctx){const D=S.dmg;if(!D||typeof D!=="object")return;const zs=Math.min(2.5,.7+V.k*.3);
+  for(const id in D){const c=CITIES[id];if(!c)continue;const l=dmgLvl(c);if(l<.005||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]),e=D[id],R=(5+16*Math.sqrt(l))*zs,gas=e.k==="gas";
+    const gr=ctx.createRadialGradient(x,y,0,x,y,R);gr.addColorStop(0,gas?`rgba(60,80,10,${.35+.4*l})`:`rgba(25,20,18,${.4+.5*l})`);gr.addColorStop(.6,gas?`rgba(132,204,22,${.25*l+.1})`:`rgba(80,60,50,${.3*l+.15})`);gr.addColorStop(1,"rgba(80,60,50,0)");
+    ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fillStyle=gr;ctx.fill();
+    if(!gas&&l>=.1){ctx.fillStyle="rgba(15,12,10,.7)";for(let i=0;i<3+Math.round(6*l);i++){const a=(+id*7+i*2.39)%6.283,r=R*.55*((i*37%10)/10);ctx.beginPath();ctx.arc(x+Math.cos(a)*r,y+Math.sin(a)*r,1+1.6*l*zs,0,7);ctx.fill()}}
+    if(l>=DMG.dead){ctx.save();ctx.beginPath();ctx.arc(x,y,R*.8,0,7);ctx.strokeStyle="#f43f5e";ctx.lineWidth=1.6;ctx.setLineDash([4,2]);ctx.stroke();ctx.setLineDash([]);ctx.restore()}
+    if(l>=.05&&!unhOn(c)){ctx.font="bold 10px system-ui, sans-serif";ctx.textAlign="center";ctx.fillStyle=l>=DMG.dead?"#f43f5e":"#fca5a5";ctx.fillText(l>=DMG.dead?`DESTROYED · ${fmtDur(dmgLeft(c))}`:`−${Math.round(l*100)}%`,x,y+R+11);ctx.textAlign="start"}}}
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
