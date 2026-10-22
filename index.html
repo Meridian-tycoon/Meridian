@@ -443,7 +443,7 @@ function menuNet(c,b,lv,id){menuOv={[c.id+":"+b.k]:id};try{return profit(b,c,lv)
 const USE={cart:{burgers:2},coffeecart:{bread:1},icecream:{bread:1},taco:{beef:1,bread:1},pretzel:{bread:2},noodle:{beef:1},smoothie:{bread:1},kiosk:{bread:3},shop:{bread:4,tools:1},rest:{burgers:5,beef:3},office:{electronics:.5},hotel:{bread:8,electronics:.5}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
-function profit(b,c,lv){if(unhOn(c))return 0;if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)-bizWage(b,c,lv))}
+function profit(b,c,lv){if(unhOn(c))return 0;if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)*(typeof ishBiz==="function"?ishBiz(b):1)-bizWage(b,c,lv))}
 // hourly wages a business is charged inside profit(); HQ Employees shows the same figure
 function bizWage(b,c,lv){return b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1))*(typeof hrPay==="function"?hrPay(c,b):1)}
 function cityProfit(c){const o=S.own[c.id]||{};let t=0;for(const b of BIZ)if(o[b.k])t+=profit(b,c,o[b.k]);return t}
@@ -462,7 +462,7 @@ function totals(){let inc=0,assets=0;
   const interest=typeof bankPayHr==="function"?Math.round(bankPayHr()):Math.round(S.debt*0.003);
   const upk=typeof indUpkeep==="function"?indUpkeep():0;assets+=typeof indAssets==="function"?indAssets():0;
   const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof polIncome==="function")inc+=polIncome();if(typeof luxIncome==="function"){inc+=luxIncome();assets+=luxAssets()}if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
-  if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity();if(typeof gearAssets==="function")assets+=gearAssets();
+  if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity();if(typeof gearAssets==="function")assets+=gearAssets();if(typeof ishIncome==="function"){inc+=ishIncome();assets+=ishAssets()}
   return{inc:inc-(typeof bankPayHr==="function"?0:interest)-upk-rent,interest,upk,rent,nw:S.cash+assets-S.debt}}
 
 /* ---------- map: a 3D globe you can spin 360° in any direction ---------- */
@@ -730,8 +730,8 @@ const TK=Object.fromEntries(TECH.map(t=>[t.k,t]));
 const canResearch=t=>!hasTech(t.k)&&(t.req||[]).every(hasTech);
 const BASEVEH=JSON.parse(JSON.stringify({truck:{cap:30,spd:400},ship:{cap:3000,spd:250},plane:{cap:60,spd:2500}}));
 function applyTechs(){VEH.truck.spd=BASEVEH.truck.spd*(hasTech("logi")?1.3:1);VEH.ship.cap=BASEVEH.ship.cap*(hasTech("container")?2:1);VEH.plane.spd=BASEVEH.plane.spd*(hasTech("aero")?1.4:1)}
-const techOut=o=>(["Farm","Ranch"].includes(o.cat)&&hasTech("mechfarm")?1.25:1)*(o.cat==="Factory"&&hasTech("robotics")&&!o.rp?1.2:1)*(hasTech("mars")?1.25:1);
-const techUp=o=>o.cat==="Factory"&&hasTech("renew")?.75:1;
+const techOut=o=>(["Farm","Ranch"].includes(o.cat)&&hasTech("mechfarm")?1.25:1)*(o.cat==="Factory"&&hasTech("robotics")&&!o.rp?1.2:1)*(hasTech("mars")?1.25:1)*(typeof ishOut==="function"?ishOut(o):1);
+const techUp=o=>(o.cat==="Factory"&&hasTech("renew")?.75:1)*(typeof ishUp==="function"?ishUp(o):1);
 /* research points accrue continuously but are paid out every 15 real minutes; RPX doubles all research output */
 const RPX=2,RPQ=DAYMS/4;
 function rpPay(){const q=Math.floor(Date.now()/RPQ);if(S.rpQ==null)S.rpQ=q;if(q>S.rpQ){S.rp=(S.rp||0)+(S.rpP||0);S.rpP=0;S.rpQ=q}}
@@ -776,7 +776,7 @@ const deps=c=>c.dep||["ore","coal","sand","oil"].filter((r,i)=>((c.id*37+i*11+c.
 const haPrice=c=>Math.round(900*PRICE[c.size]*PRICE[c.size]);
 /* WAREHOUSE SPACE IS IN TONNES: 400 t x 2^level (a 1 t/unit good fills it exactly as the old 400 units did). Stock stays in units; stored() is its weight in tonnes (units x tpu), storedU() the unit count.
    Old saves keep their units; a warehouse already over capacity just takes no new goods (room is clamped at 0, nothing is removed). Deliveries already en route still unload (they never checked room on arrival). */
-const whCap=c=>S.wh[c.id]==null?0:400*Math.pow(2,S.wh[c.id]);
+const whCap=c=>S.wh[c.id]==null?0:400*Math.pow(2,S.wh[c.id])*(typeof ishWh==="function"?ishWh():1);
 const whCost=c=>Math.round(3000*PRICE[c.size]);
 const whUp=c=>Math.round(4000*PRICE[c.size]*Math.pow(2,S.wh[c.id]||0));
 const stored=c=>{const v=S.inv[c.id]||{};let t=0;for(const g in v)if(v[g]>0)t+=v[g]*tpu(g);return t};
@@ -2764,7 +2764,7 @@ const TGOODS=["electronics","steel","bread","tools","beef","fuel","furniture","m
 let lgOk=null;
 function LG(){const l=S.logi=S.logi&&typeof S.logi==="object"&&!Array.isArray(S.logi)?S.logi:{};if(lgOk===l)return l;
   const num=(v,d,lo,hi)=>Number.isFinite(+v)&&v!==null&&v!==""&&v!==false?Math.max(lo,Math.min(hi,+v)):d,arr=a=>Array.isArray(a)?a:[];
-  l.trucks=Math.floor(num(l.trucks,2,1,LU.trucks.max+2));l.done=Math.floor(num(l.done,0,0,1e9));l.earned=num(l.earned,0,0,1e15);l.tons=num(l.tons,0,0,1e12);l.late=Math.floor(num(l.late,0,0,1e9));
+  l.trucks=Math.floor(num(l.trucks,2,1,LU.trucks.max+122));l.done=Math.floor(num(l.done,0,0,1e9));l.earned=num(l.earned,0,0,1e15);l.tons=num(l.tons,0,0,1e12);l.late=Math.floor(num(l.late,0,0,1e9));
   l.last=num(l.last,0,0,1e15);l.auto=l.auto!==false;
   if(!l.up||typeof l.up!=="object")l.up={};for(const k in LU)l.up[k]=Math.floor(num(l.up[k],0,0,LU[k].max));
   if(!l.rep||typeof l.rep!=="object")l.rep={};for(const k in l.rep)l.rep[k]=Math.floor(num(l.rep[k],0,0,50));
@@ -2783,7 +2783,7 @@ function hubFix(h,l){const num=(v,d,lo,hi)=>Number.isFinite(+v)&&v!==null&&v!=="
 function HB(id){const l=LG();let h=l.hub[id];if(!h)h=l.hub[id]={res:0,cap:0,pol:"",dep:0,drv:0,last:0,done:0,earned:0,tons:0,late:0};
   if(h.res>l.trucks)h.res=l.trucks;return h}
 const lvl=k=>LG().up[k]||0;
-const luCost=k=>{const u=LU[k],n=k==="trucks"?LG().trucks-2:lvl(k);return Math.round(u.base*Math.pow(u.g,n))};
+const luCost=k=>{const u=LU[k],n=k==="trucks"?LG().trucks-2-ishTr():lvl(k);return Math.round(u.base*Math.pow(u.g,n))};
 const huCost=(id,k)=>Math.round(HU[k].base*Math.pow(HU[k].g,HB(id)[k]));
 const hubs=()=>CITIES.filter(c=>(S.own[c.id]||{}).trucking);
 const busyAt=id=>LG().jobs.filter(j=>j.from===id).length;
@@ -2803,10 +2803,10 @@ function makeOffer(from){const l=LG();if(!from||!S.rivals||!S.rivals.length)retu
   const near=CITIES.filter(c=>c!==from&&distKm(from,c)<3500&&distKm(from,c)>150);if(!near.length)return null;const to=near[Math.floor(Math.random()*near.length)];
   const ri=Math.floor(Math.random()*S.rivals.length),km=distKm(from,to),tons=Math.round(20+Math.random()*40),h=HB(from.id);
   const lvTr=(S.own[from.id]||{}).trucking||1;
-  const pay=Math.round(km*tons*.05*(1+.25*lvl("trailer"))*(1+repOf(ri)*.02)*(1+.1*(lvTr-1))*(1+.06*h.drv)*(.8+Math.random()*.5)*PRICE[from.size]);
+  const pay=Math.round(km*tons*.05*(1+.25*lvl("trailer"))*(1+repOf(ri)*.02)*(1+.1*(lvTr-1))*(1+.06*h.drv)*(.8+Math.random()*.5)*PRICE[from.size]*ishPay());
   const g=TGOODS[Math.floor(Math.random()*TGOODS.length)];
   return{id:l.nid++,ri,from:from.id,to:to.id,km,tons,g,pay,exp:Date.now()+(20+Math.random()*40)*60000}}
-const jobDur=o=>Math.max(8*60000,o.km/legPace("truck")*DAYMS/4/Math.pow(1.15,lvl("engine"))*Math.pow(.95,HB(o.from).drv));
+const jobDur=o=>Math.max(8*60000,o.km/legPace("truck")*DAYMS/4/Math.pow(1.15,lvl("engine"))*Math.pow(.95,HB(o.from).drv)/ishSpd());
 function acceptOffer(id,quiet){const l=LG(),o=l.offers.find(x=>x.id===id);if(!o||hubRoom(o.from)<1)return false;
   l.offers=l.offers.filter(x=>x!==o);const late=Math.random()<Math.max(.02,.08-.015*HB(o.from).drv),d=jobDur(o)*(late?1.4:1);l.jobs.push({...o,dep:Date.now(),arr:Date.now()+d,late});
   if(!quiet)toast(`Contract accepted: ${CITIES[o.from].name} → ${CITIES[o.to].name}`);return true}
@@ -3633,8 +3633,8 @@ function dxPlace(p){const el=DX.el,vw=innerWidth,vh=innerHeight;
   Object.assign(el.style,{left:x+"px",top:y+"px",width:w+"px",height:h+"px"})}
 function dxOpen(){if(!document.getElementById("mdx-css")){const st=document.createElement("style");st.id="mdx-css";st.textContent=DXCSS;document.head.appendChild(st)}
   if(DX.reg==null)DX.reg=dxRegAny();
-  if(!DX.el){const el=DX.el=document.createElement("div");el.className="mdx-win";el.setAttribute("role","dialog");el.setAttribute("aria-label","Business dashboard");document.body.appendChild(el);dxWire(el);lxWire(el);txWire(el)}
-  lxCss();DX.el.classList.toggle("lx-on",DX.page==="log"||DX.page==="truck");
+  if(!DX.el){const el=DX.el=document.createElement("div");el.className="mdx-win";el.setAttribute("role","dialog");el.setAttribute("aria-label","Business dashboard");document.body.appendChild(el);dxWire(el);lxWire(el);txWire(el);isWire(el)}
+  lxCss();DX.el.classList.toggle("lx-on",DX.page!=null&&DX.page!=="fin"&&dxPageOk(DX.page));
   DX.el.style.display="flex";DX.open=true;DX.sig=null;DX.el.innerHTML=dxShell();dxPlace(dxLoadPos());dxTick()}
 function dxClose(){DX.open=false;DX.tip=null;if(DX.el){dxSavePos();DX.el.style.display="none"}}
 addEventListener("resize",()=>{if(DX.open&&DX.el){dxPlace(DX.el.classList.contains("mdx-full")?dxLoadPos():{x:parseFloat(DX.el.style.left),y:parseFloat(DX.el.style.top),w:parseFloat(DX.el.style.width),h:parseFloat(DX.el.style.height)})}});
@@ -3666,8 +3666,13 @@ function dxWire(el){let g=null;
 function dxShell(){return `<div class="mdx-bar"><span class="mdx-logo">${dxI("biz",16,"#fff")}</span><b>${devSelf(S.name,(S.online||{}).name)?`<span class="devname">${dxE(S.name||"Meridian")}</span>`:dxE(S.name||"Meridian")} Holdings</b>
   <div class="mdx-seg" role="tablist"><button data-dx="reg" data-v="1" class="${DX.reg?"on":""}">Registered</button><button data-dx="reg" data-v="0" class="${DX.reg?"":"on"}">All owned</button></div>
   <button class="mdx-x" data-dx="close" aria-label="Close dashboard">×</button></div><div class="mdx-body">${dxBody()}</div><div class="mdx-rs" aria-hidden="true"></div>`}
+/* dashboard pages: any page added later goes into DXPAGES; the Industrial Shop is always appended last, so it is always the right-most tab */
+const DXPAGES=[["fin","Finance"],["log","Logistics"],["truck","Trucking"]],DXLAST=["ind","Industrial Shop"];
+const dxPageList=()=>DXPAGES.filter(p=>p[0]!==DXLAST[0]).concat([DXLAST]);
+const dxPageOk=v=>dxPageList().some(p=>p[0]===v);
+function dxPageBtns(){return dxPageList().map(p=>`<button data-lx="page" data-v="${p[0]}" class="${(dxPageOk(DX.page)?DX.page:"fin")===p[0]?"on":""}">${p[1]}</button>`).join("")}
 function dxBody(){const hr=new Date().getHours(),gr=hr<12?"Good morning":hr<18?"Good afternoon":"Good evening";
-  return `<div class="mdx-in"><div class="mdx-seg lx-pg" role="tablist" aria-label="Dashboard page"><button data-lx="page" data-v="fin" class="${DX.page==="log"||DX.page==="truck"?"":"on"}">Finance</button><button data-lx="page" data-v="log" class="${DX.page==="log"?"on":""}">Logistics</button><button data-lx="page" data-v="truck" class="${DX.page==="truck"?"on":""}">Trucking</button></div><div class="mdx-hd"><h2>${gr} <span${devSelf(S.name,(S.online||{}).name)?' class="devname"':""}>${dxE(S.name||"Tycoon")}</span> 👋</h2><div class="mdx-date"><span class="mdx-live"></span>${dxI("cal",15)}<span id="mdx-dt"></span></div></div>
+  return `<div class="mdx-in"><div class="mdx-seg lx-pg" role="tablist" aria-label="Dashboard page">${dxPageBtns()}</div><div class="mdx-hd"><h2>${gr} <span${devSelf(S.name,(S.online||{}).name)?' class="devname"':""}>${dxE(S.name||"Tycoon")}</span> 👋</h2><div class="mdx-date"><span class="mdx-live"></span>${dxI("cal",15)}<span id="mdx-dt"></span></div></div>
   <div id="mdx-main"></div></div>`}
 function dxMain(){const kp=(k,lb,bg,fg)=>`<div class="mdx-card mdx-kpi" data-k="${k}"><span class="mdx-ic" style="background:${bg};color:${fg}">${dxI(k,22)}</span><div class="mdx-lb"><span>${lb}</span><em class="mdx-pill mdx-flat">—</em></div><div class="mdx-big">$0</div><div class="mdx-kfoot"><small></small><svg width="74" height="30" viewBox="0 0 74 30"></svg></div></div>`;
   return `<div class="mdx-kpis">${kp("rev","Revenue / hr","#dcfce7","#16a34a")}${kp("exp","Expenses / hr","#fee2e2","#dc2626")}${kp("biz","Businesses","#e0ecff","#2563eb")}${kp("net","Net profit / hr","#fef3c7","#d97706")}</div>
@@ -3716,7 +3721,7 @@ function dxTipShow(el){const box=DX.el&&DX.el.querySelector("#mdx-bars");if(!box
   const br=box.getBoundingClientRect(),r=el.getBoundingClientRect(),w=t.offsetWidth;let x=r.right-br.left+6;if(x+w>br.width)x=r.left-br.left-w-6;if(x<0)x=Math.max(0,Math.min(br.width-w,r.left-br.left+r.width/2-w/2));t.style.left=x+"px"}
 const dxAgo=t=>{const s=Math.max(0,(Date.now()-t)/1000);return s<60?"just now":s<3600?Math.round(s/60)+" min ago":(s/3600).toFixed(1)+" days ago"};
 const dxIn=ms=>ms<=0?"now":ms<60000?Math.ceil(ms/1000)+"s":ms<DAYMS?Math.ceil(ms/60000)+" min":(ms/DAYMS).toFixed(1)+" days";
-function dxRender(){if(!DX.open||!DX.el)return;if(DX.page==="log"){lxRender();return}if(DX.page==="truck"){txRender();return}const reg=!!DX.reg,T=dxData(reg),main=DX.el.querySelector("#mdx-main");if(!main)return;
+function dxRender(){if(!DX.open||!DX.el)return;if(DX.page==="log"){lxRender();return}if(DX.page==="truck"){txRender();return}if(DX.page==="ind"){isRender();return}const reg=!!DX.reg,T=dxData(reg),main=DX.el.querySelector("#mdx-main");if(!main)return;
   const dt=DX.el.querySelector("#mdx-dt");if(dt)dt.textContent=`Day ${S.day||1} · next day in ${dxIn((S.hour+1)*DAYMS-Date.now())}`;
   DX.el.querySelectorAll("[data-dx=reg]").forEach(b=>b.classList.toggle("on",(b.dataset.v==="1")===reg));
   if(!T.n){if(main.dataset.mode!=="empty"){main.dataset.mode="empty";DX.sig=null}const any=dxData(false).n;
@@ -4588,7 +4593,7 @@ function fxCard(){const f=FX(),T=fxTier(),nx=FXT[T.i+1],pct=nx?Math.min(100,(f.t
    <div class="lx-it"><div class="m"><b>Fleet upkeep</b><span>${fmtc(up)} per game day · ${fmtc(f.paid)} paid so far · ${fmtc(f.svc)} on service</span>${wn?`<small style="color:#b91c1c">${wn} vehicle${wn>1?"s":""} below 40% condition: breakdown risk</small>`:""}</div></div></div>`}
 /* ===== UI ===== */
 function lxCss(){if(document.getElementById("lx-css"))return;const st=document.createElement("style");st.id="lx-css";st.textContent=`
-.lx-pg{margin:0 0 2px!important;align-self:flex-start}
+.lx-pg{margin:0 0 2px!important;align-self:flex-start;max-width:100%;overflow-x:auto;scrollbar-width:none}.lx-pg::-webkit-scrollbar{display:none}.lx-pg button{white-space:nowrap;flex:none}
 .mdx-win.lx-on .mdx-bar .mdx-seg{display:none}
 .lx-tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
 .lx-tabs::-webkit-scrollbar{display:none}
@@ -4825,7 +4830,7 @@ function lxSet(k,v){const lg=LGS(),f=lg.f;
 function lxSetO(k,v){const o=LGS().o;if(!o)return;if(["keep","min","tgt","bat"].includes(k))o[k]=Math.max(0,Math.floor(+v||0));else if(k==="tc"||k==="scv")o[k]=k==="tc"||o.sct==="city"?+v:v;else if(k==="tk"){o.tk=v;const l=(v==="mkt"?CITIES.filter(c=>hasHQ(c)):CITIES.filter(c=>hasWh(c)));o.tc=l[0]?l[0].id:-1}
   else if(k==="sct"){o.sct=v;o.scv=v==="reg"?"am":v==="city"?((CITIES.find(c=>hasWh(c))||{}).id):""}else o[k]=v;LGS().force=true;dxRender()}
 function lxAct(a,b){const lg=LGS(),X=LX(),f=lg.f;if(a!=="odel"&&a!=="jcancel")lg.arm=null;let done=false;
-  if(a==="page"){DX.page=b.dataset.v==="log"||b.dataset.v==="truck"?b.dataset.v:"fin";DX.el.classList.toggle("lx-on",DX.page!=="fin");DX.sig=null;DX.el.querySelectorAll("[data-lx=page]").forEach(x=>x.classList.toggle("on",x.dataset.v===DX.page));const m=DX.el.querySelector("#mdx-main");if(m){m.dataset.mode="";m._lxh=""}lg.force=true;dxRender();return}
+  if(a==="page"){DX.page=dxPageOk(b.dataset.v)?b.dataset.v:"fin";DX.el.classList.toggle("lx-on",DX.page!=="fin");DX.sig=null;DX.el.querySelectorAll("[data-lx=page]").forEach(x=>x.classList.toggle("on",x.dataset.v===DX.page));const m=DX.el.querySelector("#mdx-main");if(m){m.dataset.mode="";m._lxh=""}lg.force=true;dxRender();return}
   if(a==="tab"){lg.tab=b.dataset.v;lg.o=null}
   else if(a==="ov")lg.ov=b.dataset.v;
   else if(a==="pick"){f.item=b.dataset.v;f.from=-1;f.q=0;f.to=-1;f.car="";lg.tab="send"}
@@ -4905,7 +4910,7 @@ function txActive(){const l=LG(),now=Date.now();let h=`<div class="mdx-card"><di
   return h+`</div>`}
 function txFleet(tg){const l=LG();let res=0;for(const c of hubs())res+=HB(c.id).res;res=Math.min(res,l.trucks);
   let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Shared fleet</h3><span class="lx-tag b">${l.trucks} trucks</span></div><div class="lx-it"><div class="m"><b>${l.jobs.length} busy · ${res} reserved · ${Math.max(0,l.trucks-res)} in the shared pool</b><span>Reserve trucks per hub on the Hubs tab. Unreserved trucks go to whichever hub asks first.</span></div></div>`;
-  for(const k in LU){const u=LU[k],n=k==="trucks"?l.trucks:lvl(k),done=n>=u.max,cs=luCost(k);
+  for(const k in LU){const u=LU[k],n=k==="trucks"?l.trucks-ishTr():lvl(k),done=n>=u.max,cs=luCost(k);
     h+=`<div class="lx-it"><div class="m"><b>${u.n}<span class="lx-tag">${k==="trucks"?n+" trucks":"Lv "+n+"/"+u.max}</span></b><span>${u.d}</span></div><div class="a"><button class="lx-btn" data-tx="up" data-k="${k}" ${done||S.cash<cs?"disabled":""}>${done?"Maxed":fmt(cs)}</button></div></div>`}
   h+=`</div><div class="mdx-card"><div class="mdx-ch"><h3>Rival reputation</h3></div>`;
   const rs=(S.rivals||[]).map((r,i)=>i);
@@ -4942,12 +4947,155 @@ function txAct(a,b){const tg=TGS(),l=LG(),id=+b.dataset.id;let done=false;
   else if(a==="res"&&hubs().some(c=>c.id===id)){const h=HB(id),d=+b.dataset.d;if(d>0&&trReserved(id)+h.res+1>l.trucks)return;h.res=Math.max(0,h.res+d);done=true}
   else if(a==="cap"&&hubs().some(c=>c.id===id)){const h=HB(id);h.cap=Math.max(0,Math.min(l.trucks,h.cap+ +b.dataset.d));done=true}
   else if(a==="hup"&&hubs().some(c=>c.id===id)&&HU[b.dataset.k]){const k=b.dataset.k,h=HB(id),cs=huCost(id,k);if(h[k]>=HU[k].max||S.cash<cs)return;S.cash-=cs;h[k]++;toast(`${HU[k].n}: ${CITIES[id].name} level ${h[k]}`);done=true}
-  else if(a==="up"&&LU[b.dataset.k]){const k=b.dataset.k,cs=luCost(k);if(S.cash<cs)return;if(k==="trucks"){if(l.trucks>=LU.trucks.max)return;l.trucks++}else{if(lvl(k)>=LU[k].max)return;l.up[k]=lvl(k)+1}S.cash-=cs;toast(`Bought ${LU[k].n.toLowerCase()}`);done=true}
+  else if(a==="up"&&LU[b.dataset.k]){const k=b.dataset.k,cs=luCost(k);if(S.cash<cs)return;if(k==="trucks"){if(l.trucks-ishTr()>=LU.trucks.max)return;l.trucks++}else{if(lvl(k)>=LU[k].max)return;l.up[k]=lvl(k)+1}S.cash-=cs;toast(`Bought ${LU[k].n.toLowerCase()}`);done=true}
   if(done){save();hud();if(PH.open)phRender()}
   tg.force=true;dxRender()}
 function txWire(el){
   el.addEventListener("click",e=>{const b=e.target.closest("[data-tx]");if(!b||b.disabled)return;try{txAct(b.dataset.tx,b)}catch(err){console.warn("tx",err)}});
   el.addEventListener("change",e=>{const t=e.target;if(!t.dataset||t.dataset.txp==null)return;try{const id=+t.dataset.txp;if(hubs().some(c=>c.id===id)&&lvl("dispatch")){HB(id).pol=t.value;save()}t.blur();TGS().force=true;dxRender()}catch(err){console.warn("tx",err)}})}
+/* ---------- Industrial Shop: the LAST page of the HQ dashboard (all state in S.ish, see ishS()) ----------
+   Catalogue ISH: vehicles feed the Trucking fleet (S.logi.trucks, contract pay and speed), machinery lifts land output, upgrades lift business profit,
+   facilities add warehouse space and cut industrial upkeep, tech adds research points. Prices float with a weekly market; each item has weekly stock,
+   a max count, a tier chain (needs the previous tier), city-size and research requirements, bulk discounts and a 25%-down financing option.
+   S.ish = {v, own:{k:n}, val:{k:$paid}, fin:[{k,n,left,pay}], wk, st:{k:soldThisWeek}, t, spent}. Upkeep and loan payments are part of totals().inc (so they are paid continuously). */
+var ISH=null,ISHC=null,ISHV=0;
+const ISH_CATS=[["veh","Vehicles"],["mac","Machinery"],["upg","Upgrades"],["fac","Facilities"],["tec","Tech"],["own","Owned"]];
+const ISH_DEFS=[
+ // k, cat, name, description, cost, upkeep/hr, max, weekly stock, min city size, tech, previous tier, effects, trucks added
+ ["pickup","veh","Light pickup","Cheap and quick. Adds a truck to your fleet; small loads pay a little less.",16000,5,10,6,1,"","",{pay:-.08,spd:.12},1],
+ ["box","veh","Box truck","The all-rounder. Adds a truck; slightly bigger loads.",38000,12,10,5,1,"","pickup",{pay:.05,spd:.04},1],
+ ["semi","veh","Semi-trailer","Big loads, slower to turn around. Adds a truck.",95000,30,8,3,2,"","box",{pay:.32,spd:-.04},1],
+ ["reefer","veh","Refrigerated semi","Premium freight rates for temperature-controlled loads. Adds a truck.",150000,48,6,2,3,"logi","semi",{pay:.45},1],
+ ["roadtrain","veh","Road train","Triple trailers. Adds two trucks and heavy loads, but it is slow.",420000,120,4,2,4,"container","reefer",{pay:.38,spd:-.06},2],
+ ["convoy","veh","Autonomous convoy","Driverless platoon. Adds three trucks, fastest and best paid.",1400000,320,3,1,5,"robotics","roadtrain",{pay:.5,spd:.2},3],
+ ["tractor","mac","Tractor","Farms and ranches produce 10% more.",60000,14,4,3,1,"","",{farm:.10}],
+ ["combine","mac","Combine harvester","Farms and ranches produce 20% more.",210000,40,3,2,2,"mechfarm","tractor",{farm:.20}],
+ ["rig","mac","Drill rig","Mines and wells produce 10% more.",90000,22,4,3,1,"","",{mine:.10}],
+ ["tbm","mac","Tunnel boring machine","Mines and wells produce 30% more.",480000,100,2,1,3,"","rig",{mine:.30}],
+ ["cnc","mac","CNC machining line","Factories produce 8% more.",150000,35,4,2,2,"","",{fac:.08}],
+ ["cells","mac","Robot assembly cells","Factories produce 18% more.",700000,160,3,2,3,"robotics","cnc",{fac:.18}],
+ ["genset","mac","Backup generator","Fewer stoppages: every farm, mine and factory produces 3% more.",55000,18,3,3,1,"","",{farm:.03,mine:.03,fac:.03}],
+ ["pos","upg","Point-of-sale terminals","Shops, carts and restaurants earn 4% more.",24000,4,3,4,1,"","",{ret:.04}],
+ ["crm","upg","Customer analytics","Shops, carts and restaurants earn 6% more.",180000,30,2,2,2,"","pos",{ret:.06}],
+ ["academy","upg","Staff training academy","Every business you own earns 2.5% more.",70000,12,3,2,1,"","",{biz:.025}],
+ ["erp","upg","ERP software","Every business you own earns 4% more.",260000,45,2,1,3,"semis","",{biz:.04}],
+ ["autoproc","upg","Process automation","Every business you own earns 6% more.",900000,150,2,1,4,"robotics","erp",{biz:.06}],
+ ["racking","fac","Pallet racking","+20% warehouse capacity in every depot.",32000,8,5,4,1,"","",{wh:.20}],
+ ["cold","fac","Cold storage hall","+35% warehouse capacity in every depot.",240000,55,3,2,2,"","racking",{wh:.35}],
+ ["asrs","fac","Automated storage (AS/RS)","+80% warehouse capacity in every depot.",950000,190,2,1,4,"robotics","cold",{wh:.80}],
+ ["solar","fac","Solar array","Land operations cost 7% less to run.",340000,0,3,2,2,"renew","",{upk:.07}],
+ ["lab","tec","Research bench","+1.5 research points per hour.",55000,15,4,3,1,"","",{rp:1.5}],
+ ["cluster","tec","Compute cluster","+5 research points per hour.",380000,90,3,2,3,"semis","lab",{rp:5}],
+ ["telem","tec","Telemetry network","+6 research points per hour and every business earns 2% more.",1200000,260,2,1,4,"aero","cluster",{rp:6,biz:.02}]];
+ISH=ISH_DEFS.map(a=>({k:a[0],cat:a[1],n:a[2],d:a[3],cost:a[4],up:a[5],max:a[6],lim:a[7],sz:a[8],tech:a[9],prev:a[10],eff:a[11],tr:a[12]||0}));
+ISHC=Object.fromEntries(ISH.map(i=>[i.k,i]));
+const ISH_CAP={biz:.25,ret:.4,farm:.6,mine:.6,fac:.6,wh:3,upk:.35,rp:40,pay:.6,spd:.4},ISH_DIM=.6,ISH_SELL=.5,ISH_DOWN=.25,ISH_INT=.12,ISH_TERM=72,ISH_MAXFIN=8;
+var ISH_Z={biz:0,ret:0,farm:0,mine:0,fac:0,wh:0,upk:0,rp:0,pay:0,spd:0};
+let ishOk=null,ishEc=null,ishEv=-1;
+function ishS(){let s=S.ish;if(!s||typeof s!=="object"||Array.isArray(s))s=S.ish={};if(ishOk===s)return s;
+  const num=(v,d,lo,hi)=>Number.isFinite(+v)&&v!==null&&v!==""&&v!==false?Math.max(lo,Math.min(hi,+v)):d;
+  const own={},val={},st={};if(!s.own||typeof s.own!=="object")s.own={};if(!s.val||typeof s.val!=="object")s.val={};if(!s.st||typeof s.st!=="object")s.st={};
+  for(const i of ISH){const n=Math.floor(num(s.own[i.k],0,0,i.max));if(n>0){own[i.k]=n;val[i.k]=num(s.val[i.k],i.cost*n,0,1e13)}const x=Math.floor(num(s.st[i.k],0,0,i.lim));if(x>0)st[i.k]=x}
+  s.own=own;s.val=val;s.st=st;s.fin=(Array.isArray(s.fin)?s.fin:[]).filter(f=>f&&ISHC[f.k]&&own[f.k]&&Number.isFinite(+f.left)&&Number.isFinite(+f.pay)&&+f.left>0&&+f.pay>0).slice(0,ISH_MAXFIN).map(f=>({k:f.k,n:Math.floor(num(f.n,1,1,99)),left:+f.left,pay:+f.pay}));
+  s.v=1;s.wk=Math.floor(num(s.wk,0,0,1e9));s.t=num(s.t,Date.now(),0,1e15);s.spent=num(s.spent,0,0,1e15);ishOk=s;ishEv=-1;return s}
+function ishN(k){try{return ishS().own[k]||0}catch(e){return 0}}
+const ishDim=n=>n>0?1+ISH_DIM*(n-1):0;
+function ishTr(){let t=0;const s=ishS();for(const i of ISH)if(i.tr)t+=i.tr*(s.own[i.k]||0);return t}
+/* summed effects of everything owned (cached; ISHV is bumped on every change) */
+function ishE(){if(!ISH)return ISH_Z;const s=ishS();if(ishEc&&ishEv===ISHV&&ishOk===s)return ishEc;const e=Object.assign({},ISH_Z);
+  for(const i of ISH){const n=s.own[i.k]||0;if(!n)continue;const m=ishDim(n);for(const k in i.eff){if(k==="pay"||k==="spd")continue;e[k]+=i.eff[k]*m}}
+  for(const k in e)if(ISH_CAP[k]!=null)e[k]=Math.min(ISH_CAP[k],e[k]);
+  // fleet pay and speed: the average over the whole fleet, so a few big rigs lift a big fleet only a little
+  let p=0,sp=0;const tr=Math.max(1,(typeof LG==="function"?LG().trucks:2));for(const i of ISH){const n=s.own[i.k]||0;if(n&&i.tr){p+=n*i.tr*(i.eff.pay||0);sp+=n*i.tr*(i.eff.spd||0)}}
+  e.pay=Math.max(-.3,Math.min(ISH_CAP.pay,p/tr));e.spd=Math.max(-.3,Math.min(ISH_CAP.spd,sp/tr));ishEc=e;ishEv=ISHV;return e}
+function ishBiz(b){const e=ishE();return 1+e.biz+(RETAIL.includes(b.k)?e.ret:0)}
+function ishOut(o){const e=ishE();return 1+(o.cat==="Farm"||o.cat==="Ranch"?e.farm:o.cat==="Mine"?e.mine:o.cat==="Factory"&&!o.rp?e.fac:0)}
+function ishUp(o){return 1-ishE().upk}
+function ishWh(){return 1+ishE().wh}
+function ishPay(){return 1+ishE().pay}
+function ishSpd(){return 1+ishE().spd}
+function ishUpkeep(){let u=0;const s=ishS();for(const i of ISH)u+=i.up*(s.own[i.k]||0);return u}
+function ishFinHr(){let u=0;for(const f of ishS().fin)u+=f.pay;return u}
+function ishIncome(){return -(ishUpkeep()+ishFinHr())}
+function ishAssets(){let a=0;const s=ishS();for(const k in s.val)a+=s.val[k]*ISH_SELL;for(const f of s.fin)a-=f.left;return a}
+function ishSize(){let m=1;for(const c of CITIES){if(((S.own[c.id]&&Object.keys(S.own[c.id]).length)||hasHQ(c)||hasWh(c)||S.sites.some(x=>x.city===c.id))&&c.size>m)m=c.size}return m}
+/* weekly market: price multiplier per category, restock every 7 game days */
+function ishWeek(){return Math.floor((S.day||1)/7)}
+function ishMk(cat){const x=ISH_CATS.findIndex(c=>c[0]===cat)+1,w=ishWeek();return 1+.12*Math.sin(w*1.3+x*2.1)+.05*Math.sin((S.day||1)*.7+x)}
+function ishWk(){const s=ishS(),w=ishWeek();if(s.wk!==w){s.wk=w;s.st={}}return s}
+const ishLeft=i=>i.lim-(ishWk().st[i.k]||0);
+const ishDisc=q=>q>=10?.12:q>=5?.08:q>=3?.04:0;
+function ishQuote(i,q){const s=ishS(),n=s.own[i.k]||0,mk=ishMk(i.cat);let t=0;for(let j=0;j<q;j++)t+=i.cost*mk*Math.pow(1.05,n+j);return Math.round(t*(1-ishDisc(q)))}
+function ishReq(i){const m=[];if(i.sz>ishSize())m.push(`city size ${i.sz}+`);if(i.tech&&!hasTech(i.tech))m.push(`research: ${TK[i.tech]?TK[i.tech].n:i.tech}`);if(i.prev&&!ishN(i.prev))m.push(`own a ${ISHC[i.prev].n.toLowerCase()}`);return m}
+function ishTick(){try{const s=ishS(),now=Date.now(),dt=Math.max(0,Math.min(now-(s.t||now),48*DAYMS));s.t=now;if(!dt)return;const h=dt/DAYMS;
+  for(const f of s.fin)f.left-=f.pay*h;s.fin=s.fin.filter(f=>f.left>.5);
+  const e=ishE();if(e.rp>0)S.rpP=(S.rpP||0)+e.rp*h}catch(err){console.warn("ishTick",err)}}
+setInterval(ishTick,4000);
+/* ---- buying and selling ---- */
+function ishBuy(k,q,fin){const i=ishC(k);if(!i)return"Unknown item";const s=ishWk(),n=s.own[k]||0;q=Math.max(1,Math.floor(q));
+  if(ishReq(i).length)return"Requirements not met";if(n+q>i.max)return`You can own at most ${i.max}`;if(q>ishLeft(i))return"Not enough stock this week";
+  const tot=ishQuote(i,q);
+  if(fin){if(s.fin.length>=ISH_MAXFIN)return"Too many open finance deals";const down=Math.round(tot*ISH_DOWN);if(S.cash<down)return`Need ${fmt(down)} down`;
+    const debt=Math.round((tot-down)*(1+ISH_INT));S.cash-=down;s.fin.push({k,n:q,left:debt,pay:debt/ISH_TERM})}
+  else{if(S.cash<tot)return`Need ${fmt(tot)}`;S.cash-=tot}
+  s.own[k]=n+q;s.val[k]=(s.val[k]||0)+tot;s.st[k]=(s.st[k]||0)+q;s.spent+=tot;
+  if(i.tr){const l=LG();l.trucks=Math.min(l.trucks+i.tr*q,LU.trucks.max+122)}
+  ISHV++;return""}
+function ishSell(k){const i=ishC(k),s=ishS(),n=s.own[k]||0;if(!i||!n)return"Nothing to sell";if(s.fin.some(f=>f.k===k))return"Pay off the finance deal first";
+  if(i.tr){const l=LG();if(l.trucks-i.tr<Math.max(1,l.jobs.length))return"Trucks are out on contracts";l.trucks-=i.tr}
+  const per=(s.val[k]||0)/n;S.cash+=per*ISH_SELL;s.val[k]=per*(n-1);if(n-1<=0){delete s.own[k];delete s.val[k]}else s.own[k]=n-1;
+  for(const j of ISH)if(j.prev===k&&!s.own[k]&&s.own[j.k]){} // dependants stay: the chain only gates new purchases
+  ISHV++;return""}
+function ishC(k){return ISHC[k]}
+/* ---- UI ---- */
+function ISS(){return DX.is=DX.is||{cat:"veh",q:1,fin:false,note:"",nt:0,force:false}}
+function ishWorth(i){const n=ishN(i.k),m=n?ISH_DIM:1,e=i.eff;let v=0;
+  try{if(e.ret||e.biz){for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(lv)v+=profit(b,c,lv)*((e.biz||0)+(e.ret&&RETAIL.includes(b.k)?e.ret:0))*m/Math.max(1,ishBiz(b))}}}
+    if(e.farm||e.mine||e.fac){for(const s of S.sites){const o=siteOp(s);if(!o)continue;const x=o.cat==="Farm"||o.cat==="Ranch"?e.farm:o.cat==="Mine"?e.mine:o.cat==="Factory"&&!o.rp?e.fac:0;if(x)v+=Math.max(0,siteEst(s)+indUpkeepOf(s))*x*m/ishOut(o)}}
+    if(e.upk)v+=indUpkeep()/Math.max(.05,1-ishE().upk)*e.upk*m}catch(err){}
+  return v}
+function indUpkeepOf(s){const o=siteOp(s);return o?(s.crew?1:.2)*o.up*techUp(o)*LAND[s.size][1]*(1+.15*(slv(s)-1)):0}
+function ishEffTxt(i){const e=i.eff,p=[],pc=x=>(x>0?"+":"")+Math.round(x*1000)/10+"%";
+  if(i.tr)p.push(`+${i.tr} truck${i.tr>1?"s":""}`);if(e.pay)p.push(`contract pay ${pc(e.pay)} (fleet avg)`);if(e.spd)p.push(`speed ${pc(e.spd)}`);
+  if(e.farm&&e.farm===e.mine&&e.mine===e.fac)p.push(`${pc(e.farm)} all land output`);else{if(e.farm)p.push(`farm ${pc(e.farm)}`);if(e.mine)p.push(`mine ${pc(e.mine)}`);if(e.fac)p.push(`factory ${pc(e.fac)}`)}
+  if(e.ret)p.push(`retail ${pc(e.ret)}`);if(e.biz)p.push(`all businesses ${pc(e.biz)}`);if(e.wh)p.push(`warehouse ${pc(e.wh)}`);if(e.upk)p.push(`land upkeep -${Math.round(e.upk*100)}%`);if(e.rp)p.push(`+${e.rp} RP/hr`);return p.join(" · ")}
+function ishCard(i){const s=ishWk(),n=s.own[i.k]||0,left=ishLeft(i),rq=ishReq(i),q=Math.max(1,Math.min(ISS().q,i.max-n,left)),full=n>=i.max,out=left<=0;
+  const tot=ishQuote(i,q),down=Math.round(tot*ISH_DOWN),fin=ISS().fin,need=fin?down:tot,can=!rq.length&&!full&&!out&&S.cash>=need&&(!fin||s.fin.length<ISH_MAXFIN);
+  const mk=ishMk(i.cat),w=ishWorth(i),sell=s.fin.some(f=>f.k===i.k)?"":"";
+  const lbl=full?"Max owned":out?"Sold out":rq.length?"Locked":fin?`${fmt(down)} down`:`Buy ${q>1?q+" · ":""}${fmt(tot)}`;
+  return `<div class="lx-it"><div class="m"><b>${dxE(i.n)}<span class="lx-tag ${n?"g":""}">${n}/${i.max} owned</span><span class="lx-tag ${out?"r":left<=1?"y":"b"}">${out?"No stock":left+" in stock"}</span>${i.prev?`<span class="lx-tag">Tier after ${dxE(ISHC[i.prev].n)}</span>`:""}</b>
+    <span>${dxE(i.d)}</span><small>${dxE(ishEffTxt(i))}${i.up?` · upkeep ${fmt(i.up)}/hr each`:""} · price ${fmt(ishQuote(i,1))} (market ${mk>=1?"+":""}${Math.round((mk-1)*100)}%)${q>1?` · ${q} for ${fmt(tot)}${ishDisc(q)?` after ${Math.round(ishDisc(q)*100)}% bulk discount`:""}`:""}${w>0?` · worth about ${fmt(w)}/hr to you now`:i.tr&&!hubs().length?" · needs a Trucking hub to earn":""}</small>
+    ${rq.length?`<small style="color:#b91c1c">Needs ${dxE(rq.join(", "))}</small>`:""}</div>
+    <div class="a"><button class="lx-btn pri" data-is="buy" data-k="${i.k}" ${can?"":"disabled"}>${lbl}</button>${n?`<button class="lx-btn red" data-is="sell" data-k="${i.k}" ${s.fin.some(f=>f.k===i.k)?"disabled":""} title="Sell one back for ${Math.round(ISH_SELL*100)}% of what you paid">Sell ${fmt((s.val[i.k]||0)/n*ISH_SELL)}</button>`:""}</div></div>`}
+function ishPage(is){const s=ishWk(),l=LG(),e=ishE();
+  if(!ISH_CATS.some(c=>c[0]===is.cat))is.cat="veh";
+  let h=`<div class="lx-k"><div><span>Upkeep / hr</span><b>${fmt(ishUpkeep())}</b><small>${ISH.reduce((a,i)=>a+(s.own[i.k]||0),0)} items owned</small></div><div><span>Finance / hr</span><b>${fmt(ishFinHr())}</b><small>${s.fin.length} deal${s.fin.length===1?"":"s"} · ${fmt(s.fin.reduce((a,f)=>a+f.left,0))} left</small></div><div><span>Fleet</span><b>${l.trucks} trucks</b><small>pay ${e.pay>=0?"+":""}${Math.round(e.pay*100)}% · speed ${e.spd>=0?"+":""}${Math.round(e.spd*100)}%</small></div><div><span>Warehouse</span><b>+${Math.round(e.wh*100)}%</b><small>city size ${ishSize()} · restock in ${7-((S.day||1)%7)} d</small></div></div>`;
+  if(ISS().note&&Date.now()-ISS().nt<9000)h+=`<div class="lx-note">${dxE(ISS().note)}</div>`;
+  h+=`<div class="lx-tabs" role="tablist" style="margin-top:12px">${ISH_CATS.map(c=>`<button role="tab" data-is="cat" data-v="${c[0]}" aria-selected="${is.cat===c[0]}" class="${is.cat===c[0]?"on":""}">${c[1]}</button>`).join("")}</div>`;
+  if(is.cat==="own"){const have=ISH.filter(i=>s.own[i.k]);
+    h+=`<div class="mdx-card" style="margin-top:12px"><div class="mdx-ch"><h3>Your equipment</h3></div>`+(have.length?have.map(ishCard).join(""):`<div class="mdx-empty">Nothing bought yet. Browse the other tabs.</div>`)+`</div>`;
+    h+=`<div class="mdx-card" style="margin-top:12px"><div class="mdx-ch"><h3>Finance deals</h3></div>`+(s.fin.length?s.fin.map(f=>`<div class="lx-it"><div class="m"><b>${f.n} x ${dxE(ISHC[f.k].n)}</b><span>${fmt(f.pay)}/hr · ${fmt(f.left)} left · about ${fmtDur(f.left/f.pay*DAYMS)}</span></div></div>`).join(""):`<div class="mdx-empty">No open finance deals.</div>`)+`</div>`;return h}
+  h+=`<div class="mdx-card" style="margin-top:12px"><div class="mdx-ch"><h3>${dxE(ISH_CATS.find(c=>c[0]===is.cat)[1])}</h3><div style="margin-left:auto" class="lx-pre">${[1,3,5,10].map(q=>`<button class="lx-btn${is.q===q?" pri":""}" data-is="q" data-v="${q}" aria-label="Buy ${q} at a time">x${q}</button>`).join("")}</div></div>
+    <div class="lx-pre" style="margin-bottom:6px"><button class="lx-btn${is.fin?"":" pri"}" data-is="fin" data-v="0">Pay cash</button><button class="lx-btn${is.fin?" pri":""}" data-is="fin" data-v="1">Finance: ${Math.round(ISH_DOWN*100)}% down, ${ISH_TERM} days, ${Math.round(ISH_INT*100)}% interest</button></div>
+    <p class="lx-sub" style="margin:4px 0 8px">Bulk: 3+ save 4%, 5+ save 8%, 10+ save 12%. Each extra unit of the same item costs 5% more and adds ${Math.round(ISH_DIM*100)}% of the first one's effect. Prices move with the weekly market; stock refreshes every 7 days.</p>`+
+    ISH.filter(i=>i.cat===is.cat).map(ishCard).join("")+`</div>`;
+  return h}
+function isRender(){const main=DX.el&&DX.el.querySelector("#mdx-main");if(!main)return;const is=ISS();
+  DX.el.classList.add("lx-on");const dt=DX.el.querySelector("#mdx-dt");if(dt)dt.textContent=`Day ${S.day||1} · next day in ${dxIn((S.hour+1)*DAYMS-Date.now())}`;
+  DX.el.querySelectorAll("[data-lx=page]").forEach(b=>b.classList.toggle("on",b.dataset.v==="ind"));
+  if(main.dataset.mode!=="is"){main.dataset.mode="is";main._lxh=""}
+  is.force=false;let h;try{h=ishPage(is)}catch(e){console.warn("ish",e);h=`<div class="mdx-card"><div class="mdx-empty">The shop hit a snag (${dxE(e.message)}). Close and reopen the dashboard.</div></div>`}
+  if(h!==main._lxh){main._lxh=h;main.innerHTML=h}}
+function isAct(a,b){const is=ISS();let done=false;
+  if(a==="cat"){is.cat=b.dataset.v}
+  else if(a==="q"){is.q=+b.dataset.v||1}
+  else if(a==="fin"){is.fin=b.dataset.v==="1"}
+  else if(a==="buy"){const q=Math.max(1,Math.min(is.q,ishC(b.dataset.k).max-ishN(b.dataset.k),ishLeft(ishC(b.dataset.k)))),r=ishBuy(b.dataset.k,q,is.fin);is.note=r||`Bought ${q} x ${ishC(b.dataset.k).n}${is.fin?" on finance":""}.`;is.nt=Date.now();if(!r){toast(is.note);done=true}}
+  else if(a==="sell"){const r=ishSell(b.dataset.k);is.note=r||`Sold one ${ishC(b.dataset.k).n.toLowerCase()}.`;is.nt=Date.now();done=!r}
+  if(done){save();hud();if(typeof PH!=="undefined"&&PH.open)phRender()}
+  is.force=true;dxRender()}
+function isWire(el){el.addEventListener("click",e=>{const b=e.target.closest("[data-is]");if(!b||b.disabled)return;try{isAct(b.dataset.is,b)}catch(err){console.warn("ish",err)}})}
+
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
