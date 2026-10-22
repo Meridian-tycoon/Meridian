@@ -378,7 +378,8 @@ const slotKey=n=>n===1?BASEKEY:BASEKEY+"-s"+n; // slot 1 is the original save
 let SLOT=1;try{SLOT=+localStorage.getItem(SLOTKEY)||1}catch(e){}
 const KEY=slotKey(SLOT);
 let S={cash:0,day:1,own:{},events:{},log:[],hist:[],goals:[],mgr:{},speed:1,debt:0,rivals:null,last:Date.now(),earned:0}; // own[cityId][bizKey]=level
-try{const raw=localStorage.getItem(KEY);if(raw){S=Object.assign(S,JSON.parse(raw));if(S.tut==null)S.tut=9}}catch(e){}
+let FRESHGAME=true;try{const raw=localStorage.getItem(KEY);if(raw){FRESHGAME=false;S=Object.assign(S,JSON.parse(raw));if(S.tut==null)S.tut=9}}catch(e){}
+if(FRESHGAME)S.pickStart=1; // new game: choose a starting city before playing (kept in the save so a reload mid-choice asks again; old saves never have it)
 /* playtest progress reports (opt-in). Fill in to switch on: form = Google Form "formResponse" URL, f = each field's "entry.NNN" id (empty ids are skipped). */
 const PLAYTEST={form:"https://docs.google.com/forms/d/e/1FAIpQLScN0SmD630lPaC073ltMKdyGbunUb_QaTjA9F9u7G6zyoLjUw/formResponse", // Google Form "formResponse" URL
   every:3, // auto-report every N game days
@@ -4313,7 +4314,40 @@ document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest
   if(a==="next")tutShow(tutStep+1);else if(a==="skip")tutClose(1);else if(a==="tipok"){const t=$("#tipbox");if(t)t.remove();setTimeout(tipCheck,300)}else if(a==="replay"){e.stopPropagation();closeSheet();tutStart()}},true);
 {let tq=0;const mo=new MutationObserver(()=>{if(tq)return;tq=setTimeout(()=>{tq=0;tipCheck()},400)});mo.observe(sheet,{childList:true});setTimeout(()=>mo.observe($("#phone"),{childList:true}),0)}
 addEventListener("resize",()=>{if(tutStep>=0)tutShow(tutStep)});
-setTimeout(()=>{if(S.tut===0)tutShow(0)},1500);
+setTimeout(()=>{if(S.tut===0&&!S.pickStart)tutShow(0)},1500);
+/* ---------- start screen: new games (fresh save or new slot) choose where to begin. Before this the start was always CITIES[0] (Montréal) via the S.loc default; home stays empty. ---------- */
+(function(){if(!S.pickStart)return;
+const DEF=0;let pick=DEF,q="";
+const st=document.createElement("style");st.textContent=`
+#stpick{position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box}
+#stpick .stb{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.35);width:100%;max-width:460px;max-height:100%;display:flex;flex-direction:column;overflow:hidden}
+#stpick .sth{padding:14px 14px 8px}#stpick h2{margin:0 0 2px;font:600 18px var(--display)}#stpick p{margin:0;font-size:13px;color:var(--muted);line-height:1.4}
+#stpick .stq{display:flex;gap:8px;padding:0 14px 8px}
+#stpick input{flex:1;min-width:0;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;font-size:16px}
+#stpick button{font:inherit;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+#stpick button.go{background:var(--accent);border-color:var(--accent);color:#fff}
+#stpick .stl{overflow-y:auto;flex:1;min-height:120px;padding:0 14px;-webkit-overflow-scrolling:touch}
+#stpick .stc{position:sticky;top:0;background:var(--panel);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 0 4px}
+#stpick .stcity{display:block;width:100%;text-align:left;border-radius:10px;margin:0 0 4px;padding:8px 10px}
+#stpick .stcity[aria-pressed=true]{border-color:var(--accent);background:var(--ownbg2)}
+#stpick .stcity b{font-size:14px}#stpick .stcity small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+#stpick .stf{padding:10px 14px 14px;display:flex;gap:8px;border-top:1px solid var(--line)}#stpick .stf .go{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}`;document.head.appendChild(st);
+const hint=c=>{const l=["Small, cheap market. Few customers","Small, cheap market. Few customers","Mid-size market, fair prices","Large market, higher costs","Big market, costly land","Biggest market, priciest land"][c.size]||"";return l+" · living ×"+COL(c).toFixed(2)+(c.dep&&c.dep.length?" · "+c.dep.join(", ")+" deposits":"")};
+const d=document.createElement("div");d.id="stpick";d.setAttribute("role","dialog");d.setAttribute("aria-modal","true");d.setAttribute("aria-label","Choose your starting city");
+d.innerHTML=`<div class="stb"><div class="sth"><h2>Where do you start?</h2><p>Pick your country and city. You can travel anywhere later.</p></div><div class="stq"><input id="stq" type="search" placeholder="Search city or country" autocomplete="off" aria-label="Search city or country"><button id="strnd" type="button">Random</button></div><div class="stl" id="stl"></div><div class="stf"><button id="stgo" class="go" type="button"></button></div></div>`;
+const esc2=x=>String(x).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
+function draw2(keep){const l=$("#stl"),y=keep?l.scrollTop:0,qq=q.trim().toLowerCase();let h="",cnt=0;
+ for(const co of [...new Set(CITIES.map(c=>c.country))].sort((a,b)=>a.localeCompare(b))){
+  const cs=CITIES.filter(c=>c.country===co&&(!qq||c.name.toLowerCase().includes(qq)||co.toLowerCase().includes(qq))).sort((a,b)=>b.size-a.size||a.name.localeCompare(b.name));
+  if(!cs.length)continue;h+=`<div class="stc">${esc2(co)}</div>`+cs.map(c=>{cnt++;return `<button type="button" class="stcity" data-c="${c.id}" aria-pressed="${c.id===pick}"><b>${esc2(c.name)}${c.id===DEF?" · default":""}</b> <span style="color:var(--muted)">${"●".repeat(c.size)}${"○".repeat(5-c.size)}</span><small>${esc2(hint(c))}</small></button>`}).join("")}
+ l.innerHTML=h||'<p style="padding:12px 0">No match.</p>';l.scrollTop=y;$("#stgo").textContent="Start in "+CITIES[pick].name}
+function done(){const c=CITIES[pick];S.loc={city:c.id,lat:c.lat,lon:c.lon};delete S.pickStart;d.remove();document.removeEventListener("keydown",kd,true);save();try{rotateTo(c,Math.max(V.k,2.5))}catch(e){}if(S.tut===0)setTimeout(()=>{if(S.tut===0&&tutStep<0)tutShow(0)},1200)}
+function kd(e){if(!document.body.contains(d))return;if(e.key==="Escape"){e.stopPropagation();e.preventDefault();if(q){q="";$("#stq").value="";draw2()}return}
+ if(e.key==="Enter"&&document.activeElement&&document.activeElement.id==="stq"){e.preventDefault();const f=$("#stl .stcity");if(f){pick=+f.dataset.c;draw2(1)}}}
+document.addEventListener("keydown",kd,true);
+d.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;if(b.dataset.c!=null){pick=+b.dataset.c;draw2(1)}else if(b.id==="strnd"){pick=Math.floor(Math.random()*CITIES.length);q="";$("#stq").value="";draw2();const el=$(`#stl [data-c="${pick}"]`);if(el)el.scrollIntoView({block:"center"})}else if(b.id==="stgo")done()});
+d.addEventListener("input",e=>{if(e.target.id==="stq"){q=e.target.value;draw2()}});
+document.body.appendChild(d);draw2();setTimeout(()=>{const el=$(`#stl [data-c="${pick}"]`);if(el)el.scrollIntoView({block:"center"})},0)})();
 /* ---------- lasting strike damage: S.dmg[cityId] = {l0: damage 0..1 at the strike, t: strike time, own: 1 if only the player's own strikes did it, k: heaviest weapon}
    Current level decays linearly to 0 over dmgRepDays(l0) game days, starting when the city is habitable again (after S.unh for ICBM hits). Missing S.dmg = undamaged. */
 const DMG={core:[0,10,25,60,120,250], // dense economic core in km² by market size 1..5 (rounded; a megacity's built-up area is ~1,000–2,000 km², most value sits in the centre)
