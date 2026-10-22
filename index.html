@@ -386,7 +386,14 @@ function evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="
 const RIVALS=[{n:"Halcyon Group",col:"#7c3aed"},{n:"Ironbridge Co.",col:"#b45309"},{n:"Sable & Finch",col:"#0369a1"},
  {n:"Northwind Holdings",col:"#be123c"},{n:"Kestrel Partners",col:"#047857"},{n:"Orchid Capital",col:"#a21caf"},{n:"Granite & Rowe",col:"#57534e"},{n:"Solano Group",col:"#ca8a04"}];
 const RIVAL_START=[[3,13,40],[29,36,11],[14,31,23],[0,5,19],[33,35,9],[27,15,45],[16,22,25],[37,8,4]];
-if(!S.rivals)S.rivals=[];while(S.rivals.length<RIVALS.length){const i=S.rivals.length;S.rivals.push({nw:40000+i*30000,cities:RIVAL_START[i].slice()})}
+const RIVAL_MAXC=20; // most cities one rival can hold (about a third of the map)
+if(!Array.isArray(S.rivals))S.rivals=[];while(S.rivals.length<RIVALS.length){const i=S.rivals.length;S.rivals.push({nw:40000+i*30000,cities:RIVAL_START[i].slice()})}
+/* save repair: older saves let rivals spread into every city, which crashed simDay; reset a broken net worth and trim their cities */
+if(S.rivals.length>RIVALS.length)S.rivals.length=RIVALS.length;
+S.rivals.forEach((r,i)=>{if(!r||typeof r!=="object")r=S.rivals[i]={nw:40000+i*30000,cities:RIVAL_START[i].slice()};
+  if(!(Number.isFinite(r.nw)&&r.nw>0))r.nw=40000+i*30000;
+  r.cities=[...new Set(Array.isArray(r.cities)?r.cities.filter(x=>CITIES[x]&&CITIES[x].id===x):[])].slice(0,RIVAL_MAXC)});
+S.rivals.forEach(r=>{if(r.nw>1e12)r.nw=1e12});
 const rivalsIn=c=>S.rivals.reduce((n,r)=>n+(r.cities.includes(c.id)?1:0),0);
 const compMult=c=>Math.max(.4,1-0.13*rivalsIn(c));
 const buyoutCost=c=>Math.round(30000*PRICE[c.size]*(1+S.day/40));
@@ -1715,7 +1722,7 @@ const NEWSPOOL=[c=>`${c.name}: tourism up this week, restaurants report long lin
   c=>`${c.name} hosts an international trade fair this weekend`,c=>`Startup boom in ${c.name} fills office towers`,c=>`${c.name} farmers expect a strong harvest`,c=>`Steel demand surges as ${c.name} builds new bridges`];
 function worldNews(){const r=Math.random();let msg;
   if(r<.35&&S.rivals.length){const i=Math.floor(Math.random()*S.rivals.length),rv=S.rivals[i];const c=CITIES[rv.cities[Math.floor(Math.random()*rv.cities.length)]];
-    msg=[`${RIVALS[i].n} posts record quarter, worth ${fmt(rv.nw)}`,`${RIVALS[i].n} is hiring aggressively in ${c.name}`,`Analysts say ${RIVALS[i].n} is eyeing new markets`][Math.floor(Math.random()*3)]}
+    msg=[`${RIVALS[i].n} posts record quarter, worth ${fmt(rv.nw)}`,c?`${RIVALS[i].n} is hiring aggressively in ${c.name}`:`Analysts say ${RIVALS[i].n} is eyeing new markets`,`Analysts say ${RIVALS[i].n} is eyeing new markets`][Math.floor(Math.random()*3)]}
   else{const c=CITIES[Math.floor(Math.random()*CITIES.length)];msg=NEWSPOOL[Math.floor(Math.random()*NEWSPOOL.length)](c)}
   S.log.unshift("World: "+msg);S.log=S.log.slice(0,3);hud()}
 setInterval(worldNews,4*60000);setTimeout(worldNews,20000);
@@ -1734,8 +1741,8 @@ function simDay(quiet){const{nw}=totals();S.day++;if(typeof hrDay==="function")h
     if(!S.iev[id]){const ks=Object.keys(IEV),t=ks[Math.floor(Math.random()*ks.length)];S.iev[id]={t,d:2+Math.floor(Math.random()*5)};
       if(!quiet&&S.sites.some(x=>x.city==id)){S.log.unshift(`${IEV[t].n} in ${CITIES[id].name} (${S.iev[id].d}h)`);S.log=S.log.slice(0,3)}}}
   if(!quiet)for(const c of CITIES){const p=S.own[c.id]?cityProfit(c):0;if(p)pops.push({c,v:p,t:performance.now()})}
-  S.rivals.forEach((r,i)=>{r.nw=Math.round(r.nw*(1.012+Math.random()*.02)+2000);
-    if(Math.random()<.18&&r.cities.length<5+Math.floor(r.nw/120000)){const mine=CITIES.filter(c=>S.own[c.id]&&!r.cities.includes(c.id));const opts=mine.length&&Math.random()<.4?mine:CITIES.filter(c=>!r.cities.includes(c.id));const c=opts[Math.floor(Math.random()*opts.length)];
+  S.rivals.forEach((r,i)=>{r.nw=Math.min(1e12,Math.round(r.nw*(1.012+Math.random()*.02)+2000)); // one simDay = one game day; capped so it stays finite
+    if(Math.random()<.18&&r.cities.length<Math.min(RIVAL_MAXC,5+Math.floor(r.nw/120000))){const mine=CITIES.filter(c=>S.own[c.id]&&!r.cities.includes(c.id));const opts=mine.length&&Math.random()<.4?mine:CITIES.filter(c=>!r.cities.includes(c.id));if(!opts.length)return;const c=opts[Math.floor(Math.random()*opts.length)];
       r.cities.push(c.id);if(!quiet&&S.own[c.id]){S.log.unshift(`${RIVALS[i].n} opened in your city ${c.name}`);S.log=S.log.slice(0,3)}}});
   S.hist.push(Math.round(nw));if(S.hist.length>60)S.hist.shift();
   for(const id in S.events){if(--S.events[id].d<=0)delete S.events[id]}
