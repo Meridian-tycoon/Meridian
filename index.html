@@ -388,15 +388,29 @@ function unhOn(c){const u=S.unh;return !!(c&&u&&typeof u==="object"&&u[c.id]>Dat
 const unhLeft=c=>{const d=Math.max(0,Math.ceil(((S.unh||{})[c.id]-Date.now())/DAYMS));return d>=30?`${Math.floor(d/30)} mo ${d%30} d`:`${d} d`};
 function evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="function"?stormMult(c):1)*(typeof strikeMult==="function"?strikeMult(c):1)*(typeof dmgMult==="function"?dmgMult(c):1)*popDem(c)*sancMult()}
 /* rival companies */
-const RIVALS=[{n:"Halcyon Group",col:"#7c3aed"},{n:"Ironbridge Co.",col:"#b45309"},{n:"Sable & Finch",col:"#0369a1"},
- {n:"Northwind Holdings",col:"#be123c"},{n:"Kestrel Partners",col:"#047857"},{n:"Orchid Capital",col:"#a21caf"},{n:"Granite & Rowe",col:"#57534e"},{n:"Solano Group",col:"#ca8a04"}];
-const RIVAL_START=[[3,13,40],[29,36,11],[14,31,23],[0,5,19],[33,35,9],[27,15,45],[16,22,25],[37,8,4]];
+/* Rivals are real companies. Real figures (market cap in US$ bn, staff, founding year) are about 2025 and shown as facts only.
+   Game scale: the economy is far smaller than real dollars, so game net worth is seeded from market cap as rivalSeed = 5000 x sqrt(cap in $bn)
+   (Maersk 25k ... Apple 296k): the real size ranking is kept but the spread is squeezed to ~12x, so buy-outs, city growth (nw/120000) and the 1e12 cap behave as before. */
+const RIVALS=[
+ {n:"Walmart",col:"#0071ce",ind:"Retail",hq:"Bentonville, USA",yr:1962,emp:"2.1M",cap:750},
+ {n:"Amazon",col:"#ff9900",ind:"E-commerce & cloud",hq:"Seattle, USA",yr:1994,emp:"1.5M",cap:2300},
+ {n:"Toyota",col:"#eb0a1e",ind:"Automotive",hq:"Toyota City, Japan",yr:1937,emp:"380K",cap:250},
+ {n:"Shell",col:"#e0a800",ind:"Energy",hq:"London, UK",yr:1907,emp:"96K",cap:210},
+ {n:"Apple",col:"#3a3a3c",ind:"Technology",hq:"Cupertino, USA",yr:1976,emp:"164K",cap:3500},
+ {n:"Maersk",col:"#42b0d5",ind:"Shipping",hq:"Copenhagen, Denmark",yr:1904,emp:"100K",cap:25},
+ {n:"JPMorgan Chase",col:"#7a5c3a",ind:"Banking",hq:"New York, USA",yr:1799,emp:"318K",cap:800},
+ {n:"Nestlé",col:"#0b8f8c",ind:"Food & drink",hq:"Vevey, Switzerland",yr:1866,emp:"277K",cap:250}];
+const rivalSeed=i=>Math.round(5000*Math.sqrt(RIVALS[i].cap));
+const fmtCap=b=>b>=1000?"US$"+(b/1000).toFixed(1).replace(/\.0$/,"")+"T":"US$"+b+"B";
+const rivalFacts=i=>{const r=RIVALS[i];return `${r.ind} · HQ ${r.hq} · est. ${r.yr} · ${r.emp} staff · ${fmtCap(r.cap)} market cap (real, 2025)`};
+// HQ city first (nearest game city: Houston~Bentonville, Vancouver~Seattle, Tokyo~Toyota City, London, LA~Cupertino, Stockholm~Copenhagen, New York, Paris~Vevey), then major real markets
+const RIVAL_START=[[7,5,8,1],[2,3,13,36],[39,3,16,38],[13,7,18,27],[4,3,36,39],[19,32,36,18],[3,13,35,39],[14,11,3,29]];
 const RIVAL_MAXC=10; // most cities one rival can hold (about a sixth of the map); keeps ~2 rivals per player city late game
-if(!Array.isArray(S.rivals))S.rivals=[];while(S.rivals.length<RIVALS.length){const i=S.rivals.length;S.rivals.push({nw:40000+i*30000,cities:RIVAL_START[i].slice()})}
+if(!Array.isArray(S.rivals))S.rivals=[];while(S.rivals.length<RIVALS.length){const i=S.rivals.length;S.rivals.push({nw:rivalSeed(i),cities:RIVAL_START[i].slice()})}
 /* save repair: older saves let rivals spread into every city, which crashed simDay; reset a broken net worth and trim their cities */
 if(S.rivals.length>RIVALS.length)S.rivals.length=RIVALS.length;
-S.rivals.forEach((r,i)=>{if(!r||typeof r!=="object")r=S.rivals[i]={nw:40000+i*30000,cities:RIVAL_START[i].slice()};
-  if(!(Number.isFinite(r.nw)&&r.nw>0))r.nw=40000+i*30000;
+S.rivals.forEach((r,i)=>{if(!r||typeof r!=="object")r=S.rivals[i]={nw:rivalSeed(i),cities:RIVAL_START[i].slice()};
+  if(!(Number.isFinite(r.nw)&&r.nw>0)||r.nw<rivalSeed(i)*.3)r.nw=rivalSeed(i); // old saves held fictional firms at these slots: keep their cities and growth, lift an absurdly small net worth to the real company's seed
   r.cities=[...new Set(Array.isArray(r.cities)?r.cities.filter(x=>CITIES[x]&&CITIES[x].id===x):[])].slice(0,RIVAL_MAXC)});
 S.rivals.forEach(r=>{if(r.nw>1e12)r.nw=1e12});
 const rivalsIn=c=>S.rivals.reduce((n,r)=>n+(r.cities.includes(c.id)?1:0),0);
@@ -589,7 +603,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
   const here=S.rivals.map((r,i)=>r.cities.includes(c.id)?i:-1).filter(i=>i>=0);
   if(here.length){const bc=buyoutCost(c);h+=`<div class="sec">Competition · −${here.length*15}% customers</div><div class="list">`;
     for(const i of here)h+=`<div class="row"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${RIVALS[i].col};margin-right:6px"></span>${RIVALS[i].n}</div>
-      <div class="d">Buy out their local branch to win back customers.</div><button class="buy up" data-bo="${i}" ${S.cash<bc?"disabled":""}>Buy out ${fmt(bc)}</button></div>`;
+      <div class="d">Buy out their local branch to win back customers.<br><small style="color:var(--muted)">${rivalFacts(i)}</small></div><button class="buy up" data-bo="${i}" ${S.cash<bc?"disabled":""}>Buy out ${fmt(bc)}</button></div>`;
     h+=`</div>`}
   h+=`<div class="sec">Open a business</div><div class="list">`;
   if(!S.lic?.[c.id]&&cartCount(c)>=CART_MAX){const lc=licCost(c);h+=`<div class="row"><div class="n">Street vendor license</div><div class="d">You run ${CART_MAX} carts here, the limit without a license. One-time fee, lets you run every cart type in ${c.name}.</div><button class="buy" id="buylic" ${S.cash<lc?"disabled":""}>License ${fmt(lc)}</button></div>`}
@@ -1827,10 +1841,10 @@ function renderPortfolio(){const{inc,nw}=totals();
     h+=`<div class="row link" data-go="${c.id}"><div class="n">${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"}</span>`:""}${S.mgr[c.id]?'<span class="tag" style="border:1px solid var(--line)">MGR</span>':""}</div>
     <div class="d">${n} business${n>1?"es":""} · <b>${fmt(cityProfit(c))}</b>/hr</div><span style="font-family:var(--mono);color:var(--muted)">›</span></div>`}
   h+=`</div><div class="sec">Find a city</div><input id="q" type="search" placeholder="Tokyo, Lagos… or oil, coal, ore" value="${query}" autocomplete="off"><div class="list" id="qres"></div>`;
-  const board=[{n:"You",col:"var(--own)",nw,me:1},...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:r.nw,c:r.cities.length}))].sort((a,b)=>b.nw-a.nw);
+  const board=[{n:"You",col:"var(--own)",nw,me:1},...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:r.nw,c:r.cities.length,f:`${RIVALS[i].ind} · ${fmtCap(RIVALS[i].cap)} real`}))].sort((a,b)=>b.nw-a.nw);
   h+=logiHtml();h+=govSummary();h+=onlineHtml();
   h+=`<div class="sec">Leaderboard</div><div class="list">`+board.map((b,i)=>`<div class="row"><div class="n" style="${b.me?"color:var(--own)":""}">${i+1}. <span style="display:inline-block;width:9px;height:9px;background:${b.col};margin:0 6px 0 2px"></span>${b.n}</div>
-    <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
+    <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities · ${b.f}`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
   h+=bankHtml();
   if(S.lst.length)h+=`<div class="sec">Market listings</div><div class="list">`+S.lst.map(l=>{const c=CITIES[l.city],stockLv=mLevel(c,l.g);return `<div class="row link" data-go="${c.id}"><div class="n">${G[l.g][0]} · ${c.name}</div><div class="d">${l.q<1e-6?"Sold out":gq(l.q)+" left at "+fmt(l.p)} · ${gq(l.sold||0)} sold · stock ${Math.round(stockLv*100)}%</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`;
   h+=`<div class="sec">Taxes · every ${TAXDAYS} days</div><div class="list"><div class="row"><div class="n">Owed this tax year <b style="font-family:var(--mono)">${fmt(taxOwed())}</b></div>
@@ -4110,13 +4124,16 @@ function dmgStrike(k,c,mine){const W=WPNCFG.w[k];if(!W||!c)return 0;S.dmg=S.dmg&
 function dmgLine(c){const l=dmgLvl(c);if(l<.005)return "";const e=S.dmg[c.id];
   return `<div class="welcome" style="background:var(--bad)">${l>=DMG.dead?"☠":"💥"} ${c.name} is ${dmgWord(l)}: ${dmgPct(l)} damage · demand, output and rents −${Math.round((1-dmgMult(c))*100)}%${e.own?" for you":""} · rebuilt in ${fmtDur(dmgLeft(c))}</div>`}
 // map: rubble/ash patch scaled to damage, green haze for gas, ruin ring + label for destroyed cities; persists until rebuilt
-function drawDmg(ctx){const D=S.dmg;if(!D||typeof D!=="object")return;const zs=Math.min(2.5,.7+V.k*.3);
+const dmgLbl=[]; // label boxes already drawn this frame (reused array, no per-frame allocation beyond pushes)
+function drawDmg(ctx){const D=S.dmg;if(!D||typeof D!=="object")return;const zs=Math.min(2.5,.7+V.k*.3);dmgLbl.length=0;
   for(const id in D){const c=CITIES[id];if(!c)continue;const l=dmgLvl(c);if(l<.005||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]),e=D[id],R=(5+16*Math.sqrt(l))*zs,gas=e.k==="gas";
     const gr=ctx.createRadialGradient(x,y,0,x,y,R);gr.addColorStop(0,gas?`rgba(60,80,10,${.35+.4*l})`:`rgba(25,20,18,${.4+.5*l})`);gr.addColorStop(.6,gas?`rgba(132,204,22,${.25*l+.1})`:`rgba(80,60,50,${.3*l+.15})`);gr.addColorStop(1,"rgba(80,60,50,0)");
     ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fillStyle=gr;ctx.fill();
     if(!gas&&l>=.1){ctx.fillStyle="rgba(15,12,10,.7)";for(let i=0;i<3+Math.round(6*l);i++){const a=(+id*7+i*2.39)%6.283,r=R*.55*((i*37%10)/10);ctx.beginPath();ctx.arc(x+Math.cos(a)*r,y+Math.sin(a)*r,1+1.6*l*zs,0,7);ctx.fill()}}
     if(l>=DMG.dead){ctx.save();ctx.beginPath();ctx.arc(x,y,R*.8,0,7);ctx.strokeStyle="#f43f5e";ctx.lineWidth=1.6;ctx.setLineDash([4,2]);ctx.stroke();ctx.setLineDash([]);ctx.restore()}
-    if(l>=.05&&!unhOn(c)){ctx.font="bold 10px system-ui, sans-serif";ctx.textAlign="center";ctx.fillStyle=l>=DMG.dead?"#f43f5e":"#fca5a5";ctx.fillText(l>=DMG.dead?`DESTROYED · ${fmtDur(dmgLeft(c))}`:`−${Math.round(l*100)}%`,x,y+R+11);ctx.textAlign="start"}}}
+    if(l>=.05&&!unhOn(c)){const t=l>=DMG.dead?`DESTROYED · ${fmtDur(dmgLeft(c))}`:`−${Math.round(l*100)}%`,w=t.length*5.8,ly=y+R+11;let hit=false; // skip a label that would sit on one already drawn (crowded countries at low zoom)
+      for(let q=0;q<dmgLbl.length;q+=4){if(Math.abs(x-dmgLbl[q])<(w+dmgLbl[q+2])/2+2&&Math.abs(ly-dmgLbl[q+1])<12){hit=true;break}}
+      if(!hit){dmgLbl.push(x,ly,w,0);ctx.font="bold 10px system-ui, sans-serif";ctx.textAlign="center";ctx.fillStyle=l>=DMG.dead?"#f43f5e":"#fca5a5";ctx.fillText(t,x,ly);ctx.textAlign="start"}}}}
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
