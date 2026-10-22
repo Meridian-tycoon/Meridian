@@ -699,7 +699,8 @@ const techUp=o=>o.cat==="Factory"&&hasTech("renew")?.75:1;
 /* research points accrue continuously but are paid out every 15 real minutes; RPX doubles all research output */
 const RPX=2,RPQ=DAYMS/4;
 function rpPay(){const q=Math.floor(Date.now()/RPQ);if(S.rpQ==null)S.rpQ=q;if(q>S.rpQ){S.rp=(S.rp||0)+(S.rpP||0);S.rpP=0;S.rpQ=q}}
-const rpRate=()=>RPX*2+RPX*S.sites.reduce((a,s)=>{const o=siteOp(s);return a+(o&&o.rp?o.rp*effHa(s)*thr(s)*(s.k==null?1:s.k):0)},0);
+/* same factors runIndustry() uses for research output: ha × equipment × local event × crew × current throttle */
+const rpRate=()=>RPX*2+RPX*S.sites.reduce((a,s)=>{const o=siteOp(s);return a+(o&&o.rp?o.rp*effHa(s)*thr(s)*ievM(s,o)*(typeof crewF==="function"?crewF(s):1)*(s.k==null?1:s.k):0)},0);
 const LAND={s:["Small plot",2],m:["Field",10],l:["Estate",40]};
 /* land is zoned: farmland, mining claims and industrial lots are separate plots */
 const ZONE={farm:{n:"Farmland",cats:["Farm","Ranch"],pm:1,d:"Crops and livestock. Cheapest land; best in small towns."},
@@ -1651,10 +1652,10 @@ function cartTips(c,b,lv){try{const key=bkey(c,b.k),st=isStaffed(c,b.k),r=useRat
   if(!t.length)t.push("All good: stocked, staffed and profitable. Keep it up.");
   return `<div class="ops" style="border-left:3px solid var(--good)"><div class="ops-l"><b>🤖 AI advisor</b>${t.slice(0,3).map(x=>`<br>• ${x}`).join("")}</div></div>`}catch(e){return ""}}
 function opsHtml(c,b,lv){const key=bkey(c,b.k),st=isStaffed(c,b.k),staff=bizStaff(b.k,lv),sup=SUP[b.k],r=useRate(b,lv,c);
-  const pend=S.orders.filter(o=>o.key===key),opf=opFactor(c,b);
-  const runs=st?"Run by your staff":tenantRun(b.k)?"Tenants pay rent":present(c)?"You're running it yourself (60% speed)":"Closed: no staff and you're not here";
+  const pend=S.orders.filter(o=>o.key===key),opf=opFactor(c,b),sf=selfOp(c,b,lv);
+  const runs=st?"Run by your staff":tenantRun(b.k)?"Tenants pay rent":present(c)?`You're running it yourself (${Math.round(sf*100)}% speed)`:"Closed: no staff and you're not here";
   let h=`<div class="ops"><div class="ops-l"><b style="color:${opf>.01?"var(--good)":"var(--bad)"}">${opf>.01?"Open":"Not selling"}</b> · ${runs}`;
-  if(sup){const have=stockOf(c,b.k),hrs=r?have/(r*(st?1:Math.max(.01,selfOp(c,b,lv)))):0;
+  if(sup){const have=stockOf(c,b.k),hrs=r?have/(r*(st?1:Math.max(.01,sf))):0;
     h+=`<br>Stock: <b>${Math.floor(have).toLocaleString()}</b> ${sup.u}${have>0?` · lasts ~${hrs<1?Math.round(hrs*60)+" min":hrs.toFixed(1)+" h"}`:` · <span style="color:var(--bad)">empty, nothing to sell</span>`}${pend.length?` · ${pend.reduce((a,o)=>a+o.q,0).toLocaleString()} arriving in ${fmtDur(Math.max(0,Math.min(...pend.map(o=>o.arr))-Date.now()))}`:""}
       <br><span style="color:var(--muted)">${sup.n}: $${unitCost(b,c).toFixed(2)} per ${sup.u.replace(/s$/,"")}</span>`}
   h+=`</div><div class="ops-b">`;
