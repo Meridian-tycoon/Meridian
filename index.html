@@ -72,6 +72,9 @@ canvas#map:active{cursor:grabbing}
 .list{display:flex;flex-direction:column;border-top:1px solid var(--line)}
 .row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;padding:12px 0;border-bottom:1px solid var(--line);align-items:center}
 .row .n{font-weight:600}
+.devname,.mdx-hd h2 span.devname{color:#ffd23f;font-weight:800;text-shadow:0 0 1px #6b4a00,0 0 2px #6b4a00,0 0 6px #ffd700,0 0 12px #ffb300;animation:devglow 2.6s ease-in-out infinite alternate}
+@keyframes devglow{from{text-shadow:0 0 1px #6b4a00,0 0 2px #6b4a00,0 0 5px #ffd700,0 0 9px #ffb300}to{text-shadow:0 0 1px #6b4a00,0 0 2px #6b4a00,0 0 8px #ffe066,0 0 16px #ffb300}}
+@media (prefers-reduced-motion:reduce){.devname{animation:none}}
 .row .d{min-width:0;font-size:12.5px;line-height:1.45;color:var(--muted);grid-column:1}
 .row .d b{font-family:var(--mono);color:var(--ink);font-weight:600}
 .row button{grid-row:1/3;grid-column:2}
@@ -286,6 +289,14 @@ window.echarts={registerMap:function(n,g){window.__WORLD=g}};
    const FIREBASE_CONFIG={apiKey:"...",authDomain:"...",projectId:"...",storageBucket:"...",messagingSenderId:"...",appId:"..."};
    Leave it null to keep the game fully offline (no network requests). See docs/online-setup.md. */
 const FIREBASE_CONFIG={apiKey:"AIzaSyCDtjXQ_Mn41j6tvTl92T31WHkyUda9VbA",authDomain:"meridian-world-players.firebaseapp.com",projectId:"meridian-world-players",storageBucket:"meridian-world-players.firebasestorage.app",messagingSenderId:"940610754629",appId:"1:940610754629:web:51ac000183beb19a8deb2c"};
+/* Developer name: gold neon. DEV_UIDS = Firebase uids of the developer (send the "Your player ID" from Settings > Online to add one). */
+const DEV_UIDS=[];
+const DEV_NAME="Mark Vani";
+const devNorm=x=>String(x==null?"":x).toLowerCase().replace(/\s+/g,"");
+const devUid=u=>!!u&&DEV_UIDS.indexOf(u)>=0;
+function devSelf(){try{if(ON.user&&devUid(ON.user.uid))return true}catch(e){}for(let k=0;k<arguments.length;k++)if(arguments[k]&&devNorm(arguments[k])===devNorm(DEV_NAME))return true;return false}
+const devEsc=x=>String(x==null?"":x).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+const gnHtml=(x,on)=>on?`<span class="devname">${devEsc(x)}</span>`:devEsc(x);
 const $=s=>document.querySelector(s);
 const fmt=n=>{const a=Math.abs(n),s=n<0?"-$":"$";
   if(a>=1e9)return s+(a/1e9).toFixed(2)+"B";if(a>=1e6)return s+(a/1e6).toFixed(2)+"M";if(a>=1e4)return s+(a/1e3).toFixed(1)+"K";return s+Math.round(a).toLocaleString()};
@@ -1874,9 +1885,9 @@ function renderPortfolio(){const{inc,nw}=totals();
     h+=`<div class="row link" data-go="${c.id}"><div class="n">${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"}</span>`:""}${S.mgr[c.id]?'<span class="tag" style="border:1px solid var(--line)">MGR</span>':""}</div>
     <div class="d">${n} business${n>1?"es":""} · <b>${fmt(cityProfit(c))}</b>/hr</div><span style="font-family:var(--mono);color:var(--muted)">›</span></div>`}
   h+=`</div><div class="sec">Find a city</div><input id="q" type="search" placeholder="Tokyo, Lagos… or oil, coal, ore" value="${query}" autocomplete="off"><div class="list" id="qres"></div>`;
-  const board=[{n:"You",col:"var(--own)",nw,me:1},...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:r.nw,c:r.cities.length,f:`${RIVALS[i].ind} · ${fmtCap(RIVALS[i].cap)} real`}))].sort((a,b)=>b.nw-a.nw);
+  const board=[{n:"You",col:"var(--own)",nw,me:1,dev:devSelf(S.name,(S.online||{}).name)?(S.online&&S.online.name||S.name||DEV_NAME):""},...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:r.nw,c:r.cities.length,f:`${RIVALS[i].ind} · ${fmtCap(RIVALS[i].cap)} real`}))].sort((a,b)=>b.nw-a.nw);
   h+=govSummary();h+=onlineHtml();
-  h+=`<div class="sec">Leaderboard</div><div class="list">`+board.map((b,i)=>`<div class="row"><div class="n" style="${b.me?"color:var(--own)":""}">${i+1}. <span style="display:inline-block;width:9px;height:9px;background:${b.col};margin:0 6px 0 2px"></span>${b.n}</div>
+  h+=`<div class="sec">Leaderboard</div><div class="list">`+board.map((b,i)=>`<div class="row"><div class="n" style="${b.me?"color:var(--own)":""}">${i+1}. <span style="display:inline-block;width:9px;height:9px;background:${b.col};margin:0 6px 0 2px"></span>${b.dev?gnHtml(b.dev,1)+" (you)":b.n}</div>
     <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities · ${b.f}`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
   h+=bankHtml();
   if(S.lst.length)h+=`<div class="sec">Market listings</div><div class="list">`+S.lst.map(l=>{const c=CITIES[l.city],stockLv=mLevel(c,l.g);return `<div class="row link" data-go="${c.id}"><div class="n">${G[l.g][0]} · ${c.name}</div><div class="d">${l.q<1e-6?"Sold out":gq(l.q)+" left at "+fmt(l.p)} · ${gq(l.sold||0)} sold · stock ${Math.round(stockLv*100)}%</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`;
@@ -1927,7 +1938,7 @@ function slotInfo(n){try{const raw=n===SLOT?JSON.stringify(S):localStorage.getIt
     job:d.job?JK[d.job.k].n+" in "+CITIES[d.job.city].name:null,last:d.acc||d.last,nw:(d.hist||[]).slice(-1)[0],name:d.name}}catch(e){return null}}
 function renderSaves(){save();let h=`<div class="shead"><div><h2>Save slots</h2><p>Five separate games, stored on this device.</p></div><button class="x" id="cls" aria-label="Close">×</button></div><div class="list" style="margin-top:10px">`;
   for(let n=1;n<=5;n++){const i=slotInfo(n),act=n===SLOT;
-    h+=`<div class="row"><div class="n">${i&&i.name?i.name:"Slot "+n} ${act?'<span class="tag boom">Playing</span>':""}</div>
+    h+=`<div class="row"><div class="n">${i&&i.name?(devSelf(i.name)?gnHtml(i.name,1):i.name):"Slot "+n} ${act?'<span class="tag boom">Playing</span>':""}</div>
     <div class="d">${i?`${fmt(i.nw!=null?i.nw:i.cash)} net worth · ${fmt(i.cash)} cash · ${i.biz} businesses in ${i.cities} cities · ${i.sites} plots · ${i.tech} techs${i.job?" · "+i.job:""}${i.last&&!act?` · played ${fmtDur(Date.now()-i.last)} ago`:""}`:"Empty slot"}</div>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${act?`<button class="buy up" data-sv="rename" data-n="${n}">Rename</button>`:`<button class="buy" data-sv="load" data-n="${n}">${i?"Load":"New game"}</button>`}
     ${i&&!act?`<button class="buy up" data-sv="del" data-n="${n}">Delete</button>`:""}</span></div>`;
@@ -3651,11 +3662,11 @@ function dxWire(el){let g=null;
   el.addEventListener("pointerleave",e=>{if(e.pointerType!=="touch")dxTipShow(null)});
   el.addEventListener("pointerout",e=>{const g2=e.target.closest(".mdx-bg");if(e.pointerType!=="touch"&&g2&&!g2.contains(e.relatedTarget))dxTipShow(null)});
   el.addEventListener("click",e=>{const g2=e.target.closest(".mdx-bg");if(g2)dxTipShow(DX.tip===+g2.dataset.i&&e.pointerType==="touch"?null:g2);else if(!e.target.closest(".mdx-tip"))dxTipShow(null)})}
-function dxShell(){return `<div class="mdx-bar"><span class="mdx-logo">${dxI("biz",16,"#fff")}</span><b>${dxE(S.name||"Meridian")} Holdings</b>
+function dxShell(){return `<div class="mdx-bar"><span class="mdx-logo">${dxI("biz",16,"#fff")}</span><b>${devSelf(S.name,(S.online||{}).name)?`<span class="devname">${dxE(S.name||"Meridian")}</span>`:dxE(S.name||"Meridian")} Holdings</b>
   <div class="mdx-seg" role="tablist"><button data-dx="reg" data-v="1" class="${DX.reg?"on":""}">Registered</button><button data-dx="reg" data-v="0" class="${DX.reg?"":"on"}">All owned</button></div>
   <button class="mdx-x" data-dx="close" aria-label="Close dashboard">×</button></div><div class="mdx-body">${dxBody()}</div><div class="mdx-rs" aria-hidden="true"></div>`}
 function dxBody(){const hr=new Date().getHours(),gr=hr<12?"Good morning":hr<18?"Good afternoon":"Good evening";
-  return `<div class="mdx-in"><div class="mdx-seg lx-pg" role="tablist" aria-label="Dashboard page"><button data-lx="page" data-v="fin" class="${DX.page==="log"||DX.page==="truck"?"":"on"}">Finance</button><button data-lx="page" data-v="log" class="${DX.page==="log"?"on":""}">Logistics</button><button data-lx="page" data-v="truck" class="${DX.page==="truck"?"on":""}">Trucking</button></div><div class="mdx-hd"><h2>${gr} <span>${dxE(S.name||"Tycoon")}</span> 👋</h2><div class="mdx-date"><span class="mdx-live"></span>${dxI("cal",15)}<span id="mdx-dt"></span></div></div>
+  return `<div class="mdx-in"><div class="mdx-seg lx-pg" role="tablist" aria-label="Dashboard page"><button data-lx="page" data-v="fin" class="${DX.page==="log"||DX.page==="truck"?"":"on"}">Finance</button><button data-lx="page" data-v="log" class="${DX.page==="log"?"on":""}">Logistics</button><button data-lx="page" data-v="truck" class="${DX.page==="truck"?"on":""}">Trucking</button></div><div class="mdx-hd"><h2>${gr} <span${devSelf(S.name,(S.online||{}).name)?' class="devname"':""}>${dxE(S.name||"Tycoon")}</span> 👋</h2><div class="mdx-date"><span class="mdx-live"></span>${dxI("cal",15)}<span id="mdx-dt"></span></div></div>
   <div id="mdx-main"></div></div>`}
 function dxMain(){const kp=(k,lb,bg,fg)=>`<div class="mdx-card mdx-kpi" data-k="${k}"><span class="mdx-ic" style="background:${bg};color:${fg}">${dxI(k,22)}</span><div class="mdx-lb"><span>${lb}</span><em class="mdx-pill mdx-flat">—</em></div><div class="mdx-big">$0</div><div class="mdx-kfoot"><small></small><svg width="74" height="30" viewBox="0 0 74 30"></svg></div></div>`;
   return `<div class="mdx-kpis">${kp("rev","Revenue / hr","#dcfce7","#16a34a")}${kp("exp","Expenses / hr","#fee2e2","#dc2626")}${kp("biz","Businesses","#e0ecff","#2563eb")}${kp("net","Net profit / hr","#fef3c7","#d97706")}</div>
@@ -4132,17 +4143,19 @@ function drawOnline(ctx){if(!ON.players.length)return;const by={};
     list.slice(0,4).forEach((p,i)=>{const x=c.sx+8+i*9,y=c.sy-9;ctx.globalAlpha=onAlpha(p);ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+4.5,y);ctx.lineTo(x,y+5);ctx.lineTo(x-4.5,y);ctx.closePath();
       ctx.fillStyle=/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb";ctx.fill();ctx.lineWidth=1.2;ctx.strokeStyle="#fff";ctx.stroke()});
     if(V.k>2.5){const p=list[0];ctx.globalAlpha=onAlpha(p);ctx.font="600 11px Figtree, system-ui, sans-serif";ctx.fillStyle=css("--ink");
-      ctx.fillText(String(p.name||"Player").slice(0,20)+(list.length>1?` +${list.length-1}`:""),c.sx+8+Math.min(4,list.length)*9,c.sy-9)}}
+      const dv=devUid(p.uid);if(dv){ctx.fillStyle="#ffd23f";ctx.shadowColor="#ffb300";ctx.shadowBlur=8;ctx.font="800 11px Figtree, system-ui, sans-serif"}
+      ctx.fillText(String(p.name||"Player").slice(0,20)+(list.length>1?` +${list.length-1}`:""),c.sx+8+Math.min(4,list.length)*9,c.sy-9);if(dv){ctx.shadowBlur=0;ctx.shadowColor="rgba(0,0,0,0)"}}}
   ctx.globalAlpha=1}
 function onPlayersHere(c){if(!ON.players.length)return"";const a=playersAt(c);if(!a.length)return"";
   return `<div class="sec">Players here</div><div class="list">`+a.slice(0,12).map(p=>{const roles=[p.home===c.id?"home":"",(p.hq||[]).includes(c.id)?"HQ":"",(p.biz||[]).includes(c.id)?"business":""].filter(Boolean).join(" · "),age=(Date.now()-onSeen(p))/36e5;
-    return `<div class="row"><div class="n" style="${onAlpha(p)<1?"opacity:.55":""}"><span style="display:inline-block;width:9px;height:9px;transform:rotate(45deg);background:${/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb"};margin:0 6px 0 2px"></span>${onEsc(String(p.name||"Player").slice(0,20))}</div><div class="d">${roles} · seen ${age<1?"just now":age<48?Math.round(age)+"h ago":Math.round(age/24)+"d ago"}</div><span style="font-family:var(--mono);font-weight:600">${fmt(+p.nw||0)}</span></div>`}).join("")+`</div>`}
+    return `<div class="row"><div class="n" style="${onAlpha(p)<1?"opacity:.55":""}"><span style="display:inline-block;width:9px;height:9px;transform:rotate(45deg);background:${/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb"};margin:0 6px 0 2px"></span>${gnHtml(String(p.name||"Player").slice(0,20),devUid(p.uid))}</div><div class="d">${roles} · seen ${age<1?"just now":age<48?Math.round(age)+"h ago":Math.round(age/24)+"d ago"}</div><span style="font-family:var(--mono);font-weight:600">${fmt(+p.nw||0)}</span></div>`}).join("")+`</div>`}
 function onlineHtml(){if(!onEnabled())return"";const p=onProf(),u=ON.user,inp="width:100%;box-sizing:border-box;font:inherit;padding:8px;margin-top:6px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink)";
   let h=`<div class="sec">Online</div><div class="list"><div class="row" style="display:block">`;
   if(!ON.ready)h+=`<div class="d">${ON.err?onEsc(ON.err):"Connecting…"}</div>`;
-  else if(u){h+=`<div class="n">Signed in · ${ON.players.length} other player${ON.players.length===1?"":"s"} on the map</div><div class="d">Others see your name, colour, home, HQ and business cities, net worth and rank. Never your email.</div>
+  else if(u){h+=`<div class="n">Signed in${devSelf(p.name,S.name)?` as <span class="devname">${devEsc(p.name||S.name)}</span>`:""} · ${ON.players.length} other player${ON.players.length===1?"":"s"} on the map</div><div class="d">Others see your name, colour, home, HQ and business cities, net worth and rank. Never your email.</div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="onname" maxlength="20" value="${onEsc(p.name)}" placeholder="Display name" style="${inp};margin-top:0;flex:1;min-width:0"><input id="oncol" type="color" value="${p.col}" style="width:40px;height:36px;padding:0;border:1px solid var(--line);border-radius:4px;background:none"></div>
-    <div style="display:flex;gap:8px;margin-top:8px"><button class="buy" data-on="save" style="flex:1">Save profile</button><button class="buy" data-on="out">Sign out</button></div>${csHtml()}`}
+    <div style="display:flex;gap:8px;margin-top:8px"><button class="buy" data-on="save" style="flex:1">Save profile</button><button class="buy" data-on="out">Sign out</button></div>
+    <div class="d" style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="min-width:0">Your player ID: <code id="onuid" style="font-family:var(--mono);font-size:11px;word-break:break-all;user-select:all">${onEsc(u.uid)}</code></span><button class="buy up" data-on="copyid" style="flex:none">Copy</button></div>${csHtml()}`}
   else h+=`<div class="d">Create an account to appear on other players' globes and see theirs. Sign in on any device to keep playing the same save.</div>
     <input id="onname" maxlength="20" value="${onEsc(ON.draft.n||p.name)}" placeholder="Display name" style="${inp}">
     <input id="onemail" type="email" autocomplete="email" value="${onEsc(ON.draft.e)}" placeholder="Email" style="${inp}">
@@ -4155,6 +4168,9 @@ function onlineWire(){if(!onEnabled())return;csWire();const v=s=>{const e=$(s);r
   sheet.querySelectorAll("[data-on]").forEach(b=>b.onclick=async()=>{if(ON.busy||!ON.ready)return;const a=b.dataset.on;ON.err="";const nm=v("#onname").trim().slice(0,20);
     try{ON.busy=true;
       if(a==="save"){onProf().name=nm;const c=v("#oncol");if(/^#[0-9a-f]{6}$/i.test(c))S.online.col=c;save();onPublish(true);toast("Profile saved")}
+      else if(a==="copyid"){const id=ON.user?ON.user.uid:"";let ok=false;try{await navigator.clipboard.writeText(id);ok=true}catch(e){}
+        if(!ok){try{const t=document.createElement("textarea");t.value=id;t.style.cssText="position:fixed;opacity:0";document.body.appendChild(t);t.select();ok=document.execCommand("copy");t.remove()}catch(e){}}
+        toast(ok?"Player ID copied":"Select the ID and copy it")}
       else if(a==="out"){await ON.auth.signOut()}
       else{if(nm)onProf().name=nm;
         if(a==="g")await ON.auth.signInWithPopup(new window.firebase.auth.GoogleAuthProvider());
@@ -4229,25 +4245,25 @@ function xfListen(u){if(XF.unsub){try{XF.unsub()}catch(_){}XF.unsub=null}XF.uid=
   XF.unsub=ON.db.collection("transfers").where("to","==",u.uid).onSnapshot(q=>q.forEach(d=>xfClaim(d)),e=>{ON.err="Couldn't check transfers: "+(e&&e.code||e)})}
 function xfClaim(d){const id=d.id,v=d.data()||{},x=xfS();
   if(!x.seen.includes(id)){const amt=Math.round(+v.amt||0);
-    if(v.to===XF.uid&&amt>=XF_MIN&&amt<=XF_CAP){x.seen.unshift(id);x.seen=x.seen.slice(0,300);S.cash+=amt;xfLog({d:"in",n:String(v.fromName||"Player").slice(0,20),a:amt,t:Date.now(),note:typeof v.note==="string"?v.note.slice(0,40):""});
+    if(v.to===XF.uid&&amt>=XF_MIN&&amt<=XF_CAP){x.seen.unshift(id);x.seen=x.seen.slice(0,300);S.cash+=amt;xfLog({d:"in",n:String(v.fromName||"Player").slice(0,20),u:typeof v.from==="string"?v.from:"",a:amt,t:Date.now(),note:typeof v.note==="string"?v.note.slice(0,40):""});
       toast(`Received ${fmt(amt)} from ${String(v.fromName||"a player").slice(0,20)}`);save();hud();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)&&document.activeElement.tagName==="INPUT"))phRender()}}
   d.ref.delete().catch(()=>{})}
 function xfSend(){if(XF.busy||!ON.user||!ON.db)return;const p=ON.players.find(y=>y.uid===XF.to),amt=Math.floor(+XF.amt||0),nt=XF.n||"";
   if(!p){toast("Pick who to send to");return}if(amt<XF_MIN){toast(`Minimum transfer is ${fmt(XF_MIN)}`);return}if(amt>XF_CAP){toast(`Maximum per transfer is ${fmt(XF_CAP)}`);return}
   if(amt>S.cash){toast(`You only have ${fmt(Math.max(0,S.cash))} in cash`);return}
   const me=onProf(),doc={from:ON.user.uid,fromName:(me.name||"Tycoon").slice(0,20),to:p.uid,amt,at:window.firebase.firestore.FieldValue.serverTimestamp()},note=String(nt).trim().slice(0,40);if(note)doc.note=note;
-  S.cash-=amt;XF.busy=true;const ent={d:"out",n:xfName(p),a:amt,t:Date.now(),note};xfLog(ent);save();hud();
+  S.cash-=amt;XF.busy=true;const ent={d:"out",n:xfName(p),u:p.uid,a:amt,t:Date.now(),note};xfLog(ent);save();hud();
   ON.db.collection("transfers").add(doc).then(()=>{XF.busy=false;XF.amt="";XF.n="";toast(`Sent ${fmt(amt)} to ${xfName(p)}`);if(PH.open&&PH.app==="bank")phRender()},
     e=>{XF.busy=false;S.cash+=amt;ent.fail=1;save();hud();toast(`Transfer failed, refunded: ${e&&e.code||e}`);if(PH.open&&PH.app==="bank")phRender()})}
 function xfList(){const q=XF.q.trim().toLowerCase(),a=ON.players.filter(p=>!q||xfName(p).toLowerCase().includes(q)).slice(0,8);
-  return a.map(p=>`<button data-ph="xfto" data-k="${onEsc(p.uid)}" style="color:#fff${XF.to===p.uid?";outline:2px solid #3b82f6":""}"><b>${onEsc(xfName(p))}</b> · ${p.rank?"Rank #"+(+p.rank||"?")+" · ":""}${fmt(+p.nw||0)}</button>`).join("")||"<div>No players found</div>"}
+  return a.map(p=>`<button data-ph="xfto" data-k="${onEsc(p.uid)}" style="color:#fff${XF.to===p.uid?";outline:2px solid #3b82f6":""}"><b>${gnHtml(xfName(p),devUid(p.uid))}</b> · ${p.rank?"Rank #"+(+p.rank||"?")+" · ":""}${fmt(+p.nw||0)}</button>`).join("")||"<div>No players found</div>"}
 function xfHtml(){if(!onEnabled()||!ON.user)return"";const x=xfS(),p=ON.players.find(y=>y.uid===XF.to),ip="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border-radius:10px;border:1px solid #ffffff44;background:#0003;color:#fff;font:inherit;font-size:16px";
   let h=`<p class="ph-sub" style="margin-top:12px">Send money · ${fmt(XF_MIN)}–${fmt(XF_CAP)} per transfer</p>
     <input id="xfq" type="search" placeholder="Search players" autocomplete="off" value="${onEsc(XF.q)}" style="${ip}"><div class="ph-list" id="xflist" style="margin-top:6px">${xfList()}</div>
     <input id="xfa" type="number" inputmode="numeric" min="${XF_MIN}" max="${XF_CAP}" step="1" placeholder="Amount ($)" value="${onEsc(XF.amt)}" style="${ip}">
     <input id="xfn" maxlength="40" placeholder="Note (optional)" autocomplete="off" value="${onEsc(XF.n)}" style="${ip}">
-    <button class="buy" data-ph="xfsend" style="width:100%;margin-top:8px;background:#1e3a8a!important;color:#fff;border-color:#3b82f6" ${XF.busy?"disabled":""}>${XF.busy?"Sending…":p?"Send to "+onEsc(xfName(p)):"Send"}</button>`;
-  if(x.hist.length)h+=`<p class="ph-sub" style="margin-top:12px">Recent transfers</p><div class="ph-list">${x.hist.map(e=>`<div><b style="color:${e.fail?"#f87171":e.d==="in"?"#4ade80":"#fff"}">${e.d==="in"?"+":"−"}${fmt(e.a)} ${e.d==="in"?"from":"to"} ${onEsc(e.n)}${e.fail?" · failed":""}</b>${fmtDur(Date.now()-e.t)} ago${e.note?" · "+onEsc(e.note):""}</div>`).join("")}</div>`;
+    <button class="buy" data-ph="xfsend" style="width:100%;margin-top:8px;background:#1e3a8a!important;color:#fff;border-color:#3b82f6" ${XF.busy?"disabled":""}>${XF.busy?"Sending…":p?"Send to "+gnHtml(xfName(p),devUid(p.uid)):"Send"}</button>`;
+  if(x.hist.length)h+=`<p class="ph-sub" style="margin-top:12px">Recent transfers</p><div class="ph-list">${x.hist.map(e=>`<div><b style="color:${e.fail?"#f87171":e.d==="in"?"#4ade80":"#fff"}">${e.d==="in"?"+":"−"}${fmt(e.a)} ${e.d==="in"?"from":"to"} ${gnHtml(e.n,devUid(e.u))}${e.fail?" · failed":""}</b>${fmtDur(Date.now()-e.t)} ago${e.note?" · "+onEsc(e.note):""}</div>`).join("")}</div>`;
   return h}
 /* ---------- first-time guide (S.tut: 0 = not yet shown, 9 = done) + one-time tips (S.tips) ---------- */
 if(S.tut==null)S.tut=0;S.tips=S.tips&&typeof S.tips==="object"?S.tips:{};
