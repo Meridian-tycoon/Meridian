@@ -341,7 +341,7 @@ const BIZ=[
  {k:"prison",n:"Private prison",d:"Company-only: needs an HQ here. Earns more where policing is strict.",cost:2600000,gross:160000,up:56000,co:1},
  {k:"taxico",n:"Taxi company",d:"A fleet of 30 cabs. Your own taxi rides here are half price.",cost:45000,gross:4200,up:1500,tr:1},
  {k:"busline",n:"Bus line",d:"City and coach routes. Half-price buses for you, here and from here.",cost:160000,gross:11500,up:4200,tr:1},
- {k:"trucking",n:"Trucking company",d:"Regional freight. Your own trucks from here run 25% faster, and rivals hire you to haul their cargo (see Empire → Logistics).",cost:300000,gross:21000,up:7600,tr:1},
+ {k:"trucking",n:"Trucking company",d:"Regional freight. Your own trucks from here run 25% faster, and rivals hire you to haul their cargo (see the HQ dashboard → Trucking tab).",cost:300000,gross:21000,up:7600,tr:1},
  {k:"rail",n:"Railway",d:"Company-only: needs an HQ. Passenger and freight lines. Half-price trains from here.",cost:4200000,gross:245000,up:88000,co:1,tr:1},
  {k:"port",n:"Seaport",d:"Company-only: needs an HQ in a size 3+ city. Container terminals and cruise berths. Your ships from here sail 20% faster.",cost:6000000,gross:340000,up:120000,co:1,tr:1},
  {k:"airline",n:"Airline",d:"Company-only: needs an HQ. A fleet of jets based here. Every flight you take is half price.",cost:8000000,gross:430000,up:160000,co:1,tr:1},
@@ -1875,7 +1875,7 @@ function renderPortfolio(){const{inc,nw}=totals();
     <div class="d">${n} business${n>1?"es":""} · <b>${fmt(cityProfit(c))}</b>/hr</div><span style="font-family:var(--mono);color:var(--muted)">›</span></div>`}
   h+=`</div><div class="sec">Find a city</div><input id="q" type="search" placeholder="Tokyo, Lagos… or oil, coal, ore" value="${query}" autocomplete="off"><div class="list" id="qres"></div>`;
   const board=[{n:"You",col:"var(--own)",nw,me:1},...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:r.nw,c:r.cities.length,f:`${RIVALS[i].ind} · ${fmtCap(RIVALS[i].cap)} real`}))].sort((a,b)=>b.nw-a.nw);
-  h+=logiHtml();h+=govSummary();h+=onlineHtml();
+  h+=govSummary();h+=onlineHtml();
   h+=`<div class="sec">Leaderboard</div><div class="list">`+board.map((b,i)=>`<div class="row"><div class="n" style="${b.me?"color:var(--own)":""}">${i+1}. <span style="display:inline-block;width:9px;height:9px;background:${b.col};margin:0 6px 0 2px"></span>${b.n}</div>
     <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities · ${b.f}`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
   h+=bankHtml();
@@ -2735,54 +2735,81 @@ document.addEventListener("pointerdown",e=>{const b=e.target.closest("button.buy
 let _enterKey="";function sheetEnter(){const k=mode+":"+(sel?sel.id:"")+":"+tab;if(k===_enterKey)return;_enterKey=k;sheet.classList.remove("enter");void sheet.offsetWidth;sheet.classList.add("enter");clearTimeout(sheetEnter.t);sheetEnter.t=setTimeout(()=>sheet.classList.remove("enter"),900)}
 new MutationObserver(()=>{if(sheet.classList.contains("open"))sheetEnter();else _enterKey=""}).observe(sheet,{childList:true,attributes:true,attributeFilter:["class"]});
 setInterval(dailyCheck,30000);setTimeout(dailyCheck,1500);
-/* ---------- logistics contracts for rival companies ---------- */
-const LU={trucks:{n:"Buy a truck",d:"+1 truck in your contract fleet.",base:40000,g:1.35,max:40},
+/* ---------- trucking: freight contracts for rival companies (HQ dashboard → Trucking page) ----------
+   S.logi (lazy, sanitised by LG()): shared fleet {trucks, up{}}, board {offers, jobs, rep}, totals {done, earned, tons, late, hist[]} and one record per Trucking hub
+   S.logi.hub[cityId] = {res (trucks reserved for this hub), cap (max trucks at once, 0 = no limit), pol (auto-dispatch policy, "" = default), dep, drv, last, done, earned, tons, late}.
+   Every hub is a city where S.own[city].trucking > 0. Contracts leave from a hub; a truck is free for a hub when it is reserved for it or in the unreserved pool. */
+const LU={trucks:{n:"Buy a truck",d:"+1 truck in your shared contract fleet.",base:40000,g:1.35,max:40},
   trailer:{n:"Bigger trailers",d:"+25% cargo per truck, so every contract pays 25% more.",base:120000,g:2.2,max:4},
   engine:{n:"Engine tuning",d:"Trucks deliver 15% faster per level.",base:90000,g:2,max:4},
-  depot:{n:"Depot expansion",d:"+2 contract offers on the board.",base:150000,g:2,max:4},
-  dispatch:{n:"Dispatch software",d:"Automatically accepts the best offers when trucks are free.",base:250000,g:1,max:1}};
-function LG(){return S.logi=S.logi||{trucks:2,up:{},offers:[],jobs:[],rep:{},done:0,earned:0,nid:1,last:0,auto:true}}
+  depot:{n:"Depot network",d:"+2 contract offers on every hub's board.",base:150000,g:2,max:4},
+  dispatch:{n:"Dispatch software",d:"Unlocks auto-dispatch: hubs accept offers by their policy when trucks are free.",base:250000,g:1,max:1}};
+const HU={dep:{n:"Hub depot",d:"+1 contract offer on this hub's board.",base:60000,g:1.8,max:5},
+  drv:{n:"Driver training",d:"+6% pay and 5% quicker trips on contracts from this hub, fewer delays.",base:80000,g:2,max:4}};
+const TPOL=[["off","Manual only"],["pay","Best pay"],["rate","Best pay per hour"],["near","Nearest cargo"],["fast","Quickest trip"]];
+const TGOODS=["electronics","steel","bread","tools","beef","fuel","furniture","medicine"];
+/* every S.logi object (fresh, loaded or imported) is sanitised once, the first time LG() sees it */
+let lgOk=null;
+function LG(){const l=S.logi=S.logi&&typeof S.logi==="object"&&!Array.isArray(S.logi)?S.logi:{};if(lgOk===l)return l;
+  const num=(v,d,lo,hi)=>Number.isFinite(+v)&&v!==null&&v!==""&&v!==false?Math.max(lo,Math.min(hi,+v)):d,arr=a=>Array.isArray(a)?a:[];
+  l.trucks=Math.floor(num(l.trucks,2,1,LU.trucks.max+2));l.done=Math.floor(num(l.done,0,0,1e9));l.earned=num(l.earned,0,0,1e15);l.tons=num(l.tons,0,0,1e12);l.late=Math.floor(num(l.late,0,0,1e9));
+  l.last=num(l.last,0,0,1e15);l.auto=l.auto!==false;
+  if(!l.up||typeof l.up!=="object")l.up={};for(const k in LU)l.up[k]=Math.floor(num(l.up[k],0,0,LU[k].max));
+  if(!l.rep||typeof l.rep!=="object")l.rep={};for(const k in l.rep)l.rep[k]=Math.floor(num(l.rep[k],0,0,50));
+  const okJ=o=>o&&typeof o==="object"&&CITIES[o.from]&&CITIES[o.to]&&RIVALS[o.ri]&&Number.isFinite(+o.pay)&&Number.isFinite(+o.km)&&Number.isFinite(+o.tons);
+  l.offers=arr(l.offers).filter(o=>okJ(o)&&Number.isFinite(+o.exp));l.jobs=arr(l.jobs).filter(j=>okJ(j)&&Number.isFinite(+j.arr)&&Number.isFinite(+j.dep));
+  for(const o of l.offers.concat(l.jobs)){o.pay=Math.max(0,+o.pay);o.km=Math.max(1,+o.km);o.tons=Math.max(1,+o.tons);if(typeof o.g!=="string")o.g="tools"}
+  l.nid=Math.floor(num(l.nid,1,1,1e12));for(const o of l.offers.concat(l.jobs))if(+o.id>=l.nid)l.nid=Math.floor(+o.id)+1;
+  l.hist=arr(l.hist).filter(e=>e&&CITIES[e.hub]&&CITIES[e.to]&&RIVALS[e.ri]&&Number.isFinite(+e.pay)).slice(0,60);
+  if(!l.hub||typeof l.hub!=="object")l.hub={};for(const id in l.hub){if(!CITIES[id]||!l.hub[id]||typeof l.hub[id]!=="object"||Array.isArray(l.hub[id])){delete l.hub[id];continue}hubFix(l.hub[id],l)}
+  l.sv=2;lgOk=l;return l}
+function hubFix(h,l){const num=(v,d,lo,hi)=>Number.isFinite(+v)&&v!==null&&v!==""&&v!==false?Math.max(lo,Math.min(hi,+v)):d;
+  h.res=Math.floor(num(h.res,0,0,l.trucks));h.cap=Math.floor(num(h.cap,0,0,l.trucks));h.dep=Math.floor(num(h.dep,0,0,HU.dep.max));h.drv=Math.floor(num(h.drv,0,0,HU.drv.max));
+  h.last=num(h.last,0,0,1e15);h.done=Math.floor(num(h.done,0,0,1e9));h.earned=num(h.earned,0,0,1e15);h.tons=num(h.tons,0,0,1e12);h.late=Math.floor(num(h.late,0,0,1e9));
+  if(h.pol!==""&&!TPOL.some(p=>p[0]===h.pol))h.pol="";return h}
+/* the hub record of a city (created on first use); reservations are kept within the fleet size */
+function HB(id){const l=LG();let h=l.hub[id];if(!h)h=l.hub[id]={res:0,cap:0,pol:"",dep:0,drv:0,last:0,done:0,earned:0,tons:0,late:0};
+  if(h.res>l.trucks)h.res=l.trucks;return h}
 const lvl=k=>LG().up[k]||0;
 const luCost=k=>{const u=LU[k],n=k==="trucks"?LG().trucks-2:lvl(k);return Math.round(u.base*Math.pow(u.g,n))};
+const huCost=(id,k)=>Math.round(HU[k].base*Math.pow(HU[k].g,HB(id)[k]));
 const hubs=()=>CITIES.filter(c=>(S.own[c.id]||{}).trucking);
+const busyAt=id=>LG().jobs.filter(j=>j.from===id).length;
 const freeTrucks=()=>LG().trucks-LG().jobs.length;
 const repOf=i=>LG().rep[i]||0;
-function makeOffer(){const H=hubs();if(!H.length||!S.rivals||!S.rivals.length)return null;const from=H[Math.floor(Math.random()*H.length)];
+const hubPol=id=>{const p=HB(id).pol;return p||(lvl("dispatch")?"pay":"off")};
+/* total trucks reserved for current hubs, never above the fleet */
+function trReserved(skip){let r=0;for(const c of hubs())if(c.id!==skip)r+=HB(c.id).res;return Math.min(r,LG().trucks)}
+/* how many more contracts this hub may start right now: its own reserved trucks first, then the shared pool, within its cap */
+function hubRoom(id){const l=LG(),hs=hubs().map(c=>c.id);let R=0,over=0;const by={};for(const j of l.jobs)by[j.from]=(by[j.from]||0)+1;
+  for(const x of hs)R+=HB(x).res;R=Math.min(R,l.trucks);
+  for(const k in by){const r=hs.includes(+k)?HB(+k).res:0;over+=Math.max(0,by[k]-r)}
+  const h=HB(id),b=by[id]||0,pool=Math.max(0,l.trucks-R-over);let room=Math.max(0,h.res-b)+pool;if(h.cap>0)room=Math.min(room,h.cap-b);
+  return Math.max(0,Math.min(room,l.trucks-l.jobs.length))}
+const hubSlots=id=>4+2*lvl("depot")+HB(id).dep;
+function makeOffer(from){const l=LG();if(!from||!S.rivals||!S.rivals.length)return null;
   const near=CITIES.filter(c=>c!==from&&distKm(from,c)<3500&&distKm(from,c)>150);if(!near.length)return null;const to=near[Math.floor(Math.random()*near.length)];
-  const ri=Math.floor(Math.random()*S.rivals.length),km=distKm(from,to),tons=Math.round(20+Math.random()*40);
+  const ri=Math.floor(Math.random()*S.rivals.length),km=distKm(from,to),tons=Math.round(20+Math.random()*40),h=HB(from.id);
   const lvTr=(S.own[from.id]||{}).trucking||1;
-  const pay=Math.round(km*tons*.05*(1+.25*lvl("trailer"))*(1+repOf(ri)*.02)*(1+.1*(lvTr-1))*(.8+Math.random()*.5)*PRICE[from.size]);
-  const g=["electronics","steel","bread","tools","beef","fuel","furniture","medicine"][Math.floor(Math.random()*8)];
-  return{id:LG().nid++,ri,from:from.id,to:to.id,km,tons,g,pay,exp:Date.now()+(20+Math.random()*40)*60000}}
-const jobDur=o=>Math.max(8*60000,o.km/legPace("truck")*DAYMS/4/Math.pow(1.15,lvl("engine")));
-function acceptOffer(id,quiet){const l=LG(),o=l.offers.find(x=>x.id===id);if(!o||freeTrucks()<1)return false;
-  l.offers=l.offers.filter(x=>x!==o);const d=jobDur(o)*(Math.random()<.08?1.4:1);l.jobs.push({...o,dep:Date.now(),arr:Date.now()+d});
+  const pay=Math.round(km*tons*.05*(1+.25*lvl("trailer"))*(1+repOf(ri)*.02)*(1+.1*(lvTr-1))*(1+.06*h.drv)*(.8+Math.random()*.5)*PRICE[from.size]);
+  const g=TGOODS[Math.floor(Math.random()*TGOODS.length)];
+  return{id:l.nid++,ri,from:from.id,to:to.id,km,tons,g,pay,exp:Date.now()+(20+Math.random()*40)*60000}}
+const jobDur=o=>Math.max(8*60000,o.km/legPace("truck")*DAYMS/4/Math.pow(1.15,lvl("engine"))*Math.pow(.95,HB(o.from).drv));
+function acceptOffer(id,quiet){const l=LG(),o=l.offers.find(x=>x.id===id);if(!o||hubRoom(o.from)<1)return false;
+  l.offers=l.offers.filter(x=>x!==o);const late=Math.random()<Math.max(.02,.08-.015*HB(o.from).drv),d=jobDur(o)*(late?1.4:1);l.jobs.push({...o,dep:Date.now(),arr:Date.now()+d,late});
   if(!quiet)toast(`Contract accepted: ${CITIES[o.from].name} → ${CITIES[o.to].name}`);return true}
-function runLogi(){const l=LG(),now=Date.now();if(!hubs().length)return;
-  for(const j of l.jobs.filter(j=>now>=j.arr)){S.cash+=j.pay;S.earned=(S.earned||0)+j.pay;l.earned+=j.pay;l.done++;l.rep[j.ri]=Math.min(50,repOf(j.ri)+1);
-    S.log.unshift(`Logistics: delivered ${j.tons} t of ${j.g} for ${RIVALS[j.ri].n}, +${fmt(j.pay)}`);S.log=S.log.slice(0,3)}
-  l.jobs=l.jobs.filter(j=>now<j.arr);l.offers=l.offers.filter(o=>o.exp>now);
-  const slots=4+2*lvl("depot");if(now-l.last>90000&&l.offers.length<slots){l.last=now;const o=makeOffer();if(o)l.offers.push(o)}
-  if(lvl("dispatch")&&l.auto)while(freeTrucks()>0&&l.offers.length){const best=[...l.offers].sort((a,b)=>b.pay/jobDur(b)-a.pay/jobDur(a))[0];acceptOffer(best.id,true)}}
-function logiHtml(){const l=LG(),H=hubs();let h=`<div class="sec">Logistics · freight for rivals</div>`;
-  if(!H.length)return h+`<p class="d" style="color:var(--muted);font-size:13px">Open a <b>Trucking company</b> in any city to start hauling freight for rival companies. Higher trucking levels pay more.</p>`;
-  h+=`<div class="meta"><div><span>Trucks </span>${l.jobs.length}/${l.trucks} busy</div><div><span>Delivered </span>${l.done} · ${fmt(l.earned)}</div></div>`;
-  h+=`<div class="list">`;for(const j of l.jobs){const p=Math.min(100,(Date.now()-j.dep)/(j.arr-j.dep)*100);
-    h+=`<div class="row"><div class="n">🚚 ${CITIES[j.from].name} → ${CITIES[j.to].name} <span style="font-family:var(--mono);color:var(--good)">${fmt(j.pay)}</span></div><div class="d">${j.tons} t ${j.g} for <b style="color:${RIVALS[j.ri].col}">${RIVALS[j.ri].n}</b> · arrives in ${fmtDur(j.arr-Date.now())}<div style="height:5px;background:var(--line);border-radius:3px;margin-top:5px;overflow:hidden"><div style="height:100%;width:${p}%;background:var(--own)"></div></div></div><span></span></div>`}
-  h+=`</div><div class="sec">Contract board${lvl("dispatch")?` · <button class="buy up" data-logi="auto" data-fixed="1" style="min-width:0;min-height:26px;padding:3px 8px;font-size:11px">Auto-dispatch ${l.auto?"ON":"OFF"}</button>`:""}</div><div class="list">`;
-  if(!l.offers.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:8px 0">New offers arrive every minute and a half.</p>`;
-  for(const o of [...l.offers].sort((a,b)=>b.pay-a.pay))h+=`<div class="row"><div class="n">${CITIES[o.from].name} → ${CITIES[o.to].name} <span style="font-family:var(--mono);font-weight:600">${fmt(o.pay)}</span></div>
-    <div class="d"><b style="color:${RIVALS[o.ri].col}">${RIVALS[o.ri].n}</b> · ${o.tons} t ${o.g} · ${Math.round(o.km)} km · about ${fmtDur(jobDur(o))} · expires in ${fmtDur(o.exp-Date.now())}${repOf(o.ri)?` · rep +${repOf(o.ri)*2}%`:""}</div>
-    <button class="buy" data-logi="take" data-id="${o.id}" data-fixed="1" ${freeTrucks()<1?"disabled":""}>${freeTrucks()<1?"No trucks":"Accept"}</button></div>`;
-  h+=`</div><div class="sec">Fleet upgrades</div><div class="list">`;
-  for(const k in LU){const u=LU[k],n=k==="trucks"?l.trucks:lvl(k),max=k==="trucks"?u.max:u.max,done=n>=max,c=luCost(k);
-    h+=`<div class="row"><div class="n">${u.n} <span class="tag" style="border:1px solid var(--line)">${k==="trucks"?n+" trucks":"Lv "+n+"/"+max}</span></div><div class="d">${u.d}</div>
-      <button class="buy up" data-logi="up" data-k="${k}" data-fixed="1" ${done||S.cash<c?"disabled":""}>${done?"Maxed":fmt(c)}</button></div>`}
-  return h+`</div>`}
-sheet.addEventListener("click",e=>{const b=e.target.closest("[data-logi]");if(!b)return;const l=LG(),a=b.dataset.logi;
-  if(a==="take")acceptOffer(+b.dataset.id);else if(a==="auto")l.auto=!l.auto;
-  else if(a==="up"){const k=b.dataset.k,c=luCost(k);if(S.cash<c)return;if(k==="trucks"){if(l.trucks>=LU.trucks.max)return;l.trucks++}else{if(lvl(k)>=LU[k].max)return;l.up[k]=lvl(k)+1}S.cash-=c;toast(`Bought ${LU[k].n.toLowerCase()}`)}
-  save();hud();renderSheet()});
+/* which offer of a hub the auto-dispatch policy takes first */
+function trPick(id,pol){const os=LG().offers.filter(o=>o.from===id);if(!os.length)return null;
+  const key={pay:o=>-o.pay,rate:o=>-o.pay/jobDur(o),near:o=>o.km,fast:o=>jobDur(o)}[pol];return key?os.sort((a,b)=>key(a)-key(b))[0]:null}
+function runLogi(){const l=LG(),now=Date.now();
+  for(const j of l.jobs.filter(j=>now>=j.arr)){const h=HB(j.from);S.cash+=j.pay;S.earned=(S.earned||0)+j.pay;l.earned+=j.pay;l.done++;l.tons+=j.tons;l.rep[j.ri]=Math.min(50,repOf(j.ri)+1);
+    h.done++;h.earned+=j.pay;h.tons+=j.tons;if(j.late){l.late++;h.late++}
+    l.hist.unshift({t:now,day:S.day||1,hub:j.from,to:j.to,g:j.g,tons:j.tons,ri:j.ri,pay:j.pay,late:!!j.late});l.hist.length=Math.min(l.hist.length,60);
+    S.log.unshift(`Trucking: delivered ${j.tons} t of ${j.g} for ${RIVALS[j.ri].n}, +${fmt(j.pay)}`);S.log=S.log.slice(0,3)}
+  l.jobs=l.jobs.filter(j=>now<j.arr);l.offers=l.offers.filter(o=>o.exp>now&&(S.own[o.from]||{}).trucking);
+  const H=hubs();if(!H.length)return;
+  for(const c of H){const h=HB(c.id);if(now-h.last>90000&&l.offers.filter(o=>o.from===c.id).length<hubSlots(c.id)){h.last=now;const o=makeOffer(c);if(o)l.offers.push(o)}}
+  if(lvl("dispatch")&&l.auto)for(const c of H){const pol=hubPol(c.id);if(pol==="off")continue;let o;while(hubRoom(c.id)>0&&(o=trPick(c.id,pol))){if(!acceptOffer(o.id,true))break}}}
 /* ---------- hire an AI logistics company instead of using your own network ---------- */
 const CARR=i=>{const h=hashS(RIVALS[i].n);return{rate:.0093*(.8+(h%50)/100),spd:.8+((h>>4)%60)/100,rel:.92+((h>>9)%8)/100}};
 /* q = units of the good (g); the fee is per tonne-km, with a 0.25 t/unit floor so light goods are not almost free (g omitted: q is already a weight) */
@@ -3429,8 +3456,8 @@ function hrApp(){let h="",n=0,pay=0;const btn=(a,k,t,bg,dis)=>`<button class="bu
         <div><span>Profit</span><b>${fmt(profit(b,c,lv))}/hr</b></div></div>
         <div style="display:flex;gap:4px;margin-bottom:6px">${btn("hrsch",key,"Hours: "+sc[0],"#334155")}${btn("hrup",key,"Raise","#15803d",a>=HRCFG.maxUp||!st)}${btn("hrdn",key,"Cut","#b45309",a<=-HRCFG.maxDn||!st)}${st?btn("hrfire",key,"Fire","#7f1d1d"):btn("hrhire",key,"Hire","#1d4ed8")}</div>`}}
   const cs=hqCountries(),nh=cs.length?`<div class="ph-sub" style="margin-top:6px">HQ network</div><div class="ph-rows"><div><span>Country HQs</span><b>${cs.length}</b></div><div><span>Links · upkeep</span><b>${hqLinks().length} · ${fmt(hqNetUp())}/hr</b></div>${hqLinks().map(l=>`<div><span>${l[0]} ↔ ${l[1]}</span><b style="color:#4ade80">+${HQNET.per*100}%</b></div>`).join("")}</div>${hqNetHtml(true)}${cs.length>1?`<div class="ph-sub" style="font-size:12px">${HQNOTE}</div>`:""}`:"";
-  if(!n)return `<div style="display:flex;gap:6px;margin:2px 0 8px"><button class="buy" data-ph="dash" style="flex:1;color:#fff;background:#2563eb!important;border-color:#2563eb">Open dashboard</button><button class="buy" data-ph="dashlog" style="flex:1;color:#fff;background:#0f766e!important;border-color:#0f766e">Logistics</button></div><div class="ph-sub">You don't own any businesses yet.</div>`+nh;
-  return `<div style="display:flex;gap:6px;margin:2px 0 8px"><button class="buy" data-ph="dash" style="flex:1;color:#fff;background:#2563eb!important;border-color:#2563eb">Open dashboard</button><button class="buy" data-ph="dashlog" style="flex:1;color:#fff;background:#0f766e!important;border-color:#0f766e">Logistics</button></div><div class="ph-rows"><div><span>Businesses</span><b>${n}</b></div><div><span>Payroll</span><b>${fmt(pay)}/hr</b></div></div>
+  if(!n)return `<div style="display:flex;gap:4px;margin:2px 0 8px"><button class="buy" data-ph="dash" style="flex:1;min-width:0;padding-left:2px;padding-right:2px;font-size:12px;color:#fff;background:#2563eb!important;border-color:#2563eb">Dashboard</button><button class="buy" data-ph="dashlog" style="flex:1;min-width:0;padding-left:2px;padding-right:2px;font-size:12px;color:#fff;background:#0f766e!important;border-color:#0f766e">Logistics</button><button class="buy" data-ph="dashtruck" style="flex:1;min-width:0;padding-left:2px;padding-right:2px;font-size:12px;color:#fff;background:#b45309!important;border-color:#b45309">Trucking</button></div><div class="ph-sub">You don't own any businesses yet.</div>`+nh;
+  return `<div style="display:flex;gap:4px;margin:2px 0 8px"><button class="buy" data-ph="dash" style="flex:1;min-width:0;padding-left:2px;padding-right:2px;font-size:12px;color:#fff;background:#2563eb!important;border-color:#2563eb">Dashboard</button><button class="buy" data-ph="dashlog" style="flex:1;min-width:0;padding-left:2px;padding-right:2px;font-size:12px;color:#fff;background:#0f766e!important;border-color:#0f766e">Logistics</button><button class="buy" data-ph="dashtruck" style="flex:1;min-width:0;padding-left:2px;padding-right:2px;font-size:12px;color:#fff;background:#b45309!important;border-color:#b45309">Trucking</button></div><div class="ph-rows"><div><span>Businesses</span><b>${n}</b></div><div><span>Payroll</span><b>${fmt(pay)}/hr</b></div></div>
     <div class="ph-sub" style="margin-top:6px;font-size:12px">Extended hours: ×1.35 sales, ×1.5 wages. 24h: ×1.7 sales, ×2.2 wages. Each raise +10% wages, +4% output. Each cut −10% wages, −6% output and a 3%/day chance staff quit.</div>`+nh+h}
 /* ---------- HQ dashboard: floating, resizable finance window over the game (opened from the phone's HQ app) ---------- */
 const DX={el:null,open:false,reg:null,view:"city",samples:[],note:"",noteT:0,tip:null};
@@ -3594,8 +3621,8 @@ function dxPlace(p){const el=DX.el,vw=innerWidth,vh=innerHeight;
   Object.assign(el.style,{left:x+"px",top:y+"px",width:w+"px",height:h+"px"})}
 function dxOpen(){if(!document.getElementById("mdx-css")){const st=document.createElement("style");st.id="mdx-css";st.textContent=DXCSS;document.head.appendChild(st)}
   if(DX.reg==null)DX.reg=dxRegAny();
-  if(!DX.el){const el=DX.el=document.createElement("div");el.className="mdx-win";el.setAttribute("role","dialog");el.setAttribute("aria-label","Business dashboard");document.body.appendChild(el);dxWire(el);lxWire(el)}
-  lxCss();DX.el.classList.toggle("lx-on",DX.page==="log");
+  if(!DX.el){const el=DX.el=document.createElement("div");el.className="mdx-win";el.setAttribute("role","dialog");el.setAttribute("aria-label","Business dashboard");document.body.appendChild(el);dxWire(el);lxWire(el);txWire(el)}
+  lxCss();DX.el.classList.toggle("lx-on",DX.page==="log"||DX.page==="truck");
   DX.el.style.display="flex";DX.open=true;DX.sig=null;DX.el.innerHTML=dxShell();dxPlace(dxLoadPos());dxTick()}
 function dxClose(){DX.open=false;DX.tip=null;if(DX.el){dxSavePos();DX.el.style.display="none"}}
 addEventListener("resize",()=>{if(DX.open&&DX.el){dxPlace(DX.el.classList.contains("mdx-full")?dxLoadPos():{x:parseFloat(DX.el.style.left),y:parseFloat(DX.el.style.top),w:parseFloat(DX.el.style.width),h:parseFloat(DX.el.style.height)})}});
@@ -3628,7 +3655,7 @@ function dxShell(){return `<div class="mdx-bar"><span class="mdx-logo">${dxI("bi
   <div class="mdx-seg" role="tablist"><button data-dx="reg" data-v="1" class="${DX.reg?"on":""}">Registered</button><button data-dx="reg" data-v="0" class="${DX.reg?"":"on"}">All owned</button></div>
   <button class="mdx-x" data-dx="close" aria-label="Close dashboard">×</button></div><div class="mdx-body">${dxBody()}</div><div class="mdx-rs" aria-hidden="true"></div>`}
 function dxBody(){const hr=new Date().getHours(),gr=hr<12?"Good morning":hr<18?"Good afternoon":"Good evening";
-  return `<div class="mdx-in"><div class="mdx-seg lx-pg" role="tablist" aria-label="Dashboard page"><button data-lx="page" data-v="fin" class="${DX.page==="log"?"":"on"}">Finance</button><button data-lx="page" data-v="log" class="${DX.page==="log"?"on":""}">Logistics</button></div><div class="mdx-hd"><h2>${gr} <span>${dxE(S.name||"Tycoon")}</span> 👋</h2><div class="mdx-date"><span class="mdx-live"></span>${dxI("cal",15)}<span id="mdx-dt"></span></div></div>
+  return `<div class="mdx-in"><div class="mdx-seg lx-pg" role="tablist" aria-label="Dashboard page"><button data-lx="page" data-v="fin" class="${DX.page==="log"||DX.page==="truck"?"":"on"}">Finance</button><button data-lx="page" data-v="log" class="${DX.page==="log"?"on":""}">Logistics</button><button data-lx="page" data-v="truck" class="${DX.page==="truck"?"on":""}">Trucking</button></div><div class="mdx-hd"><h2>${gr} <span>${dxE(S.name||"Tycoon")}</span> 👋</h2><div class="mdx-date"><span class="mdx-live"></span>${dxI("cal",15)}<span id="mdx-dt"></span></div></div>
   <div id="mdx-main"></div></div>`}
 function dxMain(){const kp=(k,lb,bg,fg)=>`<div class="mdx-card mdx-kpi" data-k="${k}"><span class="mdx-ic" style="background:${bg};color:${fg}">${dxI(k,22)}</span><div class="mdx-lb"><span>${lb}</span><em class="mdx-pill mdx-flat">—</em></div><div class="mdx-big">$0</div><div class="mdx-kfoot"><small></small><svg width="74" height="30" viewBox="0 0 74 30"></svg></div></div>`;
   return `<div class="mdx-kpis">${kp("rev","Revenue / hr","#dcfce7","#16a34a")}${kp("exp","Expenses / hr","#fee2e2","#dc2626")}${kp("biz","Businesses","#e0ecff","#2563eb")}${kp("net","Net profit / hr","#fef3c7","#d97706")}</div>
@@ -3677,7 +3704,7 @@ function dxTipShow(el){const box=DX.el&&DX.el.querySelector("#mdx-bars");if(!box
   const br=box.getBoundingClientRect(),r=el.getBoundingClientRect(),w=t.offsetWidth;let x=r.right-br.left+6;if(x+w>br.width)x=r.left-br.left-w-6;if(x<0)x=Math.max(0,Math.min(br.width-w,r.left-br.left+r.width/2-w/2));t.style.left=x+"px"}
 const dxAgo=t=>{const s=Math.max(0,(Date.now()-t)/1000);return s<60?"just now":s<3600?Math.round(s/60)+" min ago":(s/3600).toFixed(1)+" days ago"};
 const dxIn=ms=>ms<=0?"now":ms<60000?Math.ceil(ms/1000)+"s":ms<DAYMS?Math.ceil(ms/60000)+" min":(ms/DAYMS).toFixed(1)+" days";
-function dxRender(){if(!DX.open||!DX.el)return;if(DX.page==="log"){lxRender();return}const reg=!!DX.reg,T=dxData(reg),main=DX.el.querySelector("#mdx-main");if(!main)return;
+function dxRender(){if(!DX.open||!DX.el)return;if(DX.page==="log"){lxRender();return}if(DX.page==="truck"){txRender();return}const reg=!!DX.reg,T=dxData(reg),main=DX.el.querySelector("#mdx-main");if(!main)return;
   const dt=DX.el.querySelector("#mdx-dt");if(dt)dt.textContent=`Day ${S.day||1} · next day in ${dxIn((S.hour+1)*DAYMS-Date.now())}`;
   DX.el.querySelectorAll("[data-dx=reg]").forEach(b=>b.classList.toggle("on",(b.dataset.v==="1")===reg));
   if(!T.n){if(main.dataset.mode!=="empty"){main.dataset.mode="empty";DX.sig=null}const any=dxData(false).n;
@@ -4728,7 +4755,7 @@ function lxSet(k,v){const lg=LGS(),f=lg.f;
 function lxSetO(k,v){const o=LGS().o;if(!o)return;if(["keep","min","tgt","bat"].includes(k))o[k]=Math.max(0,Math.floor(+v||0));else if(k==="tc"||k==="scv")o[k]=k==="tc"||o.sct==="city"?+v:v;else if(k==="tk"){o.tk=v;const l=(v==="mkt"?CITIES.filter(c=>hasHQ(c)):CITIES.filter(c=>hasWh(c)));o.tc=l[0]?l[0].id:-1}
   else if(k==="sct"){o.sct=v;o.scv=v==="reg"?"am":v==="city"?((CITIES.find(c=>hasWh(c))||{}).id):""}else o[k]=v;LGS().force=true;dxRender()}
 function lxAct(a,b){const lg=LGS(),X=LX(),f=lg.f;if(a!=="odel"&&a!=="jcancel")lg.arm=null;let done=false;
-  if(a==="page"){DX.page=b.dataset.v==="log"?"log":"fin";DX.el.classList.toggle("lx-on",DX.page==="log");DX.sig=null;DX.el.querySelectorAll("[data-lx=page]").forEach(x=>x.classList.toggle("on",x.dataset.v===DX.page));const m=DX.el.querySelector("#mdx-main");if(m){m.dataset.mode="";m._lxh=""}lg.force=true;dxRender();return}
+  if(a==="page"){DX.page=b.dataset.v==="log"||b.dataset.v==="truck"?b.dataset.v:"fin";DX.el.classList.toggle("lx-on",DX.page!=="fin");DX.sig=null;DX.el.querySelectorAll("[data-lx=page]").forEach(x=>x.classList.toggle("on",x.dataset.v===DX.page));const m=DX.el.querySelector("#mdx-main");if(m){m.dataset.mode="";m._lxh=""}lg.force=true;dxRender();return}
   if(a==="tab"){lg.tab=b.dataset.v;lg.o=null}
   else if(a==="ov")lg.ov=b.dataset.v;
   else if(a==="pick"){f.item=b.dataset.v;f.from=-1;f.q=0;f.to=-1;f.car="";lg.tab="send"}
@@ -4768,6 +4795,89 @@ function lxAct(a,b){const lg=LGS(),X=LX(),f=lg.f;if(a!=="odel"&&a!=="jcancel")lg
 function lxWire(el){
   el.addEventListener("click",e=>{const b=e.target.closest("[data-lx]");if(!b||b.disabled)return;try{lxAct(b.dataset.lx,b)}catch(err){console.warn("lx",err)}});
   el.addEventListener("change",e=>{const t=e.target;if(!t.dataset)return;try{if(t.dataset.lxf)lxSet(t.dataset.lxf,t.value);else if(t.dataset.lxo)lxSetO(t.dataset.lxo,t.value);else if(t.dataset.lxm){const lg=LGS();if(t.dataset.lxm==="bc")lg.bc=+t.value;else if(lg.mv)lg.mv.to=+t.value;lg.force=true;dxRender()}}catch(err){console.warn("lx",err)}})}
+/* ---------- Trucking: the "Trucking" page of the HQ dashboard (all state in S.logi, see LG()) ---------- */
+function TGS(){return DX.tg=DX.tg||{tab:"hubs",hub:-1,note:"",nt:0,force:false}}
+const txBiz=()=>BIZ.find(b=>b.k==="trucking");
+const txPct=(a,b)=>b>0?Math.round(a/b*100)+"%":"—";
+const txCol=n=>n<0?"#dc2626":"#16a34a";
+const txSgn=n=>(n<0?"-":"+")+fmt(Math.abs(n));
+function txBuyable(){const b=txBiz();return CITIES.filter(c=>!(S.own[c.id]||{}).trucking&&!bizBlock(b,c)).sort((x,y)=>cost(b,x)-cost(b,y))}
+function txBuyList(n,title){const b=txBiz(),cs=txBuyable().slice(0,n);if(!cs.length)return `<div class="mdx-empty">No city can open a Trucking company right now.</div>`;
+  return `<div class="lx-sub">${title}</div>`+cs.map(c=>`<div class="lx-it"><div class="m"><b>${dxE(c.name)}</b><span>${fmt(cost(b,c))} to open</span></div><div class="a"><button class="lx-btn" data-tx="go" data-c="${c.id}">Open in ${dxE(c.name)}</button></div></div>`).join("")}
+function txKpis(){const l=LG(),H=hubs();let res=0;for(const c of H)res+=HB(c.id).res;res=Math.min(res,l.trucks);
+  return `<div class="lx-k"><div><span>Earned</span><b>${fmt(l.earned)}</b><small>${l.done} contract${l.done===1?"":"s"}</small></div><div><span>Delivered</span><b>${Math.round(l.tons).toLocaleString()} t</b><small>${H.length} hub${H.length===1?"":"s"}</small></div><div><span>On time</span><b>${txPct(l.done-l.late,l.done)}</b><small>${l.late} late</small></div><div><span>Trucks busy</span><b>${l.jobs.length}/${l.trucks}</b><small>${res} reserved · ${Math.max(0,l.trucks-res)} shared</small></div></div>`}
+function txHubCard(c,row){const l=LG(),h=HB(c.id),lv=(S.own[c.id]||{}).trucking||1,b=busyAt(c.id),now=Date.now(),pol=hubPol(c.id),nOff=l.offers.filter(o=>o.from===c.id).length;
+  let hr=0;for(const e of l.hist)if(e.hub===c.id&&now-e.t<=DAYMS)hr+=e.pay;
+  const rev=row?row.rev:0,exp=row?row.exp:0,net=rev-exp+hr,own=S.fleet.filter(v=>v.type==="truck"&&v.city===c.id).length,room=hubRoom(c.id);
+  const polN=(TPOL.find(p=>p[0]===pol)||TPOL[0])[1],autoOn=lvl("dispatch")&&l.auto&&pol!=="off",rm=trReserved(c.id);
+  const up=k=>{const u=HU[k],n=h[k],done=n>=u.max,cs=huCost(c.id,k);return `<div class="lx-it"><div class="m"><b>${u.n}<span class="lx-tag">Lv ${n}/${u.max}</span></b><span>${u.d}</span></div><div class="a"><button class="lx-btn" data-tx="hup" data-id="${c.id}" data-k="${k}" ${done||S.cash<cs?"disabled":""}>${done?"Maxed":fmt(cs)}</button></div></div>`};
+  return `<div class="mdx-card"><div class="mdx-ch"><h3>${dxE(c.name)}</h3><span class="lx-tag b">Level ${lv}</span><span class="lx-tag ${autoOn?"g":""}">${autoOn?dxE(polN):"Manual"}</span><div style="margin-left:auto" class="a"><button class="lx-btn" data-tx="go" data-c="${c.id}">Manage</button></div></div>
+  <div class="lx-k"><div><span>Revenue / hr</span><b>${fmt(rev)}</b><small>business</small></div><div><span>Costs / hr</span><b>${fmt(exp)}</b><small>wages, tax, rent</small></div><div><span>Contracts / hr</span><b>${fmt(hr)}</b><small>${h.done} done · ${fmt(h.earned)} total</small></div><div><span>Profit / hr</span><b style="color:${txCol(net)}">${txSgn(net)}</b><small>${Math.round(h.tons)} t · ${txPct(h.done-h.late,h.done)} on time</small></div></div>
+  <div class="lx-it"><div class="m"><b>Trucks</b><span>${b} busy here · ${room} can start now · ${nOff} offer${nOff===1?"":"s"} on the board</span><small>${own?`${own} of your own vehicle${own===1?"":"s"} based here run 25% faster. `:""}${lv>1?`Level ${lv} pays ${10*(lv-1)}% more on contracts.`:"Higher levels pay more on contracts."}</small></div></div>
+  <div class="lx-it"><div class="m"><b>Reserved for this hub</b><span>${h.res} truck${h.res===1?"":"s"} always available to it</span></div><div class="a"><button class="lx-btn" data-tx="res" data-id="${c.id}" data-d="-1" ${h.res<1?"disabled":""} aria-label="Reserve fewer trucks">−</button><button class="lx-btn" data-tx="res" data-id="${c.id}" data-d="1" ${rm+h.res>=l.trucks?"disabled":""} aria-label="Reserve more trucks">+</button></div></div>
+  <div class="lx-it"><div class="m"><b>Most at once</b><span>${h.cap?h.cap+" truck"+(h.cap===1?"":"s"):"No limit (shared pool)"}</span></div><div class="a"><button class="lx-btn" data-tx="cap" data-id="${c.id}" data-d="-1" ${h.cap<1?"disabled":""} aria-label="Lower limit">−</button><button class="lx-btn" data-tx="cap" data-id="${c.id}" data-d="1" ${h.cap>=l.trucks?"disabled":""} aria-label="Raise limit">+</button></div></div>
+  <div class="lx-it"><div class="m"><b>Auto-dispatch</b><span>${lvl("dispatch")?(l.auto?"Takes offers by this policy when trucks are free.":"Master switch is off (Board tab)."):"Buy Dispatch software in the Fleet tab to unlock."}</span><select class="lx-in" data-txp="${c.id}" ${lvl("dispatch")?"":"disabled"} style="margin-top:6px">${TPOL.map(p=>lxOpt(p[0],p[1],pol)).join("")}</select></div></div>${up("dep")}${up("drv")}</div>`}
+function txHubs(tg){const H=hubs(),D=dxData(false),by={};for(const r of D.rows)if(r.b.k==="trucking")by[r.c.id]=r;
+  let h=txKpis();for(const c of H)h+=txHubCard(c,by[c.id]);
+  return h+`<div class="mdx-card"><div class="mdx-ch"><h3>Open another hub</h3></div>${txBuyList(5,"Cheapest cities to open a Trucking company")}</div>`}
+function txOfferRow(o){const room=hubRoom(o.from),h=HB(o.from);
+  return `<div class="lx-it"><div class="m"><b>${dxE(CITIES[o.from].name)} → ${dxE(CITIES[o.to].name)} <span style="font-family:var(--mono,monospace);color:#16a34a">${fmt(o.pay)}</span></b><span><b style="color:${RIVALS[o.ri].col}">${dxE(RIVALS[o.ri].n)}</b> · ${o.tons} t ${dxE(o.g)} · ${Math.round(o.km)} km · about ${fmtDur(jobDur(o))}</span><small>expires in ${fmtDur(o.exp-Date.now())}${repOf(o.ri)?` · rival rep +${repOf(o.ri)*2}%`:""}${h.drv?` · drivers +${h.drv*6}%`:""}</small></div><div class="a"><button class="lx-btn pri" data-tx="take" data-id="${o.id}" ${room<1?"disabled":""}>${room<1?(h.cap&&busyAt(o.from)>=h.cap?"Hub at limit":"No trucks"):"Accept"}</button></div></div>`}
+function txBoard(tg){const l=LG(),H=hubs();if(tg.hub!==-1&&!H.some(c=>c.id===tg.hub))tg.hub=-1;
+  let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Contract board</h3>${lvl("dispatch")?`<div style="margin-left:auto"><button class="lx-btn" data-tx="auto">Auto-dispatch ${l.auto?"ON":"OFF"}</button></div>`:""}</div>`;
+  if(H.length>1)h+=`<div class="lx-tabs" style="margin-bottom:8px"><button data-tx="bhub" data-id="-1" class="${tg.hub===-1?"on":""}">All hubs</button>${H.map(c=>`<button data-tx="bhub" data-id="${c.id}" class="${tg.hub===c.id?"on":""}">${dxE(c.name)}<b>${l.offers.filter(o=>o.from===c.id).length}</b></button>`).join("")}</div>`;
+  const os=l.offers.filter(o=>tg.hub===-1||o.from===tg.hub).sort((a,b)=>b.pay-a.pay);
+  h+=os.length?os.map(txOfferRow).join(""):`<div class="mdx-empty">New offers arrive about every minute and a half at each hub.</div>`;
+  return h+`</div>`+txActive()}
+function txActive(){const l=LG(),now=Date.now();let h=`<div class="mdx-card"><div class="mdx-ch"><h3>On the road</h3><span class="lx-tag b">${l.jobs.length}/${l.trucks} trucks</span></div>`;
+  if(!l.jobs.length)return h+`<div class="mdx-empty">No trucks out. Accept a contract to send one.</div></div>`;
+  for(const j of [...l.jobs].sort((a,b)=>a.arr-b.arr)){const p=Math.max(0,Math.min(100,(now-j.dep)/Math.max(1,j.arr-j.dep)*100));
+    h+=`<div class="lx-it"><div class="m"><b>${dxE(CITIES[j.from].name)} → ${dxE(CITIES[j.to].name)}${j.late?`<span class="lx-tag y">DELAYED</span>`:""} <span style="color:#16a34a">${fmt(j.pay)}</span></b><span>${j.tons} t ${dxE(j.g)} for <b style="color:${RIVALS[j.ri].col}">${dxE(RIVALS[j.ri].n)}</b> · arrives in ${fmtDur(j.arr-now)}</span><div class="lx-bar"><i style="width:${p}%"></i></div></div></div>`}
+  return h+`</div>`}
+function txFleet(tg){const l=LG();let res=0;for(const c of hubs())res+=HB(c.id).res;res=Math.min(res,l.trucks);
+  let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Shared fleet</h3><span class="lx-tag b">${l.trucks} trucks</span></div><div class="lx-it"><div class="m"><b>${l.jobs.length} busy · ${res} reserved · ${Math.max(0,l.trucks-res)} in the shared pool</b><span>Reserve trucks per hub on the Hubs tab. Unreserved trucks go to whichever hub asks first.</span></div></div>`;
+  for(const k in LU){const u=LU[k],n=k==="trucks"?l.trucks:lvl(k),done=n>=u.max,cs=luCost(k);
+    h+=`<div class="lx-it"><div class="m"><b>${u.n}<span class="lx-tag">${k==="trucks"?n+" trucks":"Lv "+n+"/"+u.max}</span></b><span>${u.d}</span></div><div class="a"><button class="lx-btn" data-tx="up" data-k="${k}" ${done||S.cash<cs?"disabled":""}>${done?"Maxed":fmt(cs)}</button></div></div>`}
+  h+=`</div><div class="mdx-card"><div class="mdx-ch"><h3>Rival reputation</h3></div>`;
+  const rs=(S.rivals||[]).map((r,i)=>i);
+  h+=rs.length?rs.map(i=>{const r=repOf(i);return `<div class="lx-it"><div class="m"><b><span style="display:inline-block;width:9px;height:9px;background:${RIVALS[i].col};margin-right:6px"></span>${dxE(RIVALS[i].n)}<span class="lx-tag ${r>=30?"g":r>=10?"b":""}">${r>=30?"Preferred":r>=10?"Trusted":r?"Known":"New"}</span></b><span>${r} / 50 deliveries · +${r*2}% contract pay · ${Math.round(r*.4)}% cheaper hiring them</span><div class="lx-bar"><i style="width:${r*2}%"></i></div></div></div>`}).join(""):`<div class="mdx-empty">No rivals yet.</div>`;
+  return h+`</div>`}
+function txHist(tg){const l=LG(),H=hubs();
+  let h=txKpis()+`<div class="mdx-card"><div class="mdx-ch"><h3>Per hub</h3></div>`;
+  h+=H.length?H.map(c=>{const x=HB(c.id);return `<div class="lx-it"><div class="m"><b>${dxE(c.name)}</b><span>${x.done} contracts · ${fmt(x.earned)} · ${Math.round(x.tons)} t · ${txPct(x.done-x.late,x.done)} on time</span></div></div>`}).join(""):`<div class="mdx-empty">No hubs.</div>`;
+  h+=`</div><div class="mdx-card"><div class="mdx-ch"><h3>Delivery history</h3></div>`;
+  if(!l.hist.length)h+=`<div class="mdx-empty">No contracts finished yet.</div>`;
+  for(const e of l.hist.slice(0,30))h+=`<div class="lx-it"><div class="m"><b>${dxE(CITIES[e.hub].name)} → ${dxE(CITIES[e.to].name)}${e.late?`<span class="lx-tag y">LATE</span>`:""} <span style="color:#16a34a">+${fmt(e.pay)}</span></b><span>${e.tons} t ${dxE(e.g)} for <b style="color:${RIVALS[e.ri].col}">${dxE(RIVALS[e.ri].n)}</b></span><small>Day ${e.day||"?"}</small></div></div>`;
+  return h+`</div>`}
+function txEmpty(){const l=LG();let h=`<div class="mdx-card mdx-hero"><span class="mdx-ic" style="display:inline-grid;background:#fef3c7;color:#d97706;width:56px;height:56px;font-size:26px">🚚</span><h3>Buy a Trucking company to start</h3><p>Each Trucking company is a freight hub. Rival companies post contracts to your hubs, and you run them with a shared fleet of trucks, per-hub depots and drivers. Your own trucks from a hub run 25% faster, and it can deliver supplier orders for your shops.</p></div>`;
+  h+=`<div class="mdx-card"><div class="mdx-ch"><h3>Where you can open one</h3></div>${txBuyList(8,"Cheapest cities first")}</div>`;
+  if(l.jobs.length)h+=txActive();return h}
+function txPage(tg){const now=Date.now();if(!hubs().length)return txEmpty();
+  const tabs=[["hubs","Hubs",hubs().length],["board","Board",LG().offers.length],["fleet","Fleet"],["hist","History"]];
+  let h=`<div class="lx-tabs" role="tablist">${tabs.map(t=>`<button role="tab" data-tx="tab" data-v="${t[0]}" aria-selected="${tg.tab===t[0]}" class="${tg.tab===t[0]?"on":""}">${t[1]}${t[2]?`<b>${t[2]}</b>`:""}</button>`).join("")}</div>`;
+  if(tg.note&&now-tg.nt<9000)h+=`<div class="lx-note">${dxE(tg.note)}</div>`;
+  return h+({hubs:txHubs,board:txBoard,fleet:txFleet,hist:txHist}[tg.tab]||txHubs)(tg)}
+function txRender(){const main=DX.el&&DX.el.querySelector("#mdx-main");if(!main)return;const tg=TGS();
+  DX.el.classList.add("lx-on");const dt=DX.el.querySelector("#mdx-dt");if(dt)dt.textContent=`Day ${S.day||1} · next day in ${dxIn((S.hour+1)*DAYMS-Date.now())}`;
+  DX.el.querySelectorAll("[data-lx=page]").forEach(b=>b.classList.toggle("on",b.dataset.v==="truck"));
+  if(main.dataset.mode!=="tx"){main.dataset.mode="tx";main._lxh=""}
+  const ae=document.activeElement;if(!tg.force&&ae&&main.contains(ae)&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName))return;tg.force=false;
+  let h;try{h=txPage(tg)}catch(e){console.warn("tx",e);h=`<div class="mdx-card"><div class="mdx-empty">The trucking page hit a snag (${dxE(e.message)}). Close and reopen the dashboard.</div></div>`}
+  if(h!==main._lxh){main._lxh=h;main.innerHTML=h}}
+function txAct(a,b){const tg=TGS(),l=LG(),id=+b.dataset.id;let done=false;
+  if(a==="tab")tg.tab=b.dataset.v;
+  else if(a==="bhub")tg.hub=id;
+  else if(a==="go"){const c=CITIES[+b.dataset.c];if(c){dxClose();tab="biz";openCity(c)}return}
+  else if(a==="take"){if(acceptOffer(id)){tg.note="Contract accepted.";done=true}else tg.note="No truck is free for that hub (reserved trucks, hub limit or all busy)."; tg.nt=Date.now()}
+  else if(a==="auto"){l.auto=!l.auto;done=true}
+  else if(a==="res"&&hubs().some(c=>c.id===id)){const h=HB(id),d=+b.dataset.d;if(d>0&&trReserved(id)+h.res+1>l.trucks)return;h.res=Math.max(0,h.res+d);done=true}
+  else if(a==="cap"&&hubs().some(c=>c.id===id)){const h=HB(id);h.cap=Math.max(0,Math.min(l.trucks,h.cap+ +b.dataset.d));done=true}
+  else if(a==="hup"&&hubs().some(c=>c.id===id)&&HU[b.dataset.k]){const k=b.dataset.k,h=HB(id),cs=huCost(id,k);if(h[k]>=HU[k].max||S.cash<cs)return;S.cash-=cs;h[k]++;toast(`${HU[k].n}: ${CITIES[id].name} level ${h[k]}`);done=true}
+  else if(a==="up"&&LU[b.dataset.k]){const k=b.dataset.k,cs=luCost(k);if(S.cash<cs)return;if(k==="trucks"){if(l.trucks>=LU.trucks.max)return;l.trucks++}else{if(lvl(k)>=LU[k].max)return;l.up[k]=lvl(k)+1}S.cash-=cs;toast(`Bought ${LU[k].n.toLowerCase()}`);done=true}
+  if(done){save();hud();if(PH.open)phRender()}
+  tg.force=true;dxRender()}
+function txWire(el){
+  el.addEventListener("click",e=>{const b=e.target.closest("[data-tx]");if(!b||b.disabled)return;try{txAct(b.dataset.tx,b)}catch(err){console.warn("tx",err)}});
+  el.addEventListener("change",e=>{const t=e.target;if(!t.dataset||t.dataset.txp==null)return;try{const id=+t.dataset.txp;if(hubs().some(c=>c.id===id)&&lvl("dispatch")){HB(id).pol=t.value;save()}t.blur();TGS().force=true;dxRender()}catch(err){console.warn("tx",err)}})}
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -4854,6 +4964,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(/^hr(sch|up|dn|fire|hire)$/.test(a)){hrAct(a,b.dataset.k);save();hud()}
   else if(a==="dash"){DX.page="fin";dxOpen();return}
   else if(a==="dashlog"){DX.page="log";dxOpen();return}
+  else if(a==="dashtruck"){DX.page="truck";dxOpen();return}
   else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
   else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
