@@ -619,7 +619,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
   const fb=$("#fire");if(fb)fb.onclick=()=>{if(!fb.dataset.arm){fb.dataset.arm=1;fb.textContent="Tap again to fire";return}delete S.mgr[c.id];if(S.mgrShort)for(const b of BIZ)delete S.mgrShort[bkey(c,b.k)];toast(`Manager fired in ${c.name}. No refund.`);commit()};
   const sa=$("#sellall");if(sa)sa.onclick=()=>{if(sa.dataset.arm){sellAll(c)}else{sa.dataset.arm=1;sa.textContent="Tap again to confirm sale"}};
 }
-function buy(c,k){const b=BIZ.find(x=>x.k===k),p=cost(b,c);if(S.cash<p)return;setTimeout(()=>{if(SUP[k])toast("Order stock to start selling. Hire staff so it runs without you.")},1900);{const blk=bizBlock(b,c);if(blk){toast(blk);return}}if(S.lease[c.id])delete S.lease[c.id][k];
+function buy(c,k){const b=BIZ.find(x=>x.k===k),p=cost(b,c);if(S.cash<p)return;{const blk=bizBlock(b,c);if(blk){toast(blk);return}}setTimeout(()=>{if(SUP[k])toast("Order stock to start selling. Hire staff so it runs without you.")},1900);if(S.lease[c.id])delete S.lease[c.id][k];
   S.cash-=p;if(S.sched)delete S.sched[bkey(c,k)];if(S.wadj)delete S.wadj[bkey(c,k)];(S.own[c.id]=S.own[c.id]||{})[k]=1;toast(`Opened ${b.n} in ${c.name}`);commit()}
 function upgrade(c,k){const b=BIZ.find(x=>x.k===k),lv=S.own[c.id][k],p=upCost(b,c,lv);if(S.cash<p||lv>=MAXLV)return;
   S.cash-=p;S.own[c.id][k]=lv+1;toast(`${b.n} in ${c.name} → Lv ${lv+1}`);commit()}
@@ -763,12 +763,14 @@ function runIndustry(hours){let sold=0;const step=.25;let left=hours;
 function depart(v,c,d,g,t){t=t||Date.now();const V=VEH[v.type],km=distKm(c,d),fuel=km*V.km*hqShip(c,d);if(S.cash<fuel)return false;S.cash-=fuel;
   let cargo=null;if(g){const inv=S.inv[c.id]||{},q=Math.min(V.cap,inv[g]||0);if(q>0){inv[g]-=q;if(inv[g]<1e-6)delete inv[g];cargo={g,q}}}
   Object.assign(v,{from:c.id,dest:d.id,cargo,dep:t,arr:t+km/V.spd*DAYMS*(v.type==="truck"&&(S.own[c.id]||{}).trucking?.75:v.type==="ship"&&(S.own[c.id]||{}).port?.8:1),city:null});return true}
-function routeStep(v,t){const r=v.route;if(!r||v.arr)return;const A=CITIES[r.from],B=CITIES[r.to];let ok=true;
+function routeStep(v,t){const r=v.route;if(!r||v.arr)return;const A=CITIES[r.from],B=CITIES[r.to];let ok=true;if(unhOn(A)||unhOn(B))return; /* paused while an end is uninhabitable */
   if(v.city===r.from){const have=(S.inv[r.from]||{})[r.g]||0;if(have>=Math.min(VEH[v.type].cap,VEH[v.type].cap*.5))ok=depart(v,A,B,r.g,t)}
   else if(v.city===r.to)ok=depart(v,B,A,r.back||"",t);
   if(!ok){v.route=null;S.log.unshift(`Route stopped: not enough cash for fuel (#${v.id})`);S.log=S.log.slice(0,3)}}
 function runFleet(now){for(const v of S.fleet){let guard=0;
+  if(!v.arr&&v.cargo&&v.city!=null&&!unhOn(CITIES[v.city])){const d=CITIES[v.city];ensureWh(d);S.inv[d.id][v.cargo.g]=(S.inv[d.id][v.cargo.g]||0)+v.cargo.q;S.log.unshift(`${VEH[v.type].n} #${v.id} unloaded ${Math.round(v.cargo.q)} ${G[v.cargo.g][0].toLowerCase()} in ${d.name}`);S.log=S.log.slice(0,3);v.cargo=null}
   while(v.arr&&now>=v.arr&&guard++<200){const t=v.arr,d=CITIES[v.dest];ensureWh(d);
+    if(v.cargo&&unhOn(d)){S.log.unshift(`${VEH[v.type].n} #${v.id} holds ${Math.round(v.cargo.q)} ${G[v.cargo.g][0].toLowerCase()}: ${d.name} is uninhabitable`);S.log=S.log.slice(0,3);v.city=v.dest;v.dest=null;v.dep=null;v.arr=null;routeStep(v,t);continue}
     if(v.cargo){S.inv[d.id][v.cargo.g]=(S.inv[d.id][v.cargo.g]||0)+v.cargo.q;S.log.unshift(`${VEH[v.type].n} #${v.id} delivered ${Math.round(v.cargo.q)} ${G[v.cargo.g][0].toLowerCase()} to ${d.name}`);S.log=S.log.slice(0,3)}
     v.city=v.dest;v.dest=null;v.cargo=null;v.dep=null;v.arr=null;routeStep(v,t)}
   if(!v.arr)routeStep(v,now)}}
@@ -835,7 +837,7 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
       h+=`<div class="sec">Your own fleet · parked here</div><div class="list">`;
       if(!here.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">No vehicles here.</p>`;
       for(const v of here){const V=VEH[v.type];
-        h+=v.route?`<div class="row own"><div class="n">${V.n} #${v.id} <span class="tag boom">ROUTE</span></div><div class="d">Waiting to load ${G[v.route.g][0].toLowerCase()} for ${CITIES[v.route.to].name}</div><button class="buy up" data-act="stoproute" data-id="${v.id}">Stop route</button></div>`:`<div class="row own"><div class="n">${V.n} #${v.id}</div><div class="d">Carries ${V.cap} units · ${V.spd} km/h</div><button class="buy" data-act="ship" data-id="${v.id}">${shipForm===v.id?"Cancel":"Send"}</button></div>`;
+        h+=v.route?`<div class="row own"><div class="n">${V.n} #${v.id} <span class="tag boom">ROUTE</span></div><div class="d">${unhOn(CITIES[v.route.to])?`Paused: ${CITIES[v.route.to].name} is uninhabitable for ${unhLeft(CITIES[v.route.to])}`:`Waiting to load ${G[v.route.g][0].toLowerCase()} for ${CITIES[v.route.to].name}`}</div><button class="buy up" data-act="stoproute" data-id="${v.id}">Stop route</button></div>`:`<div class="row own"><div class="n">${V.n} #${v.id}</div><div class="d">Carries ${V.cap} units · ${V.spd} km/h</div><button class="buy" data-act="ship" data-id="${v.id}">${shipForm===v.id?"Cancel":"Send"}</button></div>`;
         if(shipForm===v.id)h+=shipFormHtml(c,v)}
       h+=`</div>`;
       if(incoming.length)h+=`<div class="sec">Arriving</div><div class="list">`+incoming.map(v=>`<div class="row"><div class="n">${VEH[v.type].n} #${v.id}</div><div class="d">${v.cargo?`${Math.round(v.cargo.q)} ${G[v.cargo.g][0].toLowerCase()} · `:"empty · "}from ${CITIES[v.from].name} · in ${fmtDur(v.arr-Date.now())}</div><span></span></div>`).join("")+`</div>`;
@@ -1091,7 +1093,7 @@ function hqNetHtml(ph,from){const cs=hqCountries(),links=hqLinks();if(cs.length<
   let h="";for(const [a,b] of pairs){const on=hqLinked(a,b),other=from?(a===from?b:a):null,lbl=other?`${on?"Linked to":"Connect to"} ${other} HQ`:`${a} ↔ ${b}`,sub=`${hqCity(a).name} ↔ ${hqCity(b).name} · upkeep ${fmt(hqLinkUp(a,b))}/hr`;
     h+=ph?`<div class="ph-rows" style="margin-bottom:4px"><div><span><b>${lbl}</b><br><small style="color:#94a3b8">${sub}</small></span>${btn(a,b,!on)}</div></div>`:`<div class="row${on?" own":""}"><div class="n">${lbl}${on?' <span class="tag boom">Linked</span>':""}</div><div class="d">${sub}</div>${btn(a,b,!on)}</div>`}
   return h}
-function hqNetUp(){return hqLinks().reduce((u,l)=>u+hqLinkUp(l[0],l[1]),0)}
+function hqNetUp(){return hqLinks().reduce((u,l)=>u+(unhOn(l[2])||unhOn(l[3])?0:hqLinkUp(l[0],l[1])),0)}
 const HQNOTE=`Each link: +${HQNET.per*100}% business income in both countries (max +${HQNET.cap*100}% per country), ${Math.round((1-HQNET.ship)*100)}% cheaper fuel between them, ${Math.round((1-HQNET.perk)*100)}% off registration and manager fees in linked countries.`;
 const bizReg=(c,k)=>!!((S.reg[c.id]||{})[k]);
 const regFeeBiz=(b,c)=>Math.round(cost(b,c)*.07*hqPerk(c));
@@ -1099,7 +1101,7 @@ const regFeeSite=s=>Math.round(plotPrice(CITIES[s.city],zoneOf(s)||"farm",s.size
 const STAFF={cart:1,coffeecart:1,icecream:1,taco:2,pretzel:1,noodle:1,smoothie:1,kiosk:2,shop:4,rest:12,apt:2,office:20,hotel:60,casino:250,secfirm:25,ambulance:40,lawfirm:30,prison:150,taxico:35,busline:60,trucking:80,rail:400,port:600,airline:900,airport:1500};
 const siteStaff=s=>{const o=siteOp(s);if(!o)return 0;const ha=LAND[s.size][1];return Math.ceil(ha*(o.rp?1:o.cat==="Farm"?.5:o.cat==="Ranch"?.3:o.cat==="Mine"?2:3)*(1+.2*(slv(s)-1)))};
 const bizStaff=(k,lv)=>Math.ceil(STAFF[k]*(1+.5*(lv-1)));
-function hqTotalUpkeep(){let u=0;for(const id in S.hq)if(S.hq[id]&&CITIES[id])u+=hqUpkeep(CITIES[id]);return u+hqNetUp()}
+function hqTotalUpkeep(){let u=0;for(const id in S.hq)if(S.hq[id]&&CITIES[id]&&!unhOn(CITIES[id]))u+=hqUpkeep(CITIES[id]);return u+hqNetUp()}
 /* split this hour's taxable profit into registered vs unregistered */
 function taxableRates(){let reg=0,un=0;const wr=c=>taxRateC(c)/TAX_REG,wu=c=>(taxRateC(c)+.2)/TAX_UNREG;
   for(const pr of S.props||[]){if(!pr.occ||unhOn(CITIES[pr.city]))continue;const c=CITIES[pr.city],v=askRent(pr)*rentLaw(c);if(hasHQ(c))reg+=v*wr(c);else un+=v*wu(c)}
