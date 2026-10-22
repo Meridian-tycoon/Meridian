@@ -18,7 +18,7 @@ You change Meridian Tycoon, a browser tycoon game that lives entirely in `index.
 - Edit with small, exact string replacements. Each `old` string must occur exactly once; check before replacing.
 - Never name anything `L`, `d3` or another library global inside the IIFE (it breaks Leaflet street view).
 - Don't touch later-declared `const`s (`PH`, `sheet`, ...) at top level before their declaration.
-- Use a cents formatter for amounts under $100 (`fmt()` rounds them away).
+- Use the cents formatter `fmtc()` for amounts under $100 (`fmt()` rounds them away).
 - Buttons inside the dark phone need explicit light text colours.
 - Keep the globe's offscreen canvas cache intact.
 - To fix a player's broken save, ship an in-game action or a URL flag (like `?release`), never ask them to edit storage.

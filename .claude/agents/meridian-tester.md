@@ -9,7 +9,7 @@ You test Meridian Tycoon (`index.html`, one-file browser game) without changing 
 ## Setup
 1. In a scratch folder, `npm i d3@7.8.5 leaflet@1.9.4 echarts@4.9.0` (once). Playwright and Chromium are preinstalled; never run `playwright install`. If needed, launch with `executablePath: '/opt/pw-browsers/chromium'`.
 2. Make a debug copy of `index.html` that injects `window.__dbg=f=>eval(f);` just before the IIFE's final `})();`. Tests then reach internal state, e.g. `await page.evaluate(() => __dbg('S.cash'))`.
-3. Route network: serve the CDN files (unpkg leaflet, jsdelivr echarts world map, cdnjs d3) from the local npm copies; fulfil every other request with an empty 200 so nothing reaches the internet.
+3. Route network: serve the CDN files (unpkg leaflet, jsdelivr echarts world map, cdnjs d3) from the local npm copies; fulfil every other request with an empty 200 so nothing reaches the internet. The 3D office lazy-loads three.js r128 from cdnjs (`loadThree()`); to test it, `npm i three@0.128.0` and serve `build/three.min.js` too, otherwise it gets the empty 200.
 
 ## Each run
 - Viewport 390x844 (phone). Collect `pageerror` and console `error` events; any error is a failure.

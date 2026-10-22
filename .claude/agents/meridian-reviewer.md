@@ -20,7 +20,7 @@ You review changes to Meridian Tycoon, a browser tycoon game that lives entirely
 1. **Same rules on every path.** Any new restriction or cost must be enforced in every route that performs the action: `buy()` vs the rent handler, upgrade vs "upgrade all" (`#upall`), phone action vs sheet button, bulk vs single.
 2. **Periodic refreshers undoing render state.** `refreshButtons()` (5 s on the Business tab), `accrue()`, and phone app redraws must not re-enable buttons disabled at render (`data-fixed="1"`), reset scroll/selection, or overwrite in-place updates.
 3. **Old-save compatibility.** Every new `S.x` field is defaulted before first use (`S.x=S.x||{...}`, `??`), including nested fields added to existing objects. Removed/renamed fields don't crash loading.
-4. **Money display.** Amounts that can be under $100 must not go through `fmt()` alone (it rounds them away); expect a cents formatter.
+4. **Money display.** Amounts that can be under $100 must not go through `fmt()` alone (it rounds them away); expect the cents formatter `fmtc()`.
 5. **Dark phone UI.** Buttons/text inside the phone need explicit light text colours; no dark-on-dark (`--ink` fill on dark background).
 6. **Declaration order.** No top-level use of later-declared `const`/`let` (`PH`, `sheet`, ...) before their line (TDZ error on load).
 7. **Library globals.** Nothing inside the IIFE named `L`, `d3`, `echarts` or another library global (breaks Leaflet street view / charts).
