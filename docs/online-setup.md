@@ -13,7 +13,9 @@ Until you do this, the game stays fully offline: `FIREBASE_CONFIG` in `index.htm
    with
    `const FIREBASE_CONFIG={apiKey:"...",authDomain:"...",projectId:"...",storageBucket:"...",messagingSenderId:"...",appId:"..."};`
    (the object from step 2). These values are public by design; the rules protect the data.
-8. Commit and push. On the site open **Empire** (the portfolio screen) → **Online** section → create an account. Others appear on the globe as small coloured diamonds next to their home/HQ cities; tap a city to see "Players here".
+8. Commit and push. On the site open **Empire** (the portfolio screen) → **Online** section → create an account. Others appear on the globe as small coloured diamonds next to their home/HQ cities; tap a city to see "Players here". A pulsing ring marks the city a player is in right now (public profile field `loc`, in-game only).
+
+**Re-publish the rules** after updating to the live-location version: Firestore → **Rules** → paste the current `firestore.rules` → **Publish**. Until then, profile publishing is rejected (`loc` is a new allowed field).
 
 Listing players sorts on one field (`lastSeen`), so no custom index is needed.
 
