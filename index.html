@@ -469,9 +469,9 @@ function menuNet(c,b,lv,id){menuOv={[c.id+":"+b.k]:id};try{return profit(b,c,lv)
 const USE={cart:{burgers:2},coffeecart:{bread:1},icecream:{bread:1},taco:{beef:1,bread:1},pretzel:{bread:2},noodle:{beef:1},smoothie:{bread:1},kiosk:{bread:3},shop:{bread:4,tools:1},rest:{burgers:5,beef:3},office:{electronics:.5},hotel:{bread:8,electronics:.5}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
-function profit(b,c,lv){if(unhOn(c))return 0;if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)*(typeof ishBiz==="function"?ishBiz(b):1)*(typeof ctTurf==="function"?ctTurf(c):1)-bizWage(b,c,lv))}
+function profit(b,c,lv){if(unhOn(c))return 0;if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)*(typeof ishBiz==="function"?ishBiz(b):1)*techBiz(b)*(typeof ctTurf==="function"?ctTurf(c):1)-bizWage(b,c,lv))}
 // hourly wages a business is charged inside profit(); HQ Employees shows the same figure
-function bizWage(b,c,lv){return b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1))*(typeof hrPay==="function"?hrPay(c,b):1)}
+function bizWage(b,c,lv){return b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1))*(typeof hrPay==="function"?hrPay(c,b):1)*techWage()}
 const cityUnitsP=(b,c)=>uSum(c.id,b.k,l=>profit(b,c,l));
 function cityProfit(c){const o=S.own[c.id]||{};let t=0;for(const b of BIZ)if(o[b.k])t+=uSum(c.id,b.k,l=>profit(b,c,l));return t}
 /* renting: anything you don't own pays hourly rent (value / 60 per hour). Leases with a payback under 60 days profit; the Rent button warns when rent exceeds Lv1 profit minus hourly stock cost. Rate is read live, so old saves just pay the new rate. */
@@ -739,7 +739,7 @@ const OP=Object.fromEntries(OPS.map(o=>[o.k,o]));
 /* ---------- research tree ---------- */
 S.tech=S.tech||{};S.rp=S.rp||0;S.sats=S.sats||0;
 const hasTech=k=>!!S.tech[k];
-const TIERS=["Basic","Industrial","Advanced","Government & military","Space"];
+const TIERS=["Basic","Industrial","Advanced","Government & military","Space","Frontier"];
 const TECH=[
  {k:"mechfarm",t:0,n:"Mechanized farming",d:"Tractors and combines. Farms and ranches produce 25% more.",rp:40,cash:20000},
  {k:"oil",t:0,n:"Oil drilling",d:"Unlocks oil wells (on oil deposits) and refineries that make fuel.",rp:60,cash:40000},
@@ -749,9 +749,17 @@ const TECH=[
  {k:"semis",t:1,n:"Semiconductors",d:"Unlocks chip fabs and Advanced R&D centers (4× research).",rp:250,cash:300000},
  {k:"pharma",t:1,n:"Pharmaceuticals",d:"Unlocks pharma plants: corn and glass into medicine.",rp:180,cash:150000},
  {k:"container",t:1,n:"Containerization",d:"Cargo ships carry twice as much.",rp:150,cash:200000,req:["logi"]},
+ {k:"retail",t:1,n:"Retail analytics",d:"Loyalty cards and footfall data. Carts, kiosks, shops and restaurants earn 5% more.",rp:120,cash:100000},
+ {k:"payroll",t:1,n:"Payroll automation",d:"Scheduling and payroll software. Business wages drop 5%.",rp:160,cash:180000},
+ {k:"coldchain",t:1,n:"Cold-chain warehousing",d:"Racking and refrigeration. Every depot holds 25% more.",rp:140,cash:150000,req:["logi"]},
+ {k:"haulage",t:1,n:"Heavy haulage",d:"Stronger chassis and trailers. Trucks carry 20% more.",rp:180,cash:220000,req:["logi"]},
  {k:"aero",t:2,n:"Aerospace",d:"Unlocks aerospace works. Cargo planes fly 40% faster.",rp:800,cash:2e6,req:["auto","semis"]},
  {k:"robotics",t:2,n:"Industrial robotics",d:"Unlocks robotics plants. Every factory produces 20% more.",rp:700,cash:1.5e6,req:["semis"]},
  {k:"renew",t:2,n:"Renewable energy",d:"Solar and wind power. Factory upkeep drops 25%.",rp:500,cash:8e5},
+ {k:"precag",t:2,n:"Precision agriculture",d:"GPS-guided planting and sensors. Farms and ranches produce 15% more.",rp:600,cash:1.2e6,req:["mechfarm","semis"]},
+ {k:"deepmine",t:2,n:"Deep-core mining",d:"Automated drill rigs. Mines produce 20% more.",rp:750,cash:1.8e6,req:["robotics"]},
+ {k:"smartbld",t:2,n:"Smart buildings",d:"Sensors and building automation. Apartments, offices and hotels earn 6% more.",rp:650,cash:1.5e6,req:["semis"]},
+ {k:"quantum",t:2,n:"Quantum computing",d:"Research labs produce 25% more points.",rp:1200,cash:4e6,req:["semis"]},
  {k:"nuclear",t:2,n:"Nuclear power",d:"Unlocks nuclear power plants: burn uranium for four times the electricity of a coal plant. Uranium is bought on the market or mined at a permitted uranium mine.",rp:900,cash:3e6,req:["renew"]},
  {k:"govlic",t:3,n:"Defense contractor licence",d:"Government buyers in big cities (size 4+) will buy military and space goods at fixed prices.",rp:1500,cash:5e6,req:["aero","robotics"]},
  {k:"armored",t:3,n:"Armored vehicles",d:"Unlocks armored vehicle plants: cars, steel and robots.",rp:2000,cash:8e6,req:["govlic"]},
@@ -759,13 +767,23 @@ const TECH=[
  {k:"rocketry",t:4,n:"Rocketry",d:"Unlocks rocket engine works.",rp:5000,cash:2.5e7,req:["govlic","aero"]},
  {k:"satellites",t:4,n:"Satellites",d:"Unlocks satellite assembly.",rp:6000,cash:3e7,req:["rocketry","semis"]},
  {k:"spaceport",t:4,n:"Launch complex",d:"Unlocks spaceports. Every launch you sell puts a satellite in orbit: +0.5% demand at all your businesses (up to +50%).",rp:10000,cash:6e7,req:["rocketry","satellites"]},
- {k:"mars",t:4,n:"Mars colony",d:"The final project. Everything you run earns 25% more.",rp:50000,cash:1e9,req:["spaceport"]}];
+ {k:"mars",t:4,n:"Mars colony",d:"The final project. Everything you run earns 25% more.",rp:50000,cash:1e9,req:["spaceport"]},
+ {k:"autofreight",t:5,n:"Autonomous freight",d:"Self-driving trucks and crewless ships. Trucks and ships move 20% faster.",rp:12000,cash:5e7,req:["robotics","container"]},
+ {k:"hypersonic",t:5,n:"Hypersonic cargo",d:"Scramjet freighters. Cargo planes fly 25% faster.",rp:15000,cash:8e7,req:["aero","rocketry"]},
+ {k:"fusion",t:5,n:"Fusion power",d:"Near-free energy. Factory upkeep drops a further 20%.",rp:20000,cash:1.2e8,req:["nuclear","quantum"]},
+ {k:"nanofab",t:5,n:"Nanofabrication",d:"Atom-precise assembly lines. Factories produce 15% more.",rp:25000,cash:2e8,req:["robotics","satellites"]},
+ {k:"aimgmt",t:5,n:"AI management",d:"Autonomous managers run your branches. Every business earns 8% more.",rp:40000,cash:4e8,req:["quantum","smartbld"]},
+ {k:"asteroid",t:5,n:"Asteroid mining",d:"Ore and fuel from near-Earth rocks. Mines produce 30% more.",rp:80000,cash:2e9,req:["mars","deepmine"]}];
 const TK=Object.fromEntries(TECH.map(t=>[t.k,t]));
 const canResearch=t=>!hasTech(t.k)&&(t.req||[]).every(hasTech);
 const BASEVEH=JSON.parse(JSON.stringify({truck:{cap:30,spd:400},hvtruck:{cap:60,spd:380},roadtrain:{cap:120,spd:350},ship:{cap:3000,spd:250},bulkship:{cap:8000,spd:230},plane:{cap:60,spd:2500},cargo747:{cap:150,spd:2300}}));
-function applyTechs(){for(const k in VEH){const c=VEH[k].cls;if(c==="truck")VEH[k].spd=BASEVEH[k].spd*(hasTech("logi")?1.3:1);else if(c==="ship")VEH[k].cap=BASEVEH[k].cap*(hasTech("container")?2:1);else VEH[k].spd=BASEVEH[k].spd*(hasTech("aero")?1.4:1)}}
-const techOut=o=>(["Farm","Ranch"].includes(o.cat)&&hasTech("mechfarm")?1.25:1)*(o.cat==="Factory"&&hasTech("robotics")&&!o.rp?1.2:1)*(hasTech("mars")?1.25:1)*(typeof ishOut==="function"?ishOut(o):1);
-const techUp=o=>(o.cat==="Factory"&&hasTech("renew")?.75:1)*(typeof ishUp==="function"?ishUp(o):1);
+function applyTechs(){const af=hasTech("autofreight")?1.2:1;for(const k in VEH){const c=VEH[k].cls;if(c==="truck"){VEH[k].spd=BASEVEH[k].spd*(hasTech("logi")?1.3:1)*af;VEH[k].cap=BASEVEH[k].cap*(hasTech("haulage")?1.2:1)}else if(c==="ship"){VEH[k].cap=BASEVEH[k].cap*(hasTech("container")?2:1);VEH[k].spd=BASEVEH[k].spd*af}else VEH[k].spd=BASEVEH[k].spd*(hasTech("aero")?1.4:1)*(hasTech("hypersonic")?1.25:1)}}
+/* later research (retail ... asteroid): small multipliers that stack with everything else; all 1 when not researched, so old saves are unchanged */
+function techBiz(b){return (hasTech("retail")&&["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","rest"].includes(b.k)?1.05:1)*(hasTech("smartbld")&&["apt","office","hotel"].includes(b.k)?1.06:1)*(hasTech("aimgmt")?1.08:1)}
+function techWage(){return hasTech("payroll")?.95:1}
+function techWh(){return hasTech("coldchain")?1.25:1}
+const techOut=o=>(["Farm","Ranch"].includes(o.cat)&&hasTech("mechfarm")?1.25:1)*(["Farm","Ranch"].includes(o.cat)&&hasTech("precag")?1.15:1)*(o.cat==="Mine"?(hasTech("deepmine")?1.2:1)*(hasTech("asteroid")?1.3:1):1)*(o.cat==="Factory"&&hasTech("nanofab")&&!o.rp?1.15:1)*(o.rp&&hasTech("quantum")?1.25:1)*(o.cat==="Factory"&&hasTech("robotics")&&!o.rp?1.2:1)*(hasTech("mars")?1.25:1)*(typeof ishOut==="function"?ishOut(o):1);
+const techUp=o=>(o.cat==="Factory"&&hasTech("renew")?.75:1)*(o.cat==="Factory"&&hasTech("fusion")?.8:1)*(typeof ishUp==="function"?ishUp(o):1);
 /* research points accrue continuously but are paid out every 15 real minutes; RPX doubles all research output */
 const RPX=2,RPQ=DAYMS/4;
 function rpPay(){const q=Math.floor(Date.now()/RPQ);if(S.rpQ==null)S.rpQ=q;if(q>S.rpQ){S.rp=(S.rp||0)+(S.rpP||0);S.rpP=0;S.rpQ=q}}
@@ -814,7 +832,7 @@ const deps=c=>c.dep||["ore","coal","sand","oil"].filter((r,i)=>((c.id*37+i*11+c.
 const haPrice=c=>Math.round(900*PRICE[c.size]*PRICE[c.size]);
 /* WAREHOUSE SPACE IS IN TONNES: 400 t x 2^level (a 1 t/unit good fills it exactly as the old 400 units did). Stock stays in units; stored() is its weight in tonnes (units x tpu), storedU() the unit count.
    Old saves keep their units; a warehouse already over capacity just takes no new goods (room is clamped at 0, nothing is removed). Deliveries already en route still unload (they never checked room on arrival). */
-const whCap=c=>S.wh[c.id]==null?0:400*Math.pow(2,S.wh[c.id])*(typeof ishWh==="function"?ishWh():1);
+const whCap=c=>S.wh[c.id]==null?0:400*Math.pow(2,S.wh[c.id])*(typeof ishWh==="function"?ishWh():1)*techWh();
 const whCost=c=>Math.round(3000*PRICE[c.size]);
 const whUp=c=>Math.round(4000*PRICE[c.size]*Math.pow(2,S.wh[c.id]||0));
 const stored=c=>{const v=S.inv[c.id]||{};let t=0;for(const g in v)if(v[g]>0)t+=v[g]*tpu(g);return t};
@@ -2026,7 +2044,7 @@ function renderResearch(){const done=TECH.filter(t=>hasTech(t.k)).length;
   let h=`<div class="shead"><div><h2>Research</h2><p>${done}/${TECH.length} technologies · ${S.sats?Math.floor(S.sats)+" satellites in orbit · ":""}${fmt(S.rp).replace("$","")} research points</p></div><button class="x" id="cls" aria-label="Close">×</button></div>
   <div class="meta"><div><span>Earning </span>${rpRate().toFixed(1)} RP/hr</div><div><span>From </span>HQ + ${S.sites.filter(x=>x.op&&OP[x.op].rp).length} labs</div></div>
   <p class="d" style="font-size:12px;color:var(--muted);margin:0 0 6px">Build research labs on industrial lots to earn points faster. Each technology costs points and cash. Points are paid every 15 minutes${S.rpP>=.1?` (next: +${Math.floor(S.rpP)} RP)`:""}.</p>`;
-  TIERS.forEach((tn,ti)=>{h+=`<div class="sec">Tier ${["I","II","III","IV","V"][ti]} · ${tn}</div><div class="list">`;
+  TIERS.forEach((tn,ti)=>{h+=`<div class="sec">Tier ${["I","II","III","IV","V","VI"][ti]} · ${tn}</div><div class="list">`;
     for(const t of TECH.filter(x=>x.t===ti)){const st=hasTech(t.k)?"done":canResearch(t)?"open":"locked",afford=S.rp>=t.rp&&S.cash>=t.cash;
       const unl=OPS.filter(o=>o.req===t.k).map(o=>o.n);
       h+=`<div class="row" style="${st==="locked"?"opacity:.55":""}"><div class="n">${st==="done"?"✓ ":""}${t.n}</div>
