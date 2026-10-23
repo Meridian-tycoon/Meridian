@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#141f21">
 <script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("meridian-theme")==="light"?"light":"dark")}catch(e){document.documentElement.setAttribute("data-theme","dark")}</script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Meridian Tycoon</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -49,7 +48,10 @@ h1 span{color:var(--accent)}
 .stat small{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 #mapwrap{position:relative;flex:1;min-height:0}
 canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
-canvas#map:active{cursor:grabbing}
+/* one map: MapLibre draws the planet, the streets and the buildings; the game draws its cities, routes and storms on a see-through canvas locked to the same camera */
+#gl{position:absolute;inset:0;background:#05080f radial-gradient(1px 1px at 12% 18%,#fff8,transparent),radial-gradient(1px 1px at 72% 34%,#fff6,transparent),radial-gradient(1.5px 1.5px at 38% 76%,#fff7,transparent),radial-gradient(1px 1px at 86% 82%,#fff5,transparent),radial-gradient(1px 1px at 22% 58%,#fff4,transparent),radial-gradient(1px 1px at 58% 8%,#fff6,transparent),radial-gradient(1px 1px at 92% 52%,#fff5,transparent),radial-gradient(1.5px 1.5px at 6% 90%,#fff6,transparent)}
+#gl .maplibregl-canvas{cursor:grab}#gl .maplibregl-canvas:active{cursor:grabbing}#gl .maplibregl-ctrl-attrib{font-size:10px}
+canvas#map{position:absolute;inset:0;z-index:1;pointer-events:none}
 #ticker{position:absolute;left:max(12px,env(safe-area-inset-left,0px));top:10px;right:max(12px,env(safe-area-inset-right,0px));
   font-size:12px;font-family:var(--mono);color:var(--ink);display:flex;flex-direction:column;align-items:flex-start;gap:4px}
 #ticker button{all:unset;cursor:pointer;background:var(--panel);padding:5px 10px;border:1px solid var(--line);border-radius:999px;max-width:100%;
@@ -152,9 +154,9 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
 #nav button[aria-current="true"]{color:var(--accent)}
 .grab{position:sticky;top:0;z-index:3;display:flex;justify-content:center;align-items:center;height:20px;margin:0 calc(-1*max(16px,env(safe-area-inset-left,0px))) 0;background:var(--panel);cursor:grab;touch-action:none;border:0;width:calc(100% + 2*max(16px,env(safe-area-inset-left,0px)));padding:0}
 .grab::before{content:"";width:40px;height:5px;border-radius:3px;background:var(--line)}
-#street{position:absolute;inset:0;z-index:1;background:var(--sea);transition:opacity .5s ease}#street.fade{opacity:0;pointer-events:none}#street3d{position:absolute;inset:0;z-index:2;background:var(--sea)}#street3d .maplibregl-ctrl-attrib{font-size:10px}
 #sheet{z-index:4}
 .chip{font:600 12px var(--body);background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:7px 12px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+#mapwrap.st #ticker{top:52px}
 #stbar{position:absolute;z-index:3;top:10px;left:max(12px,env(safe-area-inset-left,0px));display:flex;gap:6px}
 #tostreet{position:absolute;z-index:3;right:max(12px,env(safe-area-inset-right,0px));top:10px;background:var(--ink);color:var(--panel);border-color:var(--ink)}
 #placebar{position:absolute;z-index:3;left:12px;right:12px;bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;justify-content:space-between;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:13px}
@@ -162,16 +164,10 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
 .mpin.sale span{background:#16a34a;border-style:dashed}.mpin.sale.deal span{background:#ca8a04}
 #placebar.offer{z-index:4;flex-wrap:wrap}#placebar.offer>div{flex:1 1 100%}#placebar.offer>span{flex:1 1 100%;justify-content:flex-end}#placebar .tag{color:#fff}
 #placebar .ofd{font-size:12px;color:var(--muted);margin-top:2px}#placebar .ofd b{color:var(--ink)}
-.mpin{background:none;border:0}
+.mpin{background:none;border:0;animation:pinIn .45s ease-out}.maplibregl-marker.mpin{pointer-events:none}.maplibregl-marker.mpin span{pointer-events:auto}@keyframes pinIn{from{opacity:0}}
 .mpin span{display:inline-block;transform:translate(-50%,-100%);margin-left:18px;margin-top:30px;color:#fff;font:700 10.5px var(--mono);padding:4px 7px;border-radius:7px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);white-space:nowrap;position:relative}
 .mpin span::after{content:"";position:absolute;left:50%;bottom:-7px;margin-left:-5px;border:5px solid transparent;border-top-color:#fff}
-.leaflet-container{font-family:var(--body);background:#0d1418}
-/* dark street map: OSM tiles inverted into a night palette (pins stay in their own colors) */
-#street .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.55)}
-#street .leaflet-control-attribution{background:rgba(13,20,24,.75);color:#9aa7b1}#street .leaflet-control-attribution a{color:#7dd3c0}
-#street .leaflet-bar a{background:#1b2429;color:#e5ebef;border-color:#2c373d}
 #amb{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none}
-#street[hidden]~#amb{display:none}
 #wx{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none}
 #phone{position:fixed;z-index:20;left:0;top:0;box-sizing:border-box;width:300px;height:580px;zoom:var(--phs,1);background:#111418;border-radius:32px;padding:8px;box-shadow:0 18px 40px rgba(0,0,0,.35),0 0 0 1.5px #2b3138 inset;display:flex;flex-direction:column;color:#eef1f4;touch-action:none;transition:border-radius .2s}
 #phone.dragging{transition:none;opacity:.92}
@@ -293,15 +289,15 @@ button.buy:not(.up):not(:disabled){background:linear-gradient(180deg,color-mix(i
     <button id="needs" class="needs" aria-label="Your health, food and mind. Tap to see your needs."><span><i></i></span><span><i></i></span><span><i></i></span><small>Needs</small></button>
   </header>
   <div id="mapwrap">
+    <div id="gl"></div>
     <canvas id="map"></canvas>
     <div id="ticker"></div>
-    <div id="street" hidden></div><div id="street3d" hidden></div>
     <canvas id="amb"></canvas>
     <canvas id="wx" hidden></canvas>
-    <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button><button id="st3d" class="chip">3D</button><button id="st3dt" class="chip" hidden title="Light or dark 3D map">☾ Dark</button></div>
+    <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button><button id="st3dt" class="chip" title="Light or dark map">☾ Dark</button></div>
     <div id="placebar" hidden></div>
     <button id="tostreet" class="chip" hidden>View streets</button>
-    <div id="hint">Drag to spin · pinch or scroll on a city to zoom into its streets · double-tap a city</div>
+    <div id="hint">Drag to spin · scroll or pinch to zoom from the planet down to the streets · tap a city</div>
     <div id="toast"></div>
     <div id="cfbox" hidden><div id="cfleg" aria-hidden="true"></div><button id="cfchip" class="chip" aria-pressed="true"></button></div>
     <div id="cfpop" hidden role="dialog" aria-label="Conflict details"></div>
@@ -318,6 +314,7 @@ window.echarts={registerMap:function(n,g){window.__WORLD=g}};
 </script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/world.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="vendor/maplibre-gl.js"></script>
 <script>
 (function(){
 /* Online players (Firebase). Paste your Firebase web app config object here, e.g.
@@ -521,49 +518,104 @@ function totals(){let inc=0,assets=0;
   if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity();if(typeof gearAssets==="function")assets+=gearAssets();if(typeof ishIncome==="function"){inc+=ishIncome();assets+=ishAssets()}
   return{inc:inc-(typeof bankPayHr==="function"?0:interest)-upk-rent,interest,upk,rent,nw:S.cash+assets-S.debt}}
 
-/* ---------- map: a 3D globe you can spin 360° in any direction ---------- */
-const cv=$("#map"),ctx=cv.getContext("2d");
+/* ---------- map: one MapLibre camera from orbit down to the street (like Capital Rift). The game's own layers are drawn on a canvas locked to that camera. ---------- */
+const cv=$("#map"),ctx=cv.getContext("2d"),glEl=$("#gl");
 let W=0,H=0,dpr=1,base=200;
-const proj=d3.geoOrthographic().clipAngle(90).precision(.3);
-const path=d3.geoPath(proj,ctx);window.__mainCtx=ctx;
-const V={lam:75,phi:-30,k:1,vl:0,vp:0};           // rotation (deg), zoom, spin velocity
+const V={lam:75,phi:-30,k:1};                     // read-only mirror of the camera: centre (negated, deg) and globe size relative to the old k=1 globe
 let T={k:1},sel=null;
 const sheetUp=()=>sheet.classList.contains("open")&&!matchMedia("(min-width:820px)").matches;
-function applyView(){T.k=V.k;proj.rotate([V.lam,V.phi]).scale(base*V.k);
-  const wide=matchMedia("(min-width:820px)").matches&&sheet.classList.contains("open");
-  proj.translate([wide?(W-420)/2:W/2,sheetUp()?Math.min(H*.32,H/2):H/2])}
+/* map style: OpenFreeMap light or dark; the pick is remembered, otherwise it follows the game theme */
+const ML_STYLES={light:window.MERIDIAN_3D_STYLE||"https://tiles.openfreemap.org/styles/liberty",dark:window.MERIDIAN_3D_STYLE_DARK||"https://tiles.openfreemap.org/styles/dark"};
+const dark3d=()=>{try{const v=localStorage.getItem("meridian-3d-dark");if(v!=null)return v==="1"}catch(e){}const t=document.documentElement.dataset.theme;return t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches)};
+const ML_STYLE=()=>ML_STYLES[dark3d()?"dark":"light"];
+/* camera feel, measured from Capital Rift: each wheel notch scales the distance by 1.6, straight down above ~3.5 km, easing to 45° near the street */
+const ZST=12;                                      // street level: property pins, customers, rain
+const MAXPITCH=45,PITCH0=14.6,PITCH1=17.2;          // zoom 14.6 ≈ 3.5 km up, 17.2 ≈ 600 m
+const pitchFor=z=>{const u=Math.max(0,Math.min(1,(z-PITCH0)/(PITCH1-PITCH0)));return MAXPITCH*u*u*(3-2*u)};
+const smooth01=(a,b,x)=>{const u=Math.max(0,Math.min(1,(x-a)/(b-a)));return u*u*(3-2*u)};
+/* the bundled outlines, cleaned for MapLibre (drops empty polygon parts, which its worker cannot read) */
+let _landGeo=null;function landGeo(){if(_landGeo)return _landGeo;const ok=r=>Array.isArray(r)&&r.length>=4;
+  _landGeo={type:"FeatureCollection",features:(world?world.features:[]).map(f=>{const G=f.geometry;
+    const g=G.type==="Polygon"?{type:"Polygon",coordinates:G.coordinates.filter(ok)}:{type:"MultiPolygon",coordinates:G.coordinates.map(q=>q.filter(ok)).filter(q=>q.length)};
+    return{type:"Feature",properties:{name:f.properties&&f.properties.name},geometry:g}}).filter(f=>f.geometry.coordinates.length)};return _landGeo}
+const MM=new maplibregl.Map({container:glEl,style:localStyle(),center:[-V.lam,-V.phi],zoom:1.4,minZoom:0,maxZoom:19.4,maxPitch:MAXPITCH,
+  renderWorldCopies:false,attributionControl:{compact:true},pitchWithRotate:false,touchPitch:false,dragRotate:true,fadeDuration:250,
+  transformCameraUpdate:({zoom})=>({pitch:pitchFor(zoom)})});
+MM.scrollZoom.setWheelZoomRate(1/72);              // one notch (deltaY 100) ≈ ×1.6, the same at every height
+MM.touchZoomRotate.disableRotation();
+window.__MM=MM;
+/* a built-in fallback style (land outlines bundled with the game) so the globe shows at once and still works if the tile server can't be reached */
+function localStyle(){const cs=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim()||"#888";
+  return{version:8,sources:{land:{type:"geojson",data:landGeo()}},
+    layers:[{id:"bg",type:"background",paint:{"background-color":cs("--sea")}},{id:"land",type:"fill",source:"land",paint:{"fill-color":cs("--land")}},
+      {id:"land-line",type:"line",source:"land",paint:{"line-color":cs("--border"),"line-width":.6}}]}}
+let mlRemote=false;
+function loadMapStyle(){fetch(ML_STYLE()).then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(js=>{mlRemote=true;MM.setStyle(js,{diff:false})}).catch(e=>{console.warn("map style",e);if(mlRemote){mlRemote=false;MM.setStyle(localStyle(),{diff:false})}})}
+MM.on("style.load",()=>{try{MM.setProjection({type:"globe"})}catch(e){}
+  try{MM.setSky({"sky-color":"#0b1a2e","horizon-color":"#7fb2e6","fog-color":"#b9d5f2","sky-horizon-blend":.6,"horizon-fog-blend":.7,"fog-ground-blend":.85,
+    "atmosphere-blend":["interpolate",["linear"],["zoom"],0,1,6,.9,10,0]})}catch(e){}
+  styleLod();draw()});
+MM.on("error",e=>console.warn("map",e&&e.error&&e.error.message));
+/* level of detail: our own city dots and names own the planet view; the map's place labels take over from city level, streets and buildings fade in below */
+function styleLod(){try{const st=MM.getStyle();if(!st)return;
+  for(const l of st.layers){if(l.type!=="symbol")continue;const id=l.id;
+    if(/city|capital|town/i.test(id))MM.setLayerZoomRange(id,Math.max(l.minzoom||0,8.6),l.maxzoom||24)}
+  ensure3dBuildings()}catch(e){console.warn("lod",e)}}
+/* the style ships building footprints; make them rise out of the ground near street level */
+function ensure3dBuildings(){const st=MM.getStyle();if(!st)return;const op=["interpolate",["linear"],["zoom"],14.2,0,15.6,.92];
+  const ex=st.layers.filter(l=>l.type==="fill-extrusion");if(ex.length){for(const l of ex)try{MM.setPaintProperty(l.id,"fill-extrusion-opacity",op)}catch(e){}return}
+  const src=Object.keys(st.sources).find(k=>st.sources[k].type==="vector");if(!src)return;
+  const lab=st.layers.find(l=>l.type==="symbol");
+  MM.addLayer({id:"meridian-3d-buildings",type:"fill-extrusion",source:src,"source-layer":"building",minzoom:14,
+    paint:{"fill-extrusion-color":dark3d()?["interpolate",["linear"],["coalesce",["get","render_height"],8],0,"#3a4350",60,"#4f5b6b",200,"#6b7a8f"]:["interpolate",["linear"],["coalesce",["get","render_height"],8],0,"#dfe3e8",60,"#aab4c2",200,"#7f8ea3"],
+      "fill-extrusion-height":["coalesce",["get","render_height"],8],"fill-extrusion-base":["coalesce",["get","render_min_height"],0],"fill-extrusion-opacity":op}},lab?lab.id:undefined)}
+const st3t=$("#st3dt");
+function theme3dBtn(){st3t.textContent=dark3d()?"☀ Light":"☾ Dark"}
+st3t.onclick=()=>{try{localStorage.setItem("meridian-3d-dark",dark3d()?"0":"1")}catch(e){}theme3dBtn();loadMapStyle()};
+theme3dBtn();loadMapStyle();
+/* ---- the camera as the rest of the game sees it: proj(lonlat) → screen, visible(), path() for lines and areas ---- */
+let _hz=90,_ce=[0,0];
+const LL=(lon,lat)=>new maplibregl.LngLat(lon,lat);
+function horizonDeg(z){const tr=MM.transform;
+  if(z>6.5){let m=0;for(const p of [[0,0],[W,0],[0,H],[W,H],[W/2,0]]){const l=MM.unproject(p);if(l)m=Math.max(m,d3.geoDistance([l.lng,l.lat],_ce))}
+    return Math.max(.02,Math.min(z>8?30:80,m*180/Math.PI*1.4+.02))}
+  if(!tr||!tr.isLocationOccluded)return 85;const r=d3.geoRotation([-_ce[0],-_ce[1]]);
+  const occ=a=>{const p=r.invert([0,a]);return tr.isLocationOccluded(LL(p[0],p[1]))};
+  if(!occ(89.5))return 89.5;let lo=0,hi=89.5;for(let i=0;i<9;i++){const m=(lo+hi)/2;if(occ(m))hi=m;else lo=m}return lo}
+const proj=Object.assign(ll=>{const q=MM.project(ll);return[q.x,q.y]},{
+  invert:xy=>{const l=MM.unproject(xy);return l?[l.lng,l.lat]:null},
+  scale:()=>base*V.k,translate:()=>proj(_ce),rotate:()=>[V.lam,V.phi]});
+const visible=(lon,lat)=>d3.geoDistance([lon,lat],_ce)<_hz*Math.PI/180-.004;
+/* d3 draws great circles and circles through a projection whose raw function is the MapLibre camera; clipped to the horizon.
+   d3 shifts every point so the rotation centre lands on translate(), so translate is set to the camera centre's own screen point */
+let _rot=d3.geoRotation([0,0]);
+const _gp=d3.geoProjection((l,p)=>{const g=_rot.invert([l*180/Math.PI,p*180/Math.PI]),q=MM.project(g);return[q.x,-q.y]}).scale(1).translate([0,0]).precision(.6);
+const path=d3.geoPath(_gp,ctx);window.__mainCtx=ctx;
+function syncCam(){const c=MM.getCenter();_ce=[c.lng,c.lat];V.lam=-c.lng;V.phi=-c.lat;
+  const a=MM.project(c),b=MM.project([c.lng,c.lat+(c.lat>0?-.5:.5)]),R=Math.hypot(a.x-b.x,a.y-b.y)/(.5*Math.PI/180);
+  V.k=Math.max(.05,R/base);T.k=V.k;_hz=horizonDeg(MM.getZoom());
+  _rot=d3.geoRotation([-c.lng,-c.lat]);_gp.rotate([-c.lng,-c.lat]).translate([a.x,a.y]).clipAngle(Math.max(.01,_hz-(_hz>5?.3:0))).clipExtent([[-W,-H],[2*W,2*H]]).precision(MM.getZoom()>7?2:.6)}
+let _pad="";
+function padNow(){const wide=matchMedia("(min-width:820px)").matches&&sheet.classList.contains("open");
+  return{left:0,top:0,right:wide?420:0,bottom:sheetUp()?Math.max(0,H-2*Math.min(H*.32,H/2)):0}}
+/* the open city sheet covers part of the map: slide the camera's centre into the free part, like the old globe did */
+function applyView(){const pad=padNow(),key=pad.right+","+pad.bottom;
+  if(key!==_pad&&!MM.isMoving()){_pad=key;try{MM.easeTo({padding:pad,duration:reduce?0:350})}catch(e){}}}
 function resize(){const r=cv.getBoundingClientRect();W=r.width;H=r.height;dpr=Math.min(2,window.devicePixelRatio||1);
-  cv.width=W*dpr;cv.height=H*dpr;base=Math.min(W,H)/2-16;draw()}
+  cv.width=W*dpr;cv.height=H*dpr;base=Math.min(W,H)/2-16;try{MM.resize();const z0=Math.log2(Math.max(60,base)*2*Math.PI/512);MM.setMinZoom(Math.max(0,z0-1));if(!resize.done&&W>0){resize.done=1;MM.jumpTo({zoom:z0})}}catch(e){}draw()}
 let _cssC={};const css=v=>_cssC[v]??=getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-new MutationObserver(()=>{_cssC={};_gKey=""}).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme","class","style"]});
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{_cssC={};_gKey=""});
-/* static globe layer (ocean, grid, land, shading) is cached and only re-rendered when the view changes */
-const _gCv=document.createElement("canvas"),_gCtx=_gCv.getContext("2d");let _gKey="";
-/* one redraw per animation frame, no matter how many systems ask for it */
+const _pickedMap=()=>{try{return localStorage.getItem("meridian-3d-dark")!=null}catch(e){return false}};
+new MutationObserver(()=>{_cssC={};theme3dBtn();if(!mlRemote)MM.setStyle(localStyle(),{diff:false});else if(!_pickedMap())loadMapStyle()}).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{_cssC={}});
+/* one overlay redraw per frame; MapLibre's own frames redraw it in step so nothing lags behind the camera */
 let _drawPend=false;function draw(){if(_drawPend)return;_drawPend=true;requestAnimationFrame(()=>{_drawPend=false;drawNow()})}
-const visible=(lon,lat)=>d3.geoDistance([lon,lat],[-V.lam,-V.phi])<Math.PI/2-.03;
+MM.on("render",()=>drawNow());
 let _lpT=0,_lp={};function labelProfit(c){const n=Date.now();if(n-_lpT>1000){_lpT=n;_lp={}}return _lp[c.id]??=cityProfit(c)+S.sites.filter(st=>st.city===c.id&&siteOp(st)).reduce((a,st)=>a+siteEst(st),0)}
-function drawNow(){applyView();
-  const C={sea:css("--sea"),land:css("--land"),border:css("--border"),ink:css("--ink"),own:css("--own"),acc:css("--accent"),good:css("--good"),bad:css("--bad"),muted:css("--muted"),space:css("--space")};
-  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle=C.space;ctx.fillRect(0,0,W,H);
+function drawNow(){applyView();syncCam();const z=MM.getZoom();
+  const C={sea:css("--sea"),land:css("--land"),border:css("--border"),ink:css("--ink"),own:css("--own"),acc:css("--accent"),good:css("--good"),bad:css("--bad"),muted:css("--muted"),space:css("--space"),panel:css("--panel")};C.halo=C.panel+"cc";
+  ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(typeof drawNight==="function")drawNight(ctx);
   const [cx,cy]=proj.translate(),R=proj.scale();
-  const gk=[V.lam.toFixed(3),V.phi.toFixed(3),R.toFixed(2),cx.toFixed(1),cy.toFixed(1),W,H,dpr,!!world,Math.floor(Date.now()/60000)].join();
-  if(gk!==_gKey){_gKey=gk;if(_gCv.width!==Math.round(W*dpr)||_gCv.height!==Math.round(H*dpr)){_gCv.width=Math.round(W*dpr);_gCv.height=Math.round(H*dpr)}
-    const ctx=_gCtx;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,_gCv.width,_gCv.height);ctx.setTransform(dpr,0,0,dpr,0,0);path.context(ctx);
-  // atmosphere glow
-  const glow=ctx.createRadialGradient(cx,cy,R*.98,cx,cy,R*1.12);glow.addColorStop(0,"rgba(120,190,210,.35)");glow.addColorStop(1,"rgba(120,190,210,0)");
-  ctx.fillStyle=glow;ctx.beginPath();ctx.arc(cx,cy,R*1.12,0,7);ctx.fill();
-  // ocean with a soft light from the upper left
-  const sea=ctx.createRadialGradient(cx-R*.35,cy-R*.4,R*.1,cx,cy,R);sea.addColorStop(0,C.sea);sea.addColorStop(1,C.border);
-  ctx.beginPath();path({type:"Sphere"});ctx.fillStyle=C.sea;ctx.fill();ctx.globalAlpha=.35;ctx.fillStyle=sea;ctx.fill();ctx.globalAlpha=1;
-  ctx.beginPath();path(d3.geoGraticule10());ctx.strokeStyle=C.border;ctx.globalAlpha=.3;ctx.lineWidth=.5;ctx.stroke();ctx.globalAlpha=1;
-  if(world){ctx.beginPath();path(world);ctx.fillStyle=C.land;ctx.fill();ctx.strokeStyle=C.border;ctx.lineWidth=.6;ctx.stroke()}
-  // terminator-style shading toward the limb for depth
-  const limb=ctx.createRadialGradient(cx,cy,R*.55,cx,cy,R);limb.addColorStop(0,"rgba(0,0,0,0)");limb.addColorStop(1,"rgba(0,0,0,.22)");
-  ctx.beginPath();path({type:"Sphere"});ctx.fillStyle=limb;ctx.fill();ctx.strokeStyle=C.border;ctx.lineWidth=1;ctx.stroke();
-    if(typeof drawNight==="function")drawNight(ctx);
-    path.context(window.__mainCtx);}
-  ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(_gCv,0,0);ctx.setTransform(dpr,0,0,dpr,0,0);
   // shipments in transit (great-circle routes, clipped to the visible side)
   const now=Date.now();
   for(const v of S.fleet){if(!v.arr)continue;const a=CITIES[v.from],b=CITIES[v.dest],t=Math.min(1,(now-v.dep)/(v.arr-v.dep));
@@ -571,77 +623,60 @@ function drawNow(){applyView();
     const g=d3.geoInterpolate([a.lon,a.lat],[b.lon,b.lat])(t);if(!visible(g[0],g[1]))continue;const [x,y]=proj(g);
     ctx.fillStyle=C.acc;if(vcls(v.type)==="truck")ctx.fillRect(x-4,y-3,8,6);else if(vcls(v.type)==="ship"){ctx.beginPath();ctx.moveTo(x-6,y-2);ctx.lineTo(x+6,y-2);ctx.lineTo(x+3,y+3);ctx.lineTo(x-3,y+3);ctx.fill()}
     else{ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.fill()}}
-  if(typeof drawNight==="function"){drawTraffic(ctx,C)}
-  if(typeof drawStorms==="function")drawStorms(ctx,C);
+  if(typeof drawNight==="function"&&z<11)drawTraffic(ctx,C);
+  if(typeof drawStorms==="function"&&z<11)drawStorms(ctx,C);
   if(typeof drawDmg==="function")drawDmg(ctx);
   if(typeof drawStrikes==="function")drawStrikes(ctx);
-  if(typeof drawConflicts==="function")drawConflicts(ctx);
+  if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);
+  const dotA=1-smooth01(10.5,12,z),labA=1-smooth01(8.5,9.6,z);   // our city dots hand over to the real map as you get close
+  if(dotA>0.02){ctx.globalAlpha=dotA;
   if(S.pol&&(S.pol.r>=0||S.pol.ctrl&&Object.keys(S.pol.ctrl).length)){const lead=S.pol.r>=0?S.pol.c:null;for(const c of CITIES){const mine=c.country===lead,inf=S.pol.ctrl&&S.pol.ctrl[c.country];if(!mine&&!inf||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]);
-    ctx.beginPath();ctx.arc(x,y,9,0,7);ctx.strokeStyle=mine?"#f59e0b":"#fb923c";ctx.globalAlpha=.85;ctx.lineWidth=mine?2.2:1.6;ctx.setLineDash(mine?[]:[3,2]);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}}
+    ctx.beginPath();ctx.arc(x,y,9,0,7);ctx.strokeStyle=mine?"#f59e0b":"#fb923c";ctx.globalAlpha=.85*dotA;ctx.lineWidth=mine?2.2:1.6;ctx.setLineDash(mine?[]:[3,2]);ctx.stroke();ctx.setLineDash([])}}
   if(S.pol&&S.pol.mil){const M=S.pol.mil;for(const c of CITIES){const w=M.wars&&M.wars[c.country],o=M.occ&&M.occ[c.country];if(!w&&!o||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]);
-    ctx.beginPath();ctx.arc(x,y,w?11:10,0,7);ctx.strokeStyle="#dc2626";ctx.globalAlpha=.9;ctx.lineWidth=w?2.4:1.8;ctx.setLineDash(w?[]:[4,3]);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}}
-  {const tp=typeof tripPos==="function"?tripPos(Date.now()):null,pl=tp||S.loc;if(pl&&visible(pl.lon,pl.lat)){const [px,py]=proj([pl.lon,pl.lat]);
+    ctx.beginPath();ctx.arc(x,y,w?11:10,0,7);ctx.strokeStyle="#dc2626";ctx.globalAlpha=.9*dotA;ctx.lineWidth=w?2.4:1.8;ctx.setLineDash(w?[]:[4,3]);ctx.stroke();ctx.setLineDash([])}}
+  ctx.globalAlpha=1}
+  {const tp=typeof tripPos==="function"?tripPos(Date.now()):null,pl=tp||S.loc;if(pl&&visible(pl.lon,pl.lat)&&(z<ZST||tp&&!S.trip.local)){const [px,py]=proj([pl.lon,pl.lat]);
     if(tp&&!S.trip.local){ctx.beginPath();path({type:"LineString",coordinates:[[S.trip.from.lon,S.trip.from.lat],[S.trip.to.lon,S.trip.to.lat]]});ctx.setLineDash([2,5]);ctx.strokeStyle=C.ink;ctx.globalAlpha=.6;ctx.lineWidth=1.5;ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}
     ctx.beginPath();ctx.arc(px,py,7,0,7);ctx.fillStyle="#be185d";ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#fff";ctx.stroke();
     ctx.fillStyle="#fff";ctx.font="700 8px sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(tp&&S.trip.mode==="plane"?"✈":"YOU".slice(0,1),px,py+.5);ctx.textAlign="start"}}
   // cities on the near side only
   ctx.textBaseline="middle";
-  for(const c of CITIES){if(!visible(c.lon,c.lat)){c.sx=c.sy=-1e4;continue}const [x,y]=proj([c.lon,c.lat]);c.sx=x;c.sy=y;
-    const edge=1-Math.min(1,d3.geoDistance([c.lon,c.lat],[-V.lam,-V.phi])/(Math.PI/2))*.6;   // fade toward the horizon
-    ctx.globalAlpha=Math.max(.35,edge);
+  for(const c of CITIES){if(dotA<=.02||!visible(c.lon,c.lat)){c.sx=c.sy=-1e4;continue}const [x,y]=proj([c.lon,c.lat]);c.sx=x;c.sy=y;
+    const edge=1-Math.min(1,d3.geoDistance([c.lon,c.lat],_ce)/(_hz*Math.PI/180))*.6;   // fade toward the horizon
+    ctx.globalAlpha=Math.max(.35,edge)*dotA;
     const owned=(S.own[c.id]&&Object.keys(S.own[c.id]).length)||hasWh(c);const r=(2.5+c.size*.9)*Math.min(1.6,.85+V.k*.08);
     const ev=S.events[c.id];
     S.rivals.forEach((rv,i)=>{if(rv.cities.includes(c.id)){ctx.fillStyle=RIVALS[i].col;ctx.fillRect(x-r-6-i*6,y+r+2,5,5)}});
     if(ev){ctx.beginPath();ctx.arc(x,y,r+5,0,7);ctx.strokeStyle=ev.m>1?C.good:C.bad;ctx.lineWidth=1.5;ctx.stroke()}
-    ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=owned?C.own:C.ink;ctx.fill();
+    ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=owned?C.own:C.ink;ctx.fill();ctx.lineWidth=1.2;ctx.strokeStyle=C.panel||"#fff";ctx.globalAlpha*=.8;ctx.stroke();ctx.globalAlpha=Math.max(.35,edge)*dotA;
     if(S.ob&&S.ob.hq===c.id){const by=y-r-12;c.bky=by;ctx.beginPath();ctx.arc(x,by,9,0,7);ctx.fillStyle="#f59e0b";ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle="#1f2937";ctx.stroke();ctx.fillStyle="#000";ctx.font="13px system-ui, sans-serif";ctx.textAlign="center";ctx.fillText("🏦",x,by+1);ctx.textAlign="start"}
     if(sel===c){ctx.beginPath();ctx.arc(x,y,r+9,0,7);ctx.strokeStyle=C.acc;ctx.lineWidth=2.5;ctx.stroke()}
-    if(V.k>1.8||c.size>=5||owned){ctx.font=(owned?"600 ":"")+"12px Figtree, system-ui, sans-serif";ctx.fillStyle=owned?C.own:C.ink;
-      const cp=labelProfit(c);ctx.fillText(c.name+(owned&&cp?"  "+fmt(cp)+"/hr":""),x+r+4,y)}}
-  ctx.globalAlpha=1;if(typeof drawOnline==="function")drawOnline(ctx);if(typeof drawCityLights==="function")drawCityLights(ctx)}
-/* drag to spin (with momentum), pinch or scroll to zoom, tap a city */
-const ptrs=new Map();let dragMoved=false,pinch0=null,lastMove=0,spinRaf=0;
-const degPerPx=()=>180/Math.PI/proj.scale();
-function clampPhi(){V.phi=Math.max(-89,Math.min(89,V.phi))}
-cv.addEventListener("pointerdown",e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});dragMoved=false;V.vl=V.vp=0;cancelAnimationFrame(spinRaf);flying=false;
-  if(ptrs.size===2){const [a,b]=[...ptrs.values()];pinch0={d:Math.hypot(a.x-b.x,a.y-b.y),k:V.k}}});
-cv.addEventListener("pointermove",e=>{const p=ptrs.get(e.pointerId);if(!p){const bc=S.ob&&CITIES[S.ob.hq];if(bc){const r=cv.getBoundingClientRect(),hit=Math.hypot(e.clientX-r.left-bc.sx,e.clientY-r.top-(bc.bky??bc.sy))<14,t=hit?S.ob.name+" HQ":"";if(cv.title!==t)cv.title=t}return}const dx=e.clientX-p.x,dy=e.clientY-p.y;
-  if(ptrs.size===1){if(Math.abs(dx)+Math.abs(dy)>2)dragMoved=true;const f=degPerPx();V.lam+=dx*f;V.phi-=dy*f;clampPhi();
-    const t=performance.now(),dt=Math.max(8,t-lastMove);V.vl=dx*f/dt*16;V.vp=-dy*f/dt*16;lastMove=t;draw()}
-  p.x=e.clientX;p.y=e.clientY;
-  if(ptrs.size===2&&pinch0){dragMoved=true;const [a,b]=[...ptrs.values()],r=cv.getBoundingClientRect();zoomAt(pinch0.k*Math.hypot(a.x-b.x,a.y-b.y)/pinch0.d,(a.x+b.x)/2-r.left,(a.y+b.y)/2-r.top);if(typeof inStreet!=="undefined"&&inStreet){ptrs.clear();pinch0=null}}});
-function spin(){V.vl*=.94;V.vp*=.94;V.lam+=V.vl;V.phi+=V.vp;clampPhi();draw();if(Math.abs(V.vl)+Math.abs(V.vp)>.02)spinRaf=requestAnimationFrame(spin)}
-const endPtr=e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch0=null;
-  if(!ptrs.size&&dragMoved&&!reduce&&performance.now()-lastMove<80&&Math.abs(V.vl)+Math.abs(V.vp)>.05){cancelAnimationFrame(spinRaf);spinRaf=requestAnimationFrame(spin)}};
-cv.addEventListener("pointerup",endPtr);cv.addEventListener("pointercancel",endPtr);
-function zoomAt(k,fx,fy){const g=proj.invert([fx,fy]),ok=g&&visible(g[0],g[1]);V.k=Math.max(.8,Math.min(30,k));applyView();
-  if(ok){const p2=proj(g);const f=degPerPx();V.lam+=(fx-p2[0])*f;V.phi-=(fy-p2[1])*f;clampPhi()}draw();
-  if(typeof maybeStreet==="function"&&V.k>=7)maybeStreet(fx,fy,ok?g:null)}
-cv.addEventListener("wheel",e=>{e.preventDefault();const r=cv.getBoundingClientRect();zoomAt(V.k*Math.exp(-e.deltaY*.0015),e.clientX-r.left,e.clientY-r.top)},{passive:false});
-let lastTap={t:0,c:null};
-cv.addEventListener("click",e=>{if(dragMoved)return;const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
-  if(typeof _wtPick!=="undefined"&&_wtPick){const g=proj.invert([x,y]);if(g&&visible(g[0],g[1])){wtPlayer(_wtPick,g);save();hud()}return}
+    const la=owned?dotA:labA;
+    if(la>.02&&(V.k>1.8||c.size>=5||owned)){ctx.globalAlpha=Math.max(.35,edge)*la;ctx.font=(owned?"600 ":"")+"12px Figtree, system-ui, sans-serif";
+      const cp=labelProfit(c),tx=c.name+(owned&&cp?"  "+fmt(cp)+"/hr":"");ctx.lineWidth=3;ctx.strokeStyle=C.halo;ctx.lineJoin="round";ctx.strokeText(tx,x+r+4,y);ctx.fillStyle=owned?C.own:C.ink;ctx.fillText(tx,x+r+4,y)}}
+  ctx.globalAlpha=1;if(typeof drawOnline==="function"&&dotA>.02)drawOnline(ctx);if(typeof drawCityLights==="function")drawCityLights(ctx)}
+/* input belongs to the map: drag pans (spins the globe), wheel and pinch zoom toward the pointer, right-drag or two-finger twist turns it */
+MM.on("click",e=>{const x=e.point.x,y=e.point.y;
+  if(placing){pickSpot(e.lngLat);return}
+  if(offer){closeOffer();return}
+  if(typeof _wtPick!=="undefined"&&_wtPick){const g=[e.lngLat.lng,e.lngLat.lat];if(visible(g[0],g[1])){wtPlayer(_wtPick,g);save();hud()}return}
   let best=null,bd=26*26;for(const c of CITIES){const d=(c.sx-x)**2+(c.sy-y)**2;if(d<bd){bd=d;best=c}}
-  const now=performance.now();
-  if(lastTap.c&&now-lastTap.t<450&&Math.hypot(x-lastTap.x,y-lastTap.y)<30&&typeof enterStreet==="function"&&HAS_STREET){const c=lastTap.c;lastTap={t:0,c:null};sheet.classList.remove("open","full");enterStreet(c,14);return}
-  lastTap={t:now,c:best,x,y};
   if(typeof cfTap==="function"&&cfTap(x,y,best,bd))return;
   if(best)openCity(best)});
+MM.on("mousemove",e=>{const bc=S.ob&&CITIES[S.ob.hq];let t="";if(bc&&bc.sx>-1e3&&Math.hypot(e.point.x-bc.sx,e.point.y-(bc.bky??bc.sy))<14)t=S.ob.name+" HQ";const cvs=MM.getCanvas();if(cvs.title!==t)cvs.title=t});
 /* idle spin: after 15 s without input, a zoomed-out globe slowly turns on its own */
 let lastInput=Date.now(),idleRaf=0,idleT=0;
 ["pointerdown","wheel","keydown","touchstart"].forEach(t=>window.addEventListener(t,()=>{lastInput=Date.now()},{passive:true,capture:true}));
-function idleSpin(t){const ok=Date.now()-lastInput>15000&&V.k<=1.6&&!flying&&!ptrs.size&&!(typeof inStreet!=="undefined"&&inStreet)&&document.visibilityState==="visible";
+function idleSpin(t){const ok=Date.now()-lastInput>15000&&V.k<=1.6&&!MM.isMoving()&&!inStreet&&document.visibilityState==="visible";
   if(ok&&t-idleT<33){idleRaf=requestAnimationFrame(idleSpin);return}
-  if(ok){const dt=idleT?Math.min(.1,(t-idleT)/1000):0;V.lam+=dt*4;V.phi+=(-25-V.phi)*Math.min(1,dt*.3);draw()}
+  if(ok&&idleT){const dt=Math.min(.1,(t-idleT)/1000),c=MM.getCenter();MM.jumpTo({center:[c.lng-dt*4,c.lat+(25-c.lat)*Math.min(1,dt*.3)]})}
   idleT=t;idleRaf=requestAnimationFrame(idleSpin)}
 if(!matchMedia("(prefers-reduced-motion: reduce)").matches)idleRaf=requestAnimationFrame(idleSpin);
-/* glide the globe so a city faces you */
-let flying=false;
-function rotateTo(c,k,done){const l0=V.lam,p0=V.phi,k0=V.k;let l1=-c.lon;while(l1-l0>180)l1-=360;while(l1-l0<-180)l1+=360;const p1=Math.max(-80,Math.min(80,-c.lat));
-  if(reduce){V.lam=l1;V.phi=p1;V.k=k;draw();done&&done();return}
-  const t0=performance.now();flying=true;cancelAnimationFrame(spinRaf);
-  const step=t=>{if(!flying)return;const u=Math.min(1,(t-t0)/750),e=u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2;V.lam=l0+(l1-l0)*e;V.phi=p0+(p1-p0)*e;V.k=k0+(k-k0)*e;draw();
-    if(u<1)requestAnimationFrame(step);else{flying=false;done&&done()}};requestAnimationFrame(step)}
+/* glide the camera so a place faces you; k is the old globe zoom factor (1 = whole planet), never zooms out */
+function rotateTo(c,k,done){const z0=MM.getZoom(),z=Math.max(z0,Math.min(ZST-.5,z0+Math.log2(Math.max(1e-3,k/V.k))));
+  const opt={center:[c.lon,Math.max(-80,Math.min(80,c.lat))],zoom:z,padding:padNow(),essential:true};_pad=opt.padding.right+","+opt.padding.bottom;
+  if(reduce){MM.jumpTo(opt);done&&done();return}
+  if(done)MM.once("moveend",()=>done());MM.easeTo({...opt,duration:900,easing:u=>u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2})}
 
 /* ---------- city sheet ---------- */
 const sheet=$("#sheet");
@@ -1590,7 +1625,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-need]");if(!b
 
 /* ---------- street view: real OpenStreetMap streets, every property is a pin you placed ---------- */
 S.pos=S.pos||{};
-const HAS_STREET=!!window.L;
+const HAS_STREET=true;
 const KM_LAT=1/111;
 const hash01=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return ((h>>>0)%100000)/100000};
 function autoPos(key,c,rmin,rmax){const a=hash01(key+"a")*Math.PI*2,r=rmin+hash01(key+"r")*(rmax-rmin);
@@ -1609,53 +1644,42 @@ function ensurePositions(){for(const e of entities()){const p=S.pos[e.key];
   if(p&&p.city===e.c.id)continue;
   if(pendingPos&&pendingPos.city===e.c.id){S.pos[e.key]={...pendingPos};pendingPos=null}
   else S.pos[e.key]={...autoPos(e.key,e.c,e.r[0],e.r[1]),city:e.c.id}}}
-/* ---------- the Leaflet map ---------- */
-let LM=null,stFly=false,stFadeT=0,inStreet=false,stCity=null,layer=null,tempMark=null,offer=null;
-const stEl=$("#street"),stBar=$("#stbar"),placeBar=$("#placebar");
-function initStreet(){if(LM||!HAS_STREET)return;
-  LM=L.map(stEl,{zoomControl:false,attributionControl:true,worldCopyJump:true,minZoom:3,maxZoom:19});
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(LM);
-  L.control.zoom({position:"bottomright"}).addTo(LM);
-  layer=L.layerGroup().addTo(LM);
-  LM.on("click",e=>{if(placing)pickSpot(e.latlng);else if(offer)closeOffer()});
-  LM.on("zoomend",()=>{if(!placing&&!stFly&&LM.getZoom()<9)leaveStreet()});
-  LM.on("moveend",()=>{const ce=LM.getCenter();let best=null,bd=1e9;for(const c of CITIES){const d=Math.hypot(c.lat-ce.lat,(c.lon-ce.lng)*Math.cos(c.lat*Math.PI/180));if(d<bd){bd=d;best=c}}
-    if(best&&best!==stCity&&bd<.6){stCity=best;$("#stcity").textContent=best.name;renderPins()}})}
-function enterStreet(c,zoom){if(!HAS_STREET)return false;stCity=c;inStreet=true;stEl.hidden=false;stBar.hidden=false;$("#hint").hidden=true;
-  initStreet();exit3d(false);clearTimeout(stFadeT);LM.invalidateSize();const z=zoom||14;$("#stcity").textContent=c.name;renderPins();
-  /* no hard cut: fade the street map in over the globe while it glides down from a wide view to the target zoom */
-  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if(!reduce&&!placing&&diveReady()){diveTo(c,z);return true}
-  stFly=true;LM.setView([c.lat,c.lon],reduce?z:Math.max(6,z-5),{animate:false});
-  if(reduce){stFly=false;return true}
-  stEl.classList.remove("fade");if(stEl.animate)stEl.animate([{opacity:0},{opacity:1}],{duration:550,easing:"ease-out"});
-  requestAnimationFrame(()=>{if(!inStreet)return;LM.once("moveend",()=>{stFly=false;if(want3d())enter3d()});LM.flyTo([c.lat,c.lon],z,{duration:1.2,easeLinearity:.2})});return true}
-function leaveStreet(){exit3d(false);if(placing)cancelPlace();if(offer)closeOffer();inStreet=false;stFly=false;stBar.hidden=true;
-  if(stCity){V.lam=-stCity.lon;V.phi=Math.max(-80,Math.min(80,-stCity.lat));V.k=8}draw();
-  /* fade the streets out over the redrawn globe instead of snapping away */
-  stEl.classList.add("fade");clearTimeout(stFadeT);stFadeT=setTimeout(()=>{if(!inStreet){stEl.hidden=true;stEl.classList.remove("fade")}},500)}
+/* ---------- street level: the same camera, close in. Your property pins appear once you are down among the streets ---------- */
+let inStreet=false,stCity=null,tempMark=null,offer=null,mkPins=[],mkList=[];
+const stBar=$("#stbar"),placeBar=$("#placebar");
+const nearCity=(lon,lat,maxDeg)=>{let best=null,bd=1e9;for(const c of CITIES){const d=Math.hypot(c.lat-lat,(c.lon-lon)*Math.cos(c.lat*Math.PI/180));if(d<bd){bd=d;best=c}}return bd<maxDeg?best:null};
+function streetSync(){const z=MM.getZoom(),on=z>=ZST||!!placing;
+  if(on&&!inStreet){inStreet=true;const ce=MM.getCenter();stCity=stCity&&Math.hypot(stCity.lat-ce.lat,(stCity.lon-ce.lng)*Math.cos(ce.lat*Math.PI/180))<1.5?stCity:nearCity(ce.lng,ce.lat,2);
+    stBar.hidden=false;$("#hint").hidden=true;$("#mapwrap").classList.add("st");stLabel();renderPins();if(typeof navSync==="function")navSync()}
+  else if(!on&&inStreet){inStreet=false;stBar.hidden=true;$("#mapwrap").classList.remove("st");if(offer)closeOffer();clearPins();if(typeof navSync==="function")navSync()}}
+function stLabel(){$("#stcity").textContent=stCity?stCity.name:"";$("#stcityb").hidden=!stCity}
+MM.on("move",streetSync);
+MM.on("moveend",()=>{if(!inStreet)return;const ce=MM.getCenter(),best=nearCity(ce.lng,ce.lat,.6);if(best&&best!==stCity){stCity=best;stLabel();renderPins()}});
+/* fly down to a city's streets; zoom is in street-map levels (13 city, 15 block) */
+function enterStreet(c,zoom){if(!HAS_STREET)return false;stCity=c;stLabel();const z=Math.max(ZST+.3,(zoom||14)-1);
+  const opt={center:[c.lon,c.lat],zoom:z,bearing:0,padding:padNow(),essential:true};_pad=opt.padding.right+","+opt.padding.bottom;
+  if(reduce)MM.jumpTo(opt);else MM.flyTo({...opt,curve:1.42,speed:1.1,maxDuration:3200});streetSync();return true}
+/* back out to the whole planet, staying over the same spot */
+function leaveStreet(){if(placing)cancelPlace();if(offer)closeOffer();const c=MM.getCenter(),z=Math.log2(Math.max(1,base)*2*Math.PI/512);
+  const opt={center:[c.lng,c.lat],zoom:z,bearing:0,essential:true};if(reduce)MM.jumpTo(opt);else MM.flyTo({...opt,curve:1.42,speed:1.2,maxDuration:2600})}
 const PIN={biz:["#c2410c","Shop"],prop:["#7c3aed","Rent"],"site-farm":["#4d7c0f","Farm"],"site-mine":["#78716c","Mine"],"site-ind":["#0e7490","Ind"],hq:["#1d2a2b","HQ"],wh:["#a16207","Depot"],home:["#be185d","Home"]};
 const BIZTAG={cart:"Cart",coffeecart:"Coffee",icecream:"Ice",taco:"Taco",pretzel:"Pretzel",noodle:"Noodle",smoothie:"Smoothie",kiosk:"Café",shop:"Shop",gasstation:"Fuel",rest:"Diner",apt:"Apts",office:"Office",hotel:"Hotel",casino:"Casino"};
-function pinIcon(e){let [col,txt]=PIN[e.cls]||["#333","•"];if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
-  return L.divIcon({className:"mpin",html:`<span style="background:${col}">${txt}</span>`,iconSize:null,iconAnchor:[18,30]})}
-function renderPins(){if(!layer)return;layer.clearLayers();ensurePositions();
-  if(S.loc&&stCity&&S.loc.city===stCity.id){const tp=tripPos(Date.now()),pl=tp&&S.trip.local?tp:S.loc;L.marker([pl.lat,pl.lon],{icon:L.divIcon({className:"mpin",html:'<span style="background:#be185d">You</span>',iconSize:null,iconAnchor:[18,30]}),zIndexOffset:1000}).addTo(layer)}
-  if(stCity&&hasAirport(stCity)){const a=airportPos(stCity);L.marker([a.lat,a.lon],{icon:L.divIcon({className:"mpin",html:'<span style="background:#64748b">Airport</span>',iconSize:null,iconAnchor:[18,30]})}).addTo(layer)}
-  if(stCity){const a=stationPos(stCity);L.marker([a.lat,a.lon],{icon:L.divIcon({className:"mpin",html:'<span style="background:#64748b">Station</span>',iconSize:null,iconAnchor:[18,30]})}).addTo(layer)}
-  for(const e of entities()){const p=S.pos[e.key];if(!p)continue;
-    const m=L.marker([p.lat,p.lon],{icon:pinIcon(e),title:e.label}).addTo(layer);
-    m.bindTooltip(`<b>${e.label}</b>${e.sub?" · "+e.sub:""}<br>${p.addr||e.c.name}`,{direction:"top",offset:[0,-28]});
-    m.on("click",()=>{tab=e.tab;openCity(e.c)})}
+/* one map pin: a label bubble pointing at its spot, drawn by the map so it sticks to the street at any tilt */
+function mkPin(lat,lon,txt,col,title,onClick,cls){const el=document.createElement("div");el.className="mpin"+(cls?" "+cls:"");if(title)el.title=title;
+  const sp=document.createElement("span");if(col)sp.style.background=col;sp.textContent=txt;el.appendChild(sp);
+  if(onClick){el.style.cursor="pointer";el.addEventListener("click",ev=>{ev.stopPropagation();onClick()})}
+  return new maplibregl.Marker({element:el,anchor:"top-left",offset:[-18,-30]}).setLngLat([lon,lat]).addTo(MM)}
+function clearPins(){for(const m of mkPins)m.remove();mkPins=[];for(const m of mkList)m.remove();mkList=[]}
+function renderPins(){clearPins();if(!inStreet)return;ensurePositions();
+  if(S.loc&&stCity&&S.loc.city===stCity.id){const tp=tripPos(Date.now()),pl=tp&&S.trip.local?tp:S.loc;const m=mkPin(pl.lat,pl.lon,"You","#be185d","You are here");m.getElement().style.zIndex=5;mkPins.push(m)}
+  if(stCity&&hasAirport(stCity)){const a=airportPos(stCity);mkPins.push(mkPin(a.lat,a.lon,"Airport","#64748b",stCity.name+" airport"))}
+  if(stCity){const a=stationPos(stCity);mkPins.push(mkPin(a.lat,a.lon,"Station","#64748b",stCity.name+" station"))}
+  for(const e of entities()){const p=S.pos[e.key];if(!p)continue;let [col,txt]=PIN[e.cls]||["#333","•"];if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
+    mkPins.push(mkPin(p.lat,p.lon,txt,col,`${e.label}${e.sub?" · "+e.sub:""}\n${p.addr||e.c.name}`,()=>{tab=e.tab;openCity(e.c)}))}
   // rival branches in this city
   if(stCity)S.rivals.forEach((rv,i)=>{if(!rv.cities.includes(stCity.id))return;const p=autoPos("rival"+i+":"+stCity.id,stCity,.4,2.2);
-    L.marker([p.lat,p.lon],{icon:L.divIcon({className:"mpin",html:`<span style="background:${RIVALS[i].col}">${RIVALS[i].n.split(" ")[0]}</span>`,iconSize:null,iconAnchor:[18,30]}),title:RIVALS[i].n}).addTo(layer).bindTooltip(`${RIVALS[i].n} branch`,{direction:"top",offset:[0,-28]})});
-  if(stCity&&!placing)renderListings(stCity);if(in3d)pins3d()}
-/* zooming far into the globe drops you onto the streets of the city in front of you */
-function maybeStreet(fx,fy,geo){if(!HAS_STREET||inStreet||V.k<7)return;if(fx==null){[fx,fy]=proj.translate()}
-  let best=null,bd=150*150;
-  for(const c of CITIES){if(c.sx<-1e3)continue;const d=(c.sx-fx)**2+(c.sy-fy)**2;if(d<bd){bd=d;best=c}}
-  if(!best&&geo&&V.k>=12){let km=1e9;for(const c of CITIES){const d=d3.geoDistance(geo,[c.lon,c.lat])*6371;if(d<km){km=d;best=c}}if(km>600)best=null}
-  if(best&&(V.k>=9||bd<60*60)){enterStreet(best,13);V.k=6}}
+    mkPins.push(mkPin(p.lat,p.lon,RIVALS[i].n.split(" ")[0],RIVALS[i].col,`${RIVALS[i].n} branch`))});
+  if(stCity&&!placing)renderListings(stCity)}
 /* ---------- placing a purchase on the map ---------- */
 const PLACE_SEL='[data-buy],[data-rent],[data-act="land"],[data-act="leaseland"],[data-act="wh"],[data-prop="buy"],[data-hq="open"],[data-life="rent"],[data-life="buy"]';
 let placing=null,bypass=false;
@@ -1672,7 +1696,7 @@ sheet.addEventListener("click",e=>{if(!HAS_STREET||bypass)return;const b=e.targe
 async function pickSpot(ll){const c=placing.city;
   const km=Math.hypot((ll.lat-c.lat)/KM_LAT,(ll.lng-c.lon)*Math.cos(c.lat*Math.PI/180)/KM_LAT);
   if(km>40){toast(`That's outside ${c.name}. Pick a spot within about 40 km of the city.`);return}
-  if(tempMark)tempMark.remove();tempMark=L.marker(ll,{icon:L.divIcon({className:"mpin",html:'<span style="background:var(--accent)">Here</span>',iconSize:null,iconAnchor:[18,30]})}).addTo(LM);
+  if(tempMark)tempMark.remove();tempMark=mkPin(ll.lat,ll.lng,"Here","var(--accent)");
   placeBar.innerHTML=`<div><b>${placing.label}</b><br><span id="pladdr">Looking up the address…</span></div><span style="display:flex;gap:6px"><button class="buy up" id="plcancel">Cancel</button><button class="buy" id="plok">Place here</button></span>`;
   $("#plcancel").onclick=cancelPlace;const spot={lat:ll.lat,lon:ll.lng,city:c.id,addr:""};
   $("#plok").onclick=()=>confirmPlace(spot);
@@ -1698,10 +1722,7 @@ function listings(c){const day=Math.floor(Date.now()/DAYMS),n=3+(c.size>=4?2:c.s
     const P=PROPS[Math.floor(hash01(id+"k")*PROPS.length)],m=.82+hash01(id+"m")*.33,pos=autoPos(id,c,.3,3.2);
     out.push({id,c,P,price:Math.round(propCost(P,c)*m),deal:m<.92,lat:pos.lat,lon:pos.lon})}
   return out}
-function renderListings(c){for(const o of listings(c)){
-  const m=L.marker([o.lat,o.lon],{icon:L.divIcon({className:"mpin sale"+(o.deal?" deal":""),html:`<span>${o.deal?"Deal":"For sale"}</span>`,iconSize:null,iconAnchor:[18,30]}),title:o.P.n+" for sale"}).addTo(layer);
-  m.bindTooltip(`<b>${o.P.n}</b> · ${fmt(o.price)}`,{direction:"top",offset:[0,-28]});
-  m.on("click",()=>openOffer(o))}}
+function renderListings(c){for(const o of listings(c))mkList.push(mkPin(o.lat,o.lon,o.deal?"Deal":"For sale",null,`${o.P.n} for sale · ${fmt(o.price)}`,()=>openOffer(o),"sale"+(o.deal?" deal":"")))}
 async function openOffer(o){offer=o;const c=o.c,P=o.P,rent=Math.round(P.rent*PRICE[c.size]*DEMAND[c.size]),list=propCost(P,c),pct=Math.round((1-o.price/list)*100);
   if(tempMark)tempMark.remove();tempMark=null;
   placeBar.hidden=false;placeBar.classList.add("offer");placeBar.innerHTML=`<div><b>${P.n} for sale</b>${pct>0?` <span class="tag boom">${pct}% below market</span>`:pct<0?` <span class="tag bust">${-pct}% over market</span>`:""}
@@ -1718,63 +1739,6 @@ function buyListing(o){if(S.sold&&S.sold[o.id])return closeOffer();if(S.cash<o.p
   S.pos[`prop:${pr.id}`]={lat:o.lat,lon:o.lon,city:o.c.id,addr:o.addr||""};
   closeOffer();save();hud();renderPins();if(sheet.classList.contains("open")&&sel)renderSheet();
   toast(`Bought ${/^[aeiou]/i.test(o.P.n)?"an":"a"} ${o.P.n.toLowerCase()}${o.addr?" at "+o.addr:" in "+o.c.name} for ${fmt(o.price)}. Listed at 75% of market.`);bigMove(`${/^[aeiou]/i.test(o.P.n)?"an":"a"} ${o.P.n.toLowerCase()} in ${o.c.name} was bought for ${fmt(o.price)}`,o.price)}
-/* ---------- 3D view: tilted vector map with extruded buildings (MapLibre + OpenFreeMap), loaded on first use. Flat Leaflet stays for placing and for-sale pins. ---------- */
-const ML_VER="5.6.0",ML_STYLES={light:window.MERIDIAN_3D_STYLE||"https://tiles.openfreemap.org/styles/liberty",dark:window.MERIDIAN_3D_STYLE_DARK||"https://tiles.openfreemap.org/styles/dark"};
-/* light or dark 3D map: your pick is remembered; with no pick it follows the device theme */
-const dark3d=()=>{try{const v=localStorage.getItem("meridian-3d-dark");if(v!=null)return v==="1"}catch(e){}const t=document.documentElement.dataset.theme;return t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches)};
-const ML_STYLE=()=>ML_STYLES[dark3d()?"dark":"light"];const st3t=$("#st3dt");
-function theme3dBtn(){st3t.textContent=dark3d()?"☀ Light":"☾ Dark";st3t.hidden=!in3d}
-function toggle3dTheme(){try{localStorage.setItem("meridian-3d-dark",dark3d()?"0":"1")}catch(e){}theme3dBtn();
-  if(MM){MM.once("style.load",()=>{ensure3dBuildings();pins3d()});MM.setStyle(ML_STYLE(),{diff:false})}}
-st3t.onclick=toggle3dTheme;
-let MM=null,mlLoad=null,in3d=false,mlMarks=[];const want3d=()=>{try{return !placing&&localStorage.getItem("meridian-3d")==="1"}catch(e){return false}};const st3=$("#street3d"),st3b=$("#st3d");
-function loadML(){if(window.maplibregl)return Promise.resolve(window.maplibregl);
-  return mlLoad||(mlLoad=new Promise((res,rej)=>{const l=document.createElement("link");l.rel="stylesheet";l.href=`https://unpkg.com/maplibre-gl@${ML_VER}/dist/maplibre-gl.css`;document.head.appendChild(l);
-    const sc=document.createElement("script");sc.src=`https://unpkg.com/maplibre-gl@${ML_VER}/dist/maplibre-gl.js`;sc.onload=()=>window.maplibregl?res(window.maplibregl):rej(new Error("no maplibre"));sc.onerror=()=>{mlLoad=null;sc.remove();rej(new Error("load"))};document.head.appendChild(sc)}))}
-/* the style ships building footprints; make sure there is an extrusion layer so they rise out of the map (added only if the style has none) */
-function ensure3dBuildings(){try{const st=MM.getStyle();if(!st||st.layers.some(l=>l.type==="fill-extrusion"))return;
-  const src=Object.keys(st.sources).find(k=>st.sources[k].type==="vector");if(!src)return;
-  const lab=st.layers.find(l=>l.type==="symbol");
-  MM.addLayer({id:"meridian-3d-buildings",type:"fill-extrusion",source:src,"source-layer":"building",minzoom:14,
-    paint:{"fill-extrusion-color":dark3d()?["interpolate",["linear"],["coalesce",["get","render_height"],8],0,"#3a4350",60,"#4f5b6b",200,"#6b7a8f"]:["interpolate",["linear"],["coalesce",["get","render_height"],8],0,"#dfe3e8",60,"#aab4c2",200,"#7f8ea3"],
-      "fill-extrusion-height":["coalesce",["get","render_height"],8],"fill-extrusion-base":["coalesce",["get","render_min_height"],0],"fill-extrusion-opacity":.9}},lab?lab.id:undefined)}catch(e){console.warn("3D buildings",e)}}
-function pins3d(){for(const m of mlMarks)m.remove();mlMarks=[];if(!MM)return;ensurePositions();
-  for(const e of entities()){const p=S.pos[e.key];if(!p)continue;const [col,t0]=PIN[e.cls]||["#333","•"],txt=e.cls==="biz"?(BIZTAG[e.key.split(":")[2]]||t0):t0;
-    const el=document.createElement("div");el.className="mpin";el.title=e.label;el.innerHTML=`<span style="background:${col}">${txt}</span>`;el.style.cursor="pointer";
-    el.onclick=ev=>{ev.stopPropagation();tab=e.tab;openCity(e.c)};
-    mlMarks.push(new maplibregl.Marker({element:el,anchor:"top-left",offset:[-18,-30]}).setLngLat([p.lon,p.lat]).addTo(MM))}}
-async function enter3d(){if(in3d)return;if(placing||offer){toast("Finish placing first, then switch to 3D");return}
-  st3b.disabled=true;st3b.textContent="3D…";
-  try{await loadML()}catch(e){st3b.disabled=false;st3b.textContent="3D";toast("3D view needs an internet connection");return}
-  st3b.disabled=false;if(!inStreet)return;
-  try{localStorage.setItem("meridian-3d","1")}catch(e){}const c=LM.getCenter(),z=Math.max(LM.getZoom()-1,14.5);in3d=true;st3.hidden=false;st3b.textContent="2D";theme3dBtn();
-  if(!MM){mkML();MM.jumpTo({center:[c.lng,c.lat],zoom:z,pitch:60,bearing:-20})}
-  else{MM.resize();MM.jumpTo({center:[c.lng,c.lat],zoom:z,pitch:60,bearing:-20});pins3d()}}
-/* one continuous camera move from orbit to street: MapLibre draws the planet as a globe (v5) and flattens it into streets as it zooms */
-let diving=false,diveEnd=null;
-function mkML(){MM=new maplibregl.Map({container:st3,style:ML_STYLE(),center:[0,20],zoom:1.5,maxPitch:75,attributionControl:{compact:true}});
-  MM.addControl(new maplibregl.NavigationControl({visualizePitch:true}),"bottom-right");MM.on("error",e=>console.warn("3D map",e&&e.error&&e.error.message));
-  MM.on("style.load",()=>{try{MM.setProjection({type:"globe"})}catch(e){}});MM.on("load",()=>{ensure3dBuildings();pins3d()});
-  MM.on("zoomend",()=>{if(in3d&&!diving&&MM.getZoom()<11)exit3d(true)})}
-function diveReady(){return !!(MM&&MM.isStyleLoaded&&MM.isStyleLoaded())}
-/* warm the globe map up in the background so the first dive does not wait for it */
-function preloadDive(){if(!HAS_STREET||MM)return;loadML().then(()=>{if(!MM)mkML()}).catch(()=>{})}
-function diveTo(c,z){const go3=want3d(),lat0=Math.max(-80,Math.min(80,-V.phi)),R=base*V.k;
-  const z0=Math.max(0,Math.min(5,Math.log2(2*Math.PI*R*Math.cos(lat0*Math.PI/180)/512)));
-  diving=true;stFly=true;stEl.classList.remove("fade");st3.hidden=false;st3.style.opacity="1";if(st3.animate)st3.animate([{opacity:0},{opacity:1}],{duration:350,easing:"ease-out"});
-  MM.resize();MM.jumpTo({center:[-V.lam,lat0],zoom:z0,pitch:0,bearing:0});
-  /* Leaflet tiles are 256px and MapLibre's 512px, so MapLibre zoom z-1 matches Leaflet zoom z */
-  const end=go3?{zoom:Math.max(z-1,14.5),pitch:60,bearing:-20}:{zoom:z-1,pitch:0,bearing:0};
-  diveEnd=()=>{diveEnd=null;diving=false;stFly=false;if(!inStreet){st3.hidden=true;return}
-    if(go3){in3d=true;st3b.textContent="2D";theme3dBtn();pins3d();return}
-    /* land on the 2D game map: it sits underneath at the same spot, so just fade the globe layer away */
-    LM.setView([c.lat,c.lon],z,{animate:false});
-    if(st3.animate){const a=st3.animate([{opacity:1},{opacity:0}],{duration:400,easing:"ease-in"});a.onfinish=()=>{if(!in3d)st3.hidden=true}}else st3.hidden=true};MM.once("moveend",()=>diveEnd&&diveEnd());
-  requestAnimationFrame(()=>diving&&MM.flyTo({center:[c.lon,c.lat],...end,duration:3200,curve:1.6,essential:true}))}
-function exit3d(sync){if(diving&&MM){diveEnd=null;diving=false;stFly=false;MM.stop();st3.hidden=true}if(!in3d)return;in3d=false;st3t.hidden=true;if(sync)try{localStorage.removeItem("meridian-3d")}catch(e){}st3.hidden=true;st3b.textContent="3D";
-  if(sync&&MM&&LM){const c=MM.getCenter();LM.setView([c.lat,c.lng],Math.min(19,Math.round(MM.getZoom()+1)),{animate:false})}}
-st3b.onclick=()=>in3d?exit3d(true):enter3d();
-if(HAS_STREET)setTimeout(preloadDive,4000);
 $("#stback").onclick=leaveStreet;
 $("#stcityb").onclick=()=>{if(stCity){openCity(stCity)}};
 
@@ -1814,8 +1778,8 @@ function drawStorms(ctx,C){const now=Date.now(),t=performance.now()/1000;
     for(let k=0;k<4;k++){px+=(Math.random()-.5)*f.s*.5;py+=f.s*.5;ctx.lineTo(px,py)}ctx.stroke();ctx.restore()}}
 /* keep storms animated while one is on screen */
 let wxRaf=0,wxLast=0;
-function wxLoop(t){if(activeStorms().length&&!(typeof inStreet!=="undefined"&&inStreet)&&document.visibilityState==="visible"&&t-wxLast>50){wxLast=t;draw()}
-  if(typeof inStreet!=="undefined"&&inStreet)drawRain(t);wxRaf=requestAnimationFrame(wxLoop)}
+function wxLoop(t){if(activeStorms().length&&!inStreet&&document.visibilityState==="visible"&&t-wxLast>50){wxLast=t;draw()}
+  if(inStreet)drawRain(t);else if(rainOn){wctx.setTransform(1,0,0,1,0,0);wctx.clearRect(0,0,wxCv.width,wxCv.height);rainOn=false;wxCv.hidden=true}wxRaf=requestAnimationFrame(wxLoop)}
 wxRaf=requestAnimationFrame(wxLoop);
 /* rain over the street map when the city is under a storm */
 const wxCv=$("#wx"),wctx=wxCv.getContext("2d");let drops=[],rainOn=false,boltT=0;
@@ -1942,6 +1906,8 @@ function sunPoint(now){const d=new Date(now),doy=(Date.UTC(d.getUTCFullYear(),d.
   const dec=-23.44*Math.cos(2*Math.PI/365*(doy+10)),h=d.getUTCHours()+d.getUTCMinutes()/60;return[(12-h)*15,dec]}
 const isNight=(lon,lat,now)=>{const s=sunPoint(now);return d3.geoDistance([lon,lat],s)>Math.PI/2+.02};
 function drawNight(ctx){const s=sunPoint(Date.now()),anti=[s[0]+180,-s[1]];
+  /* close in, the night side is bigger than the screen: tint the whole view by how deep into the night the camera is */
+  if(MM.getZoom()>6.5){const d=d3.geoDistance(_ce,anti)*180/Math.PI,a=d<89?.38:d<91?.16+.22*(91-d)/2:d<95?.16*(95-d)/4:d<97?0:0;if(a>0){ctx.fillStyle=`rgba(8,14,40,${a*Math.max(0,1-(MM.getZoom()-12)/6)})`;ctx.fillRect(0,0,W,H)}return}
   ctx.save();ctx.beginPath();path(d3.geoCircle().center(anti).radius(96)());ctx.fillStyle="rgba(8,14,40,.16)";ctx.fill();
   ctx.beginPath();path(d3.geoCircle().center(anti).radius(90)());ctx.fillStyle="rgba(8,14,40,.26)";ctx.fill();ctx.restore()}
 function drawCityLights(ctx){const now=Date.now(),t=now/1000;
@@ -1964,17 +1930,17 @@ function drawTraffic(ctx,C){const t=Date.now()/1000;ctx.save();
   ctx.restore()}
 /* keep the globe moving gently while it's on screen */
 let ambLast=0;
-function ambLoop(t){if(!(typeof inStreet!=="undefined"&&inStreet)&&document.visibilityState==="visible"&&t-ambLast>100&&!ptrs.size&&!sheet.classList.contains("full")){ambLast=t;draw()}
-  if(typeof inStreet!=="undefined"&&inStreet)drawStreetLife(t);requestAnimationFrame(ambLoop)}
+function ambLoop(t){if(!inStreet&&document.visibilityState==="visible"&&t-ambLast>100&&!MM.isMoving()&&!sheet.classList.contains("full")){ambLast=t;draw()}
+  if(inStreet)drawStreetLife(t);else if(walkers.length||pops2.length){walkers=[];pops2=[];actx.setTransform(1,0,0,1,0,0);actx.clearRect(0,0,amb.width,amb.height)}requestAnimationFrame(ambLoop)}
 requestAnimationFrame(ambLoop);
 /* street view: customers walking into your open businesses, coins when they buy */
 const amb=$("#amb"),actx=amb.getContext("2d");let walkers=[],pops2=[],lastSpawn=0;
-function drawStreetLife(t){if(!LM||!stCity){return}const W2=amb.clientWidth,H2=amb.clientHeight,d=Math.min(2,devicePixelRatio||1);
+function drawStreetLife(t){if(!stCity){return}const W2=amb.clientWidth,H2=amb.clientHeight,d=Math.min(2,devicePixelRatio||1);
   if(amb.width!==W2*d||amb.height!==H2*d){amb.width=W2*d;amb.height=H2*d}actx.setTransform(d,0,0,d,0,0);actx.clearRect(0,0,W2,H2);
   const shops=[];for(const b of BIZ){const lv=(S.own[stCity.id]||{})[b.k];if(!lv)continue;const p=S.pos[`biz:${stCity.id}:${b.k}`];if(p&&opFactor(stCity,b)>.01)shops.push({b,lv,p})}
-  if(shops.length&&t-lastSpawn>420){lastSpawn=t;const sh=shops[Math.floor(Math.random()*shops.length)],pt=LM.latLngToContainerPoint([sh.p.lat,sh.p.lon]),a=Math.random()*Math.PI*2,dist=60+Math.random()*90;
+  if(shops.length&&t-lastSpawn>420){lastSpawn=t;const sh=shops[Math.floor(Math.random()*shops.length)],pt=MM.project([sh.p.lon,sh.p.lat]),a=Math.random()*Math.PI*2,dist=60+Math.random()*90;
     walkers.push({x:pt.x+Math.cos(a)*dist,y:pt.y+Math.sin(a)*dist,sh,t0:t,dur:3500+Math.random()*2500,col:["#f472b6","#60a5fa","#fbbf24","#34d399","#e5e7eb"][Math.floor(Math.random()*5)]})}
-  for(let i=walkers.length-1;i>=0;i--){const w=walkers[i],pt=LM.latLngToContainerPoint([w.sh.p.lat,w.sh.p.lon]),u=(t-w.t0)/w.dur;
+  for(let i=walkers.length-1;i>=0;i--){const w=walkers[i],pt=MM.project([w.sh.p.lon,w.sh.p.lat]),u=(t-w.t0)/w.dur;
     if(u>=1){walkers.splice(i,1);const per=profit(w.sh.b,stCity,w.sh.lv)/Math.max(1,useRate(w.sh.b,w.sh.lv,stCity)||40);pops2.push({x:pt.x,y:pt.y-30,t0:t,v:Math.max(1,per)});continue}
     const x=w.x+(pt.x-w.x)*u,y=w.y+(pt.y-w.y)*u+Math.sin(u*40)*1.2;actx.globalAlpha=Math.min(1,u*4,(1-u)*6);actx.fillStyle=w.col;actx.beginPath();actx.arc(x,y,3.2,0,7);actx.fill();actx.strokeStyle="rgba(0,0,0,.5)";actx.lineWidth=1;actx.stroke()}
   for(let i=pops2.length-1;i>=0;i--){const p=pops2[i],u=(t-p.t0)/1200;if(u>=1){pops2.splice(i,1);continue}
