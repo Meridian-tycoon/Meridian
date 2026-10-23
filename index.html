@@ -152,7 +152,7 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
 #nav button[aria-current="true"]{color:var(--accent)}
 .grab{position:sticky;top:0;z-index:3;display:flex;justify-content:center;align-items:center;height:20px;margin:0 calc(-1*max(16px,env(safe-area-inset-left,0px))) 0;background:var(--panel);cursor:grab;touch-action:none;border:0;width:calc(100% + 2*max(16px,env(safe-area-inset-left,0px)));padding:0}
 .grab::before{content:"";width:40px;height:5px;border-radius:3px;background:var(--line)}
-#street{position:absolute;inset:0;z-index:1;background:var(--sea)}
+#street{position:absolute;inset:0;z-index:1;background:var(--sea);transition:opacity .5s ease}#street.fade{opacity:0;pointer-events:none}
 #sheet{z-index:4}
 .chip{font:600 12px var(--body);background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:7px 12px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.15)}
 #stbar{position:absolute;z-index:3;top:10px;left:max(12px,env(safe-area-inset-left,0px));display:flex;gap:6px}
@@ -1610,7 +1610,7 @@ function ensurePositions(){for(const e of entities()){const p=S.pos[e.key];
   if(pendingPos&&pendingPos.city===e.c.id){S.pos[e.key]={...pendingPos};pendingPos=null}
   else S.pos[e.key]={...autoPos(e.key,e.c,e.r[0],e.r[1]),city:e.c.id}}}
 /* ---------- the Leaflet map ---------- */
-let LM=null,inStreet=false,stCity=null,layer=null,tempMark=null,offer=null;
+let LM=null,stFly=false,stFadeT=0,inStreet=false,stCity=null,layer=null,tempMark=null,offer=null;
 const stEl=$("#street"),stBar=$("#stbar"),placeBar=$("#placebar");
 function initStreet(){if(LM||!HAS_STREET)return;
   LM=L.map(stEl,{zoomControl:false,attributionControl:true,worldCopyJump:true,minZoom:3,maxZoom:19});
@@ -1618,13 +1618,20 @@ function initStreet(){if(LM||!HAS_STREET)return;
   L.control.zoom({position:"bottomright"}).addTo(LM);
   layer=L.layerGroup().addTo(LM);
   LM.on("click",e=>{if(placing)pickSpot(e.latlng);else if(offer)closeOffer()});
-  LM.on("zoomend",()=>{if(!placing&&LM.getZoom()<9)leaveStreet()});
+  LM.on("zoomend",()=>{if(!placing&&!stFly&&LM.getZoom()<9)leaveStreet()});
   LM.on("moveend",()=>{const ce=LM.getCenter();let best=null,bd=1e9;for(const c of CITIES){const d=Math.hypot(c.lat-ce.lat,(c.lon-ce.lng)*Math.cos(c.lat*Math.PI/180));if(d<bd){bd=d;best=c}}
     if(best&&best!==stCity&&bd<.6){stCity=best;$("#stcity").textContent=best.name;renderPins()}})}
 function enterStreet(c,zoom){if(!HAS_STREET)return false;stCity=c;inStreet=true;stEl.hidden=false;stBar.hidden=false;$("#hint").hidden=true;
-  initStreet();LM.invalidateSize();LM.setView([c.lat,c.lon],zoom||14,{animate:false});$("#stcity").textContent=c.name;renderPins();return true}
-function leaveStreet(){if(placing)cancelPlace();if(offer)closeOffer();inStreet=false;stEl.hidden=true;stBar.hidden=true;
-  if(stCity){V.lam=-stCity.lon;V.phi=Math.max(-80,Math.min(80,-stCity.lat));V.k=8}draw()}
+  initStreet();clearTimeout(stFadeT);LM.invalidateSize();const z=zoom||14;$("#stcity").textContent=c.name;renderPins();
+  /* no hard cut: fade the street map in over the globe while it glides down from a wide view to the target zoom */
+  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;stFly=true;LM.setView([c.lat,c.lon],reduce?z:Math.max(6,z-5),{animate:false});
+  if(reduce){stFly=false;return true}
+  stEl.classList.remove("fade");if(stEl.animate)stEl.animate([{opacity:0},{opacity:1}],{duration:550,easing:"ease-out"});
+  requestAnimationFrame(()=>{if(!inStreet)return;LM.once("moveend",()=>{stFly=false});LM.flyTo([c.lat,c.lon],z,{duration:1.2,easeLinearity:.2})});return true}
+function leaveStreet(){if(placing)cancelPlace();if(offer)closeOffer();inStreet=false;stFly=false;stBar.hidden=true;
+  if(stCity){V.lam=-stCity.lon;V.phi=Math.max(-80,Math.min(80,-stCity.lat));V.k=8}draw();
+  /* fade the streets out over the redrawn globe instead of snapping away */
+  stEl.classList.add("fade");clearTimeout(stFadeT);stFadeT=setTimeout(()=>{if(!inStreet){stEl.hidden=true;stEl.classList.remove("fade")}},500)}
 const PIN={biz:["#c2410c","Shop"],prop:["#7c3aed","Rent"],"site-farm":["#4d7c0f","Farm"],"site-mine":["#78716c","Mine"],"site-ind":["#0e7490","Ind"],hq:["#1d2a2b","HQ"],wh:["#a16207","Depot"],home:["#be185d","Home"]};
 const BIZTAG={cart:"Cart",coffeecart:"Coffee",icecream:"Ice",taco:"Taco",pretzel:"Pretzel",noodle:"Noodle",smoothie:"Smoothie",kiosk:"Café",shop:"Shop",gasstation:"Fuel",rest:"Diner",apt:"Apts",office:"Office",hotel:"Hotel",casino:"Casino"};
 function pinIcon(e){let [col,txt]=PIN[e.cls]||["#333","•"];if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
