@@ -2162,7 +2162,9 @@ function logGov(m){S.log.unshift("Politics: "+m);S.log=S.log.slice(0,3)}
 /* nuclear (uranium) mining permit: $10M, needs the approval of the country's government.
    If another player holds office in that country, the highest office holder decides (Gov tab, Permit requests).
    Otherwise the AI government decides at once. The fee is paid up front and refunded on a refusal. */
-const URQ={fee:10e6,wait:24*3600000,cd:6*3600000}; // fee, how long a player governor has to answer before the AI decides, retry cooldown after an AI refusal
+const URQ={fee:10e6,wait:24*3600000,cd:6*3600000};
+const URQ_FREE=["BRGRStgYLlbkVbrBTagBrDbpVyg1"]; // player IDs with no retry cooldown after a refused uranium permit
+const urqCdOn=()=>{try{return !(ON.user&&URQ_FREE.indexOf(ON.user.uid)>=0)}catch(e){return true}}; // fee, how long a player governor has to answer before the AI decides, retry cooldown after an AI refusal
 const uranFee=()=>URQ.fee;
 const uranPermit=n=>!!(S.gov&&S.gov[n]&&S.gov[n].uPermit);
 /* true if the player holds a uranium permit in at least one country: needed to buy uranium on the market */
@@ -2192,7 +2194,7 @@ function pmSweep(){if(!S.gov)return;for(const n in S.gov){const g=S.gov[n];if(!g
   PM.got=true}
 setInterval(()=>{try{if(ON.user&&S.pol&&(S.pol.r>=0?S.pol.c:null)!==PM.c)pmListen(ON.user);if(PM.got)pmSweep()}catch(e){console.warn("pm",e)}},30000);
 function uranApply(n){const g=gov(n),fee=uranFee();if(g.uReq){toast("Your application is already waiting");return}
-  if(g.uDen>Date.now()){toast(`The ${n} government refused you recently. Try again in ${fmtDur(g.uDen-Date.now())}.`);return}
+  if(urqCdOn()&&g.uDen>Date.now()){toast(`The ${n} government refused you recently. Try again in ${fmtDur(g.uDen-Date.now())}.`);return}
   if(S.cash<fee){toast(`Need ${fmt(fee)} for the permit`);return}
   if(uranIGov(n)){S.cash-=fee;g.uPermit=1;logGov(`You approve your own nuclear mining permit in ${n}`);toast("You govern here: permit granted");return}
   const o=uranGov(n);if(!o){uranAiDecide(n,false);return}
@@ -2239,7 +2241,7 @@ function govHtml(c){const n=c.country,g=gov(n),P=PARTIES[g.party];let h=cityHead
   h+=conflictHtml(n)+dipHtml(n);
   if(g.ctrl){h+=`<div class="sec">You control this government</div><div class="list"><div class="row"><div class="n">Puppet government</div><div class="d">Set any law for ${fmt(donUnit(n))} with no vote. Control lasts until the next election; fund the party again to keep it. Each hour there's a small chance a journalist exposes you.</div></div>
     <div class="row"><div class="n">State contract ${g.contract?"<b>ACTIVE</b>":""}</div><div class="d">Pays you ${fmt(contractPay(n))} an hour from public money, but more than doubles the exposure risk.</div><button class="buy" data-gov="contract" data-fixed="1">${g.contract?"Cancel":"Award to yourself"}</button></div></div>`}
-  {const has=uranPermit(n),fee=uranFee(),q=g.uReq,o=uranGov(n),mine=uranIGov(n),cd=g.uDen>Date.now();
+  {const has=uranPermit(n),fee=uranFee(),q=g.uReq,o=uranGov(n),mine=uranIGov(n),cd=urqCdOn()&&g.uDen>Date.now();
     const who=mine?"You govern here, so you approve it yourself.":o?`Decided by <b>${onEsc(o.name||"a player")}</b> (${GOVCFG.offices[o.govR].n}), the player governing ${n}. If they don't answer in ${fmtDur(URQ.wait)} the AI government decides.`:`Decided by the AI government (${Math.round(uranAiOdds(n)*100)}% chance of approval; better if you hold office here, have their ear or control the government).`;
     h+=`<div class="sec">Nuclear mining permit</div><div class="list"><div class="row"><div class="n">Nuclear mining licence ${has?"<b>ACTIVE</b>":q?"<b>PENDING</b>":""}</div>
     <div class="d">Uranium mines need this government's approval. Fee ${fmt(fee)}, refunded if refused. ${has?"":who}${q?` Waiting for ${onEsc(q.name)}.`:""}${cd?` Refused recently: retry in ${fmtDur(g.uDen-Date.now())}.`:""}</div>
