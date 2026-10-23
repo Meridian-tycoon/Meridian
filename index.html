@@ -4677,7 +4677,7 @@ function botList(x){let h="";if(x.pend.length)h+=`<p class="ph-sub" style="margi
    and, in ONE batch, creates transfers/f<id> (the existing player transfer, paying the carrier) and deletes the haul; rules refuse that delete unless the matching transfer is created in the same batch.
    Cancel (shipper deletes) is only possible before acceptance; an accepted haul that is not done by dl is deleted by the shipper (rules: only after dl) and refunded.
    Local ledgers make every step idempotent: S.frt.my (open escrow), S.frt.owe (goods credited, payment batch to retry), S.frt.run (carrier's accepted jobs). */
-const FR_MINPAY=100,FR_MAXPAY=1e6,FR_MAXT=120,FR_TRK=30,FR_MAXQ=5000,FR_GRACE=120000,FR_SPD=300;
+const FR_MINPAY=100,FR_MAXPAY=1e6,FR_MAXOPEN=5,FR_MAXT=120,FR_TRK=30,FR_MAXQ=5000,FR_GRACE=120000,FR_SPD=300;
 const FR={tab:"open",c:"",d:"",g:"",q:"",p:"",h:"12",busy:false,unsub:null,docs:[],got:false,infl:{}};
 function FS(){const x=S.frt=S.frt&&typeof S.frt==="object"&&!Array.isArray(S.frt)?S.frt:{};for(const k of["my","run","owe"])if(!x[k]||typeof x[k]!=="object"||Array.isArray(x[k]))x[k]={};if(!Array.isArray(x.hist))x.hist=[];return x}
 function frLog(e){const x=FS();e.t=Date.now();x.hist.unshift(e);x.hist=x.hist.slice(0,12)}
@@ -4693,7 +4693,7 @@ function frListen(u){if(FR.unsub){try{FR.unsub()}catch(_){}FR.unsub=null}FR.docs
 function frPaint(){if(PH.open&&PH.app==="freight"&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))phRender()}
 /* shipper: post */
 function frPostChk(){const wh=botWh(),c=FR.c===""?null:CITIES[+FR.c],d=FR.d===""?null:CITIES[+FR.d],g=FR.g,q=Math.floor(+FR.q||0);
-  if(!c)return{err:"Pick a warehouse city (you need a warehouse)"};if(!d||d.id===c.id)return{err:"Pick a different destination warehouse"};if(landmass(c)!==landmass(d))return{err:"Trucks can't cross oceans"};
+  if(Object.keys(FS().my).length>=FR_MAXOPEN)return{err:`Limit: ${FR_MAXOPEN} posted hauls at once. Cancel one or wait for one to finish`};if(!c)return{err:"Pick a warehouse city (you need a warehouse)"};if(!d||d.id===c.id)return{err:"Pick a different destination warehouse"};if(landmass(c)!==landmass(d))return{err:"Trucks can't cross oceans"};
   if(!G[g])return{err:"Pick a good"};if(q<1)return{err:"Enter a quantity"};if(q>FR_MAXQ)return{err:`Maximum ${FR_MAXQ} units per haul`};const t=frTons(g,q);if(t>FR_MAXT)return{err:`Too heavy: max ${FR_MAXT} t per haul`};
   if(botHave(c.id,g)<q)return{err:`Only ${Math.floor(botHave(c.id,g))} in ${c.name}`};
   const sug=frFee(g,q,c.id,d.id),pay=FR.p===""?sug:Math.floor(+FR.p||0);if(pay<FR_MINPAY)return{err:`Minimum pay is ${fmt(FR_MINPAY)}`};if(pay>FR_MAXPAY)return{err:`Maximum pay is ${fmt(FR_MAXPAY)}`};if(pay>S.cash)return{err:`You need ${fmt(pay)} in cash`};
@@ -4729,11 +4729,13 @@ function frSweep(){if(!ON.user||!ON.db||!FR.got)return;const now=Date.now(),x=FS
     if(!v){FR.infl[id]=1;ON.db.collection("freight").doc(id).get().then(s=>{delete FR.infl[id];if(!s.exists)frRefund(id,false)},()=>{delete FR.infl[id]});continue}
     if(v.done)frSettle(id,v);else if(!v.carrier?now>m.dl:now>m.dl+FR_GRACE)frDelete(id,false)}
   for(const id in x.owe){if(FR.infl[id])continue;if(by[id])frPay(id);else delete x.owe[id]}
+  for(const d of FR.docs){const v=d.data,id=d.id;if(v.shipper===uid&&!x.my[id]&&!x.owe[id]&&!FR.infl[id]&&!v.done&&(!v.carrier?now>v.dl:now>v.dl+FR_GRACE)){FR.infl[id]=1;ON.db.collection("freight").doc(id).delete().then(()=>{delete FR.infl[id]},()=>{delete FR.infl[id]})}}
   for(const d of FR.docs){const v=d.data,id=d.id;if(v.carrier===uid&&!x.run[id]&&!v.done&&CITIES[v.from]&&G[v.g]&&Number.isFinite(+v.eta)&&v.shipper!==uid)x.run[id]={g:v.g,q:v.q,from:v.from,to:v.to,pay:v.pay,eta:+v.eta,dl:+v.dl,tr:frTr(v.g,v.q),sh:String(v.shipperName||"Shipper").slice(0,20),done:0}}
   for(const id in x.run){const r=x.run[id],v=by[id];if(FR.infl["r"+id])continue;
     if(!v){FR.infl["r"+id]=1;ON.db.collection("freight").doc(id).get().then(s=>{delete FR.infl["r"+id];if(!s.exists){frLog({r:r.done?"earned":"lost",g:r.g,q:r.q,a:r.pay});delete x.run[id];save();frPaint()}},()=>{delete FR.infl["r"+id]});continue}
     if(v.carrier!==uid){delete x.run[id];continue}
     if(v.done&&!r.done){r.done=1;save()}
+    else if(!r.done&&now>r.dl+FR_GRACE){frLog({r:"lost",g:r.g,q:r.q,a:r.pay});delete x.run[id];save();frPaint()}
     else if(!r.done&&now>=r.eta){FR.infl["r"+id]=1;ON.db.collection("freight").doc(id).update({done:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete FR.infl["r"+id];r.done=1;toast(`Haul delivered, payment of ${fmt(r.pay)} is coming from ${r.sh}`);save();frPaint()},e=>{delete FR.infl["r"+id]})}}}
 if(onEnabled())setInterval(()=>{try{frSweep()}catch(e){console.warn("fr",e)}},15000);
 /* phone: Freight app */
