@@ -152,7 +152,7 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
 #nav button[aria-current="true"]{color:var(--accent)}
 .grab{position:sticky;top:0;z-index:3;display:flex;justify-content:center;align-items:center;height:20px;margin:0 calc(-1*max(16px,env(safe-area-inset-left,0px))) 0;background:var(--panel);cursor:grab;touch-action:none;border:0;width:calc(100% + 2*max(16px,env(safe-area-inset-left,0px)));padding:0}
 .grab::before{content:"";width:40px;height:5px;border-radius:3px;background:var(--line)}
-#street{position:absolute;inset:0;z-index:1;background:var(--sea);transition:opacity .5s ease}#street.fade{opacity:0;pointer-events:none}
+#street{position:absolute;inset:0;z-index:1;background:var(--sea);transition:opacity .5s ease}#street.fade{opacity:0;pointer-events:none}#street3d{position:absolute;inset:0;z-index:2;background:var(--sea)}#street3d .maplibregl-ctrl-attrib{font-size:10px}
 #sheet{z-index:4}
 .chip{font:600 12px var(--body);background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:7px 12px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.15)}
 #stbar{position:absolute;z-index:3;top:10px;left:max(12px,env(safe-area-inset-left,0px));display:flex;gap:6px}
@@ -295,10 +295,10 @@ button.buy:not(.up):not(:disabled){background:linear-gradient(180deg,color-mix(i
   <div id="mapwrap">
     <canvas id="map"></canvas>
     <div id="ticker"></div>
-    <div id="street" hidden></div>
+    <div id="street" hidden></div><div id="street3d" hidden></div>
     <canvas id="amb"></canvas>
     <canvas id="wx" hidden></canvas>
-    <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button></div>
+    <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button><button id="st3d" class="chip">3D</button></div>
     <div id="placebar" hidden></div>
     <button id="tostreet" class="chip" hidden>View streets</button>
     <div id="hint">Drag to spin · pinch or scroll on a city to zoom into its streets · double-tap a city</div>
@@ -1622,13 +1622,13 @@ function initStreet(){if(LM||!HAS_STREET)return;
   LM.on("moveend",()=>{const ce=LM.getCenter();let best=null,bd=1e9;for(const c of CITIES){const d=Math.hypot(c.lat-ce.lat,(c.lon-ce.lng)*Math.cos(c.lat*Math.PI/180));if(d<bd){bd=d;best=c}}
     if(best&&best!==stCity&&bd<.6){stCity=best;$("#stcity").textContent=best.name;renderPins()}})}
 function enterStreet(c,zoom){if(!HAS_STREET)return false;stCity=c;inStreet=true;stEl.hidden=false;stBar.hidden=false;$("#hint").hidden=true;
-  initStreet();clearTimeout(stFadeT);LM.invalidateSize();const z=zoom||14;$("#stcity").textContent=c.name;renderPins();
+  initStreet();exit3d(false);clearTimeout(stFadeT);LM.invalidateSize();const z=zoom||14;$("#stcity").textContent=c.name;renderPins();
   /* no hard cut: fade the street map in over the globe while it glides down from a wide view to the target zoom */
   const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;stFly=true;LM.setView([c.lat,c.lon],reduce?z:Math.max(6,z-5),{animate:false});
   if(reduce){stFly=false;return true}
   stEl.classList.remove("fade");if(stEl.animate)stEl.animate([{opacity:0},{opacity:1}],{duration:550,easing:"ease-out"});
-  requestAnimationFrame(()=>{if(!inStreet)return;LM.once("moveend",()=>{stFly=false});LM.flyTo([c.lat,c.lon],z,{duration:1.2,easeLinearity:.2})});return true}
-function leaveStreet(){if(placing)cancelPlace();if(offer)closeOffer();inStreet=false;stFly=false;stBar.hidden=true;
+  requestAnimationFrame(()=>{if(!inStreet)return;LM.once("moveend",()=>{stFly=false;if(want3d())enter3d()});LM.flyTo([c.lat,c.lon],z,{duration:1.2,easeLinearity:.2})});return true}
+function leaveStreet(){exit3d(false);if(placing)cancelPlace();if(offer)closeOffer();inStreet=false;stFly=false;stBar.hidden=true;
   if(stCity){V.lam=-stCity.lon;V.phi=Math.max(-80,Math.min(80,-stCity.lat));V.k=8}draw();
   /* fade the streets out over the redrawn globe instead of snapping away */
   stEl.classList.add("fade");clearTimeout(stFadeT);stFadeT=setTimeout(()=>{if(!inStreet){stEl.hidden=true;stEl.classList.remove("fade")}},500)}
@@ -1647,7 +1647,7 @@ function renderPins(){if(!layer)return;layer.clearLayers();ensurePositions();
   // rival branches in this city
   if(stCity)S.rivals.forEach((rv,i)=>{if(!rv.cities.includes(stCity.id))return;const p=autoPos("rival"+i+":"+stCity.id,stCity,.4,2.2);
     L.marker([p.lat,p.lon],{icon:L.divIcon({className:"mpin",html:`<span style="background:${RIVALS[i].col}">${RIVALS[i].n.split(" ")[0]}</span>`,iconSize:null,iconAnchor:[18,30]}),title:RIVALS[i].n}).addTo(layer).bindTooltip(`${RIVALS[i].n} branch`,{direction:"top",offset:[0,-28]})});
-  if(stCity&&!placing)renderListings(stCity)}
+  if(stCity&&!placing)renderListings(stCity);if(in3d)pins3d()}
 /* zooming far into the globe drops you onto the streets of the city in front of you */
 function maybeStreet(fx,fy,geo){if(!HAS_STREET||inStreet||V.k<7)return;if(fx==null){[fx,fy]=proj.translate()}
   let best=null,bd=150*150;
@@ -1716,6 +1716,36 @@ function buyListing(o){if(S.sold&&S.sold[o.id])return closeOffer();if(S.cash<o.p
   S.pos[`prop:${pr.id}`]={lat:o.lat,lon:o.lon,city:o.c.id,addr:o.addr||""};
   closeOffer();save();hud();renderPins();if(sheet.classList.contains("open")&&sel)renderSheet();
   toast(`Bought ${/^[aeiou]/i.test(o.P.n)?"an":"a"} ${o.P.n.toLowerCase()}${o.addr?" at "+o.addr:" in "+o.c.name} for ${fmt(o.price)}. Listed at 75% of market.`);bigMove(`${/^[aeiou]/i.test(o.P.n)?"an":"a"} ${o.P.n.toLowerCase()} in ${o.c.name} was bought for ${fmt(o.price)}`,o.price)}
+/* ---------- 3D view: tilted vector map with extruded buildings (MapLibre + OpenFreeMap), loaded on first use. Flat Leaflet stays for placing and for-sale pins. ---------- */
+const ML_VER="4.7.1",ML_STYLE=window.MERIDIAN_3D_STYLE||"https://tiles.openfreemap.org/styles/liberty";
+let MM=null,mlLoad=null,in3d=false,mlMarks=[];const want3d=()=>{try{return !placing&&localStorage.getItem("meridian-3d")==="1"}catch(e){return false}};const st3=$("#street3d"),st3b=$("#st3d");
+function loadML(){if(window.maplibregl)return Promise.resolve(window.maplibregl);
+  return mlLoad||(mlLoad=new Promise((res,rej)=>{const l=document.createElement("link");l.rel="stylesheet";l.href=`https://unpkg.com/maplibre-gl@${ML_VER}/dist/maplibre-gl.css`;document.head.appendChild(l);
+    const sc=document.createElement("script");sc.src=`https://unpkg.com/maplibre-gl@${ML_VER}/dist/maplibre-gl.js`;sc.onload=()=>window.maplibregl?res(window.maplibregl):rej(new Error("no maplibre"));sc.onerror=()=>{mlLoad=null;sc.remove();rej(new Error("load"))};document.head.appendChild(sc)}))}
+/* the style ships building footprints; make sure there is an extrusion layer so they rise out of the map (added only if the style has none) */
+function ensure3dBuildings(){try{const st=MM.getStyle();if(!st||st.layers.some(l=>l.type==="fill-extrusion"))return;
+  const src=Object.keys(st.sources).find(k=>st.sources[k].type==="vector");if(!src)return;
+  const lab=st.layers.find(l=>l.type==="symbol");
+  MM.addLayer({id:"meridian-3d-buildings",type:"fill-extrusion",source:src,"source-layer":"building",minzoom:14,
+    paint:{"fill-extrusion-color":["interpolate",["linear"],["coalesce",["get","render_height"],8],0,"#dfe3e8",60,"#aab4c2",200,"#7f8ea3"],
+      "fill-extrusion-height":["coalesce",["get","render_height"],8],"fill-extrusion-base":["coalesce",["get","render_min_height"],0],"fill-extrusion-opacity":.9}},lab?lab.id:undefined)}catch(e){console.warn("3D buildings",e)}}
+function pins3d(){for(const m of mlMarks)m.remove();mlMarks=[];if(!MM)return;ensurePositions();
+  for(const e of entities()){const p=S.pos[e.key];if(!p)continue;const [col,t0]=PIN[e.cls]||["#333","•"],txt=e.cls==="biz"?(BIZTAG[e.key.split(":")[2]]||t0):t0;
+    const el=document.createElement("div");el.className="mpin";el.title=e.label;el.innerHTML=`<span style="background:${col}">${txt}</span>`;el.style.cursor="pointer";
+    el.onclick=ev=>{ev.stopPropagation();tab=e.tab;openCity(e.c)};
+    mlMarks.push(new maplibregl.Marker({element:el,anchor:"top-left",offset:[-18,-30]}).setLngLat([p.lon,p.lat]).addTo(MM))}}
+async function enter3d(){if(in3d)return;if(placing||offer){toast("Finish placing first, then switch to 3D");return}
+  st3b.disabled=true;st3b.textContent="3D…";
+  try{await loadML()}catch(e){st3b.disabled=false;st3b.textContent="3D";toast("3D view needs an internet connection");return}
+  st3b.disabled=false;if(!inStreet)return;
+  try{localStorage.setItem("meridian-3d","1")}catch(e){}const c=LM.getCenter(),z=Math.max(LM.getZoom()-1,14.5);in3d=true;st3.hidden=false;st3b.textContent="2D";
+  if(!MM){MM=new maplibregl.Map({container:st3,style:ML_STYLE,center:[c.lng,c.lat],zoom:z,pitch:60,bearing:-20,maxPitch:75,attributionControl:{compact:true}});
+    MM.addControl(new maplibregl.NavigationControl({visualizePitch:true}),"bottom-right");MM.on("error",e=>console.warn("3D map",e&&e.error&&e.error.message));MM.on("load",()=>{ensure3dBuildings();pins3d()});
+    MM.on("zoomend",()=>{if(in3d&&MM.getZoom()<11)exit3d(true)})}
+  else{MM.resize();MM.jumpTo({center:[c.lng,c.lat],zoom:z,pitch:60,bearing:-20});pins3d()}}
+function exit3d(sync){if(!in3d)return;in3d=false;if(sync)try{localStorage.removeItem("meridian-3d")}catch(e){}st3.hidden=true;st3b.textContent="3D";
+  if(sync&&MM&&LM){const c=MM.getCenter();LM.setView([c.lat,c.lng],Math.min(19,Math.round(MM.getZoom()+1)),{animate:false})}}
+st3b.onclick=()=>in3d?exit3d(true):enter3d();
 $("#stback").onclick=leaveStreet;
 $("#stcityb").onclick=()=>{if(stCity){openCity(stCity)}};
 
