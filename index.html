@@ -5514,7 +5514,7 @@ function runTrip(now){const t=S.trip;if(!t||now<t.arr)return;S.loc={city:t.to.ci
   if(!t.local)toast(`Welcome to ${CITIES[t.to.city].name}`);save();hud();draw();if(typeof inStreet!=="undefined"&&inStreet)renderPins()}
 function tripPos(now){const t=S.trip;if(!t)return null;const u=Math.min(1,(now-t.dep)/(t.arr-t.dep));const g=d3.geoInterpolate([t.from.lon,t.from.lat],[t.to.lon,t.to.lat])(u);return{lon:g[0],lat:g[1],u}}
 /* you have to be there in person to buy or rent somewhere */
-let tvDest=null,tvTab="go";
+let tvDest=null,tvTab="go",tvQ="";
 window.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest(typeof PLACE_SEL!=="undefined"?PLACE_SEL:"[data-buy]");if(!b||!sel||b.disabled||!sheet.contains(b))return;
   if(typeof bypass!=="undefined"&&bypass)return;
   const c=sel;if(!traveling()&&S.loc.city===c.id)return;
@@ -5522,13 +5522,16 @@ window.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest(t
   toast(traveling()?"You're still travelling. Wait until you arrive.":`You're in ${here().name}. Travel to ${c.name} to buy there.`);
   if(!traveling()){tvDest=c.id;tvTab="go";PH.open=true;PH.app="travel";phSave();phRender()}},true);
 /* ---------- phone travel app ---------- */
+function tvFind(q){q=q.trim().toLowerCase();return CITIES.filter(c=>c.id!==S.loc.city&&(c.name.toLowerCase().includes(q)||String(c.country).toLowerCase().includes(q)))}
+function tvResHtml(){if(!tvQ.trim())return"";const r=tvFind(tvQ);return r.length?r.map(c=>`<button class="ph-item" data-ph="tvpick" data-c="${c.id}" aria-pressed="${tvDest===c.id}" style="${tvDest===c.id?"outline:1.5px solid #6ee7c8":""}"><span>${c.name}<small>${c.country}${!hasAirport(c)?" · no airport":""}</small></span></button>`).join(""):`<p class="ph-sub" id="tvnone">No country or city matches "${tvQ.trim().replace(/[<>&"]/g,"")}".</p>`}
 function travelApp(){const now=Date.now(),t=S.trip;let h="";
   if(t){const u=Math.min(1,(now-t.dep)/(t.arr-t.dep));return `<div class="ph-card storm"><b>${t.n} → ${t.to.label||CITIES[t.to.city].name}</b><span>Arrives in ${fmtDur(t.arr-now)}</span>
     <div class="bar" style="height:6px;grid-column:auto;margin-top:6px"><i style="width:${u*100}%;background:#6ee7c8"></i></div></div><p class="ph-sub">You can't buy or work while travelling. Your businesses keep running.</p>`}
   h+=`<div class="ph-sub" style="margin-top:-4px">You are in <b style="color:#fff">${here().name}</b>${S.job&&S.job.city!==S.loc.city?" · away from work":""}</div>
     <div class="ph-seg">${[["go","Cities"],["ride","Ride"],["garage","Garage"]].map(([k,n])=>`<button data-ph="tvtab" data-k="${k}" aria-pressed="${tvTab===k}">${n}</button>`).join("")}</div>`;
   if(tvTab==="go"){const dests=CITIES.filter(c=>c.id!==S.loc.city);
-    h+=`<select class="ph-calc" id="tvsel" style="font-size:13px"><option value="">Choose a destination…</option>${dests.map(c=>`<option value="${c.id}" ${tvDest===c.id?"selected":""}>${c.name}${!hasAirport(c)?" (no airport)":""}</option>`).join("")}</select>`;
+    h+=`<div style="position:relative;margin-bottom:8px"><input class="ph-calc" id="tvq" type="search" autocomplete="off" placeholder="Search country or city…" aria-label="Search countries and cities" value="${tvQ.replace(/"/g,"&quot;")}" style="font-size:13px;margin:0;padding-right:34px"><button data-ph="tvclr" aria-label="Clear search" id="tvclr" style="${tvQ?"":"display:none;"}position:absolute;right:6px;top:50%;transform:translateY(-50%);background:#ffffff22;color:#fff;border:0;width:22px;height:22px;border-radius:50%;cursor:pointer;line-height:1">×</button></div><div id="tvres">${tvResHtml()}</div>`;
+    if(!tvQ.trim())h+=`<select class="ph-calc" id="tvsel" style="font-size:13px"><option value="">Choose a destination…</option>${dests.map(c=>`<option value="${c.id}" ${tvDest===c.id?"selected":""}>${c.name}${!hasAirport(c)?" (no airport)":""}</option>`).join("")}</select>`;
     if(tvDest!=null&&tvDest!==S.loc.city){const d=CITIES[tvDest],{km,o}=cityOptions(here(),d);
       h+=`<p class="ph-sub">${Math.round(km).toLocaleString()} km${!hasAirport(here())?` · ${here().name} has no airport`:""}${!hasAirport(d)?` · ${d.name} has no airport`:""}</p>`;
       h+=o.length?o.map((x,i)=>`<button class="ph-item" data-ph="book" data-i="${i}" ${S.cash<x.price?"disabled":""}><span>${x.n}<small>${x.note} · ${fmtDur(x.min*60000)}</small></span><b>${fmt(x.price)}</b></button>`).join(""):`<p class="ph-sub">No direct route. Get to a city with an airport first.</p>`}}
@@ -5541,9 +5544,12 @@ function travelApp(){const now=Date.now(),t=S.trip;let h="";
 function garageHtml(){let h="";{h+=S.car?`<div class="ph-card"><b>Your ${CK[S.car.k].n}</b><span>Fuel ${fmt(CK[S.car.k].fuel)}/km · ${Math.round((CK[S.car.k].f-1)*100)}% faster</span></div><button class="ph-item" data-ph="sellcar"><span>Sell car<small>Get back 60%</small></span><b>${fmt(CK[S.car.k].p*.6)}</b></button>`:"";
     h+=CARS.filter(c=>!S.car||c.k!==S.car.k).map(c=>`<button class="ph-item" data-ph="buycar" data-k="${c.k}" ${S.cash<c.p?"disabled":""}><span>${c.n}<small>${c.f>1?Math.round((c.f-1)*100)+"% faster · ":""}${fmt(c.fuel)}/km fuel</small></span><b>${fmt(c.p)}</b></button>`).join("")+`<p class="ph-sub">A car replaces taxis in town and lets you drive between cities on the same continent.</p>`}
   return h}
+PH.el.addEventListener("input",e=>{if(e.target.id!=="tvq")return;tvQ=e.target.value;PH.touched=Date.now();const r=PH.el.querySelector("#tvres"),c=PH.el.querySelector("#tvclr");if(r)r.innerHTML=tvResHtml();if(c)c.style.display=tvQ?"":"none";if(!tvQ.trim()){phRender();const i=PH.el.querySelector("#tvq");if(i)i.focus()}});
 PH.el.addEventListener("change",e=>{if(e.target.id==="tvsel"){tvDest=e.target.value===""?null:+e.target.value;phRender()}});
 PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;
   if(a==="tvtab"){tvTab=b.dataset.k;phRender()}
+  else if(a==="tvpick"){tvDest=+b.dataset.c;phRender()}
+  else if(a==="tvclr"){tvQ="";phRender();const i=PH.el.querySelector("#tvq");if(i)i.focus()}
   else if(a==="book"){const d=CITIES[tvDest],{o}=cityOptions(here(),d);if(startTrip(d,o[+b.dataset.i],false)){tvDest=null;phRender()}}
   else if(a==="ride"){const x=PH.spots[+b.dataset.i],{o}=rideOptions(S.loc,x);startTrip({...x,city:S.loc.city},o[+b.dataset.j],true);phRender()}
   else if(a==="buycar"){const c=CK[b.dataset.k];if(S.cash<c.p)return;if(S.car)S.cash+=CK[S.car.k].p*.6;S.cash-=c.p;S.car={k:c.k};toast(`You bought a ${c.n.toLowerCase()}`);save();hud();phRender()}
