@@ -1216,7 +1216,7 @@ function evAudit(quiet,forced){const t=evS(),E=Math.round(t.ev);if(E<=0&&!forced
 function evStep(d,quiet,act){const t=evS(),lv=act?evLevel():0,law=(typeof ownsAny==="function"&&ownsAny("lawfirm"))?.5:1;
   t.heat=Math.max(0,Math.min(100,t.heat+(EVADE.gain[lv]*law-EVADE.decay)*d));
   if(t.ev>0&&t.heat>0){const p=.12*Math.pow(t.heat/100,2);if(Math.random()<1-Math.pow(1-p,d))evAudit(quiet)}}
-function runTax(hours,now){const r=taxableRates(),h=EVADE.lv[evLevel()],t0=evS();S.tax.reg+=r.reg*hours*(1-h);S.tax.unreg+=r.un*hours*(1-h);
+function runTax(hours,now){const r=taxableRates(),t0=evS();if(hours>.25&&t0.hide>0&&Date.now()>=t0.lock){t0.hide=0;S.log.unshift(`Away ${fmtDur(hours*DAYMS)}: income hiding switched off so heat and audits don't build while you're gone. Turn it back on in the tax panel`);S.log=S.log.slice(0,3)}const h=EVADE.lv[evLevel()];S.tax.reg+=r.reg*hours*(1-h);S.tax.unreg+=r.un*hours*(1-h);
   if(h>0){const sv=(r.reg*TAX_REG+r.un*TAX_UNREG)*hours*h;t0.ev+=sv;t0.saved+=sv}
   try{ctRisk(hours)}catch(e){console.warn("ctRisk",e)}
   {const n=Math.max(1,Math.min(168,Math.ceil(hours)));for(let i=0;i<n;i++)evStep(hours/n,hours>1,h>0&&r.reg+r.un>0)}
@@ -1224,7 +1224,7 @@ function runTax(hours,now){const r=taxableRates(),h=EVADE.lv[evLevel()],t0=evS()
     S.log.unshift(`Tax warning: ${fmt(un)} unregistered tax building up (40% rate + audits). Open an HQ in the country to register and pay 20%`);S.log=S.log.slice(0,3);if(typeof toast==="function")toast("Unregistered tax is building up: open an HQ to register")}}
   while(now>=S.tax.start+TAXP){const full=Math.round(S.tax.reg*TAX_REG+S.tax.unreg*TAX_UNREG),due=Math.min(full,Math.round(taxCap()));S.cash-=due;S.tax.paid=(S.tax.paid||0)+due;
     S.log.unshift(`Tax year closed: paid ${fmt(due)} (${fmt(S.tax.reg*TAX_REG)} registered, ${fmt(S.tax.unreg*TAX_UNREG)} unregistered${due<full?`; capped, ${fmt(full-due)} written off`:""})`);S.log=S.log.slice(0,3);
-    S.tax.start+=TAXP;S.tax.reg=0;S.tax.unreg=0;S.tax.warned=0}}
+    if(due<full&&full>0){const k=due/full;t0.ev*=k;t0.saved*=k}S.tax.start+=TAXP;S.tax.reg=0;S.tax.unreg=0;S.tax.warned=0}}
 function evHtml(){const t=evS(),lv=evLevel(),locked=Date.now()<t.lock,p=t.ev>0?.12*Math.pow(t.heat/100,2):0;
   return `<div style="padding:10px 12px;border-top:1px solid var(--line,#2a3438)"><div class="n">Hide income <b style="font-family:var(--mono)">${Math.round(EVADE.lv[lv]*100)}%</b> <span class="tag ${t.heat>=60?"bust":t.heat>=30?"":"boom"}">Heat ${Math.round(t.heat)}/100</span></div>
     <div class="d" style="margin-top:4px;line-height:1.4">Under-report profit to pay less tax, but heat rises (${EVADE.gain.slice(1).join("/")} per day at 25/50/75%, it cools ${EVADE.decay}/day). Audit chance now ${(p*100).toFixed(1)}%/day. A caught audit costs the saved tax plus ${EVADE.pen}x penalty (${fmt(Math.round(t.ev*(1+EVADE.pen)))} if it hit now) and locks evasion for ${EVADE.lockD} days. A law firm halves heat. Saved but unpunished: ${fmt(t.ev)} · all-time saved ${fmt(t.saved)} · fined ${fmt(t.fined)} (${t.audits} audit${t.audits===1?"":"s"})${locked?` · locked ${fmtDur(t.lock-Date.now())}`:""}</div>
