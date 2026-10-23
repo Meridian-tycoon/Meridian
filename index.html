@@ -56,6 +56,7 @@ canvas#map:active{cursor:grabbing}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,.08);box-sizing:border-box}
 #ticker button::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:7px;vertical-align:1px}
 #wmdbanner{position:absolute;left:0;right:0;top:0;z-index:50;display:flex;flex-direction:column;pointer-events:none}
+#wmdbanner div.wt{background:#facc15;color:#111;border-bottom-color:#713f12;animation:wbIn .35s ease-out}
 #wmdbanner div{pointer-events:auto;cursor:pointer;background:#b91c1c;color:#fff;font:700 13px/1.25 system-ui,sans-serif;padding:7px 16px;border-bottom:1px solid #fecaca;text-align:center;letter-spacing:.02em;box-shadow:0 2px 10px rgba(0,0,0,.4);animation:wbIn .35s ease-out,wbPulse 1.1s ease-in-out .35s infinite alternate;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @keyframes wbIn{from{transform:translateY(-100%)}to{transform:none}}@keyframes wbPulse{from{background:#b91c1c}to{background:#7f1d1d}}
 @media (prefers-reduced-motion:reduce){#wmdbanner div{animation:none}}
@@ -609,6 +610,7 @@ function zoomAt(k,fx,fy){const g=proj.invert([fx,fy]),ok=g&&visible(g[0],g[1]);V
 cv.addEventListener("wheel",e=>{e.preventDefault();const r=cv.getBoundingClientRect();zoomAt(V.k*Math.exp(-e.deltaY*.0015),e.clientX-r.left,e.clientY-r.top)},{passive:false});
 let lastTap={t:0,c:null};
 cv.addEventListener("click",e=>{if(dragMoved)return;const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+  if(typeof _wtPick!=="undefined"&&_wtPick){const g=proj.invert([x,y]);if(g&&visible(g[0],g[1])){wtPlayer(_wtPick,g);save();hud()}return}
   let best=null,bd=26*26;for(const c of CITIES){const d=(c.sx-x)**2+(c.sy-y)**2;if(d<bd){bd=d;best=c}}
   const now=performance.now();
   if(lastTap.c&&now-lastTap.t<450&&Math.hypot(x-lastTap.x,y-lastTap.y)<30&&typeof enterStreet==="function"&&HAS_STREET){const c=lastTap.c;lastTap={t:0,c:null};sheet.classList.remove("open","full");enterStreet(c,14);return}
@@ -2508,7 +2510,7 @@ function dipDay(quiet){const C=DIPCFG,d=dip();d.day++;S.wars=S.wars||[];const ws
       if(w.l===4)for(const m of [a,b])gov(m).appr=Math.min(90,gov(m).appr+5);dipSay(t,dipRel(a,b),quiet)}
     else if(r>1-de){w.l--;w.sc=d.day+C.stepCd;if(w.l<1)d.pcd[dipKey(a,b)]=d.day+10;dipSay(w.l?`${a} and ${b} de-escalate to ${WARL[w.l].toLowerCase()}`:`${a} and ${b} agree to talks: the crisis ends`,dipRel(a,b),quiet)}}
   S.wars=ws.filter(w=>w.l>0);
-  dipInvDay(d,quiet);try{wmdDay(quiet)}catch(e){console.warn("wmd",e)}}
+  dipInvDay(d,quiet);try{wmdDay(quiet)}catch(e){console.warn("wmd",e)}try{wtDay(quiet)}catch(e){console.warn("wtest",e)}}
 const dipPhase=n=>{const ph=S.dip&&S.dip.ph&&S.dip.ph[n];return ph?(ph.g>0?"BOOM":"RECESSION"):"STABLE"};
 function dipRows(n){const d=dip(),r=d.gr[n]||0,rk=COUNTRIES.slice().sort((a,b)=>dipPower(b)-dipPower(a)).indexOf(n)+1,ph=dipPhase(n);
   const subj=Object.keys(d.ruler).filter(m=>d.ruler[m]===n),by=d.ruler[n];
@@ -3775,14 +3777,15 @@ function trjDraw(ctx,now,zs){for(let i=_trj.length-1;i>=0;i--){const f=_trj[i];i
   ctx.restore()}}
 /* red launch banner under the header: ms = lifetime; at = impact time for a live countdown (visual only) */
 const WBN={msl:"MISSILE LAUNCH",gas:"CHEMICAL ATTACK",nuke:"NUCLEAR LAUNCH",icbm:"ICBM LAUNCH"};const WMDBANNER_MS=60000;let _wbT=0;
-function wmdBanner(k,txt,ms,at){const W=WPNCFG.w[k],mw=document.getElementById("mapwrap");if(!W||!mw)return;let box=document.getElementById("wmdbanner");if(!box){box=document.createElement("div");box.id="wmdbanner";mw.appendChild(box)}
-  const el=document.createElement("div"),fmtT=()=>{if(!at)return txt;const r=Math.ceil((at-Date.now())/1000);return txt.replace("{s}",r>0?"impact in "+r+"s":"STRUCK")};el._f=fmtT;el._d=Date.now()+ms;el.textContent=W.ico+" "+fmtT();el.onclick=()=>{el.remove()};
+function wmdBanner(k,txt,ms,at,cls){const W=WPNCFG.w[k],mw=document.getElementById("mapwrap");if(!W||!mw)return;let box=document.getElementById("wmdbanner");if(!box){box=document.createElement("div");box.id="wmdbanner";mw.appendChild(box)}
+  const el=document.createElement("div"),fmtT=()=>{if(!at)return txt;const r=Math.ceil((at-Date.now())/1000);return txt.replace("{s}",r>0?"impact in "+r+"s":"STRUCK")};el._f=fmtT;el._d=Date.now()+ms;if(cls)el.className=cls;el.textContent=W.ico+" "+fmtT();el.onclick=()=>{el.remove()};
   while(box.children.length>=4)box.lastChild.remove();box.prepend(el);
   if(!_wbT)_wbT=setInterval(()=>{const b=document.getElementById("wmdbanner"),n=Date.now();if(b)for(const e of [...b.children]){if(n>=e._d)e.remove();else e.textContent=e._ico+" "+e._f()}if(!b||!b.children.length){clearInterval(_wbT);_wbT=0}},500);el._ico=W.ico}
 let _wpnRaf=0;function wpnAnim(){cancelAnimationFrame(_wpnRaf);const step=()=>{draw();const m=S.pol&&S.pol.mil,now=Date.now();if(_trj.some(f=>now<f.t0+f.dur+f.fade)||(m&&Array.isArray(m.inc)&&m.inc.length)||(m&&((Array.isArray(m.strikes)&&m.strikes.some(s=>now-s.t<WPNCFG.animMs))||(Array.isArray(m.icpt)&&m.icpt.some(s=>now-s.t<WPNCFG.animMs)))))_wpnRaf=requestAnimationFrame(step)};_wpnRaf=requestAnimationFrame(step)}
 function drawStrikes(ctx){const now=Date.now(),zs=Math.min(2.5,.7+V.k*.3),m=S.pol&&S.pol.mil;
   if(m&&Array.isArray(m.inc))for(const x of m.inc){const c=CITIES[x.city];if(c&&x.n&&COUNTRIES.includes(x.n))trjAdd(x.n,c,x.k,x.t,x.at-x.t,"i"+x.n+x.city+x.k+x.t)}
   if(_trj.length)trjDraw(ctx,now,zs);
+  wtDraw(ctx,now,zs);
   if(!m)return;
   if(Array.isArray(m.icpt))for(const x of m.icpt){const c=CITIES[x.city],u=(now-x.t)/WPNCFG.animMs;if(!c||u<0||u>=1||!visible(c.lon,c.lat))continue;const [ix,iy]=proj([c.lon,c.lat]),R=14*zs;
     ctx.beginPath();ctx.arc(ix,iy-R*1.4,R*(.3+1.4*u),0,7);ctx.strokeStyle="#38bdf8";ctx.globalAlpha=1-u;ctx.lineWidth=2.5;ctx.stroke();ctx.font="bold 11px system-ui, sans-serif";ctx.textAlign="center";ctx.fillStyle="#38bdf8";ctx.fillText("🛡 INTERCEPTED",ix,iy-R*2.6);ctx.textAlign="start";ctx.globalAlpha=1}
@@ -3800,13 +3803,88 @@ function drawStrikes(ctx){const now=Date.now(),zs=Math.min(2.5,.7+V.k*.3),m=S.po
       ctx.beginPath();ctx.arc(x,y,R*(.9-.6*u),0,7);ctx.fillStyle="#fff7d6";ctx.globalAlpha=(1-u)*.9;ctx.fill();ctx.globalAlpha=1}}}
 function wpnHtml(m,lead,sb,bx,urow){const C=WPNCFG,now=Date.now();wpnTick();
   let h=`<div class="ph-sub" style="margin-top:10px">Arsenal · production ${m.wq.length}/${C.queue}</div><div class="ph-rows">${Object.keys(C.w).map(k=>{const W=C.w[k],q=m.wq.filter(x=>x.k===k),ok=W.ok(m),full=false;
-    return urow(`${W.ico} ${W.n} <b>× ${m.wpn[k]}</b>`,`${ok?`build ${fmtDur(W.build*DAYMS)}`:`needs ${W.need}`} · ${W.yld}, flight ${fmtDur(W.fly*DAYMS)}${q.length?` · ${q.length} building, next ${fmtDur(Math.max(0,Math.min(...q.map(x=>x.done))-now))}`:""}`,bx("wpnbuild",k,`Build · ${fmt(W.cost)}`,"#7f1d1d",!lead||!ok||full||m.wq.length>=C.queue||S.cash<W.cost,1))}).join("")}</div>`;
+    return urow(`${W.ico} ${W.n} <b>× ${m.wpn[k]}</b>`,`${ok?`build ${fmtDur(W.build*DAYMS)}`:`needs ${W.need}`} · ${W.yld}, flight ${fmtDur(W.fly*DAYMS)}${q.length?` · ${q.length} building, next ${fmtDur(Math.max(0,Math.min(...q.map(x=>x.done))-now))}`:""}`,bx("wpnbuild",k,`Build · ${fmt(W.cost)}`,"#7f1d1d",!lead||!ok||full||m.wq.length>=C.queue||S.cash<W.cost,1)+bx("wpntest",k,_wtPick===k?"Cancel":"Test","#a16207",!lead||!m.wpn[k],1))}).join("")}</div>`;
   const wk=Object.keys(m.wars),have=Object.keys(C.w).filter(k=>m.wpn[k]>0);
   if(lead&&wk.length&&have.length)for(const n of wk)h+=`<div class="ph-sub" style="margin-top:8px">Strike ${n}</div><div class="ph-rows">${ctyCities(n).map(c=>{const sm=strikeMult(c)*dmgMult(c);return urow(c.name+(S.own[c.id]&&Object.keys(S.own[c.id]).length?` <small style="color:#fbbf24">· yours</small>`:""),sm<1?`<span style="color:#f87171">damaged −${Math.round((1-sm)*100)}%</span>`:"",have.map(k=>bx("wpnfire",k+"|"+c.id,`${C.w[k].ico} ${m.wpn[k]}`,k==="icbm"?"#881337":k==="nuke"?"#713f12":k==="gas"?"#3f6212":"#7c2d12",0,1)).join(""))}).join("")}</div>`;
   else if(lead&&have.length)h+=`<p class="ph-sub">Declare war to use your weapons.</p>`;
   h+=`<p class="ph-sub" style="margin-top:6px">Strikes cut enemy strength, push the front (never past ${C.frontCap}, or ${C.nukeCap} with a nuke or ICBM, which wins the war) and wreck demand in the hit city for a few days (your businesses there lose ${Math.round(C.ownHit*100)}% of that). Every strike also leaves lasting damage scaled to the weapon's blast area against the city's size: it cuts demand, factory output and rents there until rebuilt (days for a missile hit, months for a nuked city); a nuke flattens a small town but only the centre of a megacity. Gas and nukes cost heavy approval and the loyalty of every country in your sphere, and raise resistance in occupied lands. Enemies strike back at your own cities with missiles, and with gas or nukes if you used them first; the world answers WMD with sanctions. An ICBM makes the whole city uninhabitable for 6 game months (no income, no travel, no building); if you are standing in the city you strike, you die and the game is over. After you fire one, a rival may very rarely answer in kind.</p>`;
   if(sancMult()<1)h+=`<p class="ph-sub" style="color:#f87171">Sanctions: demand −${Math.round((1-sancMult())*100)}% in all cities for ${fmtDur(m.sanc.until-now)}</p>`;
   return h}
+/* ---------- WMD tests (player and AI) ----------
+   A test fires one weapon at any point of the globe. Open ocean (inside no country polygon): no effect on anyone, a log/news line only.
+   Player test on another government's land: confirm first, then a fully escalated war (no cost/cooldown, weariness 60, w.wmd/w.nk set so the enemy may answer in kind),
+   the usual WMD sanctions/approval/loyalty penalty, the nearest city within range is struck, and the world conflict with that country goes to War (4).
+   Own/controlled land: a strike on your own city in range, no war. Failure chance per kind; a failure fizzles (fizzle share) or veers veerKm off course.
+   AI: one test every aiGap game days worldwide (min gap minGap after any test), open-ocean sites >= coastKm from any city, at most catchMax per offline catch-up.
+   Visual: yellow pulsing ring in flight, yellow dashed zone (W.r x rScale) for winH game hours, then fadeH. Optional save field S.wtest {l:[{k,by,lat,lon,t,until,fail,hit,ia}],nx,ld}. */
+const WTCFG={fail:{msl:.08,gas:.10,nuke:.08,icbm:.05},fizzle:.6,veerKm:[200,600],winH:6,fadeH:1,rScale:1.6,aiGap:[20,40],minGap:4,catchMax:2,coastKm:400,keep:8,
+  rangeKm:{msl:40,gas:80,nuke:150,icbm:300},wear:60,ai:["USA","China","Russia","UK","France","India","Pakistan","North Korea","Israel","Iran","Japan","Germany","South Korea","Turkey","Brazil","Saudi Arabia","Egypt"]};
+let _wtR=Math.random,_wtPick=null,_wtQ=0; // _wtR: RNG hook (tests can force it)
+const wtRand=()=>_wtR();
+function wt(){if(!S.wtest||typeof S.wtest!=="object")S.wtest={l:[],nx:0,ld:-99};if(!Array.isArray(S.wtest.l))S.wtest.l=[];return S.wtest}
+const wtKm=(a,b)=>d3.geoDistance(a,b)*6371;
+function wtLand(ll){if(!world)return null;for(const n of COUNTRIES){const f=cfFeat(n);if(f&&d3.geoContains(f,ll))return n}for(const f of world.features){const g=cfFeat(f.properties.name);if(g&&d3.geoContains(g,ll))return ""}return null} // country | "" (land, no government) | null (ocean)
+function wtVeer(ll){const km=WTCFG.veerKm[0]+wtRand()*(WTCFG.veerKm[1]-WTCFG.veerKm[0]),br=wtRand()*Math.PI*2,d=km/6371,la=ll[1]*Math.PI/180,lo=ll[0]*Math.PI/180;
+  const la2=Math.asin(Math.sin(la)*Math.cos(d)+Math.cos(la)*Math.sin(d)*Math.cos(br)),lo2=lo+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(la),Math.cos(d)-Math.sin(la)*Math.sin(la2));
+  return [((lo2*180/Math.PI+540)%360)-180,la2*180/Math.PI]}
+function wtName(ll,n){if(n)return n;if(n==="")return "remote land";const [lo,la]=ll;const o=la<-50?"Southern Ocean":la>66?"Arctic Ocean":lo>-70&&lo<20?(la>0?"North Atlantic":"South Atlantic"):lo>=20&&lo<120&&la<25?"Indian Ocean":la>0?"North Pacific":"South Pacific";return o}
+function wtRoll(k,ll){const r={fail:0,ll,ia:null};if(wtRand()<(WTCFG.fail[k]||.08)){if(wtRand()<WTCFG.fizzle)r.fail=1;else{r.fail=2;r.ia=ll;r.ll=wtVeer(ll)}}r.n=wtLand(r.ll);return r}
+function wtRec(k,by,r,quiet){const W=wt(),now=Date.now(),win=WTCFG.winH*DAYMS/24;const x={k,by,lat:+r.ll[1].toFixed(3),lon:+r.ll[0].toFixed(3),t:now,until:now+(r.fail===1?win/3:win),fail:r.fail,hit:r.n||null};
+  if(r.ia)x.ia=[+r.ia[0].toFixed(3),+r.ia[1].toFixed(3)];W.l.push(x);W.l=W.l.slice(-WTCFG.keep);W.ld=S.day;
+  if(!quiet){const o=cap(by);if(o){trjAdd(o,{lon:x.lon,lat:x.lat},k,now,WPNCFG.animMs);if(typeof wpnAnim==="function")wpnAnim()}}return x}
+const WTN={msl:"MISSILE TEST",gas:"CHEMICAL TEST",nuke:"NUCLEAR TEST",icbm:"ICBM TEST"};
+function wtSay(x,r,quiet,who){const W0=WPNCFG.w[x.k],W={n:W0.n==='ICBM'?'ICBM':W0.n.toLowerCase()},site=wtName(r.ia||r.ll,r.ia?wtLand(r.ia):r.n),t=r.fail===1?`TEST FAILED: ${who}'s ${W.n} fizzled over the ${site}`:r.fail===2?`TEST FAILED: ${who}'s ${W.n} veered ${r.n?"into "+r.n:"off course into the "+wtName(r.ll,r.n)}`:`${WTN[x.k]}: ${who} → ${site}`;
+  if(!quiet)wmdBanner(x.k,(r.fail?"":"")+t,WMDBANNER_MS,0,r.fail===2&&r.n?"":"wt");return t}
+function wtCityNear(n,ll,k){let best=null,bd=1e9;for(const c of ctyCities(n)){const d=wtKm(ll,[c.lon,c.lat]);if(d<bd){bd=d;best=c}}return best&&bd<=WTCFG.rangeKm[k]?best:null}
+function wtHitCity(k,c){const m=wpn(),W=WPNCFG.w[k],now=Date.now();m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now+WPNCFG.animMs,until:now+W.days*DAYMS,dmg:W.city*WPNCFG.ownHit,from:S.pol&&S.pol.c});const d=dmgStrike(k,c,1);const pc=S.pol&&S.pol.c;if(k==="icbm")unhStrike(c,pc);bunkPlayer(k,c,pc,0,1);return d}
+function wtWar(n,k,ll){const p=pol(),m=wpn(),C=MILCFG,W=WPNCFG.w[k],now=Date.now();let w=m.wars[n];
+  if(!w){const e=milEnemy(n);w=m.wars[n]={since:now,front:C.frontStart,enemyStr:e,enemyMax:e,terrain:milTerrain(n),weariness:0,battles:[],pcd:0}}
+  w.weariness=Math.max(w.weariness||0,WTCFG.wear);w.rcd=0;if(k!=="msl"){w.wmd=1;if(k==="nuke"||k==="icbm")w.nk=1;if(k==="icbm")w.ic=1;wpnSanction(k)}
+  p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const x in p.ctrl)p.ctrl[x].loy=Math.max(0,p.ctrl[x].loy+W.loy);for(const x in m.occ)m.occ[x].resist=Math.min(100,m.occ[x].resist+W.resist);
+  const pc=dipPlayerC();if(pc&&pc!==n){S.wars=S.wars||[];const cw=dipWarOf(n,pc);if(cw){cw.l=4;cw.att=pc}else S.wars.push({id:(S.wid=(S.wid||0)+1),a:pc,b:n,l:4,att:pc,sc:dip().day+3,d0:S.day})}
+  const c=wtCityNear(n,ll,k),dead=c?wtHitCity(k,c):0;const t=`Your ${W.n.toLowerCase()} test hit ${n}${c?` (${c.name}: ${fmtPop(dead)} killed)`:""}: ${n} is now at full war with you`;logPol(t);milLog(m,t);return t}
+function wtOwn(n,ll,k){const c=wtCityNear(n,ll,k);if(!c)return;const p=pol(),W=WPNCFG.w[k],dead=wtHitCity(k,c);p.appr=Math.max(0,Math.min(95,p.appr+W.appr));const t=`Your ${W.n.toLowerCase()} test struck your own city ${c.name}: ${fmtPop(dead)} killed`;logPol(t);milLog(wpn(),t)}
+function wtMine(n){const p=pol(),m=mil();return n===p.c||!!(p.ctrl&&p.ctrl[n])||!!(m.occ&&m.occ[n])}
+/* player: enter pick mode, then a tap on the globe calls wtPlayer */
+let _wtBarT=0,_wtT0=0;
+function wtBar(){const mw=document.getElementById("mapwrap");let el=document.getElementById("wtbar");if(!_wtPick){if(el)el.remove();clearInterval(_wtBarT);_wtBarT=0;return}if(!mw)return;
+  if(!el){el=document.createElement("div");el.id="wtbar";el.style.cssText="position:absolute;left:50%;transform:translateX(-50%);bottom:70px;z-index:55;background:#facc15;color:#111;font:700 13px system-ui,sans-serif;padding:7px 8px 7px 14px;border-radius:20px;box-shadow:0 2px 10px rgba(0,0,0,.45);display:flex;gap:10px;align-items:center;max-width:calc(100% - 32px);white-space:nowrap";mw.appendChild(el)}
+  const W=WPNCFG.w[_wtPick];el.innerHTML=`<span style="overflow:hidden;text-overflow:ellipsis">${W.ico} Tap a site to test ${W.n.toLowerCase()}</span><button id="wtcancel" style="background:#111;color:#facc15;border:0;border-radius:14px;padding:4px 10px;font:700 12px system-ui,sans-serif;cursor:pointer">Cancel</button>`;
+  el.querySelector("#wtcancel").onclick=e=>{e.stopPropagation();wtCancel()};
+  if(!_wtBarT)_wtBarT=setInterval(()=>{const left=(typeof inStreet!=="undefined"&&inStreet)||(typeof sheet!=="undefined"&&sheet.classList.contains("open")&&Date.now()-_wtT0>800);if(!_wtPick||left||Date.now()-_wtT0>60000)wtCancel()},500)}
+function wtCancel(){if(_wtPick){_wtPick=null;toast("Weapon test cancelled")}wtBar()}
+function wtStart(k){const m=wpn(),W=WPNCFG.w[k];if(!W)return;if(!polLeader())return toast("Only a Leader can order weapon tests");if(!m.wpn[k])return toast(`No ${W.n.toLowerCase()} in stock`);
+  _wtPick=k;_wtT0=Date.now();setTimeout(wtBar,0);if(typeof PH!=="undefined"&&PH.open)PH.open=false;if(typeof phRender==="function")try{phRender()}catch(e){}try{sheet.classList.remove("open","full")}catch(e){}toast(`${W.ico} Tap anywhere on the globe to test your ${W.n.toLowerCase()} (open ocean has no effect). Tap Test again in the arsenal to cancel.`)}
+function wtPlayer(k,ll,sure){const p=pol(),m=wpn(),W=WPNCFG.w[k];_wtPick=null;wtBar();if(!W||!ll)return;if(!polLeader())return toast("Only a Leader can order weapon tests");if(!m.wpn[k])return toast(`No ${W.n.toLowerCase()} in stock`);
+  const n0=wtLand(ll),c0=n0?wtCityNear(n0,ll,k):null;if(!sure){if(n0&&!wtMine(n0)){const st=milStr();if(!confirm(`This is ${n0} territory: testing here starts a war. Your army: ${st>0?"strength "+Math.round(st):"none — you will likely lose and owe reparations"}. Launch anyway?`))return}
+    if(c0&&wtMine(n0)&&!confirm(`${c0.name} is in the blast range: this test will hit your own city. Launch anyway?`))return;
+    if(c0&&present(c0)&&!bunkInside(c0)&&(k==="nuke"||k==="icbm")&&!confirm(`You are in ${c0.name}: this ${k==="icbm"?"ICBM":W.n.toLowerCase()} test would kill you. Launch anyway?`))return}
+  m.wpn[k]--;const r=wtRoll(k,ll),x=wtRec(k,p.c,r);let t=wtSay(x,r,0,p.c);
+  if(r.fail!==1&&r.n){if(wtMine(r.n))wtOwn(r.n,r.ll,k);else t+=" · "+wtWar(r.n,k,r.ll)}else{S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);toast(t)}
+  dipSay(t,0);try{rotateTo({lon:x.lon,lat:x.lat},Math.max(V.k,1.6))}catch(e){}return x}
+/* AI: called once per game day from dipDay */
+function wtDay(quiet){const W=wt(),C=WTCFG;if(!quiet)_wtQ=0;if(!W.nx){W.nx=S.day+C.aiGap[0]+Math.floor(Math.random()*(C.aiGap[1]-C.aiGap[0]+1));return}
+  if(S.day<W.nx||S.day-(W.ld==null?-99:W.ld)<C.minGap||!world)return;if(quiet&&_wtQ>=C.catchMax)return;
+  const p=S.pol||{},m=p.mil||{},bad=n=>n===dipPlayerC()||n===p.c||(p.ctrl&&p.ctrl[n])||(m.occ&&m.occ[n])||(m.wars&&m.wars[n])||(dip().ruler||{})[n];
+  const cand=C.ai.filter(n=>COUNTRIES.includes(n)&&!bad(n)),lv=cfLevels();if(!cand.length)return;
+  const wts=cand.map(n=>(WMDCFG.nuke.includes(n)?3:1)*(1+(lv[n]||0))),sum=wts.reduce((a,b)=>a+b,0);let q=Math.random()*sum,by=cand[0];for(let i=0;i<cand.length;i++){q-=wts[i];if(q<=0){by=cand[i];break}}
+  let ll=null;for(let i=0;i<60&&!ll;i++){const c=[Math.random()*360-180,Math.random()*110-55];if(wtLand(c)!==null)continue;if(CITIES.some(x=>wtKm(c,[x.lon,x.lat])<C.coastKm))continue;ll=c}if(!ll)return;
+  const nuc=WMDCFG.nuke.includes(by),k=nuc?(Math.random()<.3?"icbm":"nuke"):(Math.random()<.6?"msl":"gas");
+  W.nx=S.day+C.aiGap[0]+Math.floor(Math.random()*(C.aiGap[1]-C.aiGap[0]+1));if(quiet)_wtQ++;
+  const r=wtRoll(k,ll);if(r.fail===2&&r.n&&!wmdSide({a:r.n,b:by})){r.fail=1;r.ll=r.ia;r.ia=null;r.n=null} // never into the player's sphere: it fizzles into the sea
+  const x=wtRec(k,by,r,quiet);let t=wtSay(x,r,quiet,by);
+  if(r.fail!==1&&r.n&&r.n!==by){const v=r.n;if(k!=="msl"){if(!S.wmd)S.wmd={t:[],h:{}};if(!S.wmd.h)S.wmd.h={};const kk=k==="gas"?"gas":"nuke";S.wmd.h[v]={k:kk,d:S.day,u:S.day+WMDCFG.eff[kk],e:WMDCFG.eff[kk],c:(wtCityNear(v,r.ll,k)||{id:-1}).id,by}}
+    const pc=dipPlayerC();if(v!==pc&&!(p.ctrl&&p.ctrl[v])){S.wars=S.wars||[];const w=dipWarOf(v,by);if(w){w.l=4;w.att=by}else S.wars.push({id:(S.wid=(S.wid||0)+1),a:by,b:v,l:4,att:by,sc:dip().day+3,d0:S.day})}
+    t+=` · ${v} and ${by} are now at war`}
+  dipSay(t,1,quiet);if(!quiet)toast((r.fail?"⚠ ":"☢ ")+t);return x}
+function wtDraw(ctx,now,zs){const W=S.wtest;if(!W||!Array.isArray(W.l)||!W.l.length)return;const fade=WTCFG.fadeH*DAYMS/24,fly=WPNCFG.animMs;
+  for(const x of W.l){if(now>=x.until+fade||now<x.t-1000)continue;const Wp=WPNCFG.w[x.k];if(!Wp||!visible(x.lon,x.lat))continue;const [px,py]=proj([x.lon,x.lat]),R=Wp.r*zs*WTCFG.rScale,age=now-x.t,
+    a=now>x.until?Math.max(0,1-(now-x.until)/fade):1;ctx.save();ctx.strokeStyle="#facc15";
+    if(age<fly){const u=age/fly,pu=.5+.5*Math.sin(now/120);ctx.globalAlpha=.55+.4*pu;ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(px,py,R*(.8+.35*pu),0,7);ctx.stroke();ctx.globalAlpha=.3;ctx.setLineDash([4,4]);ctx.beginPath();ctx.arc(px,py,R*1.6*(1-u)+R,0,7);ctx.stroke();ctx.setLineDash([])}
+    else{const ia=age-fly;if(ia<1800&&x.fail!==1){const u=ia/1800;ctx.globalAlpha=1-u;ctx.fillStyle="#fff7d6";ctx.beginPath();ctx.arc(px,py,R*(.3+.9*u),0,7);ctx.fill();ctx.lineWidth=3*(1-u)+1;ctx.beginPath();ctx.arc(px,py,R*(.4+2*u),0,7);ctx.stroke()}
+      ctx.globalAlpha=.85*a;ctx.fillStyle="rgba(250,204,21,.12)";ctx.beginPath();ctx.arc(px,py,R,0,7);ctx.fill();ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.lineDashOffset=-now/80%10;ctx.stroke();ctx.setLineDash([])}
+    if(x.ia&&visible(x.ia[0],x.ia[1])){const [qx,qy]=proj(x.ia);ctx.globalAlpha=.5*a;ctx.lineWidth=1;ctx.setLineDash([2,3]);ctx.beginPath();ctx.arc(qx,qy,R*.6,0,7);ctx.stroke();ctx.beginPath();ctx.moveTo(qx,qy);ctx.lineTo(px,py);ctx.stroke();ctx.setLineDash([])}
+    ctx.globalAlpha=a;ctx.font="bold 11px system-ui, sans-serif";ctx.textAlign="center";const tx=`${Wp.ico} ${x.fail?"TEST FAILED":"TEST"} · ${x.by}`;ctx.lineWidth=3;ctx.strokeStyle="rgba(0,0,0,.65)";ctx.strokeText(tx,px,py-R-7);ctx.fillStyle="#facc15";ctx.fillText(tx,px,py-R-7);ctx.restore()}}
 /* ---- HQ phone app: schedules, wage raises/cuts, firing (per business; S.sched / S.wadj keyed by bkey) ---- */
 const HRCFG={sched:[["Day",1,1],["Extended",1.35,1.5],["24h",1.7,2.2]], // [name, revenue x, wage x]
   step:.1,maxUp:3,maxDn:3,upOut:.04,dnOut:.06,quit:.03}; // wage ±10%/step; output +4%/raise step, -6%/cut step; 3%/day quit risk per cut step
@@ -6085,7 +6163,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="dashtruck"){DX.page="truck";dxOpen();return}
   else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
-  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
+  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
   else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
