@@ -3,7 +3,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function validProfile(d) {
-      return d.keys().hasOnly(['name', 'col', 'home', 'hq', 'biz', 'nw', 'rank', 'loc', 'nb', 'nc', 'lastSeen'])
+      return d.keys().hasOnly(['name', 'col', 'home', 'hq', 'biz', 'nw', 'rank', 'loc', 'nb', 'nc', 'cid', 'lastSeen'])
         && d.keys().hasAll(['name', 'col', 'lastSeen'])
         && d.name is string && d.name.size() > 0 && d.name.size() <= 20
         && d.col is string && d.col.matches('^#[0-9a-fA-F]{6}$')
@@ -15,6 +15,9 @@ service cloud.firestore {
         && (!('rank' in d) || (d.rank is int && d.rank >= 1 && d.rank <= 1000))
         && (!('nb' in d) || (d.nb is int && d.nb >= 0 && d.nb <= 100000))
         && (!('nc' in d) || (d.nc is int && d.nc >= 0 && d.nc <= 10000))
+        && (!('cid' in d) || (d.cid is string && d.cid.size() > 0 && d.cid.size() <= 40
+            && exists(/databases/$(database)/documents/cartels/$(d.cid))
+            && request.auth.uid in get(/databases/$(database)/documents/cartels/$(d.cid)).data.members))
         && d.lastSeen == request.time;
     }
 
@@ -191,6 +194,178 @@ service cloud.firestore {
             && getAfter(/databases/$(database)/documents/transfers/$('f' + id)).data.from == request.auth.uid
             && getAfter(/databases/$(database)/documents/transfers/$('f' + id)).data.amt == resource.data.pay)
         || (!('done' in resource.data) && request.time.toMillis() > resource.data.dl));
+    }
+    // ---- Cartels (online syndicates). Doc id of cartels/{id} is the boss's uid, so a boss founds at most one. ----
+    function validCartel(d) {
+      return d.name is string && d.name.size() >= 2 && d.name.size() <= 20
+        && d.tag is string && d.tag.matches('^[A-Z0-9]{2,4}$')
+        && d.col is string && d.col.matches('^#[0-9a-fA-F]{6}$')
+        && d.open is bool
+        && d.bossName is string && d.bossName.size() <= 20
+        && (d.fix == null || (d.fix is map && d.fix.keys().hasOnly(['c', 'g']) && d.fix.keys().hasAll(['c', 'g'])
+            && d.fix.c is int && d.fix.c >= 0 && d.fix.c < 10000
+            && d.fix.g is string && d.fix.g.size() > 0 && d.fix.g.size() <= 20));
+    }
+    // the ledger entry that belongs to treasury change number seq of cartel cid (as it will be after the batch)
+    function ledAfter(cid, seq) {
+      return getAfter(/databases/$(database)/documents/cled/$(cid + '_' + string(seq))).data;
+    }
+    function payTransferOk(cid, seq, boss, to, amt) {
+      return existsAfter(/databases/$(database)/documents/transfers/$('c' + cid + '_' + string(seq)))
+        && getAfter(/databases/$(database)/documents/transfers/$('c' + cid + '_' + string(seq))).data.to == to
+        && getAfter(/databases/$(database)/documents/transfers/$('c' + cid + '_' + string(seq))).data.from == boss
+        && getAfter(/databases/$(database)/documents/transfers/$('c' + cid + '_' + string(seq))).data.amt == amt;
+    }
+    function isMember(cid) {
+      return request.auth.uid in get(/databases/$(database)/documents/cartels/$(cid)).data.members;
+    }
+    function isBoss(cid) {
+      return get(/databases/$(database)/documents/cartels/$(cid)).data.boss == request.auth.uid;
+    }
+    match /cartels/{id} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == id
+        && request.resource.data.keys().hasOnly(['name', 'tag', 'col', 'boss', 'bossName', 'open', 'members', 'tre', 'seq', 'fix', 'fixAt', 'at'])
+        && request.resource.data.keys().hasAll(['name', 'tag', 'col', 'boss', 'bossName', 'open', 'members', 'tre', 'seq', 'fix', 'fixAt', 'at'])
+        && validCartel(request.resource.data)
+        && request.resource.data.boss == request.auth.uid
+        && request.resource.data.members == [request.auth.uid]
+        && request.resource.data.tre == 0 && request.resource.data.seq == 0
+        && request.resource.data.fix == null && request.resource.data.fixAt == 0
+        && request.resource.data.at == request.time;
+      allow update: if request.auth != null && (
+        // boss: settings and price fixing (price fixing may change once per 12 hours)
+        (request.auth.uid == resource.data.boss
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'tag', 'col', 'open', 'bossName', 'fix', 'fixAt'])
+          && validCartel(request.resource.data)
+          && request.resource.data.fixAt is int
+          && (('fix' in request.resource.data.diff(resource.data).affectedKeys())
+              ? (request.resource.data.fixAt >= request.time.toMillis() - 300000
+                 && request.resource.data.fixAt <= request.time.toMillis() + 300000
+                 && request.time.toMillis() >= resource.data.fixAt + 43200000)
+              : !('fixAt' in request.resource.data.diff(resource.data).affectedKeys())))
+        ||
+        // boss removes a member (the boss stays)
+        (request.auth.uid == resource.data.boss
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+          && request.resource.data.members.size() == resource.data.members.size() - 1
+          && request.resource.data.members.toSet().difference(resource.data.members.toSet()).size() == 0
+          && request.resource.data.members.hasAll([resource.data.boss]))
+        ||
+        // a member (not the boss) leaves
+        (request.auth.uid != resource.data.boss && request.auth.uid in resource.data.members
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+          && request.resource.data.members.size() == resource.data.members.size() - 1
+          && request.resource.data.members.toSet().difference(resource.data.members.toSet()).size() == 0
+          && !(request.auth.uid in request.resource.data.members))
+        ||
+        // a player joins themselves; needs the boss's invite, which must be consumed (deleted) in the same batch
+        (!(request.auth.uid in resource.data.members)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+          && request.resource.data.members.size() == resource.data.members.size() + 1
+          && request.resource.data.members.size() <= 12
+          && resource.data.members.toSet().difference(request.resource.data.members.toSet()).size() == 0
+          && request.auth.uid in request.resource.data.members
+          && exists(/databases/$(database)/documents/cjoin/$(id + '_' + request.auth.uid))
+          && get(/databases/$(database)/documents/cjoin/$(id + '_' + request.auth.uid)).data.kind == 'invite'
+          && !existsAfter(/databases/$(database)/documents/cjoin/$(id + '_' + request.auth.uid)))
+        ||
+        // treasury: exactly one ledger entry per change (member deposit, or boss payout)
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tre', 'seq'])
+          && request.resource.data.seq == resource.data.seq + 1
+          && request.resource.data.tre >= 0 && request.resource.data.tre <= 1000000000
+          && existsAfter(/databases/$(database)/documents/cled/$(id + '_' + string(request.resource.data.seq)))
+          && ledAfter(id, request.resource.data.seq).cid == id
+          && ledAfter(id, request.resource.data.seq).uid == request.auth.uid
+          && ((ledAfter(id, request.resource.data.seq).kind == 'in'
+                && request.auth.uid in resource.data.members
+                && request.resource.data.tre == resource.data.tre + ledAfter(id, request.resource.data.seq).amt)
+              || (ledAfter(id, request.resource.data.seq).kind == 'out'
+                && request.auth.uid == resource.data.boss
+                && ledAfter(id, request.resource.data.seq).to in resource.data.members
+                && request.resource.data.tre == resource.data.tre - ledAfter(id, request.resource.data.seq).amt
+                && (ledAfter(id, request.resource.data.seq).to == request.auth.uid
+                    || payTransferOk(id, request.resource.data.seq, request.auth.uid, ledAfter(id, request.resource.data.seq).to, ledAfter(id, request.resource.data.seq).amt))))));
+      // the boss may disband an empty cartel with an empty treasury
+      allow delete: if request.auth != null && request.auth.uid == resource.data.boss
+        && resource.data.members.size() == 1 && resource.data.tre == 0;
+    }
+    // Join invitations (kind 'invite', written by the boss) and join requests (kind 'request', written by the player, approved by the boss flipping it to 'invite').
+    match /cjoin/{jid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['cid', 'uid', 'name', 'kind', 'at'])
+        && request.resource.data.keys().hasAll(['cid', 'uid', 'name', 'kind', 'at'])
+        && request.resource.data.cid is string && request.resource.data.uid is string
+        && jid == request.resource.data.cid + '_' + request.resource.data.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 20
+        && request.resource.data.at == request.time
+        && !(request.resource.data.uid in get(/databases/$(database)/documents/cartels/$(request.resource.data.cid)).data.members)
+        && ((request.resource.data.kind == 'request' && request.resource.data.uid == request.auth.uid
+              && get(/databases/$(database)/documents/cartels/$(request.resource.data.cid)).data.open == true)
+            || (request.resource.data.kind == 'invite' && isBoss(request.resource.data.cid)));
+      allow update: if request.auth != null && isBoss(resource.data.cid)
+        && resource.data.kind == 'request'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['kind', 'at'])
+        && request.resource.data.kind == 'invite' && request.resource.data.at == request.time;
+      allow delete: if request.auth != null && (request.auth.uid == resource.data.uid || isBoss(resource.data.cid));
+    }
+    // Permanent, create-only treasury ledger. Entry n of a cartel can only be created together with the cartel update that moves seq from n-1 to n.
+    match /cled/{lid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['cid', 'seq', 'kind', 'uid', 'to', 'amt', 'at'])
+        && request.resource.data.keys().hasAll(['cid', 'seq', 'kind', 'uid', 'amt', 'at'])
+        && request.resource.data.cid is string && request.resource.data.seq is int && request.resource.data.seq >= 1
+        && lid == request.resource.data.cid + '_' + string(request.resource.data.seq)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.kind in ['in', 'out']
+        && request.resource.data.amt is int && request.resource.data.amt >= 1 && request.resource.data.amt <= 1000000
+        && request.resource.data.at == request.time
+        && (request.resource.data.kind == 'out'
+            ? ('to' in request.resource.data && request.resource.data.to is string)
+            : !('to' in request.resource.data))
+        && get(/databases/$(database)/documents/cartels/$(request.resource.data.cid)).data.seq == request.resource.data.seq - 1
+        && getAfter(/databases/$(database)/documents/cartels/$(request.resource.data.cid)).data.seq == request.resource.data.seq;
+      allow update, delete: if false;
+    }
+    // Members-only chat. One message per ~4 s per player: the same batch must stamp cmlast/{uid} with the server time and the previous stamp must be old enough.
+    match /cmsg/{mid} {
+      allow read: if request.auth != null && isMember(resource.data.cid);
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['cid', 'uid', 'name', 'txt', 'at'])
+        && request.resource.data.keys().hasAll(['cid', 'uid', 'name', 'txt', 'at'])
+        && request.resource.data.cid is string && isMember(request.resource.data.cid)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 20
+        && request.resource.data.txt is string && request.resource.data.txt.size() >= 1 && request.resource.data.txt.size() <= 120
+        && request.resource.data.at == request.time
+        && existsAfter(/databases/$(database)/documents/cmlast/$(request.auth.uid))
+        && getAfter(/databases/$(database)/documents/cmlast/$(request.auth.uid)).data.at == request.time
+        && (!exists(/databases/$(database)/documents/cmlast/$(request.auth.uid))
+            || get(/databases/$(database)/documents/cmlast/$(request.auth.uid)).data.at.toMillis() < request.time.toMillis() - 4000);
+      allow delete: if request.auth != null && (resource.data.uid == request.auth.uid || isBoss(resource.data.cid));
+      allow update: if false;
+    }
+    match /cmlast/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['at']) && request.resource.data.at == request.time;
+      allow delete: if false;
+    }
+    // Government raid on a price-fixing cartel: at most one per cartel per day. (Holding an office is checked by the game client only; the effect is a small fine and a pause.)
+    match /craid/{cid} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.resource.data.keys().hasOnly(['cid', 'by', 'byName', 'at'])
+        && request.resource.data.keys().hasAll(['cid', 'by', 'byName', 'at'])
+        && request.resource.data.cid == cid && request.resource.data.by == request.auth.uid
+        && request.resource.data.byName is string && request.resource.data.byName.size() <= 20
+        && request.resource.data.at == request.time
+        && !(request.auth.uid in get(/databases/$(database)/documents/cartels/$(cid)).data.members)
+        && get(/databases/$(database)/documents/cartels/$(cid)).data.fix != null
+        && (resource == null || resource.data.at.toMillis() < request.time.toMillis() - 86400000);
+      allow delete: if false;
     }
     match /{document=**} {
       allow read, write: if false;
