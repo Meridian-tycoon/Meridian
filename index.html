@@ -2130,7 +2130,7 @@ function lawBan(c,b){return b.k==="casino"&&law(c,"casino")===1}
 function lawMult(c,b){let m=[1.06,1,.9][law(c,"wage")];
   if(RETAIL.includes(b.k))m*=[1,.97,.93][law(c,"tariff")];
   if(SMALL.includes(b.k)&&law(c,"grant"))m*=1.1;if(b.k==="prison")m*=[.7,1,1.4][law(c,"police")];
-  const g=gov(c.country);if(g.strike>Date.now())m*=.7;return m*warMult(c)*dipMult(c)}
+  const g=gov(c.country);if(g.strike>Date.now())m*=.7;return m*warMult(c)*dipMult(c)*wmdMult(c)}
 const taxRateC=c=>[.1,.15,.2,.25,.3][law(c,"tax")];
 const rentLaw=c=>law(c,"rent")?.85:1;
 const jobLaw=c=>[.9,1,1.15][law(c,"wage")];
@@ -2268,7 +2268,7 @@ function warHour(quiet){S.wars=S.wars||[];const ws=S.wars;
     const near=COUNTRIES.filter(b=>b!==a&&kmBetween(cap(a),cap(b))<5000&&!ws.some(w=>(w.a===a&&w.b===b)||(w.a===b&&w.b===a)));
     if(near.length){const b=near[Math.floor(Math.random()*near.length)];ws.push({id:(S.wid=(S.wid||0)+1),a,b,l:1,d0:S.day});if(!quiet)logGov(`Tension rising between ${a} and ${b}`)}}
   const glob=tension();
-  for(const w of ws){if(w.d0==null)w.d0=S.day;const up=.05+glob/800,dn=w.inv?0:w.l>=4?.05:.07,r=w.inv?.5:Math.random();
+  for(const w of ws){if(w.d0==null)w.d0=S.day;const up=.05+glob/800,dn=w.inv||w.pin>S.day?0:w.l>=4?.05:.07,r=w.inv?.5:Math.random();
     if(r<up&&w.l<4){w.l++;if(!quiet)logGov(`${w.a}–${w.b}: escalates to ${WARL[w.l].toLowerCase()}`);
       if(w.l===4)for(const n of [w.a,w.b])gov(n).appr=Math.min(90,gov(n).appr+10)}
     else if(r>1-dn){w.l--;if(!quiet)logGov(w.l?`${w.a}–${w.b}: de-escalates to ${WARL[w.l].toLowerCase()}`:`${w.a} and ${w.b} sign a peace deal`)}
@@ -2288,6 +2288,42 @@ function conflictHtml(n){const ws=(S.wars||[]).filter(w=>!n||w.a===n||w.b===n).s
     <div class="d">${CF_EFF[w.l]}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="buy" data-gov="peace" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="buy" data-gov="stoke" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Sell arms ${fmt(c)}</button></div></div>`}
   return h+`</div>`}
+/* ---------- AI governments using WMD on each other ----------
+   A world conflict (S.wars, AI vs AI: never the player's country, never an invasion of it) that stays at WAR counts days in w.es (reset when it drops below war).
+   After WMDCFG.minDays it rolls once per game day (inside dipDay, so offline catch-up runs it <=49 times in quiet mode): chance = base x (1 + days past threshold / ramp, max 3x) x power factor.
+   The stronger side fires (a nuclear weaker side may fire as a last resort after a first strike, at half odds). Gas first (anyone); nuke only for WMDCFG.nuke countries and after gas was used in that conflict or after nukeDays at war.
+   Hit country: its businesses earn x gas .6 / nuke .35 recovering linearly to x1 over the effect days (wmdMult, applied in lawMult), war pinned at level 4 for pin days (no de-escalation), approval drops, the city is marked on the conflicts layer.
+   World reacts: up to 2 uninvolved countries start sanctions (level 2) against the attacker. After the pin the war may end in a ceasefire (drops to sanctions); a second strike always forces one.
+   Limits: per-conflict cooldown (w.wc), a global cooldown, and at most capN strikes per capDays (S.wmd.t). The player's cities are never hit; only businesses in the hit country are affected.
+   Optional save fields: S.wmd {t:[days of recent strikes], h:{country:{k,d,u,e,c,by}}}, per war: es, wc, wn, pin. Old saves: wmdMult returns exactly 1. */
+const WMDCFG={nuke:["USA","China","UK","France","India"],minDays:12,ramp:30,gasP:.012,nukeP:.008,nukeDays:30,wcd:15,gcd:4,capN:2,capDays:30,
+  mult:{gas:.6,nuke:.35},eff:{gas:10,nuke:20},pin:6,ceaseP:.15,apprHit:15,apprAtt:8,react:2,maxWars:11};
+function wmdMult(c){const h=S.wmd&&S.wmd.h&&S.wmd.h[c.country];if(!h||!(h.u>S.day))return 1;const f=Math.max(0,Math.min(1,(h.u-S.day)/Math.max(1,h.e||1))),b=WMDCFG.mult[h.k]||1;return 1-(1-b)*f}
+const wmdSide=w=>{const pc=dipPlayerC();return w.a!==pc&&w.b!==pc};
+function wmdStrike(w,att,def,k,quiet){const C=WMDCFG,W=S.wmd,cities=ctyCities(def).slice().sort((x,y)=>y.size-x.size).slice(0,3),ct=cities[Math.floor(Math.random()*cities.length)]||cap(def);
+  W.t.push(S.day);W.h[def]={k,d:S.day,u:S.day+C.eff[k],e:C.eff[k],c:ct?ct.id:-1,by:att};
+  w.wc=S.day+C.wcd;w.wn=(w.wn||0)+1;w.l=4;w.pin=S.day+C.pin;
+  gov(def).appr=Math.max(5,gov(def).appr-C.apprHit);gov(att).appr=Math.max(5,gov(att).appr-C.apprAtt);
+  const nk=k==="nuke",t=nk?`${att} launches a nuclear strike on ${def}${ct?" ("+ct.name+")":""}!`:`${att} uses chemical weapons against ${def}${ct?" ("+ct.name+")":""}!`;
+  dipSay(t,1,quiet);if(!quiet)toast((nk?"☢ ":"☠ ")+t);
+  const ws=S.wars,d=dip();let n=0;const pool=COUNTRIES.filter(x=>x!==att&&x!==def&&x!==dipPlayerC()&&!d.ruler[x]&&!dipWarOf(x,att)).sort(()=>Math.random()-.5);
+  for(const x of pool){if(n>=C.react||ws.length>=C.maxWars)break;ws.push({id:(S.wid=(S.wid||0)+1),a:x,b:att,l:2,att:x,sc:d.day+3,d0:S.day});n++}
+  if(n)dipSay(`${n} countr${n===1?"y":"ies"} impose sanctions on ${att}`,dipRel(att,def),quiet)}
+function wmdDay(quiet){const C=WMDCFG,ws=S.wars||[],W=S.wmd;
+  if(W){if(!Array.isArray(W.t))W.t=[];if(!W.h||typeof W.h!=="object")W.h={};W.t=W.t.filter(x=>S.day-x<C.capDays);for(const n in W.h)if(!(W.h[n].u>S.day-30))delete W.h[n]}
+  for(const w of ws){if(w.l<4){if(w.es)w.es=0;if(w.pin)delete w.pin;continue}
+    w.es=Math.min(9999,(w.es||0)+1);
+    if(w.pin>0&&w.pin<=S.day){delete w.pin;if(w.wn&&(w.wn>=2||Math.random()<C.ceaseP)){w.l=2;w.es=0;w.sc=dip().day+3;dipSay(`${w.a} and ${w.b} agree to a ceasefire after the horror of the strike`,dipRel(w.a,w.b),quiet)}}}
+  if(W&&(W.t.length>=C.capN||(W.t.length&&S.day-W.t[W.t.length-1]<C.gcd)))return;
+  const d=dip(),w=ws.filter(x=>x.l>=4&&!x.inv&&wmdSide(x)&&!d.ruler[x.a]&&!d.ruler[x.b]&&(x.es||0)>=C.minDays&&S.day>=(x.wc||0)&&!(x.pin>S.day)).sort((x,y)=>y.es-x.es)[0];if(!w)return;
+  const pa=dipPower(w.a),pb=dipPower(w.b),strong=pa>=pb?w.a:w.b,weak=strong===w.a?w.b:w.a,ratio=Math.max(pa,pb)/Math.max(1,Math.min(pa,pb));
+  const nuc=n=>C.nuke.includes(n),f=(1+Math.min(2,(w.es-C.minDays)/C.ramp))*Math.min(1.5,.7+.3*ratio);
+  let att=strong,def=weak,half=1;if(!nuc(strong)&&nuc(weak)&&w.wn){att=weak;def=strong;half=.5}
+  const useNuke=nuc(att)&&(w.wn>0||w.es>=C.nukeDays),p=(useNuke?C.nukeP:C.gasP)*f*half;if(!(Math.random()<p))return;
+  if(!S.wmd)S.wmd={t:[],h:{}};
+  wmdStrike(w,att,def,useNuke?"nuke":"gas",quiet)}
+function wmdNote(w){const H=S.wmd&&S.wmd.h;if(!H)return"";let h="";for(const n of [w.a,w.b]){const x=H[n];if(!x||!(x.u>S.day))continue;const l=x.u-S.day;
+    h+=`<p><b>${x.k==="nuke"?"Nuclear strike":"Chemical attack"} on ${n}</b> by ${x.by}, day ${x.d}. Businesses there earn ${Math.round((1-wmdMult({country:n}))*100)}% less, easing over ${l} more day${l===1?"":"s"}.</p>`}return h}
 /* ---------- conflicts on the globe ----------
    Display only: draws the existing S.wars (tension/sanctions/clashes/war) as shaded countries, a front line between capitals with a badge, and a tap popup.
    No economic change: effects stay those of warMult/siteLaw/warHour. Optional save fields: S.cfOff (overlay hidden), w.d0 (day the crisis was first seen). */
@@ -2308,6 +2344,7 @@ function cfChip(){const el=document.getElementById("cfbox");if(!el)return;const 
   ch.innerHTML=`⚔ Conflicts${cfOn()?"":" (hidden)"} <i>${ws.length}</i>`;if(!hot)ch.querySelector("i").style.background=WARC[1];
   const lg=document.getElementById("cfleg");lg.hidden=!cfOn();lg.innerHTML=[1,2,3,4].map(l=>`<span><b style="background:${WARC[l]}"></b>${WARL[l]}</span>`).join("")}
 function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filter(w=>w.l>0);if(!ws.length||!cfOn())return;
+  const mk=S.wmd&&S.wmd.h?Object.keys(S.wmd.h).filter(n=>S.wmd.h[n].u>S.day):[];
   const t=performance.now()/1000,lv=cfLevels(),zs=Math.min(1.6,.85+V.k*.08),anim=typeof reduce==="undefined"||!reduce;ctx.save();
   for(const n in lv){const l=lv[n],col=WARC[l],pu=l>=3&&anim?.5+.5*Math.sin(t*(l>=4?3.2:2)):0,f=cfFeat(n);
     if(f){ctx.beginPath();path(f);ctx.globalAlpha=.12+.05*l+.12*pu;ctx.fillStyle=col;ctx.fill();ctx.globalAlpha=.8;ctx.lineWidth=l>=4?1.6:1.1;ctx.strokeStyle=col;ctx.stroke()}
@@ -2319,6 +2356,11 @@ function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filte
     ctx.fillStyle="#fff";ctx.font=`700 ${Math.round(10*zs)}px system-ui, sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(["","!","$","⚔","⚔"][w.l],x,y+.5);ctx.textAlign="start";
     if(_cfPop&&_cfPop.id===w.id){ctx.beginPath();ctx.arc(x,y,r+4,0,7);ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke()}
     _cfHit.push({x,y,r:Math.max(16,r+6),w})}
+  for(const n of mk){const h=S.wmd.h[n],c=CITIES[h.c]||cfCap(n);if(!c||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]),r=11*zs,nk=h.k==="nuke",pu=anim?.5+.5*Math.sin(t*4):.5,col=nk?"#ffcc00":"#7bd34a";
+    ctx.globalAlpha=.35+.3*pu;ctx.beginPath();ctx.arc(x,y,r+4+pu*6,0,7);ctx.fillStyle=col;ctx.fill();
+    ctx.globalAlpha=1;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle="#111";ctx.fill();ctx.lineWidth=2;ctx.strokeStyle=col;ctx.stroke();
+    ctx.fillStyle=col;ctx.font=`700 ${Math.round(12*zs)}px system-ui, sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(nk?"☢":"☠",x,y+.5);ctx.textAlign="start";
+    const w=ws.find(q=>q.a===n||q.b===n);if(w)_cfHit.push({x,y,r:Math.max(16,r+6),w})}
   ctx.restore()}
 /* tap: a badge opens its popup; with no city under the finger, a shaded country opens its worst conflict */
 function cfTap(x,y,best,bd){const ws=(S.wars||[]).filter(w=>w.l>0);if(!ws.length||!cfOn()){if(_cfPop)cfClose();return false}
@@ -2332,7 +2374,7 @@ function cfHtml(w){const days=w.d0!=null?Math.max(0,S.day-w.d0):null,ex=cfExposu
   return `<button class="x" data-cf="x" aria-label="Close">×</button><h4>${w.a} – ${w.b}</h4>
   <span class="tag" style="background:${WARC[w.l]};color:#fff">${WARL[w.l].toUpperCase()}</span>${ag?` <span class="m">started by ${ag}</span>`:""}
   <div class="stg">${[1,2,3,4].map(l=>`<i style="${l<=w.l?"background:"+WARC[l]:""}"></i>`).join("")}</div><div class="stl"><span>Tension</span><span>Sanctions</span><span>Clashes</span><span>War</span></div>
-  <p><b>Effect in ${w.a} and ${w.b}:</b> ${CF_EFF[w.l]}.</p>
+  <p><b>Effect in ${w.a} and ${w.b}:</b> ${CF_EFF[w.l]}.</p>${wmdNote(w)}
   <p class="m">${days!=null?`Running ${days} day${days===1?"":"s"}. `:"Ongoing. "}No fixed end: each day it can escalate or ease until a peace deal.</p>
   <p class="m">${ex.n?`Your ${ex.n} business${ex.n===1?"":"es"} there lose about ${fmt(ex.loss)}/hr to conflicts.`:"You have no businesses in either country."}</p>
   <div class="bt"><button class="chip" data-cf="peace" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="chip" data-cf="gov">Gov tab</button></div>`}
@@ -2456,12 +2498,12 @@ function dipDay(quiet){const C=DIPCFG,d=dip();d.day++;S.wars=S.wars||[];const ws
       const ratio=dipPower(a)/dipPower(b);
       if(ratio>=C.ratio&&Math.random()<Math.min(C.conqMax,C.conqP*(ratio-.5))){
         if(b===dipPlayerC()){if(!quiet&&!d.inv){dipInvade(w,a,quiet);d.ccd=d.day+C.conqCd}}else dipConquer(a,b,quiet);continue}}
-    if(d.day<(w.sc||0))continue;const r=Math.random(),e=C.escP*dipAggr(a)*(stress?.6:1)*(w.l<3?1:.7),de=C.deP*(stress?1.8:.6);
+    if(d.day<(w.sc||0))continue;const r=Math.random(),e=C.escP*dipAggr(a)*(stress?.6:1)*(w.l<3?1:.7),de=w.pin>S.day?0:C.deP*(stress?1.8:.6);
     if(r<e&&w.l<4){w.l++;w.sc=d.day+C.stepCd;const t=[,,`${a} imposes sanctions on ${b}`,`Border clashes between ${a} and ${b}`,`${a} declares war on ${b}`][w.l];
       if(w.l===4)for(const m of [a,b])gov(m).appr=Math.min(90,gov(m).appr+5);dipSay(t,dipRel(a,b),quiet)}
     else if(r>1-de){w.l--;w.sc=d.day+C.stepCd;if(w.l<1)d.pcd[dipKey(a,b)]=d.day+10;dipSay(w.l?`${a} and ${b} de-escalate to ${WARL[w.l].toLowerCase()}`:`${a} and ${b} agree to talks: the crisis ends`,dipRel(a,b),quiet)}}
   S.wars=ws.filter(w=>w.l>0);
-  dipInvDay(d,quiet)}
+  dipInvDay(d,quiet);try{wmdDay(quiet)}catch(e){console.warn("wmd",e)}}
 const dipPhase=n=>{const ph=S.dip&&S.dip.ph&&S.dip.ph[n];return ph?(ph.g>0?"BOOM":"RECESSION"):"STABLE"};
 function dipRows(n){const d=dip(),r=d.gr[n]||0,rk=COUNTRIES.slice().sort((a,b)=>dipPower(b)-dipPower(a)).indexOf(n)+1,ph=dipPhase(n);
   const subj=Object.keys(d.ruler).filter(m=>d.ruler[m]===n),by=d.ruler[n];
