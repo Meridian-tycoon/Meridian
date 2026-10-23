@@ -30,3 +30,14 @@ Signed-in players' saves are also stored privately in Firestore at `saves/{uid}`
 Signed-in players can send cash to each other from the Bank app on the phone ($1 to $1,000,000 per transfer). Each transfer is a `transfers/{id}` document that the recipient's game credits and then deletes. This needs the `match /transfers/{id}` block in `firestore.rules`: **re-publish the rules** (Firebase console → Firestore → Rules, paste `firestore.rules`, Publish), otherwise sends fail and the sender is refunded. Saves are client-side, so this is not cheat-proof.
 
 The rules require `amt` to be a whole number (`amt is int`, 1 to 1,000,000); the game always sends whole dollars. If cheating ever becomes a problem, the next step is a server-side check: a Cloud Function (needs the paid Blaze plan) that validates each new transfer against a per-sender rate limit (e.g. N transfers / $ per hour) and a server-held balance, deleting or flagging bad ones. Not built yet. Whenever `firestore.rules` changes, re-publish it.
+
+## Shared live leaderboard and world rivals
+
+The Empire → **Leaderboard** is now one shared board: every signed-in save publishes its profile to `players/{uid}` (name, colour, net worth `nw`, businesses `nb`, cities `nc`, `lastSeen`) on every save (throttled to once a minute) and every 15 s tick, and the board ranks all players plus the 8 rivals by net worth via live `onSnapshot` listeners. Offline it shows the last cached copy (labelled "offline · last saved").
+
+Rivals are one shared world: only the developer's save (uid `BRGRStgYLlbkVbrBTagBrDbpVyg1`, listed in `DEV_UIDS`) grows rivals and writes them to the new document `world/rivals` (`{list:[{nw,cities}] x8, updated}`). Every other save mirrors that document and skips its own rival growth.
+
+Console steps:
+1. **Re-publish the rules**: Firestore → **Rules** → paste the current `firestore.rules` → **Publish**. Until then profile writes fail (new fields `nb`, `nc`) and `world/rivals` cannot be written.
+2. Nothing to create by hand: the `world` collection and `rivals` document appear the first time the developer signs in on the master save. To check, open Firestore → **Data** → `world` → `rivals`.
+3. No new index is needed.

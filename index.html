@@ -389,7 +389,7 @@ const PTKEY="meridian-playtest",PTVER="pt1";
 const PTP={on:false,name:"",id:"",asked:false,lastDay:0};try{Object.assign(PTP,JSON.parse(localStorage.getItem(PTKEY)||"{}"))}catch(e){}
 if(!PTP.id)PTP.id=Math.random().toString(36).slice(2,8);
 const ptSave=()=>{try{localStorage.setItem(PTKEY,JSON.stringify(PTP))}catch(e){}};ptSave();
-const save=()=>{if(save.lock)return;try{if(typeof ensurePositions==="function")ensurePositions();localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const save=()=>{if(save.lock)return;try{if(typeof ensurePositions==="function")ensurePositions();localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}try{if(typeof onSaved==="function")onSaved()}catch(e){}};
 
 const cost=(b,c)=>Math.round(b.cost*1.3*PRICE[c.size]);
 // carts climb faster (1.7x per level) so upgrades never pay back quicker than a new cart; others keep 1.4x
@@ -425,6 +425,21 @@ S.rivals.forEach((r,i)=>{if(!r||typeof r!=="object")r=S.rivals[i]={nw:rivalSeed(
   if(!(Number.isFinite(r.nw)&&r.nw>0)||r.nw<rivalSeed(i)*.3)r.nw=rivalSeed(i); // old saves held fictional firms at these slots: keep their cities and growth, lift an absurdly small net worth to the real company's seed
   r.cities=[...new Set(Array.isArray(r.cities)?r.cities.filter(x=>CITIES[x]&&CITIES[x].id===x):[])].slice(0,RIVAL_MAXC)});
 S.rivals.forEach(r=>{if(r.nw>1e12)r.nw=1e12});
+/* shared world rivals: the developer's save (DEV_UIDS, signed in) is the master world. Only it grows rivals and publishes world/rivals {list:[{nw,cities}],updated};
+   every other player mirrors that list into S.rivals (cached in localStorage for offline) and skips its own rival growth. A local buy-out is remembered in S.rbo
+   (rival index -> city ids) and kept out of the mirror until the master world itself drops that branch. Never loaded and no cache: local growth as before. */
+const WRKEY="meridian-world-rivals",WRMKEY="meridian-world-master";let WRS=null,WRM=false;
+try{const c=JSON.parse(localStorage.getItem(WRKEY)||"null");if(c&&Array.isArray(c.list)&&c.list.length===RIVALS.length)WRS=c}catch(e){}
+try{WRM=localStorage.getItem(WRMKEY)==="1"}catch(e){}
+const wrShared=()=>!!WRS&&!WRM;
+function wrMirror(quiet){if(!wrShared())return;S.rbo=S.rbo&&typeof S.rbo==="object"?S.rbo:{};
+  WRS.list.forEach((x,i)=>{const r=S.rivals[i];if(!r||!x)return;if(Number.isFinite(+x.nw))r.nw=Math.min(1e12,+x.nw);
+    const sh=[...new Set((Array.isArray(x.cities)?x.cities:[]).filter(id=>Number.isInteger(id)&&CITIES[id]))].slice(0,RIVAL_MAXC);
+    const bo=(Array.isArray(S.rbo[i])?S.rbo[i]:[]).filter(id=>sh.includes(id));if(bo.length)S.rbo[i]=bo;else delete S.rbo[i];
+    const nc=sh.filter(id=>!bo.includes(id));
+    if(!quiet)for(const id of nc)if(!r.cities.includes(id)&&S.own[id]){S.log.unshift(`${RIVALS[i].n} opened in your city ${CITIES[id].name}`);S.log=S.log.slice(0,3)}
+    r.cities=nc})}
+wrMirror(true);
 const rivalsIn=c=>S.rivals.reduce((n,r)=>n+(r.cities.includes(c.id)?1:0),0);
 const compMult=c=>Math.max(.4,1-0.13*rivalsIn(c));
 const buyoutCost=c=>Math.round(30000*PRICE[c.size]*(1+S.day/40));
@@ -641,7 +656,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
   const ad=$("#ads");if(ad)ad.onclick=()=>{const k=adCost(c);if(S.cash<k)return;S.cash-=k;S.events[c.id]={m:1.4,d:5};toast(`Ads running in ${c.name} for 5 hours`);commit()};
   const ua=$("#upall");if(ua)ua.onclick=()=>{const pl=upgradePlan(c);for(const [k] of pl.steps){const b=BIZ.find(x=>x.k===k);S.cash-=upCost(b,c,S.own[c.id][k]);S.own[c.id][k]++}toast(`${pl.n} upgrades done in ${c.name}`);commit()};
   sheet.querySelectorAll("[data-bo]").forEach(btn=>btn.onclick=()=>{const i=+btn.dataset.bo,k=buyoutCost(c);if(S.cash<k)return;S.cash-=k;
-    S.rivals[i].cities=S.rivals[i].cities.filter(x=>x!==c.id);S.rivals[i].nw=Math.max(10000,S.rivals[i].nw-k*.5);toast(`Bought out ${RIVALS[i].n} in ${c.name}`);bigMove(`our company bought out ${RIVALS[i].n} in ${c.name} for ${fmt(k)}`,k,1);commit()});
+    S.rivals[i].cities=S.rivals[i].cities.filter(x=>x!==c.id);if(wrShared()){S.rbo=S.rbo||{};(S.rbo[i]=S.rbo[i]||[]).push(c.id)}S.rivals[i].nw=Math.max(10000,S.rivals[i].nw-k*.5);toast(`Bought out ${RIVALS[i].n} in ${c.name}`);bigMove(`our company bought out ${RIVALS[i].n} in ${c.name} for ${fmt(k)}`,k,1);commit()});
   const hb=$("#hire");if(hb)hb.onclick=()=>{const mc=mgrCost(c);if(S.cash<mc)return;S.cash-=mc;S.mgr[c.id]=1;toast(`Manager hired in ${c.name}`);commit()};
   const fb=$("#fire");if(fb)fb.onclick=()=>{if(!fb.dataset.arm){fb.dataset.arm=1;fb.textContent="Tap again to fire";return}delete S.mgr[c.id];if(S.mgrShort)for(const b of BIZ)delete S.mgrShort[bkey(c,b.k)];toast(`Manager fired in ${c.name}. No refund.`);commit()};
   const sa=$("#sellall");if(sa)sa.onclick=()=>{if(sa.dataset.arm){sellAll(c)}else{sa.dataset.arm=1;sa.textContent="Tap again to confirm sale"}};
@@ -1819,7 +1834,7 @@ function simDay(quiet){const{nw}=totals();S.day++;if(typeof hrDay==="function")h
     if(!S.iev[id]){const ks=Object.keys(IEV),t=ks[Math.floor(Math.random()*ks.length)];S.iev[id]={t,d:2+Math.floor(Math.random()*5)};
       if(!quiet&&S.sites.some(x=>x.city==id)){S.log.unshift(`${IEV[t].n} in ${CITIES[id].name} (${S.iev[id].d}h)`);S.log=S.log.slice(0,3)}}}
   if(!quiet)for(const c of CITIES){const p=S.own[c.id]?cityProfit(c):0;if(p)pops.push({c,v:p,t:performance.now()})}
-  S.rivals.forEach((r,i)=>{r.nw=Math.min(1e12,Math.round(r.nw*(1.012+Math.random()*.02)+2000)); // one simDay = one game day; capped so it stays finite
+  if(!wrShared())S.rivals.forEach((r,i)=>{r.nw=Math.min(1e12,Math.round(r.nw*(1.012+Math.random()*.02)+2000)); // one simDay = one game day; capped so it stays finite
     if(Math.random()<.06&&r.cities.length<Math.min(RIVAL_MAXC,5+Math.floor(r.nw/120000))){const mine=CITIES.filter(c=>S.own[c.id]&&!r.cities.includes(c.id));const opts=mine.length&&Math.random()<.1?mine:CITIES.filter(c=>!r.cities.includes(c.id));if(!opts.length)return;const c=opts[Math.floor(Math.random()*opts.length)];
       r.cities.push(c.id);if(!quiet&&S.own[c.id]){S.log.unshift(`${RIVALS[i].n} opened in your city ${c.name}`);S.log=S.log.slice(0,3)}}});
   S.hist.push(Math.round(nw));if(S.hist.length>60)S.hist.shift();
@@ -1886,9 +1901,11 @@ function renderPortfolio(){const{inc,nw}=totals();
     h+=`<div class="row link" data-go="${c.id}"><div class="n">${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"}</span>`:""}${S.mgr[c.id]?'<span class="tag" style="border:1px solid var(--line)">MGR</span>':""}</div>
     <div class="d">${n} business${n>1?"es":""} · <b>${fmt(cityProfit(c))}</b>/hr</div><span style="font-family:var(--mono);color:var(--muted)">›</span></div>`}
   h+=`</div><div class="sec">Find a city</div><input id="q" type="search" placeholder="Tokyo, Lagos… or oil, coal, ore" value="${query}" autocomplete="off"><div class="list" id="qres"></div>`;
-  const board=[{n:"You",col:"var(--own)",nw,me:1,dev:devSelf(S.name,(S.online||{}).name)?(S.online&&S.online.name||S.name||DEV_NAME):""},...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:r.nw,c:r.cities.length,f:`${RIVALS[i].ind} · ${fmtCap(RIVALS[i].cap)} real`}))].sort((a,b)=>b.nw-a.nw);
+  const board=[{n:"You",col:"var(--own)",nw,me:1,dev:devSelf(S.name,(S.online||{}).name)?(S.online&&S.online.name||S.name||DEV_NAME):""},...(onEnabled()?lbPlayers():[]).map(p=>{const age=(Date.now()-onSeen(p))/864e5;return{n:String(p.name||"Player").slice(0,20),col:/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb",nw:Number.isFinite(+p.nw)?+p.nw:0,pl:1,dv:devUid(p.uid),old:age>30,f:`player${Number.isInteger(p.nb)?` · ${p.nb} business${p.nb===1?"":"es"}`:""} · seen ${age<1/24?"just now":age<2?Math.round(age*24)+"h ago":Math.round(age)+"d ago"}`,c:lbCities(p)}}),
+    ...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:+r.nw||0,c:r.cities.length,f:`${RIVALS[i].ind} · ${fmtCap(RIVALS[i].cap)} real`}))].sort((a,b)=>b.nw-a.nw);
+  const lbTop=board.filter((b,i)=>i<100||b.me);
   h+=govSummary();h+=onlineHtml();
-  h+=`<div class="sec">Leaderboard</div><div class="list">`+board.map((b,i)=>`<div class="row"><div class="n" style="${b.me?"color:var(--own)":""}">${i+1}. <span style="display:inline-block;width:9px;height:9px;background:${b.col};margin:0 6px 0 2px"></span>${b.dev?gnHtml(b.dev,1)+" (you)":b.n}</div>
+  h+=`<div class="sec">Leaderboard${onEnabled()?` <small style="font-weight:400;color:var(--muted)">${ON.gotPlayers?"live":"offline · last saved"}</small>`:""}</div><div class="list">`+lbTop.map(b=>`<div class="row"${b.old?' style="opacity:.5"':""}><div class="n" style="${b.me?"color:var(--own)":""}">${board.indexOf(b)+1}. <span style="display:inline-block;width:9px;height:9px;${b.pl?"transform:rotate(45deg);":""}background:${b.col};margin:0 6px 0 2px"></span>${b.dev?gnHtml(b.dev,1)+" (you)":b.me?devEsc(onEnabled()&&S.online&&S.online.name||S.name||"You")+" (you)":b.pl?gnHtml(b.n,b.dv):b.n}</div>
     <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities · ${b.f}`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
   h+=bankHtml();
   if(S.lst.length)h+=`<div class="sec">Market listings</div><div class="list">`+S.lst.map(l=>{const c=CITIES[l.city],stockLv=mLevel(c,l.g);return `<div class="row link" data-go="${c.id}"><div class="n">${G[l.g][0]} · ${c.name}</div><div class="d">${l.q<1e-6?"Sold out":gq(l.q)+" left at "+fmt(l.p)} · ${gq(l.sold||0)} sold · stock ${Math.round(stockLv*100)}%</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`;
@@ -4140,20 +4157,34 @@ function onScript(u){return new Promise((ok,no)=>{const s=document.createElement
 async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
   try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
-    ON.auth.onAuthStateChanged(u=>{ON.user=u;if(u){onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);onRefresh()});
-    ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;draw()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM)wrPublish(true);else wrMirror(false);onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);onRefresh()});
+    ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;ON.gotPlayers=true;lbCache(a);draw();onRefresh()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
+    ON.unsubW=ON.db.collection("world").doc("rivals").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list)||v.list.length!==RIVALS.length)return;
+      WRS={list:v.list.map(x=>({nw:+(x&&x.nw)||0,cities:Array.isArray(x&&x.cities)?x.cities.filter(Number.isInteger):[]})),updated:v.updated&&v.updated.toMillis?v.updated.toMillis():Date.now()};
+      try{localStorage.setItem(WRKEY,JSON.stringify(WRS))}catch(e){}if(ON.authKnown&&!WRM){wrMirror(false);draw();onRefresh()}},e=>{ON.err="Couldn't load world rivals: "+(e&&e.code||e)});
   }catch(e){ON.err="Online unavailable: "+(e&&e.message||e)}ON.loading=false;onRefresh()}
 function onRefresh(){if(mode==="pf"&&sheet.classList.contains("open")&&!(document.activeElement&&/^(INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}}
 function onPubData(){const p=onProf(),{nw}=totals(),ids=o=>Object.keys(o||{}).filter(k=>o[k]&&CITIES[k]&&(typeof o[k]!=="object"||Object.keys(o[k]).length)).map(Number).slice(0,100);
-  const rank=1+S.rivals.filter(r=>r.nw>nw).length;
-  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:Math.round(isFinite(nw)?nw:0),rank,loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null}}
+  const v=Math.round(isFinite(nw)?nw:0),rank=Math.min(1000,1+S.rivals.filter(r=>r.nw>v).length+ON.players.filter(q=>(+q.nw||0)>v).length);
+  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null}}
 function onLocPub(){try{if(!ON.ready||!ON.user)return;const l=S.loc&&S.loc.city;if(l!==ON.lastLoc){ON.lastLoc=l;onPublish(true)}}catch(e){}}
 function onPublish(force){if(!ON.ready||!ON.user)return;const d=onPubData(),sig=JSON.stringify(d),n=Date.now();
   if(!force&&!(n-ON.lastPub>=60000||(sig!==ON.lastSig&&n-ON.lastPub>=60000)))return;
   if(!force&&sig===ON.lastSig&&n-ON.lastPub<300000)return;
   ON.lastPub=n;ON.lastSig=sig;d.lastSeen=window.firebase.firestore.FieldValue.serverTimestamp();
   ON.db.collection("players").doc(ON.user.uid).set(d).catch(e=>{ON.err="Couldn't publish: "+(e&&e.code||e)})}
-function onSeen(p){const t=p.lastSeen;return t&&t.toMillis?t.toMillis():typeof t==="number"?t:0}
+/* shared leaderboard: master publishes world/rivals; everyone's profile is published on save (throttled by onPublish) and every 15 s tick */
+function wrPubData(){return{list:S.rivals.map(r=>({nw:Math.round(Math.max(-1e12,Math.min(1e12,+r.nw||0))),cities:r.cities.filter(id=>Number.isInteger(id)&&CITIES[id]).slice(0,RIVAL_MAXC)}))}}
+function wrPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;const d=wrPubData(),sig=JSON.stringify(d),n=Date.now();
+  if(!force&&(n-(ON.wrPub||0)<60000||(sig===ON.wrSig&&n-(ON.wrPub||0)<300000)))return;
+  ON.wrPub=n;ON.wrSig=sig;d.updated=window.firebase.firestore.FieldValue.serverTimestamp();
+  ON.db.collection("world").doc("rivals").set(d).catch(e=>{ON.err="Couldn't publish world rivals: "+(e&&e.code||e)})}
+function onSaved(){if(!ON.ready||!ON.user)return;onPublish(false);wrPublish(false)}
+const LBKEY="meridian-lb-players";
+function lbCache(a){try{localStorage.setItem(LBKEY,JSON.stringify(a.slice(0,200).map(p=>({uid:p.uid,name:String(p.name||"Player").slice(0,20),col:p.col,nw:+p.nw||0,nb:p.nb,nc:p.nc,biz:Array.isArray(p.biz)?p.biz:[],home:p.home,hq:p.hq,seen:onSeen(p)}))))}catch(e){}}
+function lbPlayers(){if(ON.gotPlayers)return ON.players;try{const a=JSON.parse(localStorage.getItem(LBKEY)||"[]");const me=ON.user?ON.user.uid:null;return Array.isArray(a)?a.filter(p=>p&&p.uid!==me):[]}catch(e){return[]}}
+function lbCities(p){if(Number.isInteger(p.nc))return p.nc;const s=new Set(onCities(p));for(const i of Array.isArray(p.biz)?p.biz:[])if(CITIES[i])s.add(i);return s.size}
+function onSeen(p){if(typeof p.seen==="number")return p.seen;const t=p.lastSeen;return t&&t.toMillis?t.toMillis():typeof t==="number"?t:0}
 function onAlpha(p){const age=(Date.now()-onSeen(p))/864e5;return age>7?.3:1}
 function onCities(p){const s=new Set();if(Number.isInteger(p.home)&&CITIES[p.home])s.add(p.home);for(const i of Array.isArray(p.hq)?p.hq:[])if(CITIES[i])s.add(i);return[...s]}
 const onHere=p=>Number.isInteger(p.loc)&&!!CITIES[p.loc];
@@ -4202,7 +4233,7 @@ function onlineWire(){if(!onEnabled())return;csWire();const v=s=>{const e=$(s);r
           if(a==="up")await ON.auth.createUserWithEmailAndPassword(e,pw);else await ON.auth.signInWithEmailAndPassword(e,pw)}
         ON.draft={e:"",p:"",n:""};save()}
     }catch(e){ON.err=String(e&&e.message||e).replace(/^Firebase:\s*/,"").slice(0,140)}ON.busy=false;if(document.activeElement)document.activeElement.blur();onRefresh()})}
-if(onEnabled()){onInit();setInterval(()=>{if(ON.user)onPublish(false)},15000)}
+if(onEnabled()){onInit();setInterval(()=>{if(ON.user){onPublish(false);wrPublish(false)}},15000)}
 /* ---------- cloud save: private copy of this slot's save at saves/{uid} so the account works on other devices ---------- */
 const CS={doc:null,checked:false,pending:null,last:0,lastStr:"",busy:false,err:""},CSPART=600000,CSBAK="meridian-cloud-backup";
 const csMetaKey=()=>"meridian-cloud-meta-"+SLOT;

@@ -3,7 +3,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function validProfile(d) {
-      return d.keys().hasOnly(['name', 'col', 'home', 'hq', 'biz', 'nw', 'rank', 'loc', 'lastSeen'])
+      return d.keys().hasOnly(['name', 'col', 'home', 'hq', 'biz', 'nw', 'rank', 'loc', 'nb', 'nc', 'lastSeen'])
         && d.keys().hasAll(['name', 'col', 'lastSeen'])
         && d.name is string && d.name.size() > 0 && d.name.size() <= 20
         && d.col is string && d.col.matches('^#[0-9a-fA-F]{6}$')
@@ -13,6 +13,8 @@ service cloud.firestore {
         && (!('loc' in d) || d.loc == null || (d.loc is int && d.loc >= 0 && d.loc < 10000))
         && (!('nw' in d) || d.nw is number)
         && (!('rank' in d) || (d.rank is int && d.rank >= 1 && d.rank <= 1000))
+        && (!('nb' in d) || (d.nb is int && d.nb >= 0 && d.nb <= 100000))
+        && (!('nc' in d) || (d.nc is int && d.nc >= 0 && d.nc <= 10000))
         && d.lastSeen == request.time;
     }
 
@@ -67,6 +69,24 @@ service cloud.firestore {
         && (!('note' in request.resource.data) || (request.resource.data.note is string && request.resource.data.note.size() <= 40));
       allow read, delete: if request.auth != null
         && (resource.data.to == request.auth.uid || resource.data.from == request.auth.uid);
+    }
+    // Shared world rivals: one live list written only by the developer's save (the master world), readable by everyone.
+    // Rules cannot loop, so each of the 8 rivals (RIVALS.length in index.html) is checked by index; nw is a number (any sign), cities a list of at most 10.
+    function validRival(r) {
+      return r is map && r.keys().hasOnly(['nw', 'cities']) && r.keys().hasAll(['nw', 'cities'])
+        && r.nw is number && r.cities is list && r.cities.size() <= 10;
+    }
+    match /world/rivals {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1'
+        && request.resource.data.keys().hasOnly(['list', 'updated'])
+        && request.resource.data.list is list && request.resource.data.list.size() == 8
+        && validRival(request.resource.data.list[0]) && validRival(request.resource.data.list[1])
+        && validRival(request.resource.data.list[2]) && validRival(request.resource.data.list[3])
+        && validRival(request.resource.data.list[4]) && validRival(request.resource.data.list[5])
+        && validRival(request.resource.data.list[6]) && validRival(request.resource.data.list[7])
+        && request.resource.data.updated == request.time;
     }
     match /{document=**} {
       allow read, write: if false;
