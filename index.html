@@ -3228,7 +3228,23 @@ function trade(s,q){const m=MK(),a=AK[s],p=m.px[s],h=m.hold[s]=m.hold[s]||{q:0,a
 const fq=q=>q>=1?(+q.toFixed(q<10?3:0)).toLocaleString():(+q.toPrecision(3)).toString();
 const fp=p=>p>=1000?"$"+Math.round(p).toLocaleString():p>=1?"$"+p.toFixed(2):"$"+p.toPrecision(3);
 function sparkS(h,col){if(h.length<2)return"";const w=60,ht=18,mn=Math.min(...h),mx=Math.max(...h)||1;return `<svg viewBox="0 0 ${w} ${ht}" width="${w}" height="${ht}"><polyline fill="none" stroke="${col}" stroke-width="1.5" points="${h.map((v,i)=>`${(i/(h.length-1)*w).toFixed(1)},${(ht-(v-mn)/((mx-mn)||1)*ht).toFixed(1)}`).join(" ")}"/></svg>`}
-let mkTab="s",mkSel=null;
+let mkTab="s",mkSel=null,mkCQ="";
+/* custom amount: stocks trade in whole shares, crypto in fractions (6 dp), same as the fixed buttons */
+function mkCQParse(s){const a=AK[s],v=parseFloat(mkCQ);if(!(v>0)||!isFinite(v))return{err:"Enter an amount above 0"};
+  if(a.t!=="c"&&Math.abs(v-Math.round(v))>1e-9)return{err:"Stocks trade in whole shares"};return{q:a.t==="c"?Math.floor(v*1e6+1e-9)/1e6:Math.round(v)}}
+function mkCQTxt(s){const m=MK(),a=AK[s],p=m.px[s],r=mkCQParse(s);if(mkCQ===""||r.err)return mkCQ===""?"Type an amount to see the total":r.err;
+  const q=r.q;if(!(q>0))return "Amount too small";return `Buy ${fq(q)} costs ${fmtc(p*q*(1+fee(a)))} · sell brings ${fmtc(p*q*(1-fee(a)))}`}
+function mkCustom(sign){const s=mkSel;if(!s)return;const m=MK(),a=AK[s],p=m.px[s],r=mkCQParse(s);if(r.err){toast(r.err);return}
+  let q=r.q;if(!(q>0)){toast("Amount too small");return}
+  if(sign>0){let mx=S.cash/(p*(1+fee(a)));mx=a.t==="c"?Math.floor(mx*1e6)/1e6:Math.floor(mx+1e-9);
+    if(!(mx>0)){toast(`Not enough cash for any ${s}`);return}
+    let cap="";if(q>mx){q=mx;cap=`Capped to what you can afford: bought ${fq(mx)} ${s}`}
+    while(q>0&&p*q*(1+fee(a))>S.cash)q=a.t==="c"?Math.floor((q-1e-6)*1e6)/1e6:q-1;if(!(q>0))return;trade(s,q);if(cap)toast(cap)}
+  else{const hd=m.hold[s];if(!hd||hd.q<=0){toast(`You don't own any ${s}`);return}
+    let cap="";if(q>hd.q){q=hd.q;cap=`Capped to your holding: sold all ${fq(hd.q)} ${s}`}trade(s,-q);if(cap)toast(cap)}}
+function mkLive(){const el=PH.el,s=mkSel;if(!s)return;const m=MK(),p=m.px[s],ch=(p/m.open[s]-1)*100;
+  const t=el.querySelector("#mkcqt");if(t){const x=mkCQTxt(s);if(t.textContent!==x)t.textContent=x}
+  const big=el.querySelector(".ph-big");if(big&&big.textContent!==fp(p))big.textContent=fp(p)}
 function mktApp(){const m=MK();
   let h=`<div class="ph-seg">${[["s","Stocks"],["c","Crypto"],["p","Portfolio"]].map(([k,n])=>`<button data-ph="mkt" data-k="${k}" aria-pressed="${mkTab===k}">${n}</button>`).join("")}</div>`;
   if(mkSel){const a=AK[mkSel],p=m.px[a.s],ch=(p/m.open[a.s]-1)*100,hd=m.hold[a.s],col=ch>=0?"#22c55e":"#ef4444";
@@ -3239,7 +3255,11 @@ function mktApp(){const m=MK();
       <div class="ph-rows"><div><span>You own</span><b>${hd?fq(hd.q):0}</b></div>${hd?`<div><span>Value</span><b>${fmt(hd.q*p)}</b></div><div><span>Avg cost</span><b>${fp(hd.avg)}</b></div><div><span>Gain</span><b style="color:${p>=hd.avg?"#22c55e":"#ef4444"}">${fmt((p-hd.avg)*hd.q)}</b></div>`:""}<div><span>Fee</span><b>${fee(a)*100}%</b></div></div>
       <div style="display:grid;grid-template-columns:repeat(${qs.length},1fr);gap:5px;margin-top:8px">${qs.map(q=>`<button class="buy" data-ph="trade" data-k="${a.s}" data-q="${q}" style="min-width:0;font-size:11px;padding:6px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#22c55e;color:#06210f;border-color:#22c55e;font-weight:700" ${S.cash<p*q*(1+fee(a))?"disabled":""}>Buy ${fq(q)}</button>`).join("")}</div>
       <div style="display:grid;grid-template-columns:repeat(${qs.length},1fr);gap:5px;margin-top:5px">${qs.map(q=>`<button class="buy up" data-ph="trade" data-k="${a.s}" data-q="${-q}" style="min-width:0;font-size:11px;padding:6px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;border-color:#ffffff55" ${!hd||hd.q<q-1e-9?"disabled":""}>Sell ${fq(q)}</button>`).join("")}</div>
-      ${hd?`<button class="buy up" data-ph="trade" data-k="${a.s}" data-q="${-hd.q}" style="width:100%;margin-top:5px;color:#fff;border-color:#ffffff55">Sell all</button>`:""}`;return h}
+      ${hd?`<button class="buy up" data-ph="trade" data-k="${a.s}" data-q="${-hd.q}" style="width:100%;margin-top:5px;color:#fff;border-color:#ffffff55">Sell all</button>`:""}
+      <div style="margin-top:10px;font-weight:700;font-size:12px;color:#fff">Custom amount</div>
+      <input id="mkcq" type="number" inputmode="decimal" min="0" step="${a.t==="c"?"any":"1"}" placeholder="${a.t==="c"?"Amount of "+a.s:"Number of shares"}" value="${mkCQ}" autocomplete="off" style="box-sizing:border-box;width:100%;margin-top:5px;padding:8px;border-radius:8px;border:1px solid #ffffff55;background:#ffffff14;color:#fff;font-size:14px">
+      <div id="mkcqt" class="ph-sub" style="color:#e5e7eb;margin-top:4px">${mkCQTxt(a.s)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px"><button class="buy" data-ph="mkcust" data-q="1" style="min-width:0;background:#22c55e;color:#06210f;border-color:#22c55e;font-weight:700">Buy</button><button class="buy up" data-ph="mkcust" data-q="-1" style="min-width:0;color:#fff;border-color:#ffffff55">Sell</button></div>`;return h}
   const list=mkTab==="p"?ASSETS.filter(a=>m.hold[a.s]):ASSETS.filter(a=>a.t===mkTab);
   if(mkTab==="p"){const v=holdVal(),cost=Object.entries(m.hold).reduce((t,[s,x])=>t+x.q*x.avg,0);h+=`<div class="ph-big" style="font-size:24px;margin-top:8px">${fmt(v)}</div><div class="ph-sub">Market value · cost ${fmt(cost)} · <b style="color:${v>=cost?"#22c55e":"#ef4444"}">${fmt(v-cost)}</b> open · ${fmt(m.realized)} realized</div>`;if(!list.length)h+=`<p class="ph-sub">You don't own anything yet.</p>`}
   else h+=`<p class="ph-sub" style="margin-top:6px">${mkTab==="c"?"Crypto uses live prices when available; it trades 24/7.":"Prices start from real-world levels and move with the game world: wars lift defense and oil, hit airlines."}</p>`;
@@ -6425,7 +6445,9 @@ const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 function phPlace(){const el=PH.el,sc=phScale();el.style.setProperty("--phs",sc);const r=el.getBoundingClientRect(),w=r.width,h=r.height,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
   PH.x=Math.max(4,Math.min(W-w-4,PH.x));PH.y=Math.max(4,Math.min(H-h-4,PH.y));el.style.left=PH.x/sc+"px";el.style.top=PH.y/sc+"px"}
-function phRender(){const el=PH.el;const _sc=[...el.querySelectorAll(".ph-screen,.ph-app")].map(x=>x.scrollTop),_app=PH.app;phRender0();
+function phRender(){const el=PH.el;const _sc=[...el.querySelectorAll(".ph-screen,.ph-app")].map(x=>x.scrollTop),_app=PH.app;
+  const _fa=document.activeElement,_fk=_fa&&_fa.id==="mkcq",_ss=_fk?_fa.selectionStart:0;phRender0();
+  if(_fk){const n=el.querySelector("#mkcq");if(n){n.focus();try{n.setSelectionRange(_ss,_ss)}catch(e){}}}
   if(PH.app===_app)el.querySelectorAll(".ph-screen,.ph-app").forEach((x,i)=>{if(_sc[i])x.scrollTop=_sc[i]})}
 function phRender0(){const el=PH.el;el.classList.toggle("folded",!PH.open);
   if(!PH.open){el.innerHTML=`<button class="ph-tab" data-ph="unfold" aria-label="Open your phone"><span class="ph-grip"></span>${svgI("wallet")}<b>${fmt(S.cash)}</b></button>`;phPlace();return}
@@ -6515,6 +6537,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="ridego"){rideStart();return}
   else if(a==="mkt"){mkTab=b.dataset.k;mkSel=null}else if(a==="mksel"){mkSel=b.dataset.k||null;PH.el.querySelectorAll(".ph-screen").forEach(x=>x.scrollTop=0)}
   else if(a==="trade"){trade(b.dataset.k,+b.dataset.q);return}
+  else if(a==="mkcust"){mkCustom(+b.dataset.q);return}
   else if(a==="ug"){ugDo(b.dataset.k);save();hud()}
   else if(a==="uga"){ugAct(b.dataset.a,b.dataset.x);save();hud()}
   else if(a==="gigpick"){gigState().i=+b.dataset.k}
@@ -6523,6 +6546,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="go"){flyTo(CITIES[+b.dataset.c]);PH.open=false}
   phSave();phRender()});
 PH.el.addEventListener("input",e=>{const t=e.target;if(!t.id||t.id.slice(0,4)!=="ctf_")return;const k=t.id.slice(4);CT.f[k]=t.value;PH.touched=Date.now();if(k==="q"){const l=PH.el.querySelector("#ctlist");if(l)l.innerHTML=ctInvList()}});
+PH.el.addEventListener("input",e=>{if(e.target.id!=="mkcq")return;mkCQ=e.target.value;PH.touched=Date.now();mkLive()});
 PH.el.addEventListener("input",e=>{const t=e.target;if(t.id==="xfq"){XF.q=t.value;const l=PH.el.querySelector("#xflist");if(l)l.innerHTML=xfList()}else if(t.id==="xfa")XF.amt=t.value;else if(t.id==="xfn")XF.n=t.value;else if(t.id==="bxq"){BX.q=t.value;const l=PH.el.querySelector("#bxquote");if(l)l.innerHTML=botQuoteHtml()}else if(/^bx[cdg]$/.test(t.id)){BX[t.id.slice(2)]=t.value;PH.touched=Date.now();phRender();return}else if(t.id==="frq"){FR.q=t.value;const l=PH.el.querySelector("#frquote");if(l)l.innerHTML=frQuoteHtml()}else if(t.id==="frp"){FR.p=t.value;const l=PH.el.querySelector("#frquote");if(l)l.innerHTML=frQuoteHtml()}else if(/^fr[cdgh]$/.test(t.id)){FR[t.id.slice(2)]=t.value;PH.touched=Date.now();phRender();return}else return;PH.touched=Date.now()});
 PH.el.addEventListener("input",e=>{if(e.target.id!=="phc")return;const v=e.target.value.replace(/[×x]/g,"*").replace(/÷/g,"/").replace(/−/g,"-").replace(/,/g,"");
   let r="";if(/^[\d\s.+\-*/()%]*$/.test(v)&&v.trim()){try{const n=Function(`"use strict";return (${v})`)();r=Number.isFinite(n)?(+n.toFixed(4)).toLocaleString():"—"}catch(_){r="…"}}$("#phr").textContent=r||"0"});
@@ -6533,7 +6557,7 @@ PH.el.addEventListener("input",e=>{if(e.target.id!=="phc")return;const v=e.targe
   window.addEventListener("pointerup",e=>{if(!st||e.pointerId!==st.id)return;st=null;PH.el.classList.remove("dragging");
     if(PH.dragged){if(!PH.open){const w=PH.el.offsetWidth;PH.x=PH.x+w/2<innerWidth/2?4:innerWidth-w-4;phPlace()}phSave();setTimeout(()=>PH.dragged=false,0)}})})();
 window.addEventListener("resize",phPlace);
-setInterval(()=>{trackNews();if(PH.open&&Date.now()-(PH.touched||0)<3000)return;const gi=S.dip&&S.dip.inv?1:0,gch=gi||PH.gi;PH.gi=gi;if(!PH.open||(PH.app==="govt"&&gch)||[null,"wallet","needs","job","weather","stocks"].includes(PH.app)||(PH.app==="travel"&&S.trip))phRender()},2000);
+setInterval(()=>{trackNews();if(PH.open&&PH.app==="stocks"&&mkSel&&document.activeElement&&document.activeElement.id==="mkcq"){mkLive();return}if(PH.open&&Date.now()-(PH.touched||0)<3000)return;const gi=S.dip&&S.dip.inv?1:0,gch=gi||PH.gi;PH.gi=gi;if(!PH.open||(PH.app==="govt"&&gch)||[null,"wallet","needs","job","weather","stocks"].includes(PH.app)||(PH.app==="travel"&&S.trip))phRender()},2000);
 trackNews();phRender();
 /* movable windows: city sheet (desktop) + stats widget */
 function mkDrag(el,handle,key,get,set){let st=null;
