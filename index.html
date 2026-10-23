@@ -78,6 +78,12 @@ canvas#map:active{cursor:grabbing}
 #cfpop .stl{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:8px}
 #cfpop p{margin:6px 0}#cfpop .m{color:var(--muted);font-size:12px}#cfpop .bt{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}#cfpop .bt .chip{padding:6px 10px}
 #cfpop .bt .chip:disabled{opacity:.5;cursor:default}
+.bgx{margin:8px 0;padding:8px 9px;border:1px solid rgba(127,127,127,.35);border-radius:10px;font-size:12px;line-height:1.35;box-sizing:border-box}
+.bgx .bgh{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:5px}.bgx .bgh span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;opacity:.7}
+.bgx .bgs{display:flex;align-items:center;gap:6px;margin:3px 0}.bgx .bgn{flex:0 0 38%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.bgx .bgb{flex:1;min-width:0;height:8px;border-radius:4px;background:rgba(127,127,127,.3);overflow:hidden}.bgx .bgb i{display:block;height:100%;transition:width .6s}
+.bgx .bgs b{flex:0 0 auto;font-size:11px;font-variant-numeric:tabular-nums;max-width:38%;text-align:right}
+.bgx .bgm{opacity:.75;font-size:11px;margin-top:3px}
 #hint{position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:12px;color:var(--muted);pointer-events:none}
 #sheet{position:absolute;left:0;right:0;bottom:0;max-height:58%;overflow:auto;overscroll-behavior:contain;background:var(--panel);
   border-radius:16px 16px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.14);
@@ -2359,15 +2365,15 @@ function cfFeat(n){if(!world)return null;if(!_cfF){_cfF={};for(const f of world.
   return _cfF[k]={type:"Feature",cf:1,properties:f.properties,geometry:{type:"MultiPolygon",coordinates:ps}}}
 const cfCap=n=>_cfC[n]||(_cfC[n]=cap(n));
 const cfOn=()=>!S.cfOff;
-function cfLevels(){const o={};for(const w of S.wars||[])if(w.l>0)for(const n of [w.a,w.b])o[n]=Math.max(o[n]||0,w.l);return o}
+function cfLevels(){const o={};for(const w of S.wars||[])if(w.l>0)for(const n of [w.a,w.b])o[n]=Math.max(o[n]||0,w.l);for(const n of bgMilKeys())o[n]=4;return o}
 function cfMid(w){const A=cfCap(w.a),B=cfCap(w.b);return d3.geoInterpolate([A.lon,A.lat],[B.lon,B.lat])(.5)}
-function cfChip(){const el=document.getElementById("cfbox");if(!el)return;const ws=(S.wars||[]).filter(w=>w.l>0),st=typeof inStreet!=="undefined"&&inStreet,
-  k=[ws.length,cfOn(),st,ws.map(w=>w.l).join("")].join();if(k===_cfKey)return;_cfKey=k;
-  el.hidden=!ws.length||st;if(!ws.length&&_cfPop)cfClose();const hot=ws.filter(w=>w.l>=3).length;
+function cfChip(){const el=document.getElementById("cfbox");if(!el)return;const ws=(S.wars||[]).filter(w=>w.l>0),pw=bgMilKeys(),st=typeof inStreet!=="undefined"&&inStreet,
+  k=[ws.length,pw.join("|"),cfOn(),st,ws.map(w=>w.l).join("")].join();if(k===_cfKey)return;_cfKey=k;
+  el.hidden=!(ws.length||pw.length)||st;if(!ws.length&&!pw.length&&_cfPop)cfClose();const hot=ws.filter(w=>w.l>=3).length;
   const ch=document.getElementById("cfchip");ch.setAttribute("aria-pressed",cfOn());ch.title=cfOn()?"Hide conflicts on the map":"Show conflicts on the map";
-  ch.innerHTML=`⚔ Conflicts${cfOn()?"":" (hidden)"} <i>${ws.length}</i>`;if(!hot)ch.querySelector("i").style.background=WARC[1];
+  ch.innerHTML=`⚔ Conflicts${cfOn()?"":" (hidden)"} <i>${ws.length+pw.length}</i>`;if(!hot&&!pw.length)ch.querySelector("i").style.background=WARC[1];
   const lg=document.getElementById("cfleg");lg.hidden=!cfOn();lg.innerHTML=[1,2,3,4].map(l=>`<span><b style="background:${WARC[l]}"></b>${WARL[l]}</span>`).join("")}
-function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filter(w=>w.l>0);if(!ws.length||!cfOn())return;
+function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filter(w=>w.l>0),pw=bgMilKeys();if((!ws.length&&!pw.length)||!cfOn())return;
   const mk=S.wmd&&S.wmd.h?Object.keys(S.wmd.h).filter(n=>S.wmd.h[n].u>S.day):[];
   const t=performance.now()/1000,lv=cfLevels(),zs=Math.min(1.6,.85+V.k*.08),anim=typeof reduce==="undefined"||!reduce;ctx.save();
   for(const n in lv){const l=lv[n],col=WARC[l],pu=l>=3&&anim?.5+.5*Math.sin(t*(l>=4?3.2:2)):0,f=cfFeat(n);
@@ -2375,11 +2381,19 @@ function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filte
     const c=cfCap(n);if(c&&visible(c.lon,c.lat)){const [x,y]=proj([c.lon,c.lat]);ctx.globalAlpha=.75-.35*pu;ctx.beginPath();ctx.arc(x,y,(12+l*1.5+pu*5)*zs,0,7);ctx.strokeStyle=col;ctx.lineWidth=l>=3?2:1.4;ctx.setLineDash(l>=3?[]:[3,3]);ctx.stroke();ctx.setLineDash([])}}
   for(const w of ws){const A=cfCap(w.a),B=cfCap(w.b);if(!A||!B)continue;const col=WARC[w.l];
     ctx.globalAlpha=.9;ctx.beginPath();path({type:"LineString",coordinates:[[A.lon,A.lat],[B.lon,B.lat]]});ctx.setLineDash(w.l>=4?[]:[6,4]);ctx.strokeStyle=col;ctx.lineWidth=1+w.l*.45;ctx.stroke();ctx.setLineDash([]);
-    const m=cfMid(w);if(!visible(m[0],m[1]))continue;const [x,y]=proj(m),r=9*zs;
+    const bd=w.l>=3?bgFor(w):null,m=bd&&bd.pos?bd.pos:cfMid(w);if(!visible(m[0],m[1]))continue;const [x,y]=proj(m),r=9*zs;
     ctx.globalAlpha=1;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=col;ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle="#fff";ctx.stroke();
     ctx.fillStyle="#fff";ctx.font=`700 ${Math.round(10*zs)}px system-ui, sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(["","!","$","⚔","⚔"][w.l],x,y+.5);ctx.textAlign="start";
     if(_cfPop&&_cfPop.id===w.id){ctx.beginPath();ctx.arc(x,y,r+4,0,7);ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke()}
+    if(bd)bgLabel(ctx,x,y+r+3,zs,bd);
     _cfHit.push({x,y,r:Math.max(16,r+6),w})}
+  for(const n of pw){const A=cfCap(pol().c),B=cfCap(n),bd=bgMil(n);if(!A||!B||!bd)continue;const col=WARC[4];
+    ctx.globalAlpha=.9;ctx.beginPath();path({type:"LineString",coordinates:[[A.lon,A.lat],[B.lon,B.lat]]});ctx.strokeStyle=col;ctx.lineWidth=2.8;ctx.stroke();
+    if(!bd.pos||!visible(bd.pos[0],bd.pos[1]))continue;const [x,y]=proj(bd.pos),r=9*zs;
+    ctx.globalAlpha=1;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=col;ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle="#fff";ctx.stroke();
+    ctx.fillStyle="#fff";ctx.font=`700 ${Math.round(10*zs)}px system-ui, sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("⚔",x,y+.5);ctx.textAlign="start";
+    if(_cfPop&&_cfPop.id==="m"+n){ctx.beginPath();ctx.arc(x,y,r+4,0,7);ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke()}
+    bgLabel(ctx,x,y+r+3,zs,bd);_cfHit.push({x,y,r:Math.max(16,r+6),w:bgPseudo(n)})}
   for(const n of mk){const h=S.wmd.h[n],c=CITIES[h.c]||cfCap(n);if(!c||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]),r=11*zs,nk=h.k==="nuke",pu=anim?.5+.5*Math.sin(t*4):.5,col=nk?"#ffcc00":"#7bd34a";
     ctx.globalAlpha=.35+.3*pu;ctx.beginPath();ctx.arc(x,y,r+4+pu*6,0,7);ctx.fillStyle=col;ctx.fill();
     ctx.globalAlpha=1;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle="#111";ctx.fill();ctx.lineWidth=2;ctx.strokeStyle=col;ctx.stroke();
@@ -2387,18 +2401,18 @@ function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filte
     const w=ws.find(q=>q.a===n||q.b===n);if(w)_cfHit.push({x,y,r:Math.max(16,r+6),w})}
   ctx.restore()}
 /* tap: a badge opens its popup; with no city under the finger, a shaded country opens its worst conflict */
-function cfTap(x,y,best,bd){const ws=(S.wars||[]).filter(w=>w.l>0);if(!ws.length||!cfOn()){if(_cfPop)cfClose();return false}
+function cfTap(x,y,best,bd){const ws=(S.wars||[]).filter(w=>w.l>0);if((!ws.length&&!bgMilKeys().length)||!cfOn()){if(_cfPop)cfClose();return false}
   let hit=null,hd=1e9;for(const h of _cfHit){const d=Math.hypot(h.x-x,h.y-y);if(d<h.r&&d<hd){hd=d;hit=h.w}}
   if(!hit&&best){if(_cfPop)cfClose();return false}
-  if(!hit&&!best){const g=proj.invert([x,y]);if(g&&visible(g[0],g[1])){const lv=cfLevels();for(const n in lv){const f=cfFeat(n);if(f&&d3.geoContains(f,g)){hit=ws.filter(w=>w.a===n||w.b===n).sort((a,b)=>b.l-a.l)[0];break}}}}
+  if(!hit&&!best){const g=proj.invert([x,y]);if(g&&visible(g[0],g[1])){const lv=cfLevels();for(const n in lv){const f=cfFeat(n);if(f&&d3.geoContains(f,g)){hit=ws.filter(w=>w.a===n||w.b===n).sort((a,b)=>b.l-a.l)[0]||bgPseudo(n);break}}}}
   if(!hit){if(_cfPop){cfClose();return true}return false}
   cfOpen(hit,x,y);return true}
 function cfExposure(w){let n=0,loss=0;for(const c of CITIES){if(c.country!==w.a&&c.country!==w.b)continue;const o=S.own[c.id];if(!o)continue;const k=Object.keys(o).filter(x=>o[x]).length;if(!k)continue;n+=k;const m=warMult(c);loss+=Math.max(0,cityProfit(c))/m*(1-m)}return{n,loss}}
-function cfHtml(w){const days=w.d0!=null?Math.max(0,S.day-w.d0):null,ex=cfExposure(w),c=warCost(w),ag=w.att&&(w.att===w.a||w.att===w.b)?w.att:null;
+function cfHtml(w){if(w.pm)return bgPopMil(w);const bg=w.l>=3?bgFor(w):null,days=w.d0!=null?Math.max(0,S.day-w.d0):null,ex=cfExposure(w),c=warCost(w),ag=w.att&&(w.att===w.a||w.att===w.b)?w.att:null;
   return `<button class="x" data-cf="x" aria-label="Close">×</button><h4>${w.a} – ${w.b}</h4>
   <span class="tag" style="background:${WARC[w.l]};color:#fff">${WARL[w.l].toUpperCase()}</span>${ag?` <span class="m">started by ${ag}</span>`:""}
   <div class="stg">${[1,2,3,4].map(l=>`<i style="${l<=w.l?"background:"+WARC[l]:""}"></i>`).join("")}</div><div class="stl"><span>Tension</span><span>Sanctions</span><span>Clashes</span><span>War</span></div>
-  <p><b>Effect in ${w.a} and ${w.b}:</b> ${CF_EFF[w.l]}.</p>${wmdNote(w)}
+  ${bg?bgBlock(bg):""}<p><b>Effect in ${w.a} and ${w.b}:</b> ${CF_EFF[w.l]}.</p>${wmdNote(w)}
   <p class="m">${days!=null?`Running ${days} day${days===1?"":"s"}. `:"Ongoing. "}No fixed end: each day it can escalate or ease until a peace deal.</p>
   <p class="m">${ex.n?`Your ${ex.n} business${ex.n===1?"":"es"} there lose about ${fmt(ex.loss)}/hr to conflicts.`:"You have no businesses in either country."}</p>
   <div class="bt"><button class="chip" data-cf="peace" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="chip" data-cf="gov">Gov tab</button></div>`}
@@ -2408,13 +2422,14 @@ function cfOpen(w,x,y){const el=document.getElementById("cfpop");_cfPop={id:w.id
 function cfClose(){_cfPop=null;const el=document.getElementById("cfpop");if(el)el.hidden=true;draw()}
 document.getElementById("cfchip").addEventListener("click",()=>{S.cfOff=cfOn()?1:0;if(!S.cfOff)delete S.cfOff;_cfKey="";if(!cfOn())cfClose();cfChip();draw();save()});
 document.getElementById("cfpop").addEventListener("click",e=>{const b=e.target.closest("[data-cf]");if(!b||!_cfPop)return;const w=(S.wars||[]).find(x=>x.id===_cfPop.id);
-  if(b.dataset.cf==="x"||!w){cfClose();return}
+  if(b.dataset.cf==="mil"){cfClose();PH.open=true;PH.app="govt";govTab="mil";phRender();return}
+  if(b.dataset.cf==="x"||(!w&&!bgPseudoOpen())){cfClose();return}
   if(b.dataset.cf==="gov"){const c=cfCap(w.a);cfClose();tab="gov";openCity(c);return}
   if(b.dataset.cf==="peace"){warAct(w.id,"peace");hud();if(sel)renderSheet();const w2=(S.wars||[]).find(x=>x.id===w.id);if(w2)cfOpen(w2,_cfPop.x,_cfPop.y);else cfClose();_cfKey="";cfChip()}});
 /* gentle pulse for clashes/wars (about 12 fps, only while one is drawn on the globe view); also keeps the chip in sync */
 let cfLast=0,cfChipT=0;function cfLoop(t){const st=typeof inStreet!=="undefined"&&inStreet;
-  if(t-cfChipT>500){cfChipT=t;cfChip();if(_cfPop&&!(S.wars||[]).some(w=>w.id===_cfPop.id))cfClose()}
-  if(!st&&cfOn()&&document.visibilityState==="visible"&&!(typeof reduce!=="undefined"&&reduce)&&t-cfLast>80&&(S.wars||[]).some(w=>w.l>=3)){cfLast=t;draw()}requestAnimationFrame(cfLoop)}
+  if(t-cfChipT>500){cfChipT=t;cfChip();if(_cfPop&&!(S.wars||[]).some(w=>w.id===_cfPop.id)&&!bgPseudoOpen())cfClose()}
+  if(!st&&cfOn()&&document.visibilityState==="visible"&&!(typeof reduce!=="undefined"&&reduce)&&t-cfLast>80&&((S.wars||[]).some(w=>w.l>=3)||bgMilKeys().length)){cfLast=t;draw()}requestAnimationFrame(cfLoop)}
 requestAnimationFrame(cfLoop);
 /* ---------- NPC governments: economy, diplomacy, conquest ("Diplomacy & power") ----------
    MODEL (all state in S.dip, created lazily by dip(); every field has a safe default, so old saves load):
@@ -3604,7 +3619,8 @@ function milHour(quiet){const p=S.pol;if(!p||!p.mil)return;const m=mil(),C=MILCF
   else m.morale+=(C.moraleBase-m.morale)*.05;
   for(let i=m.rep.length-1;i>=0;i--){const r=m.rep[i],v=Math.min(r.left,r.per);S.cash-=v;r.left-=v;if(r.left<=1)m.rep.splice(i,1)}
   let sup=0,nw=0;
-  for(const n in m.wars){const w=m.wars[n],s=milSupply(n);sup+=s;nw++;
+  for(const n in m.wars){const w=m.wars[n],s=milSupply(n);sup+=s;nw++;w.myMax=Math.max(w.myMax||0,milStr(w.terrain)); // display only: peak strength for the boots-on-the-ground bar
+   
     const ps=milStr(w.terrain)*(.4+.6*m.morale/100)*(s/100)*(1+(Math.random()*2-1)*C.battleNoise),es=w.enemyStr*C.defBonus*(1+(Math.random()*2-1)*C.battleNoise),tot=ps+es||1,r=ps/tot;
     const mv=(r-.5)*2*C.frontSwing;w.front=Math.max(0,Math.min(100,w.front+mv));
     const myStr=milStr()||1;milKill(m,C.loss*(es/tot)*Math.min(2,es/myStr));w.enemyStr=Math.max(0,w.enemyStr-w.enemyStr*C.loss*2*r)+w.enemyMax*C.enemyRegen;
@@ -3625,6 +3641,7 @@ function milApp(){const p=pol(),m=mil(),C=MILCFG,U=C.units,now=Date.now(),lead=p
   const gar=milGar(),upk=milUpkeep(),free=Object.keys(U).reduce((a,k)=>a+(m.units[k]||0),0)-gar;let h=!lead&&upk>0&&free>0?`<div class="ph-card" style="background:${S.cash<upk*24?"#7f1d1d":"#374151"};color:#fff;margin-bottom:8px"><b>${S.cash<0?"Your reserve army is putting you in debt":S.cash<upk*24?"Cash is running low":"Army in reserve"}</b><br>Reserve upkeep costs ${fmt(upk)}/hr while you're out of office. Disband the army to stop the drain${gar?" (garrisons stay)":""}.<button class="buy" data-ph="mildisall" style="width:100%;margin-top:6px;color:#fff;background:#374151!important;border-color:#f59e0b">Disband army</button></div>`:"";h+=`<div class="ph-rows"><div><span>Strength</span><b>${Math.round(milStr())}</b></div><div><span>Morale</span><b style="color:${m.morale<40?"#f87171":"#4ade80"}">${Math.round(m.morale)}%</b></div><div><span>Supply</span><b>${Math.round(m.supply)}%</b></div><div><span>Upkeep${lead?"":" (reserve)"}</span><b>${fmt(milUpkeep())}/hr</b></div>${gar?`<div><span>On garrison</span><b>${gar} inf</b></div>`:""}${m.rep.length?`<div><span>Reparations owed</span><b style="color:#f87171">${fmt(m.rep.reduce((a,r)=>a+r.left,0))}</b></div>`:""}</div>`;
   const bx=(a,k,t,bg,dis,w)=>`<button class="buy" data-ph="${a}" data-k="${k}" style="${dis?"":`color:#fff;background:${bg}!important;`}border-color:#f59e0b;padding:4px 6px;margin:0;font-size:11px;white-space:nowrap;${w?"flex:1;min-width:0":"width:34px;min-width:0;flex:none"}" ${dis?"disabled":""}>${t}</button>`;
   const urow=(top,sub,btns)=>`<div style="display:block"><div style="display:flex;justify-content:space-between;gap:6px;align-items:baseline"><span>${top}</span><small style="opacity:.7;text-align:right">${sub}</small></div><div style="display:flex;gap:5px;margin-top:4px">${btns}</div></div>`;
+  h+=bgCard();
   h+=`<div class="ph-sub" style="margin-top:10px">Army${lead&&!here?` · recruit from ${p.c}`:""}${lead?"":` · <span style="color:#fbbf24">Reserve (${Math.round(C.reserveUp*100)}% upkeep)</span>`}</div><div class="ph-rows">${Object.keys(U).map(k=>urow(`${U[k].n} <b>× ${m.units[k]}</b>`,`str ${U[k].str} · ${fmt(U[k].up*(lead?1-presFx("upk"):C.reserveUp))}/hr ea`,bx("milrec",k,`+${C.batch} · ${fmt(milBatchCost(k))}`,"#7f1d1d",!lead||!here||S.cash<milBatchCost(k),1)+bx("mildis",k,"−","#374151",!m.units[k]))).join("")}</div>`;
   const wk=Object.keys(m.wars);
   for(const n of wk){const w=m.wars[n],pc=Math.max(0,w.pcd-now);
@@ -6412,6 +6429,53 @@ function isAct(a,b){const is=ISS();let done=false;
   is.force=true;dxRender()}
 function isWire(el){el.addEventListener("click",e=>{const b=e.target.closest("[data-is]");if(!b||b.disabled)return;try{isAct(b.dataset.is,b)}catch(err){console.warn("ish",err)}})}
 
+/* ---------- Boots on the ground (display only: no war maths, no new save state except optional w.myMax = peak army strength) ----------
+   Player wars: S.pol.mil.wars[n] (since, front, enemyStr/enemyMax, terrain, weariness; own bar = milStr(terrain) over its peak w.myMax).
+   Invasions of the player: S.dip.inv (stage 2: atk/def force per day, prog). AI wars: S.wars with l>=3; no per-side strength exists, so bars show
+   national power (dipPower) relative to the stronger side, labelled "est.". */
+function bgMilKeys(){const m=S.pol&&S.pol.mil;return m&&m.wars&&typeof m.wars==="object"&&S.pol.c?Object.keys(m.wars):[]}
+function bgHr(){return Math.floor((Date.now()%DAYMS)/DAYMS*24)}
+function bgLerp(a,b,f){const A=cfCap(a),B=cfCap(b);return A&&B?d3.geoInterpolate([A.lon,A.lat],[B.lon,B.lat])(Math.max(.1,Math.min(.9,f))):null}
+function bgMil(n){const p=S.pol,m=p&&p.mil,w=m&&m.wars&&m.wars[n];if(!w||!p.c)return null;const cur=milStr(w.terrain);if(!(w.myMax>=cur))w.myMax=cur;
+  const el=Math.max(0,Date.now()-(w.since||Date.now()))/DAYMS,d=Math.floor(el);
+  return{k:"m"+n,a:p.c,b:n,clock:`Day ${d} · ${Math.floor((el-d)*24)}h`,pos:bgLerp(p.c,n,w.front/100),
+    sides:[{n:p.c+" (you)",col:"#3b82f6",cur,max:w.myMax},{n,col:"#ef4444",cur:w.enemyStr,max:w.enemyMax||w.enemyStr||1}],
+    fr:`Front ${Math.round(w.front)}/100`,mt:`${w.terrain} · morale ${Math.round(m.morale)}% · weariness ${Math.round(w.weariness)}`}}
+function bgInv(){const d=S.dip,inv=d&&d.inv;if(!inv||typeof inv!=="object"||inv.stage!==2)return null;const mx=Math.max(1,inv.atk||0,inv.def||0),m=S.pol&&S.pol.mil,days=Math.max(0,d.day-(inv.sd>=0?inv.sd:inv.day));
+  return{k:"i",a:inv.by,b:inv.n,clock:`Day ${days} · ${bgHr()}h`,pos:bgLerp(inv.by,inv.n,(inv.prog||0)/100),
+    sides:[{n:inv.n+(S.pol&&S.pol.c===inv.n?" (you)":""),col:"#3b82f6",cur:inv.def||0,max:mx},{n:inv.by,col:"#ef4444",cur:inv.atk||0,max:mx}],
+    fr:`Invader progress ${Math.round(inv.prog||0)}/100`,mt:`force this day${m?` · morale ${Math.round(m.morale)}%`:""}`}}
+function bgAi(w){const d=dip(),pa=Math.max(0,dipPower(w.a)),pb=Math.max(0,dipPower(w.b)),mx=Math.max(pa,pb,1e-9),days=Math.max(0,S.day-(w.d0!=null?w.d0:S.day));
+  return{k:"w"+w.id,a:w.a,b:w.b,est:1,clock:`Day ${days} · ${bgHr()}h`,pos:null,
+    sides:[{n:w.a,col:"#4aa3ff",cur:pa,max:mx},{n:w.b,col:"#ff7a59",cur:pb,max:mx}],fr:"",mt:"est. from national power"+(w.l<4?" · border clashes":"")}}
+function bgFor(w){const d=S.dip,inv=d&&d.inv;if(w.inv&&inv&&typeof inv==="object"&&inv.w===w.id){const b=bgInv();if(b)return b}return bgAi(w)}
+function bgGet(k){const c=k[0],r=k.slice(1);if(c==="m")return bgMil(r);if(c==="i")return bgInv();if(c==="w"){const w=(S.wars||[]).find(x=>String(x.id)===r);return w&&w.l>=3?bgFor(w):null}return null}
+function bgPseudo(n){return bgMil(n)?{id:"m"+n,pm:n,l:4,a:S.pol.c,b:n}:null}
+const bgPseudoOpen=()=>!!(_cfPop&&String(_cfPop.id)[0]==="m"&&_cfPop.id.length>1&&bgMil(_cfPop.id.slice(1)));
+const bgPct=s=>{const v=s.max>0?s.cur/s.max*100:0;return Number.isFinite(v)?Math.max(0,Math.min(100,v)):0};
+const bgTxt=(d,s)=>d.est?`${Math.round(bgPct(s))}% est.`:`${Math.round(Number.isFinite(s.cur)?s.cur:0)}/${Math.round(Number.isFinite(s.max)?s.max:0)} · ${Math.round(bgPct(s))}%`;
+function bgBlock(d){const esc=t=>String(t).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  return `<div class="bgx" data-bgk="${esc(d.k)}"><div class="bgh"><span>Battle clock</span><b data-f="clk">${d.clock}</b></div>`+
+  d.sides.map((s,i)=>`<div class="bgs"><span class="bgn" style="color:${s.col}">${esc(s.n)}</span><div class="bgb"><i data-f="b${i}" style="width:${bgPct(s)}%;background:${s.col}"></i></div><b data-f="t${i}">${bgTxt(d,s)}</b></div>`).join("")+
+  `<div class="bgm"><span data-f="fr">${d.fr}</span>${d.fr&&d.mt?" · ":""}<span data-f="mt">${esc(d.mt)}</span></div></div>`}
+/* in-place refresh of every boots block under root (no re-render, so focus and scroll stay put) */
+function bgFill(root){if(!root)return;for(const el of root.querySelectorAll("[data-bgk]")){const d=bgGet(el.dataset.bgk);if(!d)continue;
+  const set=(f,t)=>{const e=el.querySelector('[data-f="'+f+'"]');if(e&&e.textContent!==t)e.textContent=t};set("clk",d.clock);set("fr",d.fr);set("mt",d.mt);
+  d.sides.forEach((s,i)=>{const b=el.querySelector('[data-f="b'+i+'"]');if(b)b.style.width=bgPct(s)+"%";set("t"+i,bgTxt(d,s))})}}
+function bgCard(){const ks=bgMilKeys().map(n=>"m"+n),iv=bgInv();if(iv)ks.push("i");if(!ks.length)return"";
+  return `<div class="ph-sub" style="margin-top:10px">Boots on the ground</div><div data-bgsig="${ks.join("|").replace(/"/g,"")}">`+ks.map(k=>{const d=bgGet(k);return d?`<div role="button" tabindex="0" data-ph="bgfocus" data-k="${k.replace(/"/g,"")}" style="cursor:pointer">${bgBlock(d)}</div>`:""}).join("")+`</div><div class="ph-sub" style="font-size:11px;opacity:.7">Tap a war to centre the globe on its front.</div>`}
+function bgFocus(k){const d=bgGet(k);if(!d||!d.pos||(typeof inStreet!=="undefined"&&inStreet))return;PH.open=false;phRender();rotateTo({lon:d.pos[0],lat:d.pos[1]},Math.max(V.k,2.4))}
+function bgPopMil(w){const d=bgMil(w.pm);if(!d)return`<button class="x" data-cf="x" aria-label="Close">×</button>`;
+  return `<button class="x" data-cf="x" aria-label="Close">×</button><h4>${d.a} – ${d.b}</h4><span class="tag" style="background:${WARC[4]};color:#fff">YOUR WAR</span>${bgBlock(d)}<div class="bt"><button class="chip" data-cf="mil">Military tab</button></div>`}
+/* compact canvas label under a front badge: battle clock + two mini health bars */
+function bgLabel(ctx,x,y,zs,d){const fs=Math.round(Math.max(9,9*zs)),txt=d.clock.replace("Day ","D").replace(" · ","·")+(d.est?" est.":"");ctx.save();ctx.font=`700 ${fs}px system-ui, sans-serif`;
+  const w=Math.max(Math.ceil(ctx.measureText(txt).width)+10,64),h=fs+11,x0=x-w/2;ctx.globalAlpha=.88;ctx.fillStyle="#0b1220";ctx.beginPath();
+  if(ctx.roundRect)ctx.roundRect(x0,y,w,h,5);else ctx.rect(x0,y,w,h);ctx.fill();ctx.globalAlpha=1;ctx.fillStyle="#fff";ctx.textAlign="center";ctx.textBaseline="top";ctx.fillText(txt,x,y+2);
+  const bw=(w-12)/2,by=y+fs+5;d.sides.forEach((s,i)=>{const bx=x0+4+i*(bw+4);ctx.globalAlpha=.35;ctx.fillStyle="#8892a6";ctx.fillRect(bx,by,bw,4);ctx.globalAlpha=d.est?.7:1;ctx.fillStyle=s.col;ctx.fillRect(bx,by,bw*bgPct(s)/100,4)});ctx.restore()}
+setInterval(()=>{try{if(_cfPop){const el=document.getElementById("cfpop");if(el&&!el.hidden)bgFill(el)}
+  if(PH.open&&PH.app==="govt"&&govTab==="mil"){const card=PH.el.querySelector("[data-bgsig]"),sig=bgMilKeys().map(n=>"m"+n).concat(bgInv()?["i"]:[]).join("|");
+    if((card?card.dataset.bgsig:"")!==sig){if(Date.now()-(PH.touched||0)>=3000&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)))phRender()}
+    else bgFill(PH.el)}}catch(e){console.warn("bgfill",e)}},2000);
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -6511,7 +6575,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="dashtruck"){DX.page="truck";dxOpen();return}
   else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
-  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
+  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
   else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
