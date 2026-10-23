@@ -5189,8 +5189,8 @@ function lxDeliver(v,d){const c=v.cargo;if(!c||!c.job)return false;const j=LX().
   if(j.kind==="mkt"&&lxCanSell(d,g)&&!unhOn(d)){const val=sellGood(d,g,q);S.cash+=val;S.earned=(S.earned||0)+val;j.val+=val;note=` and sold it for ${fmt(val)}`}
   else{ensureWh(d);S.inv[d.id][g]=(S.inv[d.id][g]||0)+q;j.val+=q*px(d,g);if(j.kind==="mkt")note=" (no buyer, held in the warehouse)"}
   lxLog(`${VEH[v.type].n} #${v.id} delivered ${lxg(q)} ${lxN(g).toLowerCase()} to ${d.name}${note}`);return true}
-function lxCancel(j){const stuck=S.fleet.filter(v=>v.cargo&&v.cargo.job===j.id).length;lxFinish(j,false,"Cancelled"+(stuck?`: ${stuck} load(s) still on the road will be stored on arrival`:""))}
-function lxRecall(v){if(!v.arr)return false;const now=Date.now(),T=v.arr-v.dep,el=Math.max(0,Math.min(T,now-v.dep)),o=v.from;v.from=v.dest;v.dest=o;v.dep=now-(T-el);v.arr=now+el;v.route=null;v.job=0;if(v.cargo&&v.cargo.job)v.cargo.rc=1;return true}
+function lxCancel(j){let n=0;for(const v of S.fleet)if(v.arr&&v.cargo&&v.cargo.job===j.id&&lxRecall(v))n++;lxFinish(j,false,"Cancelled"+(n?`: ${n} load(s) on the road recalled to ${CITIES[j.from].name}`:""))}
+function lxRecall(v){if(!v.arr||(v.cargo&&v.cargo.rc))return false;const now=Date.now(),T=v.arr-v.dep,el=Math.max(0,Math.min(T,now-v.dep)),o=v.from;v.from=v.dest;v.dest=o;v.dep=now-(T-el);v.arr=now+el;v.route=null;v.job=0;if(v.cargo&&v.cargo.job)v.cargo.rc=1;return true}
 /* ----- hired shipments ----- */
 function lxShArrive(s){const X=LX(),A=CITIES[s.from],B=CITIES[s.to],rn=(RIVALS[s.ri]||{n:"Carrier"}).n;let ok=true,val=0,note="";const nm=s.k==="s"?lxStockName(s.g):lxN(s.g);
   const back=()=>{if(s.k==="g"){ensureWh(A);S.inv[A.id][s.g]=(S.inv[A.id][s.g]||0)+s.q}else S.stock[bkey(A,s.g)]=(S.stock[bkey(A,s.g)]||0)+s.q};
@@ -5472,7 +5472,7 @@ function lxFleetTab(lg){const X=LX(),now=Date.now();let h="";
   h+=`</div><div class="mdx-card"><div class="mdx-ch"><h3>Vehicles</h3></div>`;
   if(!S.fleet.length)h+=`<div class="mdx-empty">No vehicles. Buy one below, or hire a carrier from the Send tab.</div>`;
   for(const v of S.fleet.slice(0,40)){const V=VEH[v.type],mv=lg.mv&&lg.mv.id===v.id;let st,tag="",acts="";
-    if(v.arr){const A=CITIES[v.from],B=CITIES[v.dest];st=`${dxE(A.name)} → ${dxE(B.name)} · arrives in ${dxIn(v.arr-now)}${v.cargo?` · carrying ${lxg(v.cargo.q)} ${dxE(lxN(v.cargo.g).toLowerCase())}`:" · empty"}`;acts=`<button class="lx-btn" data-lx="vrec" data-id="${v.id}">Recall</button>`}
+    if(v.arr){const A=CITIES[v.from],B=CITIES[v.dest];st=`${dxE(A.name)} → ${dxE(B.name)} · arrives in ${dxIn(v.arr-now)}${v.cargo?` · carrying ${lxg(v.cargo.q)} ${dxE(lxN(v.cargo.g).toLowerCase())}`:" · empty"}`;acts=v.cargo&&v.cargo.rc?"":`<button class="lx-btn" data-lx="vrec" data-id="${v.id}">Recall</button>`}
     else{const c=CITIES[v.city];st=c?`Idle in ${dxE(c.name)}${v.cargo?` · holding ${lxg(v.cargo.q)} ${dxE(lxN(v.cargo.g).toLowerCase())}`:""}`:"Parked";
       if(v.route){const r=v.route;tag=`<span class="lx-tag g">ROUTE</span>`;st=`Route ${dxE(CITIES[r.from].name)} ⇄ ${dxE(CITIES[r.to].name)} · ${dxE(lxN(r.g))} · at ${c?dxE(c.name):"?"}`;acts=`<button class="lx-btn" data-lx="vstop" data-id="${v.id}">Stop route</button>`}
       else if(v.job){tag=`<span class="lx-tag b">JOB</span>`;acts=`<button class="lx-btn" data-lx="vrel" data-id="${v.id}">Release</button>`}
@@ -5538,7 +5538,7 @@ function lxAct(a,b){const lg=LGS(),X=LX(),f=lg.f;if(a!=="odel"&&a!=="jcancel")lg
   else if(a==="otog"){const o=X.ord.find(x=>x.id===+b.dataset.id);if(o){o.on=!o.on;done=true}}
   else if(a==="orun"){const o=X.ord.find(x=>x.id===+b.dataset.id);if(o){const n=lxRunOrd(o,lxc().perOrd,false);lxNote(`${lxOrdText(o)}: ${o.why}`);done=!!n}}
   else if(a==="odel"){const k="o"+b.dataset.id;if(lg.arm!==k){lg.arm=k}else{X.ord=X.ord.filter(x=>x.id!==+b.dataset.id);lg.arm=null;done=true}}
-  else if(a==="jcancel"){const k="j"+b.dataset.id;if(lg.arm!==k)lg.arm=k;else{const j=X.jobs.find(x=>x.id===+b.dataset.id);lg.arm=null;if(j){lxCancel(j);lxNote("Shipment cancelled. Unsent goods are back in the source warehouse.");done=true}}}
+  else if(a==="jcancel"){const k="j"+b.dataset.id;if(lg.arm!==k)lg.arm=k;else{const j=X.jobs.find(x=>x.id===+b.dataset.id);lg.arm=null;if(j){lxCancel(j);lxNote("Shipment cancelled. Unsent goods are back in the source warehouse; loads on the road are heading back.");done=true}}}
   else if(a==="vrec"){const v=S.fleet.find(x=>x.id===+b.dataset.id);if(v&&lxRecall(v)){lxNote(`${VEH[v.type].n} #${v.id} is heading back.`);done=true}}
   else if(a==="vstop"){const v=S.fleet.find(x=>x.id===+b.dataset.id);if(v){v.route=null;lxNote("Route stopped.");done=true}}
   else if(a==="vrel"){const v=S.fleet.find(x=>x.id===+b.dataset.id);if(v){v.job=0;lxNote(`${VEH[v.type].n} #${v.id} released from its job.`);done=true}}
