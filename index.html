@@ -298,7 +298,7 @@ button.buy:not(.up):not(:disabled){background:linear-gradient(180deg,color-mix(i
     <div id="street" hidden></div><div id="street3d" hidden></div>
     <canvas id="amb"></canvas>
     <canvas id="wx" hidden></canvas>
-    <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button><button id="st3d" class="chip">3D</button></div>
+    <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button><button id="st3d" class="chip">3D</button><button id="st3dt" class="chip" hidden title="Light or dark 3D map">☾ Dark</button></div>
     <div id="placebar" hidden></div>
     <button id="tostreet" class="chip" hidden>View streets</button>
     <div id="hint">Drag to spin · pinch or scroll on a city to zoom into its streets · double-tap a city</div>
@@ -1717,7 +1717,14 @@ function buyListing(o){if(S.sold&&S.sold[o.id])return closeOffer();if(S.cash<o.p
   closeOffer();save();hud();renderPins();if(sheet.classList.contains("open")&&sel)renderSheet();
   toast(`Bought ${/^[aeiou]/i.test(o.P.n)?"an":"a"} ${o.P.n.toLowerCase()}${o.addr?" at "+o.addr:" in "+o.c.name} for ${fmt(o.price)}. Listed at 75% of market.`);bigMove(`${/^[aeiou]/i.test(o.P.n)?"an":"a"} ${o.P.n.toLowerCase()} in ${o.c.name} was bought for ${fmt(o.price)}`,o.price)}
 /* ---------- 3D view: tilted vector map with extruded buildings (MapLibre + OpenFreeMap), loaded on first use. Flat Leaflet stays for placing and for-sale pins. ---------- */
-const ML_VER="4.7.1",ML_STYLE=window.MERIDIAN_3D_STYLE||"https://tiles.openfreemap.org/styles/liberty";
+const ML_VER="4.7.1",ML_STYLES={light:window.MERIDIAN_3D_STYLE||"https://tiles.openfreemap.org/styles/liberty",dark:window.MERIDIAN_3D_STYLE_DARK||"https://tiles.openfreemap.org/styles/dark"};
+/* light or dark 3D map: your pick is remembered; with no pick it follows the device theme */
+const dark3d=()=>{try{const v=localStorage.getItem("meridian-3d-dark");if(v!=null)return v==="1"}catch(e){}const t=document.documentElement.dataset.theme;return t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches)};
+const ML_STYLE=()=>ML_STYLES[dark3d()?"dark":"light"];const st3t=$("#st3dt");
+function theme3dBtn(){st3t.textContent=dark3d()?"☀ Light":"☾ Dark";st3t.hidden=!in3d}
+function toggle3dTheme(){try{localStorage.setItem("meridian-3d-dark",dark3d()?"0":"1")}catch(e){}theme3dBtn();
+  if(MM){MM.once("style.load",()=>{ensure3dBuildings();pins3d()});MM.setStyle(ML_STYLE(),{diff:false})}}
+st3t.onclick=toggle3dTheme;
 let MM=null,mlLoad=null,in3d=false,mlMarks=[];const want3d=()=>{try{return !placing&&localStorage.getItem("meridian-3d")==="1"}catch(e){return false}};const st3=$("#street3d"),st3b=$("#st3d");
 function loadML(){if(window.maplibregl)return Promise.resolve(window.maplibregl);
   return mlLoad||(mlLoad=new Promise((res,rej)=>{const l=document.createElement("link");l.rel="stylesheet";l.href=`https://unpkg.com/maplibre-gl@${ML_VER}/dist/maplibre-gl.css`;document.head.appendChild(l);
@@ -1727,7 +1734,7 @@ function ensure3dBuildings(){try{const st=MM.getStyle();if(!st||st.layers.some(l
   const src=Object.keys(st.sources).find(k=>st.sources[k].type==="vector");if(!src)return;
   const lab=st.layers.find(l=>l.type==="symbol");
   MM.addLayer({id:"meridian-3d-buildings",type:"fill-extrusion",source:src,"source-layer":"building",minzoom:14,
-    paint:{"fill-extrusion-color":["interpolate",["linear"],["coalesce",["get","render_height"],8],0,"#dfe3e8",60,"#aab4c2",200,"#7f8ea3"],
+    paint:{"fill-extrusion-color":dark3d()?["interpolate",["linear"],["coalesce",["get","render_height"],8],0,"#3a4350",60,"#4f5b6b",200,"#6b7a8f"]:["interpolate",["linear"],["coalesce",["get","render_height"],8],0,"#dfe3e8",60,"#aab4c2",200,"#7f8ea3"],
       "fill-extrusion-height":["coalesce",["get","render_height"],8],"fill-extrusion-base":["coalesce",["get","render_min_height"],0],"fill-extrusion-opacity":.9}},lab?lab.id:undefined)}catch(e){console.warn("3D buildings",e)}}
 function pins3d(){for(const m of mlMarks)m.remove();mlMarks=[];if(!MM)return;ensurePositions();
   for(const e of entities()){const p=S.pos[e.key];if(!p)continue;const [col,t0]=PIN[e.cls]||["#333","•"],txt=e.cls==="biz"?(BIZTAG[e.key.split(":")[2]]||t0):t0;
@@ -1738,12 +1745,12 @@ async function enter3d(){if(in3d)return;if(placing||offer){toast("Finish placing
   st3b.disabled=true;st3b.textContent="3D…";
   try{await loadML()}catch(e){st3b.disabled=false;st3b.textContent="3D";toast("3D view needs an internet connection");return}
   st3b.disabled=false;if(!inStreet)return;
-  try{localStorage.setItem("meridian-3d","1")}catch(e){}const c=LM.getCenter(),z=Math.max(LM.getZoom()-1,14.5);in3d=true;st3.hidden=false;st3b.textContent="2D";
-  if(!MM){MM=new maplibregl.Map({container:st3,style:ML_STYLE,center:[c.lng,c.lat],zoom:z,pitch:60,bearing:-20,maxPitch:75,attributionControl:{compact:true}});
+  try{localStorage.setItem("meridian-3d","1")}catch(e){}const c=LM.getCenter(),z=Math.max(LM.getZoom()-1,14.5);in3d=true;st3.hidden=false;st3b.textContent="2D";theme3dBtn();
+  if(!MM){MM=new maplibregl.Map({container:st3,style:ML_STYLE(),center:[c.lng,c.lat],zoom:z,pitch:60,bearing:-20,maxPitch:75,attributionControl:{compact:true}});
     MM.addControl(new maplibregl.NavigationControl({visualizePitch:true}),"bottom-right");MM.on("error",e=>console.warn("3D map",e&&e.error&&e.error.message));MM.on("load",()=>{ensure3dBuildings();pins3d()});
     MM.on("zoomend",()=>{if(in3d&&MM.getZoom()<11)exit3d(true)})}
   else{MM.resize();MM.jumpTo({center:[c.lng,c.lat],zoom:z,pitch:60,bearing:-20});pins3d()}}
-function exit3d(sync){if(!in3d)return;in3d=false;if(sync)try{localStorage.removeItem("meridian-3d")}catch(e){}st3.hidden=true;st3b.textContent="3D";
+function exit3d(sync){if(!in3d)return;in3d=false;st3t.hidden=true;if(sync)try{localStorage.removeItem("meridian-3d")}catch(e){}st3.hidden=true;st3b.textContent="3D";
   if(sync&&MM&&LM){const c=MM.getCenter();LM.setView([c.lat,c.lng],Math.min(19,Math.round(MM.getZoom()+1)),{animate:false})}}
 st3b.onclick=()=>in3d?exit3d(true):enter3d();
 $("#stback").onclick=leaveStreet;
