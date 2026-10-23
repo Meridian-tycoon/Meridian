@@ -1153,6 +1153,10 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-life]");if(!b
 S.hq=S.hq||{};S.reg=S.reg||{};S.bonus=S.bonus||{};
 const TAXDAYS=7,TAXP=TAXDAYS*24*DAYMS,TAX_REG=.2,TAX_UNREG=.4;
 if(!S.tax)S.tax={start:Date.now(),reg:0,unreg:0,paid:0};
+/* tax evasion: hide a share of taxable profit. Heat builds while hiding; audits claw back the saved tax plus a penalty */
+const EVADE={lv:[0,.25,.5,.75],gain:[0,4,9,18],decay:3,pen:1.5,lockD:3,minD:1/24};
+function evS(){const t=S.tax;if(!Number.isFinite(t.hide)||t.hide<0||t.hide>3)t.hide=0;t.hide=Math.floor(t.hide);for(const k of["heat","ev","saved","fined","audits","lock","lastAudit"])if(!Number.isFinite(t[k])||t[k]<0)t[k]=0;t.heat=Math.min(100,t.heat);return t}
+evS();
 const hqCost=c=>Math.round(35000*PRICE[c.size]);
 const hqUpkeep=c=>Math.round(40*PRICE[c.size]);
 /* one HQ per country: an HQ in any city covers every city in that country */
@@ -1202,12 +1206,28 @@ function taxableRates(){let reg=0,un=0;const wr=c=>taxRateC(c)/TAX_REG,wu=c=>(ta
   return{reg,un}}
 /* one tax bill never exceeds 48 h of current income or 25% of net worth (whichever is larger), min $10k; the rest is written off */
 const taxCap=()=>{let inc=0,nw=0;try{inc=Math.max(0,incomeHr());nw=Math.max(0,totals().nw||0)}catch(e){}return Math.max(10000,48*inc,.25*nw)};
-function runTax(hours,now){const r=taxableRates();S.tax.reg+=r.reg*hours;S.tax.unreg+=r.un*hours;
+const evLevel=()=>{const t=evS();return Date.now()<t.lock?0:t.hide};
+/* one audit: back taxes (what you saved) + penalty, capped; heat reset, evasion locked for a few days */
+function evAudit(quiet,forced){const t=evS(),E=Math.round(t.ev);if(E<=0&&!forced)return 0;
+  const full=E*(1+EVADE.pen),due=Math.min(full,Math.max(E,Math.round(taxCap())));S.cash-=due;t.fined+=due;t.audits++;t.ev=0;t.heat=25;t.lock=Date.now()+EVADE.lockD*DAYMS;t.lastAudit=Date.now();
+  if(!quiet){S.log.unshift(`Tax audit: evasion found. Paid ${fmt(due)} (${fmt(E)} back taxes + penalty). Evasion locked for ${EVADE.lockD} days`);S.log=S.log.slice(0,3);if(typeof toast==="function")toast("Tax audit! You paid "+fmt(due)+" in back taxes and fines","bad")}
+  return due}
+function evStep(d,quiet,act){const t=evS(),lv=act?evLevel():0,law=(typeof ownsAny==="function"&&ownsAny("lawfirm"))?.5:1;
+  t.heat=Math.max(0,Math.min(100,t.heat+(EVADE.gain[lv]*law-EVADE.decay)*d));
+  if(t.ev>0&&t.heat>0){const p=.12*Math.pow(t.heat/100,2);if(Math.random()<1-Math.pow(1-p,d))evAudit(quiet)}}
+function runTax(hours,now){const r=taxableRates(),h=EVADE.lv[evLevel()],t0=evS();S.tax.reg+=r.reg*hours*(1-h);S.tax.unreg+=r.un*hours*(1-h);
+  if(h>0){const sv=(r.reg*TAX_REG+r.un*TAX_UNREG)*hours*h;t0.ev+=sv;t0.saved+=sv}
+  {const n=Math.max(1,Math.min(168,Math.ceil(hours)));for(let i=0;i<n;i++)evStep(hours/n,hours>1,h>0&&r.reg+r.un>0)}
   if(!S.tax.warned&&S.tax.unreg>0){const un=S.tax.unreg*TAX_UNREG,inc=Math.max(1,incomeHr());if(un>Math.max(2000,24*inc)){S.tax.warned=1;
     S.log.unshift(`Tax warning: ${fmt(un)} unregistered tax building up (40% rate + audits). Open an HQ in the country to register and pay 20%`);S.log=S.log.slice(0,3);if(typeof toast==="function")toast("Unregistered tax is building up: open an HQ to register")}}
   while(now>=S.tax.start+TAXP){const full=Math.round(S.tax.reg*TAX_REG+S.tax.unreg*TAX_UNREG),due=Math.min(full,Math.round(taxCap()));S.cash-=due;S.tax.paid=(S.tax.paid||0)+due;
     S.log.unshift(`Tax year closed: paid ${fmt(due)} (${fmt(S.tax.reg*TAX_REG)} registered, ${fmt(S.tax.unreg*TAX_UNREG)} unregistered${due<full?`; capped, ${fmt(full-due)} written off`:""})`);S.log=S.log.slice(0,3);
     S.tax.start+=TAXP;S.tax.reg=0;S.tax.unreg=0;S.tax.warned=0}}
+function evHtml(){const t=evS(),lv=evLevel(),locked=Date.now()<t.lock,p=t.ev>0?.12*Math.pow(t.heat/100,2):0;
+  return `<div style="padding:10px 12px;border-top:1px solid var(--line,#2a3438)"><div class="n">Hide income <b style="font-family:var(--mono)">${Math.round(EVADE.lv[lv]*100)}%</b> <span class="tag ${t.heat>=60?"bust":t.heat>=30?"":"boom"}">Heat ${Math.round(t.heat)}/100</span></div>
+    <div class="d" style="margin-top:4px;line-height:1.4">Under-report profit to pay less tax, but heat rises (${EVADE.gain.slice(1).join("/")} per day at 25/50/75%, it cools ${EVADE.decay}/day). Audit chance now ${(p*100).toFixed(1)}%/day. A caught audit costs the saved tax plus ${EVADE.pen}x penalty (${fmt(Math.round(t.ev*(1+EVADE.pen)))} if it hit now) and locks evasion for ${EVADE.lockD} days. A law firm halves heat. Saved but unpunished: ${fmt(t.ev)} · all-time saved ${fmt(t.saved)} · fined ${fmt(t.fined)} (${t.audits} audit${t.audits===1?"":"s"})${locked?` · locked ${fmtDur(t.lock-Date.now())}`:""}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${EVADE.lv.map((v,i)=>`<button class="buy${t.hide===i?" up":""}" data-evade="${i}" ${locked&&i>0?"disabled":""}>${Math.round(v*100)}%</button>`).join("")}</div></div>`}
+document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("[data-evade]");if(!b)return;const t=evS();if(Date.now()<t.lock&&+b.dataset.evade>0)return;t.hide=Math.max(0,Math.min(3,+b.dataset.evade|0));save();if(typeof renderSheet==="function")renderSheet()});
 const taxOwed=()=>Math.round(S.tax.reg*TAX_REG+S.tax.unreg*TAX_UNREG);
 /* hourly audit risk for unregistered assets */
 function audits(quiet){for(const c of CITIES){let v=0,n=0;const o=S.own[c.id]||{};
@@ -1923,7 +1943,7 @@ function renderPortfolio(){const{inc,nw}=totals();
   h+=bankHtml();
   if(S.lst.length)h+=`<div class="sec">Market listings</div><div class="list">`+S.lst.map(l=>{const c=CITIES[l.city],stockLv=mLevel(c,l.g);return `<div class="row link" data-go="${c.id}"><div class="n">${G[l.g][0]} · ${c.name}</div><div class="d">${l.q<1e-6?"Sold out":gq(l.q)+" left at "+fmt(l.p)} · ${gq(l.sold||0)} sold · stock ${Math.round(stockLv*100)}%</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`;
   h+=`<div class="sec">Taxes · every ${TAXDAYS} days</div><div class="list"><div class="row"><div class="n">Owed this tax year <b style="font-family:var(--mono)">${fmt(taxOwed())}</b></div>
-    <div class="d">Due in ${fmtDur(S.tax.start+TAXP-Date.now())} · registered ${TAX_REG*100}%, unregistered ${TAX_UNREG*100}% plus audit risk · ${Object.keys(S.hq).filter(k=>S.hq[k]).length} HQs · ${fmt(S.tax.paid||0)} paid all-time</div><span></span></div></div>`;
+    <div class="d">Due in ${fmtDur(S.tax.start+TAXP-Date.now())} · registered ${TAX_REG*100}%, unregistered ${TAX_UNREG*100}% plus audit risk · ${Object.keys(S.hq).filter(k=>S.hq[k]).length} HQs · ${fmt(S.tax.paid||0)} paid all-time</div><span></span></div>${evHtml()}</div>`;
   const moving=S.fleet.filter(v=>v.arr);
   h+=`<div class="sec">Industry & logistics</div><div class="list"><div class="row"><div class="n">${S.sites.length} land plots · ${S.sites.filter(s=>s.op).length} running</div><div class="d">Upkeep <b>${fmt(indUpkeep())}</b>/hr · Rent <b>${fmt(rentTotal())}</b>/hr · ${S.fleet.length} vehicles</div><span></span></div>`+
    moving.map(v=>`<div class="row link" data-go="${v.dest}"><div class="n">${VEH[v.type].n} #${v.id} → ${CITIES[v.dest].name}</div><div class="d">${v.cargo?`${Math.round(v.cargo.q)} ${G[v.cargo.g][0].toLowerCase()}`:"empty"} from ${CITIES[v.from].name} · arrives in ${fmtDur(v.arr-Date.now())}</div><span style="color:var(--muted)">›</span></div>`).join("")+`</div>`;
