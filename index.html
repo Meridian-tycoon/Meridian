@@ -5736,8 +5736,8 @@ function ishBuy(k,q,fin){const i=ishC(k);if(!i)return"Unknown item";const s=ishW
   ISHV++;return""}
 function ishSell(k){const i=ishC(k),s=ishS(),n=s.own[k]||0;if(!i||!n)return"Nothing to sell";if(s.fin.some(f=>f.k===k))return"Pay off the finance deal first";
   if(i.tr){const l=LG();if(l.trucks-i.tr<Math.max(1,l.jobs.length))return"Trucks are out on contracts";l.trucks-=i.tr}
-  if(ishStorable(i)&&s.loc[k]){const m=Object.assign({},ishLoc(k));if(n-1<ishStored(k)){const c=Object.keys(m).pop();if(c){m[c]--;if(m[c]<=0)delete m[c]}}s.loc[k]=m} // unstored units are sold first, then the last-filled city
-  const per=(s.val[k]||0)/n;S.cash+=per*ISH_SELL;s.val[k]=per*(n-1);if(n-1<=0){delete s.own[k];delete s.val[k];delete s.loc[k]}else s.own[k]=n-1;
+  if(ishStorable(i)&&s.loc[k]){const m=Object.assign({},ishLoc(k));if(n-1<ishStored(k)){const lo=ishLo(k),ix=lo.findLastIndex(x=>m[x]>0),c=ix>=0?String(lo[ix]):Object.keys(m).pop();if(ix>=0)lo.splice(ix,1);if(c){m[c]--;if(m[c]<=0)delete m[c]}}s.loc[k]=m} // unstored units are sold first, then the most recently sent city (s.lo order, else the last-filled city)
+  const per=(s.val[k]||0)/n;S.cash+=per*ISH_SELL;s.val[k]=per*(n-1);if(n-1<=0){delete s.own[k];delete s.val[k];delete s.loc[k];if(s.lo)delete s.lo[k]}else s.own[k]=n-1;
   for(const j of ISH)if(j.prev===k&&!s.own[k]&&s.own[j.k]){} // dependants stay: the chain only gates new purchases
   ISHV++;return""}
 function ishC(k){return ISHC[k]}
@@ -5745,10 +5745,11 @@ function ishC(k){return ISHC[k]}
 const ishStorable=i=>i&&(i.cat==="veh"||i.cat==="mac");
 /* units stored per hub city (cities that lost their Trucking company no longer count) */
 function ishLoc(k){const s=ishS(),o=s.loc[k]||{},r={};let room=s.own[k]||0;const hs=hubs();for(const c of hs){const n=Math.min(room,o[c.id]||0);if(n>0){r[c.id]=n;room-=n}}return r}
+function ishLo(k){const s=ishS();if(!s.lo||typeof s.lo!=="object"||Array.isArray(s.lo))s.lo={};return Array.isArray(s.lo[k])?s.lo[k]:(s.lo[k]=[])} // send order (optional): one city id per send, oldest first
 function ishStored(k){let t=0;const o=ishLoc(k);for(const c in o)t+=o[c];return t}
 function ishMove(k,from,to){const i=ishC(k),s=ishS();if(!ishStorable(i)||!s.own[k])return"Nothing to move";if(!hubs().some(c=>String(c.id)===String(to)))return"Buy a Trucking company there first";
   const cur=ishLoc(k);if(from){if(!cur[from])return"Not stored there";if(String(from)===String(to))return""}else if(ishStored(k)>=s.own[k])return"All units are already stored";
-  const m=s.loc[k]=Object.assign({},cur);if(from){m[from]--;if(m[from]<=0)delete m[from]}m[to]=(m[to]||0)+1;ISHV++;return""}
+  const m=s.loc[k]=Object.assign({},cur);if(from){m[from]--;if(m[from]<=0)delete m[from]}m[to]=(m[to]||0)+1;{const lo=ishLo(k),ix=from?lo.findLastIndex(x=>String(x)===String(from)):-1;if(ix>=0)lo.splice(ix,1);lo.push(+to);if(lo.length>200)lo.splice(0,lo.length-200)}ISHV++;return""}
 function ishLocTxt(k){const s=ishS(),n=s.own[k]||0,o=ishLoc(k),p=[];for(const c in o)p.push(`${o[c]} in ${CITIES[c].name}`);const u=n-ishStored(k);if(u>0)p.push(`${u} not stored`);return p.join(" · ")}
 /* ---- UI ---- */
 function ISS(){return DX.is=DX.is||{cat:"veh",q:1,fin:false,note:"",nt:0,force:false}}
