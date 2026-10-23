@@ -5017,7 +5017,11 @@ function ishS(){let s=S.ish;if(!s||typeof s!=="object"||Array.isArray(s))s=S.ish
   const num=(v,d,lo,hi)=>Number.isFinite(+v)&&v!==null&&v!==""&&v!==false?Math.max(lo,Math.min(hi,+v)):d;
   const own={},val={},st={};if(!s.own||typeof s.own!=="object")s.own={};if(!s.val||typeof s.val!=="object")s.val={};if(!s.st||typeof s.st!=="object")s.st={};
   for(const i of ISH){const n=Math.floor(num(s.own[i.k],0,0,i.max));if(n>0){own[i.k]=n;val[i.k]=num(s.val[i.k],i.cost*n,0,1e13)}const x=Math.floor(num(s.st[i.k],0,0,i.lim));if(x>0)st[i.k]=x}
-  s.own=own;s.val=val;s.st=st;s.fin=(Array.isArray(s.fin)?s.fin:[]).filter(f=>f&&ISHC[f.k]&&own[f.k]&&Number.isFinite(+f.left)&&Number.isFinite(+f.pay)&&+f.left>0&&+f.pay>0).slice(0,ISH_MAXFIN).map(f=>({k:f.k,n:Math.floor(num(f.n,1,1,99)),left:+f.left,pay:+f.pay}));
+  s.own=own;s.val=val;s.st=st;
+  const loc={};if(!s.loc||typeof s.loc!=="object"||Array.isArray(s.loc))s.loc={};
+  for(const i of ISH){if(i.cat!=="veh"&&i.cat!=="mac")continue;const o=s.loc[i.k];if(!own[i.k]||!o||typeof o!=="object"||Array.isArray(o))continue;let room=own[i.k];const m={};
+    for(const c in o){if(!CITIES[c])continue;const n=Math.min(room,Math.floor(num(o[c],0,0,own[i.k])));if(n>0){m[c]=n;room-=n}}if(Object.keys(m).length)loc[i.k]=m}
+  s.loc=loc;s.fin=(Array.isArray(s.fin)?s.fin:[]).filter(f=>f&&ISHC[f.k]&&own[f.k]&&Number.isFinite(+f.left)&&Number.isFinite(+f.pay)&&+f.left>0&&+f.pay>0).slice(0,ISH_MAXFIN).map(f=>({k:f.k,n:Math.floor(num(f.n,1,1,99)),left:+f.left,pay:+f.pay}));
   s.v=1;s.wk=Math.floor(num(s.wk,0,0,1e9));s.t=num(s.t,Date.now(),0,1e15);s.spent=num(s.spent,0,0,1e15);ishOk=s;ishEv=-1;return s}
 function ishN(k){try{return ishS().own[k]||0}catch(e){return 0}}
 const ishDim=n=>n>0?1+ISH_DIM*(n-1):0;
@@ -5067,10 +5071,20 @@ function ishBuy(k,q,fin){const i=ishC(k);if(!i)return"Unknown item";const s=ishW
   ISHV++;return""}
 function ishSell(k){const i=ishC(k),s=ishS(),n=s.own[k]||0;if(!i||!n)return"Nothing to sell";if(s.fin.some(f=>f.k===k))return"Pay off the finance deal first";
   if(i.tr){const l=LG();if(l.trucks-i.tr<Math.max(1,l.jobs.length))return"Trucks are out on contracts";l.trucks-=i.tr}
-  const per=(s.val[k]||0)/n;S.cash+=per*ISH_SELL;s.val[k]=per*(n-1);if(n-1<=0){delete s.own[k];delete s.val[k]}else s.own[k]=n-1;
+  if(ishStorable(i)&&s.loc[k]){const m=Object.assign({},ishLoc(k));if(n-1<ishStored(k)){const c=Object.keys(m).pop();if(c){m[c]--;if(m[c]<=0)delete m[c]}}s.loc[k]=m} // unstored units are sold first, then the last-filled city
+  const per=(s.val[k]||0)/n;S.cash+=per*ISH_SELL;s.val[k]=per*(n-1);if(n-1<=0){delete s.own[k];delete s.val[k];delete s.loc[k]}else s.own[k]=n-1;
   for(const j of ISH)if(j.prev===k&&!s.own[k]&&s.own[j.k]){} // dependants stay: the chain only gates new purchases
   ISHV++;return""}
 function ishC(k){return ISHC[k]}
+/* ---- storage: vehicles and machines can be stored in a city where you own a Trucking company (record only, no gameplay effect) ---- */
+const ishStorable=i=>i&&(i.cat==="veh"||i.cat==="mac");
+/* units stored per hub city (cities that lost their Trucking company no longer count) */
+function ishLoc(k){const s=ishS(),o=s.loc[k]||{},r={};let room=s.own[k]||0;const hs=hubs();for(const c of hs){const n=Math.min(room,o[c.id]||0);if(n>0){r[c.id]=n;room-=n}}return r}
+function ishStored(k){let t=0;const o=ishLoc(k);for(const c in o)t+=o[c];return t}
+function ishMove(k,from,to){const i=ishC(k),s=ishS();if(!ishStorable(i)||!s.own[k])return"Nothing to move";if(!hubs().some(c=>String(c.id)===String(to)))return"Buy a Trucking company there first";
+  const cur=ishLoc(k);if(from){if(!cur[from])return"Not stored there";if(String(from)===String(to))return""}else if(ishStored(k)>=s.own[k])return"All units are already stored";
+  const m=s.loc[k]=Object.assign({},cur);if(from){m[from]--;if(m[from]<=0)delete m[from]}m[to]=(m[to]||0)+1;ISHV++;return""}
+function ishLocTxt(k){const s=ishS(),n=s.own[k]||0,o=ishLoc(k),p=[];for(const c in o)p.push(`${o[c]} in ${CITIES[c].name}`);const u=n-ishStored(k);if(u>0)p.push(`${u} not stored`);return p.join(" · ")}
 /* ---- UI ---- */
 function ISS(){return DX.is=DX.is||{cat:"veh",q:1,fin:false,note:"",nt:0,force:false}}
 function ishWorth(i,z){const n=z?0:ishN(i.k),m=n?ISH_DIM:1,e=i.eff;let v=0;
@@ -5083,12 +5097,20 @@ function ishEffTxt(i){const e=i.eff,p=[],pc=x=>(x>0?"+":"")+Math.round(x*1000)/1
   if(i.tr)p.push(`+${i.tr} truck${i.tr>1?"s":""}`);if(e.pay)p.push(`contract pay ${pc(e.pay)} (fleet avg)`);if(e.spd)p.push(`speed ${pc(e.spd)}`);
   if(e.farm&&e.farm===e.mine&&e.mine===e.fac)p.push(`${pc(e.farm)} all land output`);else{if(e.farm)p.push(`farm ${pc(e.farm)}`);if(e.mine)p.push(`mine ${pc(e.mine)}`);if(e.fac)p.push(`factory ${pc(e.fac)}`)}
   if(e.ret)p.push(`retail ${pc(e.ret)}`);if(e.biz)p.push(`all businesses ${pc(e.biz)}`);if(e.wh)p.push(`warehouse ${pc(e.wh)}`);if(e.upk)p.push(`land upkeep -${Math.round(e.upk*100)}%`);if(e.rp)p.push(`+${e.rp} RP/hr`);return p.join(" · ")}
+function ishStoreHtml(i,n){const hs=hubs(),o=ishLoc(i.k),u=n-ishStored(i.k),pk=ISS().pk,open=pk&&pk.k===i.k;
+  let h=`<small>Stored: ${dxE(ishLocTxt(i.k))}</small><div class="lx-pre" style="margin-top:4px">`;
+  if(u>0)h+=`<button class="lx-btn" data-is="send" data-k="${i.k}" data-f="">Send to...</button>`;
+  for(const c in o)h+=`<button class="lx-btn" data-is="send" data-k="${i.k}" data-f="${c}" title="Move one unit out of ${dxE(CITIES[c].name)}">Move 1 from ${dxE(CITIES[c].name)}</button>`;
+  h+=`</div>`;
+  if(open){h+=`<div class="lx-note" style="margin-top:6px">`+(hs.length?`<b>Send 1 ${dxE(i.n.toLowerCase())}${pk.f?" from "+dxE(CITIES[pk.f]?CITIES[pk.f].name:""):""} to:</b> `+hs.map(c=>`<button class="lx-btn" data-is="to" data-k="${i.k}" data-f="${pk.f}" data-c="${c.id}">${dxE(c.name)}</button>`).join(" ")+`<br><small>Storing only records where the unit is kept; fleet, pay and output are unchanged. Moving is free. Selling works from anywhere.</small>`:`Buy a Trucking company first, then you can store vehicles and machines in that city.`)+` <button class="lx-btn" data-is="pkx">Close</button></div>`}
+  return h}
 function ishCard(i){const s=ishWk(),n=s.own[i.k]||0,left=ishLeft(i),rq=ishReq(i),q=Math.max(1,Math.min(ISS().q,i.max-n,left)),full=n>=i.max,out=left<=0;
   const tot=ishQuote(i,q),down=Math.round(tot*ISH_DOWN),fin=ISS().fin,need=fin?down:tot,can=!rq.length&&!full&&!out&&S.cash>=need&&(!fin||s.fin.length<ISH_MAXFIN);
   const mk=ishMk(i.cat),w=ishWorth(i),sell=s.fin.some(f=>f.k===i.k)?"":"";
   const lbl=full?"Max owned":out?"Sold out":rq.length?"Locked":fin?`${fmt(down)} down`:`Buy ${q>1?q+" · ":""}${fmt(tot)}`;
   return `<div class="lx-it"><div class="m"><b>${dxE(i.n)}<span class="lx-tag ${n?"g":""}">${n}/${i.max} owned</span><span class="lx-tag ${out?"r":left<=1?"y":"b"}">${out?"No stock":left+" in stock"}</span>${i.prev?`<span class="lx-tag">Tier after ${dxE(ISHC[i.prev].n)}</span>`:""}</b>
     <span>${dxE(i.d)}</span><small>${dxE(ishEffTxt(i))}${i.up?` · upkeep ${fmt(i.up)}/hr each`:""} · price ${fmt(ishQuote(i,1))} (market ${mk>=1?"+":""}${Math.round((mk-1)*100)}%)${q>1?` · ${q} for ${fmt(tot)}${ishDisc(q)?` after ${Math.round(ishDisc(q)*100)}% bulk discount`:""}`:""}${w>0?` · worth about ${fmt(w)}/hr to you now`:i.tr&&!hubs().length?" · needs a Trucking hub to earn":""}</small>
+    ${n&&ishStorable(i)?ishStoreHtml(i,n):""}
     ${rq.length?`<small style="color:#b91c1c">Needs ${dxE(rq.join(", "))}</small>`:""}</div>
     <div class="a"><button class="lx-btn pri" data-is="buy" data-k="${i.k}" ${can?"":"disabled"}>${lbl}</button>${n?`<button class="lx-btn red" data-is="sell" data-k="${i.k}" ${s.fin.some(f=>f.k===i.k)?"disabled":""} title="Sell one back for ${Math.round(ISH_SELL*100)}% of what you paid">Sell ${fmt((s.val[i.k]||0)/n*ISH_SELL)}</button>`:""}</div></div>`}
 function ishPage(is){const s=ishWk(),l=LG(),e=ishE();
@@ -5114,7 +5136,10 @@ function isAct(a,b){const is=ISS();let done=false;
   if(a==="cat"){is.cat=b.dataset.v}
   else if(a==="q"){is.q=+b.dataset.v||1}
   else if(a==="fin"){is.fin=b.dataset.v==="1"}
-  else if(a==="buy"){const q=Math.max(1,Math.min(is.q,ishC(b.dataset.k).max-ishN(b.dataset.k),ishLeft(ishC(b.dataset.k)))),r=ishBuy(b.dataset.k,q,is.fin);is.note=r||`Bought ${q} x ${ishC(b.dataset.k).n}${is.fin?" on finance":""}.`;is.nt=Date.now();if(!r){toast(is.note);done=true}}
+  else if(a==="buy"){const q=Math.max(1,Math.min(is.q,ishC(b.dataset.k).max-ishN(b.dataset.k),ishLeft(ishC(b.dataset.k)))),r=ishBuy(b.dataset.k,q,is.fin);is.note=r||`Bought ${q} x ${ishC(b.dataset.k).n}${is.fin?" on finance":""}.${ishStorable(ishC(b.dataset.k))?" Use Send to... to store it in a Trucking city.":""}`;if(!r&&ishStorable(ishC(b.dataset.k)))is.pk={k:b.dataset.k,f:""};is.nt=Date.now();if(!r){toast(is.note);done=true}}
+  else if(a==="send"){is.pk={k:b.dataset.k,f:b.dataset.f||""}}
+  else if(a==="pkx"){is.pk=null}
+  else if(a==="to"){const r=ishMove(b.dataset.k,b.dataset.f,b.dataset.c);is.note=r||`Sent a ${ishC(b.dataset.k).n.toLowerCase()} to ${CITIES[b.dataset.c].name}.`;is.nt=Date.now();is.pk=null;done=!r}
   else if(a==="sell"){const r=ishSell(b.dataset.k);is.note=r||`Sold one ${ishC(b.dataset.k).n.toLowerCase()}.`;is.nt=Date.now();done=!r}
   if(done){save();hud();if(typeof PH!=="undefined"&&PH.open)phRender()}
   is.force=true;dxRender()}
