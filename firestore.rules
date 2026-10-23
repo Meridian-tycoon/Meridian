@@ -3,7 +3,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function validProfile(d) {
-      return d.keys().hasOnly(['name', 'col', 'home', 'hq', 'biz', 'nw', 'rank', 'loc', 'nb', 'nc', 'cid', 'gov', 'lastSeen'])
+      return d.keys().hasOnly(['name', 'col', 'home', 'hq', 'biz', 'nw', 'rank', 'loc', 'nb', 'nc', 'cid', 'gov', 'govC', 'govR', 'lastSeen'])
         && d.keys().hasAll(['name', 'col', 'lastSeen'])
         && d.name is string && d.name.size() > 0 && d.name.size() <= 20
         && d.col is string && d.col.matches('^#[0-9a-fA-F]{6}$')
@@ -15,6 +15,8 @@ service cloud.firestore {
         && (!('rank' in d) || (d.rank is int && d.rank >= 1 && d.rank <= 1000))
         && (!('nb' in d) || (d.nb is int && d.nb >= 0 && d.nb <= 100000))
         && (!('gov' in d) || d.gov is bool)
+        && (!('govC' in d) || (d.govC is string && d.govC.size() <= 40))
+        && (!('govR' in d) || (d.govR is int && d.govR >= 0 && d.govR <= 2))
         && (!('nc' in d) || (d.nc is int && d.nc >= 0 && d.nc <= 10000))
         && (!('cid' in d) || (d.cid is string && d.cid.size() > 0 && d.cid.size() <= 40
             && exists(/databases/$(database)/documents/cartels/$(d.cid))
@@ -369,6 +371,29 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/players/$(request.auth.uid)).data.get('gov', false) == true
         && (resource == null || resource.data.at.toMillis() < request.time.toMillis() - 86400000);
       allow delete: if false;
+    }
+    // Nuclear mining permit applications. The applicant creates a pending request addressed to the player
+    // governing that country; only that governor may approve or refuse it; the applicant may withdraw it.
+    match /permits/{id} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && id.matches(request.auth.uid + '_[A-Za-z0-9]{0,30}')
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'c', 'by', 'st', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 20
+        && request.resource.data.c is string && request.resource.data.c.size() <= 40
+        && request.resource.data.by is string && request.resource.data.by != request.auth.uid
+        && request.resource.data.st == 'pending'
+        && request.resource.data.at == request.time;
+      // The addressed governor decides once: only st/by/byName may change, and by stays the governor.
+      allow update: if request.auth != null
+        && resource.data.st == 'pending'
+        && resource.data.by == request.auth.uid
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.st in ['approved', 'denied']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st', 'byName'])
+        && request.resource.data.byName is string && request.resource.data.byName.size() <= 20;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
     match /{document=**} {
       allow read, write: if false;
