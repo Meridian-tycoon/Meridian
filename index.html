@@ -3233,18 +3233,19 @@ const fp=p=>p>=1000?"$"+Math.round(p).toLocaleString():p>=1?"$"+p.toFixed(2):"$"
 function sparkS(h,col){if(h.length<2)return"";const w=60,ht=18,mn=Math.min(...h),mx=Math.max(...h)||1;return `<svg viewBox="0 0 ${w} ${ht}" width="${w}" height="${ht}"><polyline fill="none" stroke="${col}" stroke-width="1.5" points="${h.map((v,i)=>`${(i/(h.length-1)*w).toFixed(1)},${(ht-(v-mn)/((mx-mn)||1)*ht).toFixed(1)}`).join(" ")}"/></svg>`}
 let mkTab="s",mkSel=null,mkCQ="";
 /* custom amount: stocks trade in whole shares, crypto in fractions (6 dp), same as the fixed buttons */
-function mkCQParse(s){const a=AK[s],v=parseFloat(mkCQ);if(!(v>0)||!isFinite(v))return{err:"Enter an amount above 0"};
+function mkCQParse(s){const a=AK[s],v=mkCQ.trim()===""?NaN:Number(mkCQ.trim());if(!(v>0)||!isFinite(v))return{err:"Enter an amount above 0"};
   if(a.t!=="c"&&Math.abs(v-Math.round(v))>1e-9)return{err:"Stocks trade in whole shares"};return{q:a.t==="c"?Math.floor(v*1e6+1e-9)/1e6:Math.round(v)}}
-function mkCQTxt(s){const m=MK(),a=AK[s],p=m.px[s],r=mkCQParse(s);if(mkCQ===""||r.err)return mkCQ===""?"Type an amount to see the total":r.err;
-  const q=r.q;if(!(q>0))return "Amount too small";return `Buy ${fq(q)} costs ${fmtc(p*q*(1+fee(a)))} · sell brings ${fmtc(p*q*(1-fee(a)))}`}
-function mkCustom(sign){const s=mkSel;if(!s)return;const m=MK(),a=AK[s],p=m.px[s],r=mkCQParse(s);if(r.err){toast(r.err);return}
-  let q=r.q;if(!(q>0)){toast("Amount too small");return}
-  if(sign>0){let mx=S.cash/(p*(1+fee(a)));mx=a.t==="c"?Math.floor(mx*1e6)/1e6:Math.floor(mx+1e-9);
-    if(!(mx>0)){toast(`Not enough cash for any ${s}`);return}
-    let cap="";if(q>mx){q=mx;cap=`Capped to what you can afford: bought ${fq(mx)} ${s}`}
-    while(q>0&&p*q*(1+fee(a))>S.cash)q=a.t==="c"?Math.floor((q-1e-6)*1e6)/1e6:q-1;if(!(q>0))return;trade(s,q);if(cap)toast(cap)}
-  else{const hd=m.hold[s];if(!hd||hd.q<=0){toast(`You don't own any ${s}`);return}
-    let cap="";if(q>hd.q){q=hd.q;cap=`Capped to your holding: sold all ${fq(hd.q)} ${s}`}trade(s,-q);if(cap)toast(cap)}}
+const fq6=q=>(+q.toFixed(6)).toString();
+function mkCQCap(s,sign){const m=MK(),a=AK[s],p=m.px[s],r=mkCQParse(s);if(r.err)return r;let q=r.q;if(!(q>0))return{err:"Amount too small"};
+  if(sign>0){let mx=S.cash/(p*(1+fee(a)));mx=a.t==="c"?Math.floor(mx*1e6)/1e6:Math.floor(mx+1e-9);while(mx>0&&p*mx*(1+fee(a))>S.cash)mx=a.t==="c"?Math.floor((mx-1e-6)*1e6)/1e6:mx-1;
+    if(!(mx>0))return{err:`Not enough cash for any ${s}`};return{q:Math.min(q,mx),cap:q>mx}}
+  const hd=m.hold[s];if(!hd||hd.q<=0)return{err:`You don't own any ${s}`};return{q:Math.min(q,hd.q),cap:q>hd.q}}
+function mkCQTxt(s){if(mkCQ==="")return "Type an amount to see the total";const m=MK(),a=AK[s],p=m.px[s],b=mkCQCap(s,1),l=mkCQCap(s,-1);
+  const pe=mkCQParse(s);if(pe.err)return pe.err;
+  return (b.q?`Buy ${fq6(b.q)} costs ${fmtc(p*b.q*(1+fee(a)))}${b.cap?" (max)":""}`:b.err)+" · "+(l.q?`Sell ${fq6(l.q)} brings ${fmtc(p*l.q*(1-fee(a)))}${l.cap?" (all you hold)":""}`:l.err)}
+function mkCustom(sign){const s=mkSel;if(!s)return;const r=mkCQCap(s,sign);if(r.err){toast(r.err);return}
+  const q=r.q,cap=r.cap?(sign>0?`Capped to what you can afford: bought ${fq6(q)} ${s}`:`Capped to your holding: sold all ${fq6(q)} ${s}`):"";
+  trade(s,sign>0?q:-q);if(cap)toast(cap)}
 function mkLive(){const el=PH.el,s=mkSel;if(!s)return;const m=MK(),p=m.px[s],ch=(p/m.open[s]-1)*100;
   const t=el.querySelector("#mkcqt");if(t){const x=mkCQTxt(s);if(t.textContent!==x)t.textContent=x}
   const big=el.querySelector(".ph-big");if(big&&big.textContent!==fp(p))big.textContent=fp(p)}
@@ -3260,7 +3261,7 @@ function mktApp(){const m=MK();
       <div style="display:grid;grid-template-columns:repeat(${qs.length},1fr);gap:5px;margin-top:5px">${qs.map(q=>`<button class="buy up" data-ph="trade" data-k="${a.s}" data-q="${-q}" style="min-width:0;font-size:11px;padding:6px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;border-color:#ffffff55" ${!hd||hd.q<q-1e-9?"disabled":""}>Sell ${fq(q)}</button>`).join("")}</div>
       ${hd?`<button class="buy up" data-ph="trade" data-k="${a.s}" data-q="${-hd.q}" style="width:100%;margin-top:5px;color:#fff;border-color:#ffffff55">Sell all</button>`:""}
       <div style="margin-top:10px;font-weight:700;font-size:12px;color:#fff">Custom amount</div>
-      <input id="mkcq" type="number" inputmode="decimal" min="0" step="${a.t==="c"?"any":"1"}" placeholder="${a.t==="c"?"Amount of "+a.s:"Number of shares"}" value="${mkCQ}" autocomplete="off" style="box-sizing:border-box;width:100%;margin-top:5px;padding:8px;border-radius:8px;border:1px solid #ffffff55;background:#ffffff14;color:#fff;font-size:14px">
+      <input id="mkcq" type="text" inputmode="${a.t==="c"?"decimal":"numeric"}" placeholder="${a.t==="c"?"Amount of "+a.s:"Number of shares"}" value="${mkCQ}" autocomplete="off" style="box-sizing:border-box;width:100%;margin-top:5px;padding:8px;border-radius:8px;border:1px solid #ffffff55;background:#ffffff14;color:#fff;font-size:14px">
       <div id="mkcqt" class="ph-sub" style="color:#e5e7eb;margin-top:4px">${mkCQTxt(a.s)}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px"><button class="buy" data-ph="mkcust" data-q="1" style="min-width:0;background:#22c55e;color:#06210f;border-color:#22c55e;font-weight:700">Buy</button><button class="buy up" data-ph="mkcust" data-q="-1" style="min-width:0;color:#fff;border-color:#ffffff55">Sell</button></div>`;return h}
   const list=mkTab==="p"?ASSETS.filter(a=>m.hold[a.s]):ASSETS.filter(a=>a.t===mkTab);
@@ -6449,8 +6450,8 @@ function phPlace(){const el=PH.el,sc=phScale();el.style.setProperty("--phs",sc);
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
   PH.x=Math.max(4,Math.min(W-w-4,PH.x));PH.y=Math.max(4,Math.min(H-h-4,PH.y));el.style.left=PH.x/sc+"px";el.style.top=PH.y/sc+"px"}
 function phRender(){const el=PH.el;const _sc=[...el.querySelectorAll(".ph-screen,.ph-app")].map(x=>x.scrollTop),_app=PH.app;
-  const _fa=document.activeElement,_fk=_fa&&_fa.id==="mkcq",_ss=_fk?_fa.selectionStart:0;phRender0();
-  if(_fk){const n=el.querySelector("#mkcq");if(n){n.focus();try{n.setSelectionRange(_ss,_ss)}catch(e){}}}
+  if(PH.app!=="stocks")mkCQ="";const _fa=document.activeElement,_fk=_fa&&_fa.id==="mkcq",_ss=_fk?_fa.selectionStart:0,_se=_fk?_fa.selectionEnd:0;phRender0();
+  if(_fk){const n=el.querySelector("#mkcq");if(n){n.focus();try{n.setSelectionRange(_ss,_se)}catch(e){}}}
   if(PH.app===_app)el.querySelectorAll(".ph-screen,.ph-app").forEach((x,i)=>{if(_sc[i])x.scrollTop=_sc[i]})}
 function phRender0(){const el=PH.el;el.classList.toggle("folded",!PH.open);
   if(!PH.open){el.innerHTML=`<button class="ph-tab" data-ph="unfold" aria-label="Open your phone"><span class="ph-grip"></span>${svgI("wallet")}<b>${fmt(S.cash)}</b></button>`;phPlace();return}
@@ -6538,7 +6539,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="gobank"){openPortfolio();setTimeout(()=>{const x=[...sheet.querySelectorAll(".sec")].find(e=>/credit score/.test(e.textContent));if(x)x.scrollIntoView()},50);PH.open=false}
   else if(a==="gigtap"){gigTap(b);return}
   else if(a==="ridego"){rideStart();return}
-  else if(a==="mkt"){mkTab=b.dataset.k;mkSel=null}else if(a==="mksel"){mkSel=b.dataset.k||null;PH.el.querySelectorAll(".ph-screen").forEach(x=>x.scrollTop=0)}
+  else if(a==="mkt"){mkTab=b.dataset.k;mkSel=null}else if(a==="mksel"){mkSel=b.dataset.k||null;mkCQ="";PH.el.querySelectorAll(".ph-screen").forEach(x=>x.scrollTop=0)}
   else if(a==="trade"){trade(b.dataset.k,+b.dataset.q);return}
   else if(a==="mkcust"){mkCustom(+b.dataset.q);return}
   else if(a==="ug"){ugDo(b.dataset.k);save();hud()}
