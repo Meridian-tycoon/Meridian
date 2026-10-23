@@ -3,7 +3,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function validProfile(d) {
-      return d.keys().hasOnly(['name', 'col', 'home', 'hq', 'biz', 'nw', 'rank', 'loc', 'nb', 'nc', 'cid', 'lastSeen'])
+      return d.keys().hasOnly(['name', 'col', 'home', 'hq', 'biz', 'nw', 'rank', 'loc', 'nb', 'nc', 'cid', 'gov', 'lastSeen'])
         && d.keys().hasAll(['name', 'col', 'lastSeen'])
         && d.name is string && d.name.size() > 0 && d.name.size() <= 20
         && d.col is string && d.col.matches('^#[0-9a-fA-F]{6}$')
@@ -14,6 +14,7 @@ service cloud.firestore {
         && (!('nw' in d) || d.nw is number)
         && (!('rank' in d) || (d.rank is int && d.rank >= 1 && d.rank <= 1000))
         && (!('nb' in d) || (d.nb is int && d.nb >= 0 && d.nb <= 100000))
+        && (!('gov' in d) || d.gov is bool)
         && (!('nc' in d) || (d.nc is int && d.nc >= 0 && d.nc <= 10000))
         && (!('cid' in d) || (d.cid is string && d.cid.size() > 0 && d.cid.size() <= 40
             && exists(/databases/$(database)/documents/cartels/$(d.cid))
@@ -354,7 +355,7 @@ service cloud.firestore {
       // the owner may remove it when deleting their account
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
-    // Government raid on a price-fixing cartel: at most one per cartel per day. (Holding an office is checked by the game client only; the effect is a small fine and a pause.)
+    // Government raid on a price-fixing cartel: at most one per cartel per day. The raider's own profile must carry gov == true (published by the client while it holds an office; self-reported, so this blocks casual raids, not a determined cheat).
     match /craid/{cid} {
       allow read: if request.auth != null;
       allow create, update: if request.auth != null
@@ -365,6 +366,7 @@ service cloud.firestore {
         && request.resource.data.at == request.time
         && !(request.auth.uid in get(/databases/$(database)/documents/cartels/$(cid)).data.members)
         && get(/databases/$(database)/documents/cartels/$(cid)).data.fix != null
+        && get(/databases/$(database)/documents/players/$(request.auth.uid)).data.get('gov', false) == true
         && (resource == null || resource.data.at.toMillis() < request.time.toMillis() - 86400000);
       allow delete: if false;
     }

@@ -438,7 +438,7 @@ S.rivals.forEach(r=>{if(r.nw>1e12)r.nw=1e12});
 /* shared world rivals: the developer's save (DEV_UIDS, signed in) is the master world. Only it grows rivals and publishes world/rivals {list:[{nw,cities}],updated};
    every other player mirrors that list into S.rivals (cached in localStorage for offline) and skips its own rival growth. A local buy-out is remembered in S.rbo
    (rival index -> city ids) and kept out of the mirror until the master world itself drops that branch. Never loaded and no cache: local growth as before. */
-const WRKEY="meridian-world-rivals",WRMKEY="meridian-world-master";let WRS=null,WRM=false;
+const WRKEY="meridian-world-rivals",WRMKEY="meridian-world-master";let WRS=null,WRM=false,WRG=false;
 try{const c=JSON.parse(localStorage.getItem(WRKEY)||"null");if(c&&Array.isArray(c.list)&&c.list.length===RIVALS.length)WRS=c}catch(e){}
 try{WRM=localStorage.getItem(WRMKEY)==="1"}catch(e){}
 const wrShared=()=>!!WRS&&!WRM;
@@ -1927,7 +1927,7 @@ function spark(){const h=S.hist;if(h.length<2)return `<p class="d" style="color:
    <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--muted)"><span>${fmt(mn)}</span><span>last ${h.length} hours</span><span>${fmt(mx)}</span></div>`}
 function renderPortfolio(){const{inc,nw}=totals();
   const mine=CITIES.filter(c=>S.own[c.id]).sort((a,b)=>cityProfit(b)-cityProfit(a));
-  let h=`<div class="shead"><div><h2>Your empire</h2><p>${nOwned()} businesses in ${nCities()} cities · ${fmt(S.earned||0)} earned all-time</p></div>
+  let h=`<div class="shead"><div><h2>Your empire</h2><p>${nOwned()} businesses in ${nCities()} cit${nCities()===1?"y":"ies"} · ${fmt(S.earned||0)} earned all-time</p></div>
     <button class="x" id="cls" aria-label="Close">×</button></div>
     <div class="meta"><div><span>Net worth </span>${fmt(nw)}</div><div><span>Profit </span>${fmt(inc)}/hr</div></div>${spark()}<div class="list" style="margin-top:8px"><div class="row link" data-go="${(S.home||{city:0}).city}"><div class="n">${S.job?JK[S.job.k].n+" · "+CITIES[S.job.city].name:"Unemployed"}</div><div class="d">${S.home?HK[S.home.k].n+" in "+CITIES[S.home.city].name+(S.home.own?" (owned)":""):"No home yet"} · ${S.exp.toFixed(1)} h work experience</div><span style="color:var(--muted)">›</span></div></div>`;
   h+=`<div class="sec">Cities</div><div class="list">`;
@@ -1940,8 +1940,8 @@ function renderPortfolio(){const{inc,nw}=totals();
     ...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:+r.nw||0,c:r.cities.length,f:`${RIVALS[i].ind} · ${fmtCap(RIVALS[i].cap)} real`}))].sort((a,b)=>b.nw-a.nw);
   const lbTop=board.filter((b,i)=>i<100||b.me);
   h+=govSummary();h+=onlineHtml();
-  h+=`<div class="sec">Leaderboard${onEnabled()?` <small style="font-weight:400;color:var(--muted)">${ON.gotPlayers?"live":"offline · last saved"}</small>`:""}</div><div class="list">`+lbTop.map(b=>`<div class="row"${b.old?' style="opacity:.5"':""}><div class="n" style="${b.me?"color:var(--own)":""}">${board.indexOf(b)+1}. <span style="display:inline-block;width:9px;height:9px;${b.pl?"transform:rotate(45deg);":""}background:${b.col};margin:0 6px 0 2px"></span>${b.ct||""}${b.dev?gnHtml(b.dev,1)+" (you)":b.me?devEsc(onEnabled()&&S.online&&S.online.name||S.name||"You")+" (you)":b.pl?gnHtml(b.n,b.dv)+(b.bot?' <span class="tag">BOT</span>':''):b.n}</div>
-    <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities · ${b.f}`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
+  h+=`<div class="sec">Leaderboard${onEnabled()?` <small style="font-weight:400;color:var(--muted)">${ON.gotPlayers?"live":"offline · last saved"}</small>`:""}</div><div class="list">`+lbTop.map(b=>`<div class="row"${b.old?' style="opacity:.5"':""}><div class="n" style="${b.me?"color:var(--own)":""}">${board.indexOf(b)+1}. <span style="display:inline-block;width:9px;height:9px;${b.pl?"transform:rotate(45deg);":""}background:${b.col};margin:0 6px 0 2px"></span>${b.ct||""}${b.dev?gnHtml(b.dev,1)+" (you)":b.me?(n=>n?devEsc(n)+" (you)":"You")(onEnabled()&&S.online&&S.online.name||S.name):b.pl?gnHtml(b.n,b.dv)+(b.bot?' <span class="tag">BOT</span>':''):b.n}</div>
+    <div class="d">${b.me?`${nCities()} cit${nCities()===1?"y":"ies"}`:`${b.c} cit${b.c===1?"y":"ies"} · ${b.f}`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
   h+=bankHtml();
   if(S.lst.length)h+=`<div class="sec">Market listings</div><div class="list">`+S.lst.map(l=>{const c=CITIES[l.city],stockLv=mLevel(c,l.g);return `<div class="row link" data-go="${c.id}"><div class="n">${G[l.g][0]} · ${c.name}</div><div class="d">${l.q<1e-6?"Sold out":gq(l.q)+" left at "+fmt(l.p)} · ${gq(l.sold||0)} sold · stock ${Math.round(stockLv*100)}%</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`;
   h+=`<div class="sec">Taxes · every ${TAXDAYS} days</div><div class="list"><div class="row"><div class="n">Owed this tax year <b style="font-family:var(--mono)">${fmt(taxOwed())}</b></div>
@@ -4317,23 +4317,23 @@ function onScript(u){return new Promise((ok,no)=>{const s=document.createElement
 async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
   try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
-    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM)wrPublish(true);else wrMirror(false);onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);gateSync();onRefresh()});
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM)wrPublish(true);else wrMirror(true);onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);gateSync();onRefresh()});
     ON.unsubB=ON.db.collection("world").doc("bot").onSnapshot(d=>{if(WRM&&ON.user&&devUid(ON.user.uid))return;const v=d.exists?botClean(d.data()):null;if(!v)return;ON.bot=v;try{localStorage.setItem(BOTKEY,JSON.stringify(v))}catch(e){}draw();onRefresh();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)))phRender()},e=>{ON.err="Couldn't load the bot company: "+(e&&e.code||e)});
     ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;ON.gotPlayers=true;lbCache(a);try{ctCalc()}catch(e){}draw();onRefresh()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
     ON.unsubW=ON.db.collection("world").doc("rivals").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list)||v.list.length!==RIVALS.length)return;
       WRS={list:v.list.map(x=>({nw:+(x&&x.nw)||0,cities:Array.isArray(x&&x.cities)?x.cities.filter(Number.isInteger):[]})),updated:v.updated&&v.updated.toMillis?v.updated.toMillis():Date.now()};
-      try{localStorage.setItem(WRKEY,JSON.stringify(WRS))}catch(e){}if(ON.authKnown&&!WRM){wrMirror(false);draw();onRefresh()}},e=>{ON.err="Couldn't load world rivals: "+(e&&e.code||e)});
+      try{localStorage.setItem(WRKEY,JSON.stringify(WRS))}catch(e){}if(ON.authKnown&&!WRM){wrMirror(!WRG);WRG=true;draw();onRefresh()}},e=>{ON.err="Couldn't load world rivals: "+(e&&e.code||e)});
   }catch(e){ON.err="Online unavailable: "+(e&&e.message||e)}ON.loading=false;gateSync();onRefresh()}
 function onRefresh(){if(mode==="pf"&&sheet.classList.contains("open")&&!(document.activeElement&&/^(INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}}
 function onPubData(){const p=onProf(),{nw}=totals(),ids=o=>Object.keys(o||{}).filter(k=>o[k]&&CITIES[k]&&(typeof o[k]!=="object"||Object.keys(o[k]).length)).map(Number).slice(0,100);
   const v=Math.round(isFinite(nw)?nw:0),rank=Math.min(1000,1+S.rivals.filter(r=>r.nw>v).length+ON.players.filter(q=>(+q.nw||0)>v).length);
-  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null,...(typeof CT!=="undefined"&&CT&&CT.mine?{cid:CT.mine.id}:{})}}
+  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null,...(typeof CT!=="undefined"&&CT&&CT.mine?{cid:CT.mine.id}:{}),...(S.pol&&S.pol.r>=0?{gov:true}:{})}}
 function onLocPub(){try{if(!ON.ready||!ON.user)return;const l=S.loc&&S.loc.city;if(l!==ON.lastLoc){ON.lastLoc=l;onPublish(true)}}catch(e){}}
 function onPublish(force){if(!ON.ready||!ON.user||ON.deleting)return;const d=onPubData(),sig=JSON.stringify(d),n=Date.now();
   if(!force&&!(n-ON.lastPub>=60000||(sig!==ON.lastSig&&n-ON.lastPub>=60000)))return;
   if(!force&&sig===ON.lastSig&&n-ON.lastPub<300000)return;
   ON.lastPub=n;ON.lastSig=sig;d.lastSeen=window.firebase.firestore.FieldValue.serverTimestamp();
-  ON.db.collection("players").doc(ON.user.uid).set(d).catch(e=>{ON.err="Couldn't publish: "+(e&&e.code||e)})}
+  return ON.db.collection("players").doc(ON.user.uid).set(d).catch(e=>{ON.err="Couldn't publish: "+(e&&e.code||e)})}
 /* shared leaderboard: master publishes world/rivals; everyone's profile is published on save (throttled by onPublish) and every 15 s tick */
 function wrPubData(){return{list:S.rivals.map(r=>({nw:Math.round(Math.max(-1e12,Math.min(1e12,+r.nw||0))),cities:r.cities.filter(id=>Number.isInteger(id)&&CITIES[id]).slice(0,RIVAL_MAXC)}))}}
 function wrPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;const d=wrPubData(),sig=JSON.stringify(d),n=Date.now();
@@ -4745,6 +4745,7 @@ function frHtml(){if(!onEnabled()||!ON.user)return`<div class="ph-sub" style="ma
   let h=`<div class="ph-rows"><div><span>Free trucks</span><b>${frFree().toLocaleString()} / ${LG().trucks.toLocaleString()}</b></div><div><span>Trucking hubs</span><b>${hubs().length}</b></div><div><span>Board</span><b>${FR.got?FR.docs.filter(d=>!d.data.carrier&&d.data.dl>now).length+" open":"loading…"}</b></div></div>
    <div style="display:flex;gap:4px;margin-top:8px">${[["open","Open loads"],["post","Post a haul"],["mine","My hauls"]].map(([k,t])=>`<button class="buy" data-ph="frtab" data-k="${k}" style="flex:1;min-width:0;padding:6px 2px;font-size:12px;color:#fff${FR.tab===k?";outline:2px solid #3b82f6":""}">${t}</button>`).join("")}</div>`;
   if(FR.tab==="open"){const a=FR.docs.filter(d=>!d.data.carrier&&d.data.dl>now&&CITIES[d.data.from]&&CITIES[d.data.to]&&G[d.data.g]).sort((p,q)=>q.data.pay-p.data.pay).slice(0,30);
+    const b=ON.bot;h+=`<div class="ph-list" style="margin-top:8px"><div style="border:1px solid #f59e0b"><b style="display:block">📌 Meridian Freight <span class="tag" style="background:#f59e0b;color:#000;border-radius:6px">BOT</span></b>${b?`Always open · ${b.free} / ${b.trucks} trucks free · ${botStale()?"offline":"online"}`:"Not published yet"}<button class="buy" data-ph="frbot" style="width:100%;margin-top:4px;color:#fff">Request a haul or trade</button></div></div>`;
     h+=a.length?`<div class="ph-list" style="margin-top:8px">${a.map(d=>{const v=d.data,mine=v.shipper===uid,why=mine?"Your own haul":frAcceptChk(v);
       return`<div><b style="display:block">${v.q} ${gn(v.g)} · ${CITIES[v.from].name} → ${CITIES[v.to].name}</b>${Math.round(frKm(v.from,v.to))} km · ${frTr(v.g,v.q)} truck${frTr(v.g,v.q)>1?"s":""} · pays <b style="display:inline;color:#4ade80">${fmt(v.pay)}</b> · ${fmtDur(v.dl-now)} left<br>from ${gnHtml(String(v.shipperName||"Shipper").slice(0,20),devUid(v.shipper))}
       ${why?`<span style="opacity:.7">${onEsc(why)}</span>`:`<button class="buy" data-ph="fracc" data-k="${onEsc(d.id)}" style="width:100%;margin-top:4px;background:#92400e!important;color:#fff;border-color:#f59e0b">Accept haul</button>`}</div>`}).join("")}</div>`
@@ -4787,16 +4788,17 @@ function ctTagHtml(uid,cid){try{if(!CT||!cid||!uid)return"";const c=CT.by[cid];i
 function ctTagTxt(uid,cid){try{const c=CT&&cid&&CT.by[cid];return c&&c.members.includes(uid)?`[${c.tag}] `:""}catch(e){return""}}
 function ctName(u){if(u===ctUid())return(onProf().name||"You").slice(0,20);const p=ON.players.find(y=>y.uid===u);if(p)return String(p.name||"Player").slice(0,20);const m=CT.mine;return m&&m.boss===u?m.bossName:"Member"}
 function ctUnsub(keys){for(const k of keys||Object.keys(CT.sub)){try{CT.sub[k]&&CT.sub[k]()}catch(_){}delete CT.sub[k]}}
-function ctListen(u){ctUnsub();CT.docs=[];CT.by={};CT.mine=null;CT.inv=[];CT.req=[];CT.chat=[];CT.led=[];CT.raid=null;CT.got=false;if(!u||!ON.db)return;
+function ctListen(u){ctUnsub();CT.docs=[];CT.by={};CT.mine=null;CT.inv=[];CT.req=[];CT.chat=[];CT.led=[];CT.raid=null;CT.got=false;CT.own=null;CT.gotOwn=false;if(!u||!ON.db)return;
   const arr=(q,f)=>{const a=[];q.forEach(d=>a.push(f(d)));return a},er=w=>e=>{ON.err="Couldn't load "+w+": "+(e&&e.code||e)};
   CT.sub.c=ON.db.collection("cartels").limit(100).onSnapshot(q=>{CT.docs=arr(q,d=>ctClean(d.id,d.data())).filter(Boolean);CT.got=true;ctSync()},er("cartels"));
+  CT.sub.o=ON.db.collection("cartels").where("members","array-contains",u.uid).limit(1).onSnapshot(q=>{CT.own=arr(q,d=>ctClean(d.id,d.data())).filter(Boolean)[0]||null;CT.gotOwn=true;if(CT.got)ctSync()},er("your cartel"));
   CT.sub.i=ON.db.collection("cjoin").where("uid","==",u.uid).onSnapshot(q=>{CT.inv=arr(q,d=>Object.assign({id:d.id},d.data()||{}));ctPaint()},er("cartel invites"))}
 function ctResub(){ctUnsub(["r","m","l","a"]);CT.req=[];CT.chat=[];CT.led=[];CT.raid=null;const m=CT.mine;if(!m||!ON.db)return;if(CT.rtId!==m.id){CT.rtId=m.id;CT.rt=0}const arr=(q,f)=>{const a=[];q.forEach(d=>a.push(f(d)));return a},er=w=>e=>{ON.err="Couldn't load cartel "+w+": "+(e&&e.code||e);if(e&&e.code==="permission-denied"&&(CT.rt||0)<5&&!CT.rtT){CT.rt=(CT.rt||0)+1;const id=m.id;CT.rtT=setTimeout(()=>{CT.rtT=0;if(CT.mine&&CT.mine.id===id)ctResub()},3000)}};
   if(m.boss===ctUid())CT.sub.r=ON.db.collection("cjoin").where("cid","==",m.id).onSnapshot(q=>{CT.req=arr(q,d=>Object.assign({id:d.id},d.data()||{}));ctPaint()},er("requests"));
   CT.sub.m=ON.db.collection("cmsg").where("cid","==",m.id).orderBy("at","desc").limit(40).onSnapshot(q=>{CT.chat=arr(q,d=>Object.assign({id:d.id},d.data()||{})).sort((a,b)=>ctMs(a.at)-ctMs(b.at));ctPaint()},er("chat"));
   CT.sub.l=ON.db.collection("cled").where("cid","==",m.id).orderBy("seq","desc").limit(12).onSnapshot(q=>{CT.led=arr(q,d=>Object.assign({id:d.id},d.data()||{})).sort((a,b)=>b.seq-a.seq);ctPaint()},er("ledger"));
   CT.sub.a=ON.db.collection("craid").doc(m.id).onSnapshot(d=>{CT.raid=d.exists?d.data():null;ctCalc();try{ctSweep()}catch(e){}ctPaint()},er("raids"))}
-function ctSync(){const uid=ctUid();CT.by={};for(const c of CT.docs)CT.by[c.id]=c;const m=(uid&&CT.docs.find(c=>c.members.includes(uid)))||null,old=CT.mine?CT.mine.id:null,nid=m?m.id:null;CT.mine=m;
+function ctSync(){const uid=ctUid();CT.by={};for(const c of CT.docs)CT.by[c.id]=c;if(CT.gotOwn){for(const c of CT.docs)if(c.members.includes(uid)&&!(CT.own&&CT.own.id===c.id))delete CT.by[c.id];if(CT.own)CT.by[CT.own.id]=CT.own;CT.docs=Object.values(CT.by)}const m=(uid&&CT.docs.find(c=>c.members.includes(uid)))||null,old=CT.mine?CT.mine.id:null,nid=m?m.id:null;CT.mine=m;
   if(nid!==old)ctResub();ctCalc();try{ctSweep()}catch(e){console.warn("ct",e)}if(nid!==old)onPublish(true);try{draw()}catch(e){}ctPaint()}
 function ctPaint(){if(PH.open&&PH.app==="cartel"&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))phRender()}
 /* perks: who owns where (public profiles + my own businesses) */
@@ -4864,8 +4866,8 @@ function ctSay(){const m=CT.mine,t=String(CT.f.msg||"").trim().slice(0,120);if(!
 /* government raid: needs a political office; costs a fee; members are fined once */
 function ctRaid(cid){const c=CT.by[cid],p=S.pol,uid=ctUid();if(!c||!uid||CT.infl.raid)return;if(!(p&&p.r>=0)){toast("Only a government office holder can order a raid");return}if(c.members.includes(uid)||!c.fix){toast("That cartel is not price fixing");return}if(S.cash<CT_RAIDFEE){toast(`A raid costs ${fmt(CT_RAIDFEE)}`);return}
   S.cash-=CT_RAIDFEE;CT.infl.raid=1;save();hud();
-  ON.db.collection("craid").doc(cid).set({cid,by:uid,byName:(onProf().name||"Tycoon").slice(0,20),at:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete CT.infl.raid;p.appr=Math.min(100,(+p.appr||0)+4);const t=`You raided ${c.name}: its members are fined and price fixing is suspended`;ctLog(t);S.log.unshift(t);S.log=S.log.slice(0,3);toast(t);save();hud();ctPaint()},
-    e=>{delete CT.infl.raid;S.cash+=CT_RAIDFEE;save();hud();toast("Raid refused (already raided in the last day?): "+(e&&e.code||e))})}
+  Promise.resolve(onPublish(true)).then(()=>ON.db.collection("craid").doc(cid).set({cid,by:uid,byName:(onProf().name||"Tycoon").slice(0,20),at:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete CT.infl.raid;p.appr=Math.min(100,(+p.appr||0)+4);const t=`You raided ${c.name}: its members are fined and price fixing is suspended`;ctLog(t);S.log.unshift(t);S.log=S.log.slice(0,3);toast(t);save();hud();ctPaint()},
+    e=>{delete CT.infl.raid;S.cash+=CT_RAIDFEE;save();hud();toast("Raid refused (already raided in the last day?): "+(e&&e.code||e))}))}
 function ctSweep(){if(!ON.user||!ON.db||!CT.got)return;const x=CTS(),uid=ctUid();
   if(x.mk&&!CT.infl.mk){if(CT.by[uid]){x.mk=null;x.since=x.since||Date.now();save()}else if(Date.now()-x.mk.t>120000){CT.infl.mk=1;ON.db.collection("cartels").doc(uid).get().then(s=>{delete CT.infl.mk;if(!x.mk)return;if(s.exists)x.mk=null;else{x.mk=null;S.cash+=CT_FEE;toast("Cartel not created, fee refunded")}save();hud()},()=>{delete CT.infl.mk})}}
   if(CT.mine&&CT.raid){const at=ctMs(CT.raid.at);if(at>x.seenRaid){x.seenRaid=at;if(at>=x.since-60000&&CT.raid.by!==uid){const fine=Math.round(Math.min(CT_RAIDFINE*Math.max(0,S.cash),CT_RAIDCAP)),t=`${CT.raid.byName||"The government"} raided ${CT.mine.name}: you paid ${fmt(fine)}; price fixing is suspended for ${fmtDur(CT_RAIDPAUSE)}`;S.cash-=fine;ctLog(t);S.log.unshift(t);S.log=S.log.slice(0,3);toast(t,"bad")}save();hud()}}
@@ -5557,7 +5559,7 @@ function txActive(){const l=LG(),now=Date.now();let h=`<div class="mdx-card"><di
 function txFleet(tg){const l=LG();let res=0;for(const c of hubs())res+=HB(c.id).res;res=Math.min(res,l.trucks);
   let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Shared fleet</h3><span class="lx-tag b">${l.trucks.toLocaleString()} trucks</span></div><div class="lx-it"><div class="m"><b>${l.jobs.length.toLocaleString()} busy · ${res.toLocaleString()} reserved · ${Math.max(0,l.trucks-res).toLocaleString()} in the shared pool</b><span>Reserve trucks per hub on the Hubs tab. Unreserved trucks go to whichever hub asks first.</span></div></div>`;
   for(const k in LU){const u=LU[k],n=k==="trucks"?l.trucks-ishTr():lvl(k);
-    if(k==="trucks"){const cap=truckCap(),done=n>=cap||l.trucks>=TRK_CEIL,cs=luCost(k);const btn=q=>{const bk=truckBulk(q);return `<button class="lx-btn" data-tx="up" data-k="trucks" data-n="${q}" ${done||bk.q<q?"disabled":""}>${q===1?(done?"Maxed":fmt(cs)):"x"+q+" · "+fmt(bk.cost)}</button>`};
+    if(k==="trucks"){const cap=truckCap(),done=n>=cap||l.trucks>=TRK_CEIL,cs=luCost(k);const btn=q=>{const bk=truckBulk(q);return `<button class="lx-btn" data-tx="up" data-k="trucks" data-n="${q}" ${done||bk.q<q?"disabled":""}>${done?"Maxed":q===1?fmt(cs):"x"+q+" · "+fmt(bk.cost)}</button>`};
       h+=`<div class="lx-it"><div class="m"><b>${u.n}<span class="lx-tag">${n.toLocaleString()} trucks</span></b><span>${u.d}${done?" Fleet is at the "+TRK_CEIL.toLocaleString()+" truck ceiling.":" No limit with a Trucking company; each truck costs a little more."}</span></div><div class="a">${btn(1)}${btn(10)}${btn(100)}</div></div>`;continue}
     const done=n>=u.max,cs=luCost(k);
     h+=`<div class="lx-it"><div class="m"><b>${u.n}<span class="lx-tag">${"Lv "+n+"/"+u.max}</span></b><span>${u.d}</span></div><div class="a"><button class="lx-btn" data-tx="up" data-k="${k}" ${done||S.cash<cs?"disabled":""}>${done?"Maxed":fmt(cs)}</button></div></div>`}
@@ -5897,7 +5899,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="buyitem"){const it=ITEMS.find(x=>x.k===b.dataset.k),p=itemPrice(it,CITIES[(S.home||{city:0}).city]);if(S.cash<p)return;S.cash-=p;for(const [q] of NEEDS)if(it[q])S.need[q]=Math.max(0,Math.min(100,S.need[q]+it[q]));toast(`${it.n} delivered`);save();hud()}
   else if(a==="repay"){if(B().card&&B().card.bal)payCard(true);else if(B().loans[0])repayLoan(B().loans[0].id,true);S.debt=bankDebt();save();hud()}
   else if(/^ct[a-z]+$/.test(a)){ctAct(a,b)}
-  else if(a==="xfto"){XF.to=b.dataset.k}else if(a==="xfsend"){xfSend()}else if(a==="bxk"){BX.kind=b.dataset.k;phRender()}else if(a==="bxgo"){botSend()}else if(a==="frtab"){FR.tab=b.dataset.k}else if(a==="frpost"){frPost()}else if(a==="fracc"){frAccept(b.dataset.k)}else if(a==="frcan"){frCancel(b.dataset.k)}
+  else if(a==="xfto"){XF.to=b.dataset.k}else if(a==="xfsend"){xfSend()}else if(a==="bxk"){BX.kind=b.dataset.k;phRender()}else if(a==="bxgo"){botSend()}else if(a==="frtab"){FR.tab=b.dataset.k}else if(a==="frpost"){frPost()}else if(a==="frbot"){BX.kind="haul";PH.app="bank";phSave();phRender();return}else if(a==="fracc"){frAccept(b.dataset.k)}else if(a==="frcan"){frCancel(b.dataset.k)}
   else if(a==="gobank"){openPortfolio();setTimeout(()=>{const x=[...sheet.querySelectorAll(".sec")].find(e=>/credit score/.test(e.textContent));if(x)x.scrollIntoView()},50);PH.open=false}
   else if(a==="gigtap"){gigTap(b);return}
   else if(a==="ridego"){rideStart();return}
