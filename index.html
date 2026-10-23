@@ -3598,7 +3598,7 @@ function milApp(){const p=pol(),m=mil(),C=MILCFG,U=C.units,now=Date.now(),lead=p
   const gar=milGar(),upk=milUpkeep(),free=Object.keys(U).reduce((a,k)=>a+(m.units[k]||0),0)-gar;let h=!lead&&upk>0&&free>0?`<div class="ph-card" style="background:${S.cash<upk*24?"#7f1d1d":"#374151"};color:#fff;margin-bottom:8px"><b>${S.cash<0?"Your reserve army is putting you in debt":S.cash<upk*24?"Cash is running low":"Army in reserve"}</b><br>Reserve upkeep costs ${fmt(upk)}/hr while you're out of office. Disband the army to stop the drain${gar?" (garrisons stay)":""}.<button class="buy" data-ph="mildisall" style="width:100%;margin-top:6px;color:#fff;background:#374151!important;border-color:#f59e0b">Disband army</button></div>`:"";h+=`<div class="ph-rows"><div><span>Strength</span><b>${Math.round(milStr())}</b></div><div><span>Morale</span><b style="color:${m.morale<40?"#f87171":"#4ade80"}">${Math.round(m.morale)}%</b></div><div><span>Supply</span><b>${Math.round(m.supply)}%</b></div><div><span>Upkeep${lead?"":" (reserve)"}</span><b>${fmt(milUpkeep())}/hr</b></div>${gar?`<div><span>On garrison</span><b>${gar} inf</b></div>`:""}${m.rep.length?`<div><span>Reparations owed</span><b style="color:#f87171">${fmt(m.rep.reduce((a,r)=>a+r.left,0))}</b></div>`:""}</div>`;
   const bx=(a,k,t,bg,dis,w)=>`<button class="buy" data-ph="${a}" data-k="${k}" style="${dis?"":`color:#fff;background:${bg}!important;`}border-color:#f59e0b;padding:4px 6px;margin:0;font-size:11px;white-space:nowrap;${w?"flex:1;min-width:0":"width:34px;min-width:0;flex:none"}" ${dis?"disabled":""}>${t}</button>`;
   const urow=(top,sub,btns)=>`<div style="display:block"><div style="display:flex;justify-content:space-between;gap:6px;align-items:baseline"><span>${top}</span><small style="opacity:.7;text-align:right">${sub}</small></div><div style="display:flex;gap:5px;margin-top:4px">${btns}</div></div>`;
-  h+=`<div class="ph-sub" style="margin-top:10px">Army${lead&&!here?` · recruit from ${p.c}`:""}${lead?"":` · <span style="color:#fbbf24">Reserve (${Math.round(C.reserveUp*100)}% upkeep)</span>`}</div><div class="ph-rows">${Object.keys(U).map(k=>urow(`${U[k].n} <b>× ${m.units[k]}</b>`,`str ${U[k].str} · ${fmt(U[k].up*(lead?1:C.reserveUp))}/hr ea`,bx("milrec",k,`+${C.batch} · ${fmt(milBatchCost(k))}`,"#7f1d1d",!lead||!here||S.cash<milBatchCost(k),1)+bx("mildis",k,"−","#374151",!m.units[k]))).join("")}</div>`;
+  h+=`<div class="ph-sub" style="margin-top:10px">Army${lead&&!here?` · recruit from ${p.c}`:""}${lead?"":` · <span style="color:#fbbf24">Reserve (${Math.round(C.reserveUp*100)}% upkeep)</span>`}</div><div class="ph-rows">${Object.keys(U).map(k=>urow(`${U[k].n} <b>× ${m.units[k]}</b>`,`str ${U[k].str} · ${fmt(U[k].up*(lead?1-presFx("upk"):C.reserveUp))}/hr ea`,bx("milrec",k,`+${C.batch} · ${fmt(milBatchCost(k))}`,"#7f1d1d",!lead||!here||S.cash<milBatchCost(k),1)+bx("mildis",k,"−","#374151",!m.units[k]))).join("")}</div>`;
   const wk=Object.keys(m.wars);
   for(const n of wk){const w=m.wars[n],pc=Math.max(0,w.pcd-now);
     h+=`<div class="ph-sub" style="margin-top:10px">War with ${n} · ${w.terrain} · weariness ${Math.round(w.weariness)}</div><div style="height:8px;border-radius:4px;background:#7f1d1d;overflow:hidden"><div style="height:100%;width:${w.front}%;background:#22c55e"></div></div>
@@ -4387,7 +4387,7 @@ const OFCCSS=`#ofc{--ofbg:#c7d6e6;--ofink:#0f172a;--ofsm:#166534;--ofsh:0 1px 3p
 #ofc .oload{position:absolute;inset:0;display:grid;place-items:center;font-size:15px;color:var(--oload)}
 body.ofc #toast{position:fixed;z-index:45}body.ofc-pc #sheet{z-index:35}
 #ofc .opc{display:none}body.ofc-pc #ofc .opc,body.ofc-gov #ofc .opc{display:inline-block}body.ofc-gov #phone{z-index:40}body.ofc-gov #ofc .opr,body.ofc-gov #ofc .ojoy{visibility:hidden}
-@media (max-width:600px){#ofc .ob{padding:8px 11px;font-size:12px}#ofc .ohide{display:none}}`;
+@media (max-width:600px){#ofc .ob{padding:8px 11px;font-size:12px}#ofc .ohide{display:none}#ofc .otop.pres{flex-wrap:wrap}#ofc .otop.pres .ottl{flex:1 1 100%}#ofc .otop.pres~.ohelp{display:none}}`;
 
 /* ---------- enter / exit ---------- */
 function ofEnter(hc,pres){if(OFC.on||(!hc&&!pres))return;OFC.on=true;OFC.mode=pres?"pres":"hq";OFC.city=pres?null:hc;OFC.key=pres?PRES_KEY:hc.id;OFC.fix=pres?presFixtures():ofHqFixtures();OFC.wz=pres?presWallZones():[];ofData(OFC.key);
@@ -4395,11 +4395,11 @@ function ofEnter(hc,pres){if(OFC.on||(!hc&&!pres))return;OFC.on=true;OFC.mode=pr
   if(!document.getElementById("ofc-css")){const st=document.createElement("style");st.id="ofc-css";st.textContent=OFCCSS;document.head.appendChild(st)}
   const el=document.createElement("div");el.id="ofc";el.setAttribute("role","dialog");el.setAttribute("aria-label",pres?"Presidential office":`${hc.name} HQ office`);
   if(matchMedia("(pointer:coarse)").matches||"ontouchstart" in window)el.classList.add("touch");
-  el.innerHTML=`<div class="oload">Loading your office…</div><div class="otop"><div class="ottl"><b>${pres?`${pol().c} · Presidential Office`:`${hc.name} HQ · Office`}</b><small id="ofc-cash"></small></div>
+  el.innerHTML=`<div class="oload">Loading your office…</div><div class="otop${pres?" pres":""}"><div class="ottl"><b>${pres?`${pol().c} · Presidential Office`:`${hc.name} HQ · Office`}</b><small id="ofc-cash"></small></div>
     <button class="ob opc ok" data-of="pcclose">Back to office</button><button class="ob pri" data-of="shop">🛒 Shop</button>${pres?"":`<button class="ob" data-of="classic"><span class="ohide">Classic </span>HQ view</button>`}<button class="ob bad" data-of="exit" aria-label="Exit office">✕ Exit</button></div>
     <div class="ohelp">W/S forward/back · A/D strafe · ←/→ or drag to turn · E use · Esc exit</div><div class="ojoy"><i></i></div><div class="opr" hidden></div><div class="opn" hidden></div>`;
   document.body.appendChild(el);document.body.classList.add("ofc");OFC.el=el;OFC.keys={};OFC.joy=null;OFC.place=null;OFC.panel=null;OFC.near=null;OFC.nearSig="";
-  OFC.p=pres?{x:0,z:4.6,yaw:0}:{x:0,z:1.2,yaw:0};ofCash();ofBindUI();
+  OFC.p=pres?{x:0,z:2.4,yaw:0}:{x:0,z:1.2,yaw:0};ofCash();ofBindUI();
   loadThree().then(T=>{if(!OFC.on||OFC.el!==el)return;ofBuild(T)}).catch(()=>{if(!OFC.on)return;ofExit(true);toast(pres?"Couldn't load the 3D office. Opening the government app instead.":"Couldn't load the 3D office. Showing the classic HQ view.")})}
 /* the 3D scene follows html[data-theme]: bright day in light, night sky and dimmer lights in dark */
 function ofSceneTheme(){if(!OFC.scene||!OFC.lt)return;const dk=document.documentElement.getAttribute("data-theme")!=="light",k=OFC.lt;OFC.scene.background.setHex(dk?0x111827:0xbcd3ea);k.hl.intensity=dk?.42:.55;k.dl.intensity=dk?.32:.55;k.al.intensity=dk?.14:.18}
@@ -4558,7 +4558,7 @@ function ofDecor(kind,i){const d=ofData(OFC.key),arr=kind==="floor"?ofFloors():o
 /* ---------- input ---------- */
 function ofBindUI(){const el=OFC.el;
   el.addEventListener("click",e=>{const b=e.target.closest("[data-of]");if(!b||b.disabled)return;const a=b.dataset.of;
-    if(a==="exit")ofExit();else if(a==="classic")ofExit(true);else if(a==="shop")ofPanel(OFC.panel?null:"shop");else if(a==="pclose")ofPanel(null);
+    if(a==="exit")ofExit();else if(a==="classic")ofExit(true);else if(a==="shop"){if(OFC.mode==="pres")presGovClose();ofPanel(OFC.panel?null:"shop")}else if(a==="pclose")ofPanel(null);
     else if(a==="tab"){OFC.ptab=b.dataset.t;ofPanelRender()}else if(a==="buy")ofBuy(b.dataset.k);else if(a==="invsell")ofInvSell(b.dataset.k);else if(a==="invplace")ofInvPlace(b.dataset.k);
     else if(a==="floor"||a==="wall")ofDecor(a,+b.dataset.i);else if(a==="use")ofUse();else if(a==="move")ofMove();else if(a==="store")ofStore();else if(a==="sell")ofSell();
     else if(a==="rot"){if(OFC.place)OFC.place.rot=(OFC.place.rot+1)%4}else if(a==="confirm")ofConfirm();else if(a==="cancel")ofCancel();else if(a==="pcclose"){ofPcClose();if(OFC.mode==="pres")presGovClose()}});
@@ -4693,10 +4693,10 @@ const milBatchCost=k=>Math.round(MILCFG.units[k].cost*MILCFG.batch*(1-presFx("co
 const presEffText=it=>Object.keys(it.fx).map(k=>`${PRES_FX[k].sg}${Math.round(it.fx[k]*100)}% ${PRES_FX[k].n}`).join(", ");
 /* per-player layout, created with defaults so old saves load */
 function presData(){const d=S.poff=S.poff&&typeof S.poff==="object"?S.poff:{};
-  d.items=(Array.isArray(d.items)?d.items:[]).filter(o=>o&&PRES_ITEMS[o.type]&&PRES_ITEMS[o.type].kind==="decor"&&isFinite(o.x)&&isFinite(o.z));
-  if(!(d.floor>=0&&d.floor<PRES_FLOORS.length))d.floor=0;if(!(d.wall>=0&&d.wall<PRES_WALLS.length))d.wall=0;
-  if(!d.inv||typeof d.inv!=="object")d.inv={};for(const k in d.inv)if(!PRES_ITEMS[k]||PRES_ITEMS[k].kind!=="decor"||!(d.inv[k]>0))delete d.inv[k];
-  if(!d.tools||typeof d.tools!=="object")d.tools={};for(const k in d.tools)if(!PRES_ITEMS[k]||PRES_ITEMS[k].kind!=="tool")delete d.tools[k];
+  d.items=(Array.isArray(d.items)?d.items:[]).filter(o=>o&&typeof o==="object"&&PRES_ITEMS[o.type]&&PRES_ITEMS[o.type].kind==="decor"&&typeof o.x==="number"&&typeof o.z==="number"&&Math.abs(o.x)<=OFC_ROOM.w/2&&Math.abs(o.z)<=OFC_ROOM.d/2).slice(0,120);for(const o of d.items)if(!Number.isInteger(o.rot)||o.rot<0||o.rot>3)o.rot=0;
+  if(!(Number.isInteger(d.floor)&&d.floor>=0&&d.floor<PRES_FLOORS.length))d.floor=0;if(!(Number.isInteger(d.wall)&&d.wall>=0&&d.wall<PRES_WALLS.length))d.wall=0;
+  if(!d.inv||typeof d.inv!=="object"||Array.isArray(d.inv))d.inv={};for(const k in d.inv)if(!PRES_ITEMS[k]||PRES_ITEMS[k].kind!=="decor"||!(d.inv[k]>0))delete d.inv[k];
+  if(!d.tools||typeof d.tools!=="object"||Array.isArray(d.tools))d.tools={};for(const k in d.tools)if(!PRES_ITEMS[k]||PRES_ITEMS[k].kind!=="tool")delete d.tools[k];
   if(!(d.since>0))d.since=0;return d}
 
 /* ---------- phone: Office tab, entering and leaving ---------- */
@@ -4782,7 +4782,7 @@ const PRES_FLAGS={Canada:[["Vw",["#d52b1e",1],["#fff",2],["#d52b1e",1]],["star",
   "Saudi Arabia":[["fill","#006c35"],["box","#fff",.22,.33,.56,.07],["box","#fff",.2,.64,.6,.05]],India:[["H","#ff9933","#fff","#138808"],["disc","#000080",.5,.5,.14],["disc","#fff",.5,.5,.115],["disc","#000080",.5,.5,.03]],
   Thailand:[["Hw",["#a51931",1],["#f4f5f8",1],["#2d2a4a",2],["#f4f5f8",1],["#a51931",1]]],Singapore:[["H","#ef3340","#fff"],["disc","#fff",.2,.25,.16],["disc","#ef3340",.25,.25,.15],["star","#fff",.33,.15,.035],["star","#fff",.4,.25,.035],["star","#fff",.37,.36,.035]],
   Indonesia:[["H","#ce1126","#fff"]],Philippines:[["H","#0038a8","#ce1126"],["poly","#fff",[0,0,.5,.5,0,1]],["disc","#fcd116",.16,.5,.07]],China:[["fill","#de2910"],["star","#ffde00",.17,.27,.12],["star","#ffde00",.36,.12,.035],["star","#ffde00",.42,.22,.035],["star","#ffde00",.42,.36,.035],["star","#ffde00",.36,.46,.035]],
-  "South Korea":["kor"],Japan:[["fill","#fff"],["disc","#bc002d",.5,.5,.3]],Australia:["aus"],"New Zealand":["nz"],Iceland:[["fill","#02529c"],["cross","#fff",.26,.36],["cross","#dc1e35",.13,.36]]};
+  "South Korea":["kor"],Japan:[["fill","#fff"],["disc","#bc002d",.5,.5,.3]],Australia:["aus"],"New Zealand":["nz"],Chile:[["H","#fff","#d52b1e"],["box","#0039a6",0,0,.33,.5],["star","#fff",.165,.25,.1]],Iraq:[["H","#ce1126","#fff","#000"],["box","#007a3d",.3,.38,.4,.1]],"DR Congo":[["fill","#007fff"],["poly","#f7d618",[0,.82,.82,0,1,0,1,.18,.18,1,0,1]],["poly","#ce1021",[0,.9,.9,0,1,0,1,.1,.1,1,0,1]],["star","#f7d618",.15,.2,.12]],Mongolia:[["V","#c4272f","#015197","#c4272f"],["disc","#f9cf02",.17,.35,.06],["box","#f9cf02",.15,.45,.04,.3]],Iceland:[["fill","#02529c"],["cross","#fff",.26,.36],["cross","#dc1e35",.13,.36]]};
 function presStar(g,cx,cy,r,col){g.fillStyle=col;g.beginPath();for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,rr=i%2?r*.42:r;g[i?"lineTo":"moveTo"](cx+Math.cos(a)*rr,cy+Math.sin(a)*rr)}g.closePath();g.fill()}
 function presJack(g,x,y,w,h){g.save();g.beginPath();g.rect(x,y,w,h);g.clip();g.fillStyle="#012169";g.fillRect(x,y,w,h);g.lineCap="butt";
   const ln=(c,t)=>{g.strokeStyle=c;g.lineWidth=t;g.beginPath();g.moveTo(x,y);g.lineTo(x+w,y+h);g.moveTo(x+w,y);g.lineTo(x,y+h);g.stroke()};ln("#fff",h*.22);ln("#c8102e",h*.09);
