@@ -49,7 +49,7 @@ h1 span{color:var(--accent)}
 #mapwrap{position:relative;flex:1;min-height:0}
 canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 /* one map: MapLibre draws the planet, the streets and the buildings; the game draws its cities, routes and storms on a see-through canvas locked to the same camera */
-#gl{position:absolute;inset:0;background:#05080f radial-gradient(1px 1px at 12% 18%,#fff8,transparent),radial-gradient(1px 1px at 72% 34%,#fff6,transparent),radial-gradient(1.5px 1.5px at 38% 76%,#fff7,transparent),radial-gradient(1px 1px at 86% 82%,#fff5,transparent),radial-gradient(1px 1px at 22% 58%,#fff4,transparent),radial-gradient(1px 1px at 58% 8%,#fff6,transparent),radial-gradient(1px 1px at 92% 52%,#fff5,transparent),radial-gradient(1.5px 1.5px at 6% 90%,#fff6,transparent)}
+#gl{position:absolute;inset:0;background:var(--space)}
 #gl .maplibregl-canvas{cursor:grab}#gl .maplibregl-canvas:active{cursor:grabbing}#gl .maplibregl-ctrl-attrib{font-size:10px}
 canvas#map{position:absolute;inset:0;z-index:1;pointer-events:none}
 #ticker{position:absolute;left:max(12px,env(safe-area-inset-left,0px));top:10px;right:max(12px,env(safe-area-inset-right,0px));
@@ -552,9 +552,28 @@ function localStyle(){const cs=n=>getComputedStyle(document.documentElement).get
 let mlRemote=false;
 function loadMapStyle(){fetch(ML_STYLE()).then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(js=>{mlRemote=true;MM.setStyle(js,{diff:false})}).catch(e=>{console.warn("map style",e);if(mlRemote){mlRemote=false;MM.setStyle(localStyle(),{diff:false})}})}
 MM.on("style.load",()=>{try{MM.setProjection({type:"globe"})}catch(e){}
-  try{MM.setSky({"sky-color":"#0b1a2e","horizon-color":"#7fb2e6","fog-color":"#b9d5f2","sky-horizon-blend":.6,"horizon-fog-blend":.7,"fog-ground-blend":.85,
-    "atmosphere-blend":["interpolate",["linear"],["zoom"],0,1,6,.9,10,0]})}catch(e){}
-  styleLod();draw()});
+  try{MM.setSky({"atmosphere-blend":0})}catch(e){}
+  styleLod();oldLook();draw()});
+/* the classic Meridian chart look on the planet: flat sea and land in the game's colours, borders and a lat/long grid.
+   It sits over the street map and fades out between zoom 5.5 and 7, where the real map takes over */
+const OLD0=5.5,OLD1=7;
+function oldLook(){try{const cs=n=>css(n)||"#888",st=MM.getStyle();if(!st||MM.getLayer("m-sea"))return;
+  if(!MM.getSource("m-land"))MM.addSource("m-land",{type:"geojson",data:landGeo()});
+  if(!MM.getSource("m-grat"))MM.addSource("m-grat",{type:"geojson",data:{type:"Feature",properties:{},geometry:d3.geoGraticule10()}});
+  const fade=v=>["interpolate",["linear"],["zoom"],OLD0,v,OLD1,0],sym=st.layers.find(l=>l.type==="symbol"),b=sym?sym.id:undefined;
+  MM.addLayer({id:"m-sea",type:"background",paint:{"background-color":cs("--sea"),"background-opacity":fade(1)}},b);
+  MM.addLayer({id:"m-land",type:"fill",source:"m-land",paint:{"fill-color":cs("--land"),"fill-opacity":fade(1)}},b);
+  MM.addLayer({id:"m-grat",type:"line",source:"m-grat",paint:{"line-color":cs("--border"),"line-width":.5,"line-opacity":fade(.3)}},b);
+  MM.addLayer({id:"m-border",type:"line",source:"m-land",paint:{"line-color":cs("--border"),"line-width":.6,"line-opacity":fade(1)}},b);
+  for(const l of st.layers)if(l.type==="symbol")MM.setLayerZoomRange(l.id,Math.max(l.minzoom||0,OLD0+.5),l.maxzoom||24)}catch(e){console.warn("old look",e)}}
+/* the old globe's glow around the rim and soft shading toward the edge, drawn on the game canvas */
+function globeDisc(){const c=MM.getCenter(),o=MM.project(c),r=d3.geoRotation([-c.lng,-c.lat]).invert([0,Math.min(89.5,_hz)]),q=MM.project(r),R=Math.hypot(q.x-o.x,q.y-o.y);
+  return R>10?{o,R}:null}
+function drawRim(ctx,z){const a=1-smooth01(OLD0,OLD1,z),d=a>.01&&globeDisc();if(!d)return;const {o,R}=d;ctx.save();ctx.globalAlpha=a;
+  const glow=ctx.createRadialGradient(o.x,o.y,R*.98,o.x,o.y,R*1.12);glow.addColorStop(0,"rgba(120,190,210,.35)");glow.addColorStop(1,"rgba(120,190,210,0)");
+  ctx.fillStyle=glow;ctx.beginPath();ctx.arc(o.x,o.y,R*1.12,0,7);ctx.moveTo(o.x+R,o.y);ctx.arc(o.x,o.y,R,0,7);ctx.fill("evenodd");
+  const limb=ctx.createRadialGradient(o.x,o.y,R*.55,o.x,o.y,R);limb.addColorStop(0,"rgba(0,0,0,0)");limb.addColorStop(1,"rgba(0,0,0,.22)");
+  ctx.beginPath();ctx.arc(o.x,o.y,R,0,7);ctx.fillStyle=limb;ctx.fill();ctx.strokeStyle=css("--border");ctx.lineWidth=1;ctx.stroke();ctx.restore()}
 MM.on("error",e=>console.warn("map",e&&e.error&&e.error.message));
 /* level of detail: our own city dots and names own the planet view; the map's place labels take over from city level, streets and buildings fade in below */
 function styleLod(){try{const st=MM.getStyle();if(!st)return;
@@ -605,7 +624,7 @@ function resize(){const r=cv.getBoundingClientRect();W=r.width;H=r.height;dpr=Ma
   cv.width=W*dpr;cv.height=H*dpr;base=Math.min(W,H)/2-16;try{MM.resize();const z0=Math.log2(Math.max(60,base)*2*Math.PI/512);MM.setMinZoom(Math.max(0,z0-1));if(!resize.done&&W>0){resize.done=1;MM.jumpTo({zoom:z0})}}catch(e){}draw()}
 let _cssC={};const css=v=>_cssC[v]??=getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const _pickedMap=()=>{try{return localStorage.getItem("meridian-3d-dark")!=null}catch(e){return false}};
-new MutationObserver(()=>{_cssC={};theme3dBtn();if(!mlRemote)MM.setStyle(localStyle(),{diff:false});else if(!_pickedMap())loadMapStyle()}).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+new MutationObserver(()=>{_cssC={};theme3dBtn();try{MM.setPaintProperty("m-sea","background-color",css("--sea"));MM.setPaintProperty("m-land","fill-color",css("--land"));MM.setPaintProperty("m-grat","line-color",css("--border"));MM.setPaintProperty("m-border","line-color",css("--border"))}catch(e){}if(!mlRemote)MM.setStyle(localStyle(),{diff:false});else if(!_pickedMap())loadMapStyle()}).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{_cssC={}});
 /* one overlay redraw per frame; MapLibre's own frames redraw it in step so nothing lags behind the camera */
 let _drawPend=false;function draw(){if(_drawPend)return;_drawPend=true;requestAnimationFrame(()=>{_drawPend=false;drawNow()})}
@@ -614,7 +633,7 @@ let _lpT=0,_lp={};function labelProfit(c){const n=Date.now();if(n-_lpT>1000){_lp
 function drawNow(){applyView();syncCam();const z=MM.getZoom();
   const C={sea:css("--sea"),land:css("--land"),border:css("--border"),ink:css("--ink"),own:css("--own"),acc:css("--accent"),good:css("--good"),bad:css("--bad"),muted:css("--muted"),space:css("--space"),panel:css("--panel")};C.halo=C.panel+"cc";
   ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);ctx.setTransform(dpr,0,0,dpr,0,0);
-  if(typeof drawNight==="function")drawNight(ctx);
+  drawRim(ctx,z);if(typeof drawNight==="function"){const d=z<6.5&&globeDisc();ctx.save();if(d){ctx.beginPath();ctx.arc(d.o.x,d.o.y,d.R,0,7);ctx.clip()}drawNight(ctx);ctx.restore()}
   const [cx,cy]=proj.translate(),R=proj.scale();
   // shipments in transit (great-circle routes, clipped to the visible side)
   const now=Date.now();
@@ -624,10 +643,11 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
     ctx.fillStyle=C.acc;if(vcls(v.type)==="truck")ctx.fillRect(x-4,y-3,8,6);else if(vcls(v.type)==="ship"){ctx.beginPath();ctx.moveTo(x-6,y-2);ctx.lineTo(x+6,y-2);ctx.lineTo(x+3,y+3);ctx.lineTo(x-3,y+3);ctx.fill()}
     else{ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.fill()}}
   if(typeof drawNight==="function"&&z<11)drawTraffic(ctx,C);
+  {const d=z<6.5&&globeDisc();ctx.save();if(d){ctx.beginPath();ctx.arc(d.o.x,d.o.y,d.R,0,7);ctx.clip()}   // keep area fills on the planet's face
   if(typeof drawStorms==="function"&&z<11)drawStorms(ctx,C);
   if(typeof drawDmg==="function")drawDmg(ctx);
   if(typeof drawStrikes==="function")drawStrikes(ctx);
-  if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);
+  if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);ctx.restore()}
   const dotA=1-smooth01(10.5,12,z),labA=1-smooth01(8.5,9.6,z);   // our city dots hand over to the real map as you get close
   if(dotA>0.02){ctx.globalAlpha=dotA;
   if(S.pol&&(S.pol.r>=0||S.pol.ctrl&&Object.keys(S.pol.ctrl).length)){const lead=S.pol.r>=0?S.pol.c:null;for(const c of CITIES){const mine=c.country===lead,inf=S.pol.ctrl&&S.pol.ctrl[c.country];if(!mine&&!inf||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]);
