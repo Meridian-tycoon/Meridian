@@ -782,7 +782,7 @@ const TECH=[
  {k:"deepmine",t:2,n:"Deep-core mining",d:"Automated drill rigs. Mines produce 20% more.",rp:750,cash:1.8e6,req:["robotics"]},
  {k:"smartbld",t:2,n:"Smart buildings",d:"Sensors and building automation. Apartments, offices and hotels earn 6% more.",rp:650,cash:1.5e6,req:["semis"]},
  {k:"quantum",t:2,n:"Quantum computing",d:"Research labs produce 25% more points.",rp:1200,cash:4e6,req:["semis"]},
- {k:"nuclear",t:2,n:"Nuclear power",d:"Unlocks nuclear power plants: burn uranium for four times the electricity of a coal plant. Uranium is bought on the market or mined at a permitted uranium mine.",rp:900,cash:3e6,req:["renew"]},
+ {k:"nuclear",t:2,n:"Nuclear power",d:"Unlocks nuclear power plants: burn uranium for four times the electricity of a coal plant. Uranium is bought on the market (you need a uranium permit) or mined at a permitted uranium mine.",rp:900,cash:3e6,req:["renew"]},
  {k:"govlic",t:3,n:"Defense contractor licence",d:"Government buyers in big cities (size 4+) will buy military and space goods at fixed prices.",rp:1500,cash:5e6,req:["aero","robotics"]},
  {k:"armored",t:3,n:"Armored vehicles",d:"Unlocks armored vehicle plants: cars, steel and robots.",rp:2000,cash:8e6,req:["govlic"]},
  {k:"drones",t:3,n:"Military drones",d:"Unlocks drone factories: chips, plastics and aerospace parts.",rp:2500,cash:1e7,req:["govlic"]},
@@ -968,9 +968,9 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
         <button class="buy up" data-act="sell" data-g="${g}">${hasHQ(c)?"Sell all":"Sell 20"}</button></div>`}
       h+=`</div><div class="row"><div class="n">Expand warehouse</div><div class="d">Doubles space to ${fmtT(cap*2)}. Goods are weighed in tonnes (armoured vehicles 20 t each, microchips 0.05 t).</div><button class="buy up" data-act="whup" ${S.cash<whUp(c)?"disabled":""}>${fmt(whUp(c))}</button></div>`;
       h+=marketHtml(c);h+=`<div class="sec">Local market · buy at +15%</div>${hasHQ(c)?"":`<p class="d" style="color:var(--bad);font-size:12px;margin:0 0 4px">No registered company here. Open an HQ in ${c.name} to sell in bulk, auto-sell, buy by the hundred, and sell to the government.</p>`}<div class="list">`;
-      for(const g of GK.filter(g=>G[g][2]!=="gov")){const p=px(c,g)*1.15,base=G[g][1],cheap=p<base*1.05;
-        h+=`<div class="row"><div class="n">${G[g][0]}</div><div class="d"><b style="color:${cheap?"var(--good)":"var(--ink)"}">${fmt(p)}</b> each${cheap?" · good price":""}</div>
-        <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2"><button class="buy up" data-act="buy" data-g="${g}" data-q="10" ${S.cash<p*10?"disabled":""}>+10</button><button class="buy" data-act="buy" data-g="${g}" data-q="100" ${S.cash<p*100||!hasHQ(c)?"disabled":""}>+100</button></span></div>`}
+      for(const g of GK.filter(g=>G[g][2]!=="gov")){const p=px(c,g)*1.15,base=G[g][1],cheap=p<base*1.05,nop=g==="uranium"&&!uranAnyPermit();
+        h+=`<div class="row"><div class="n">${G[g][0]}</div><div class="d"><b style="color:${cheap?"var(--good)":"var(--ink)"}">${fmt(p)}</b> each${cheap?" · good price":""}${nop?` · <b style="color:var(--bad)">Needs a uranium permit</b>`:""}</div>
+        <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2"><button class="buy up" data-act="buy" data-g="${g}" data-q="10" ${S.cash<p*10||nop?"disabled":""}>+10</button><button class="buy" data-act="buy" data-g="${g}" data-q="100" ${S.cash<p*100||nop||!hasHQ(c)?"disabled":""}>+100</button></span></div>`}
       h+=`</div>`;
       const here=S.fleet.filter(v=>v.city===c.id&&!v.arr),incoming=S.fleet.filter(v=>v.arr&&v.dest===c.id);
       h+=hireHtml(c)+supHtml(c);
@@ -1018,7 +1018,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="wh"){const p=whCost(c);if(S.cash<p)return;S.cash-=p;ensureWh(c);toast(`Warehouse open in ${c.name}`)}
   else if(a==="whup"){const p=whUp(c);if(S.cash<p)return;S.cash-=p;S.wh[c.id]++;toast("Warehouse expanded")}
   else if(a==="sell"){if(G[b.dataset.g][2]==="gov"&&!govOK(c)){toast(hasTech("govlic")?"Government buyers are only in cities of size 4+":"Research the Defense contractor licence to sell this");return}if(G[b.dataset.g][2]==="gov"&&!hasHQ(c)){toast("Government contracts need a registered company: open an HQ here");return}const g=b.dataset.g,street=!hasHQ(c),q=street?Math.min(20,S.inv[c.id][g]||0):(S.inv[c.id][g]||0),v=sellGood(c,g,q)*(street?.7:1);S.cash+=v;S.earned=(S.earned||0)+v;S.inv[c.id][g]-=q;if(S.inv[c.id][g]<1e-6)delete S.inv[c.id][g];toast(`Sold ${gq(q)} ${G[g][0].toLowerCase()} for ${fmt(v)}`)}
-  else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q,B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q*tpu(g)>whCap(c)+1e-9){toast(`Not enough warehouse space: ${fmtT(whRoom(c))} free, ${q} ${G[g][0].toLowerCase()} weigh ${fmtT(q*tpu(g))}`);return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
+  else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q;if(g==="uranium"&&!uranAnyPermit()){toast("Needs a uranium permit: apply to a government in the Gov tab first");return}const B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q*tpu(g)>whCap(c)+1e-9){toast(`Not enough warehouse space: ${fmtT(whRoom(c))} free, ${q} ${G[g][0].toLowerCase()} weigh ${fmtT(q*tpu(g))}`);return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
   else if(a==="veh"){const k=b.dataset.k,V=VEH[k];if(S.cash<V.cost)return;S.cash-=V.cost;S.fleet.push({id:S.nid++,type:k,city:c.id,paid:V.cost,cond:100});toast(`${V.n} ready in ${c.name}`)}
   else if(a==="ship"){shipForm=shipForm===id?null:id;renderSheet();shipInfo();return}
   else if(a==="go"){const v=S.fleet.find(x=>x.id===id);if(!v||v.job||v.arr||v.cargo){toast("That vehicle is busy");return}const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,km=distKm(c,d),fuel=vFuel(v.type,km,g?Math.min(capU(v.type,g),inv0(c,g))*tpu(g):0,c,d);
@@ -2152,6 +2152,8 @@ function logGov(m){S.log.unshift("Politics: "+m);S.log=S.log.slice(0,3)}
 const URQ={fee:10e6,wait:24*3600000,cd:6*3600000}; // fee, how long a player governor has to answer before the AI decides, retry cooldown after an AI refusal
 const uranFee=()=>URQ.fee;
 const uranPermit=n=>!!(S.gov&&S.gov[n]&&S.gov[n].uPermit);
+/* true if the player holds a uranium permit in at least one country: needed to buy uranium on the market */
+function uranAnyPermit(){const g=S.gov;if(!g||typeof g!=="object")return false;for(const n in g)if(g[n]&&g[n].uPermit)return true;return false}
 function uranNeed(n){if(uranPermit(n))return "";const g=S.gov&&S.gov[n];if(g&&g.uReq)return `Waiting for ${onEsc(g.uReq.name||"the government")} to decide on your nuclear mining permit for ${n}`;
   return `Needs government approval: apply for a nuclear mining permit from the ${n} government (Gov tab, ${fmt(uranFee())})`}
 /* the online player who governs country n: highest office, then most recently seen. null = AI government */
