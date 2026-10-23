@@ -377,7 +377,7 @@ const BIZ=[
  {k:"hotel",n:"Hotel",d:"Tourist money. Best in size-5 cities.",cost:1800000,gross:115000,up:34000},
  {k:"secfirm",n:"Security firm",d:"Guards and patrols. Cuts break-ins at your other businesses in this city.",cost:90000,gross:7400,up:2600},
  {k:"ambulance",n:"Ambulance service",d:"Private paramedics on contract to the city. Steady, recession-proof.",cost:260000,gross:17500,up:6400},
- {k:"lawfirm",n:"Law firm",d:"Blocks lawsuits against your businesses here, and halves any prison sentence you get.",cost:420000,gross:27000,up:9500},
+ {k:"lawfirm",n:"Law firm",d:"Blocks lawsuits against your businesses here. With any law firm you are 80% less likely to get caught or audited, prison sentences are halved, and bail and lawyer fees cost half.",cost:420000,gross:27000,up:9500},
  {k:"prison",n:"Private prison",d:"Earns more where policing is strict.",cost:2600000,gross:160000,up:56000,co:1},
  {k:"taxico",n:"Taxi company",d:"A fleet of 30 cabs. Your own taxi rides here are half price.",cost:45000,gross:4200,up:1500,tr:1},
  {k:"busline",n:"Bus line",d:"City and coach routes. Half-price buses for you, here and from here.",cost:160000,gross:11500,up:4200,tr:1},
@@ -1262,7 +1262,7 @@ function evAudit(quiet,forced){const t=evS(),E=Math.round(t.ev);if(E<=0&&!forced
   const full=E*(1+EVADE.pen),due=Math.min(full,Math.max(E,Math.round(taxCap())));S.cash-=due;t.fined+=due;t.audits++;t.ev=0;t.heat=25;t.lock=Date.now()+EVADE.lockD*DAYMS;t.lastAudit=Date.now();
   if(!quiet){S.log.unshift(`Tax audit: evasion found. Paid ${fmt(due)} (${fmt(E)} back taxes + penalty). Evasion locked for ${EVADE.lockD} days`);S.log=S.log.slice(0,3);if(typeof toast==="function")toast("Tax audit! You paid "+fmt(due)+" in back taxes and fines","bad")}
   return due}
-function evStep(d,quiet,act){const t=evS(),lv=act?evLevel():0,law=(typeof ownsAny==="function"&&ownsAny("lawfirm"))?.5:1;
+function evStep(d,quiet,act){const t=evS(),lv=act?evLevel():0,law=(typeof ownsAny==="function"&&ownsAny("lawfirm"))?.2:1;
   t.heat=Math.max(0,Math.min(100,t.heat+(EVADE.gain[lv]*law-EVADE.decay)*d));
   if(t.ev>0&&t.heat>0){const p=.12*Math.pow(t.heat/100,2);if(Math.random()<1-Math.pow(1-p,d))evAudit(quiet)}}
 function runTax(hours,now){const r=taxableRates(),t0=evS();if(hours>.25&&t0.hide>0&&Date.now()>=t0.lock){t0.hide=0;S.log.unshift(`Away ${fmtDur(hours*DAYMS)}: income hiding switched off so heat and audits don't build while you're gone. Turn it back on in the tax panel`);S.log=S.log.slice(0,3)}const h=EVADE.lv[evLevel()];S.tax.reg+=r.reg*hours*(1-h);S.tax.unreg+=r.un*hours*(1-h);
@@ -1276,7 +1276,7 @@ function runTax(hours,now){const r=taxableRates(),t0=evS();if(hours>.25&&t0.hide
     if(due<full&&full>0){const k=due/full;t0.ev*=k;t0.saved*=k}S.tax.start+=TAXP;S.tax.reg=0;S.tax.unreg=0;S.tax.warned=0}}
 function evHtml(){const t=evS(),lv=evLevel(),locked=Date.now()<t.lock,p=t.ev>0?.12*Math.pow(t.heat/100,2):0;
   return `<div style="padding:10px 12px;border-top:1px solid var(--line,#2a3438)"><div class="n">Hide income <b style="font-family:var(--mono)">${Math.round(EVADE.lv[lv]*100)}%</b> <span class="tag ${t.heat>=60?"bust":t.heat>=30?"":"boom"}">Heat ${Math.round(t.heat)}/100</span></div>
-    <div class="d" style="margin-top:4px;line-height:1.4">Under-report profit to pay less tax, but heat rises (${EVADE.gain.slice(1).join("/")} per day at 25/50/75%, it cools ${EVADE.decay}/day). Audit chance now ${(p*100).toFixed(1)}%/day. A caught audit costs the saved tax plus ${EVADE.pen}x penalty (${fmt(Math.round(t.ev*(1+EVADE.pen)))} if it hit now) and locks evasion for ${EVADE.lockD} days. A law firm halves heat. Saved but unpunished: ${fmt(t.ev)} · all-time saved ${fmt(t.saved)} · fined ${fmt(t.fined)} (${t.audits} audit${t.audits===1?"":"s"})${locked?` · locked ${fmtDur(t.lock-Date.now())}`:""}</div>
+    <div class="d" style="margin-top:4px;line-height:1.4">Under-report profit to pay less tax, but heat rises (${EVADE.gain.slice(1).join("/")} per day at 25/50/75%, it cools ${EVADE.decay}/day). Audit chance now ${(p*100).toFixed(1)}%/day. A caught audit costs the saved tax plus ${EVADE.pen}x penalty (${fmt(Math.round(t.ev*(1+EVADE.pen)))} if it hit now) and locks evasion for ${EVADE.lockD} days. A law firm cuts heat by 80%. Saved but unpunished: ${fmt(t.ev)} · all-time saved ${fmt(t.saved)} · fined ${fmt(t.fined)} (${t.audits} audit${t.audits===1?"":"s"})${locked?` · locked ${fmtDur(t.lock-Date.now())}`:""}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${EVADE.lv.map((v,i)=>`<button class="buy${t.hide===i?" up":""}" data-evade="${i}" ${locked&&i>0?"disabled":""}>${Math.round(v*100)}%</button>`).join("")}</div></div>`}
 document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("[data-evade]");if(!b)return;const t=evS();if(Date.now()<t.lock&&+b.dataset.evade>0)return;t.hide=Math.max(0,Math.min(3,+b.dataset.evade|0));save();if(typeof renderSheet==="function")renderSheet()});
 const taxOwed=()=>Math.round(S.tax.reg*TAX_REG+S.tax.unreg*TAX_UNREG);
@@ -1284,7 +1284,7 @@ const taxOwed=()=>Math.round(S.tax.reg*TAX_REG+S.tax.unreg*TAX_UNREG);
 function audits(quiet){for(const c of CITIES){let v=0,n=0;const o=S.own[c.id]||{};
     for(const b of BIZ)if(o[b.k]&&!bizReg(c,b.k)){const u=uLv(c.id,b.k).length;v+=cost(b,c)*u;n+=u}
     for(const s of S.sites)if(s.city===c.id&&!s.reg){v+=plotPrice(c,zoneOf(s)||"farm",s.size);n++}
-    if(n&&Math.random()<.002*n){let fine=Math.round(v*.15);S.cash-=fine=Math.min(fine,Math.round(taxCap()));if(!quiet){S.log.unshift(`Tax audit in ${c.name}: fined ${fmt(fine)} for ${n} unregistered asset${n>1?"s":""}`);S.log=S.log.slice(0,3)}if(n>=3&&typeof arrest==="function"&&!(typeof jailed==="function"&&jailed()))arrest("tax evasion",10,c,quiet);}}}
+    if(n&&Math.random()<.002*n*lawRisk()){let fine=Math.round(v*.15);S.cash-=fine=Math.min(fine,Math.round(taxCap()));if(!quiet){S.log.unshift(`Tax audit in ${c.name}: fined ${fmt(fine)} for ${n} unregistered asset${n>1?"s":""}`);S.log=S.log.slice(0,3)}if(n>=3&&typeof arrest==="function"&&!(typeof jailed==="function"&&jailed()))arrest("tax evasion",10,c,quiet);}}}
 function renderHQ(c){let h=cityHead(c);const o=S.own[c.id]||{},sites=S.sites.filter(s=>s.city===c.id);
   h+=`<div class="meta"><div><span>Tax year ends in </span>${fmtDur(S.tax.start+TAXP-Date.now()).replace(/^(\d+)h/,(m,x)=>x>=48?Math.floor(x/24)+"d "+(x%24)+"h":m)}</div><div><span>Owed so far </span>${fmt(taxOwed())}</div></div>`+tabsHtml();
   if(!hasHQ(c)){h+=`<div class="sec">Open a headquarters in ${c.country}</div><div class="list"><div class="row"><div class="n">Country HQ in ${c.name}</div>
@@ -2196,7 +2196,7 @@ function govHour(quiet){const now=Date.now();
       if(diff.length){const k=diff[Math.floor(Math.random()*diff.length)];g.laws[k]+=Math.sign(pl[k]-g.laws[k]);if(!quiet&&ownsIn(n))logGov(`${n} changes ${LAWS[k].n.toLowerCase()} to ${LAWS[k].v[g.laws[k]]}`)}}
     if(g.laws.wage===0&&g.appr<40&&!(g.strike>now)&&Math.random()<.04){g.strike=now+(6+Math.random()*6)*DAYMS;if(!quiet&&ownsIn(n))logGov(`General strike in ${n}: businesses earn 30% less for a while`)}
     if(g.ctrl){if(g.contract){const v=contractPay(n);S.cash+=v;S.earned=(S.earned||0)+v}
-      if(Math.random()<.004+(g.contract?.006:0))exposed(n,quiet)}
+      if(Math.random()<(.004+(g.contract?.006:0))*lawRisk())exposed(n,quiet)}
     if(now>=g.next)election(n,quiet)}
   warHour(quiet);try{dipDay(quiet)}catch(e){}}
 function ownsIn(n){return ctyCities(n).some(c=>S.own[c.id]||S.hq&&S.hq[c.id]||S.sites.some(s=>s.city===c.id)||(S.props||[]).some(p=>p.city===c.id))}
@@ -2216,7 +2216,7 @@ function election(n,quiet){const g=gov(n),ks=Object.keys(PARTIES);
 function lobby(c,k,dir){const n=c.country,g=gov(n),cost=lobbyCost(n),pl=PARTIES[g.party].pl[k];
   if(S.cash<cost){toast(`Need ${fmt(cost)} to lobby`);return}S.cash-=cost;S.lobbied=(S.lobbied||0)+1;
   const toward=Math.sign(pl-g.laws[k])===dir;let ch=(toward?.65:.3)+g.favor+(hasHQ(c)?.05:0);
-  if(Math.random()<.08+(S.hq&&ctyCities(n).some(x=>S.hq[x.id])?0:.07)){const fine=cost*2;S.cash-=fine;g.appr=Math.max(5,g.appr-6);logGov(`Lobbying scandal in ${n}: fined ${fmt(fine)}`);toast(`Scandal! Fined ${fmt(fine)}`);arrest("bribing officials",12,c);return}
+  if(Math.random()<(.08+(S.hq&&ctyCities(n).some(x=>S.hq[x.id])?0:.07))*lawRisk()){const fine=cost*2;S.cash-=fine;g.appr=Math.max(5,g.appr-6);logGov(`Lobbying scandal in ${n}: fined ${fmt(fine)}`);toast(`Scandal! Fined ${fmt(fine)}`);arrest("bribing officials",12,c);return}
   if(Math.random()<ch){g.laws[k]+=dir;logGov(`${n} passes your bill: ${LAWS[k].n.toLowerCase()} now ${LAWS[k].v[g.laws[k]]}`);toast("Bill passed")}
   else toast("Bill failed to pass")}
 function govHtml(c){const n=c.country,g=gov(n),P=PARTIES[g.party];let h=cityHead(c)+tabsHtml();
@@ -2287,7 +2287,7 @@ function warHour(quiet){S.wars=S.wars||[];const ws=S.wars;
   S.wars=ws.filter(w=>w.l>0)}
 function warAct(id,a){const w=(S.wars||[]).find(x=>x.id===id);if(!w)return;const cst=warCost(w);if(S.cash<cst){toast(`Need ${fmt(cst)}`);return}S.cash-=cst;
   if(a==="peace"){if(Math.random()<.55){w.l--;logGov(`Talks you funded ease ${w.a}–${w.b} to ${WARL[w.l].toLowerCase()}`);toast("Talks worked")}else toast("Talks collapsed")}
-  else{if(Math.random()<.12){const f=cst*3;S.cash-=f;logGov(`Arms dealing exposed: fined ${fmt(f)}`);toast(`Caught! Fined ${fmt(f)}`);arrest("arms trafficking",36,cap(w.a));return}
+  else{if(Math.random()<.12*lawRisk()){const f=cst*3;S.cash-=f;logGov(`Arms dealing exposed: fined ${fmt(f)}`);toast(`Caught! Fined ${fmt(f)}`);arrest("arms trafficking",36,cap(w.a));return}
     S.cash+=cst*1.6;if(w.l<4&&Math.random()<.6){w.l++;logGov(`${w.a}–${w.b} escalates to ${WARL[w.l].toLowerCase()}`)}toast(`Arms sold: +${fmt(cst*.6)} profit`)}
   S.wars=S.wars.filter(x=>x.l>0)}
 function conflictHtml(n){const ws=(S.wars||[]).filter(w=>!n||w.a===n||w.b===n).sort((a,b)=>b.l-a.l);
@@ -2916,17 +2916,21 @@ S.rec=S.rec||[];
 const POLMULT=[.6,1,1.6];
 function jailed(){return S.jail&&Date.now()<S.jail.until}
 function ownsAny(k){for(const id in S.own)if(hasT(S.own[id],k))return true;return false}
+/* any law firm: risk of being caught (arrests, audits, exposure, heat) is 80% lower */
+function lawRisk(){return ownsAny("lawfirm")?.2:1}
+/* any law firm: bail and lawyer fees are 50% cheaper */
+function lawBribe(){return ownsAny("lawfirm")?.5:1}
 function arrest(reason,sev,c,quiet){c=c||CITIES[(S.loc||{city:0}).city];const pol=law(c,"police")??1;
-  if(Math.random()>[.35,.55,.8][pol])return false;
+  if(Math.random()>[.35,.55,.8][pol]*lawRisk())return false;
   let h=sev*POLMULT[pol]*(ownsAny("lawfirm")?.5:1);if(jailed())h+=(S.jail.until-Date.now())/DAYMS;
   const bail=Math.round(Math.max(2500,incomeHr()*h*.6,sev*1500)*PRICE[c.size]);
   S.jail={until:Date.now()+h*DAYMS,city:c.id,reason,bail,lawyer:0};S.rec.push({t:Date.now(),what:reason});S.trip=null;
   if(S.job&&h>24){S.job=null;logCrime("You lost your job while in prison")}
   logCrime(`Arrested in ${c.name} for ${reason}. Sentence: ${Math.round(h)} h`);if(!quiet)toast(`Arrested: ${Math.round(h)} h in prison`);return true}
 function logCrime(m){S.log.unshift("Justice: "+m);S.log=S.log.slice(0,3)}
-function jailHtml(){if(!jailed())return"";const J=S.jail,c=CITIES[J.city],lc=Math.round(J.bail*.4);
+function jailHtml(){if(!jailed())return"";const J=S.jail,c=CITIES[J.city],lc=Math.round(J.bail*.4*lawBribe()),bl=Math.round(J.bail*lawBribe());
   return `<div class="welcome" style="background:#7f1d1d;color:#fff"><b>In prison · ${c.name}</b><br>${J.reason}. Released in <b>${fmtDur(J.until-Date.now())}</b>. No wages, travel, education or job applications until then. Your businesses keep running.
-    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="buy" data-jail="bail" data-fixed="1" ${S.cash<J.bail?"disabled":""}>Post bail ${fmt(J.bail)}</button>${J.lawyer?"":`<button class="buy up" data-jail="lawyer" data-fixed="1" ${S.cash<lc?"disabled":""}>Hire lawyer ${fmt(lc)}</button>`}${devOn()?`<button class="buy" data-dev="bail" data-fixed="1">Dev: bail out</button>`:""}</div></div>`}
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="buy" data-jail="bail" data-fixed="1" ${S.cash<bl?"disabled":""}>Post bail ${fmt(bl)}</button>${J.lawyer?"":`<button class="buy up" data-jail="lawyer" data-fixed="1" ${S.cash<lc?"disabled":""}>Hire lawyer ${fmt(lc)}</button>`}${devOn()?`<button class="buy" data-dev="bail" data-fixed="1">Dev: bail out</button>`:""}</div></div>`}
 /* ---------- owner-only dev tools: unlocked per device with ?dev=1, cleared with ?dev=0 ---------- */
 function devOn(){try{return localStorage.getItem("meridian-dev")==="1"}catch(e){return false}}
 function devHtml(){if(!devOn())return"";return `<div class="sec">Dev</div><div class="list"><div class="row"><div class="n">Reset loans</div><div class="d">${B().loans.length} loans · ${fmt(B().loans.reduce((a,l)=>a+l.bal,0))} owed</div><button class="buy" data-dev="loans">Reset loans</button></div>
@@ -2937,8 +2941,8 @@ function devAct(b){const k=b.dataset.dev;
   save();hud();renderSheet()}
 document.addEventListener("click",e=>{const b=e.target.closest("[data-dev]");if(b&&devOn())devAct(b)});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-jail]");if(!b||!jailed())return;const J=S.jail;
-  if(b.dataset.jail==="bail"){if(S.cash<J.bail)return;S.cash-=J.bail;S.jail=null;toast("Bail posted. You're free.");logCrime("Released on bail")}
-  else{const lc=Math.round(J.bail*.4);if(S.cash<lc)return;S.cash-=lc;J.lawyer=1;if(Math.random()<.55){J.until=Date.now()+(J.until-Date.now())*.4;J.bail=Math.round(J.bail*.5);toast("Your lawyer got the sentence cut");logCrime("Appeal won: sentence reduced")}else toast("Appeal denied")}
+  if(b.dataset.jail==="bail"){const bl=Math.round(J.bail*lawBribe());if(S.cash<bl)return;S.cash-=bl;S.jail=null;toast("Bail posted. You're free.");logCrime("Released on bail")}
+  else{const lc=Math.round(J.bail*.4*lawBribe());if(S.cash<lc)return;S.cash-=lc;J.lawyer=1;if(Math.random()<.55){J.until=Date.now()+(J.until-Date.now())*.4;J.bail=Math.round(J.bail*.5);toast("Your lawyer got the sentence cut");logCrime("Appeal won: sentence reduced")}else toast("Appeal denied")}
   save();hud();renderSheet()});
 /* ---------- click-to-earn gigs ---------- */
 const fmtc=v=>v<100?"$"+v.toFixed(2):fmt(v);
@@ -5105,8 +5109,8 @@ const ctSellMult=(c,g)=>{const f=CT&&CT.perk&&CT.perk.fix;return f&&f.on&&f.c===
 const ctTurf=c=>CT&&CT.perk&&CT.perk.turf[c.id]?CT_TURF:1;
 const ctHeatRate=()=>{const P=CT&&CT.perk;if(!P||!CT.mine)return 0;return(P.fix&&P.fix.on&&P.fix.bonus>0?6:0)+Math.min(4,Object.keys(P.turf).length)*1.5};
 /* hourly risk (called from runTax): extra tax heat, and a chance of an antitrust fine while price fixing works */
-function ctRisk(hours){if(!CT||!CT.mine)return;const t=evS(),r=ctHeatRate();if(r>0)t.heat=Math.min(100,t.heat+r*hours);const f=CT.perk.fix;
-  if(f&&f.on&&f.bonus>0){const n=Math.max(1,Math.min(168,Math.ceil(hours)));for(let i=0;i<n;i++){const p=.004+.0004*t.heat;if(Math.random()<1-Math.pow(1-p,hours/n)){const inc=Math.max(0,incomeHr()),fine=Math.round(Math.max(0,Math.min(.025*Math.max(0,S.cash),12*inc,75000)));
+function ctRisk(hours){if(!CT||!CT.mine)return;const t=evS(),r=ctHeatRate();if(r>0)t.heat=Math.min(100,t.heat+r*hours*lawRisk());const f=CT.perk.fix;
+  if(f&&f.on&&f.bonus>0){const n=Math.max(1,Math.min(168,Math.ceil(hours)));for(let i=0;i<n;i++){const p=(.004+.0004*t.heat)*lawRisk();if(Math.random()<1-Math.pow(1-p,hours/n)){const inc=Math.max(0,incomeHr()),fine=Math.round(Math.max(0,Math.min(.025*Math.max(0,S.cash),12*inc,75000)));
       if(fine>0){S.cash-=fine;const m=`Antitrust inquiry into ${CT.mine.name}: fined ${fmt(fine)}`;ctLog(m);S.log.unshift(m);S.log=S.log.slice(0,3);if(typeof toast==="function")toast(m,"bad")}t.heat=Math.max(0,t.heat-20);break}}}}
 /* create / join / leave / admin */
 function ctCreate(){const uid=ctUid(),x=CTS();if(!uid||!ON.db||CT.infl.mk||x.mk)return;if(CT.mine){toast("You are already in a cartel");return}
