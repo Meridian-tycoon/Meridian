@@ -3562,7 +3562,6 @@ const WPNCFG={ // cost per weapon, build = game days, enemy = share of enemy max
      icbm:{n:"ICBM",ico:"☠",cost:2.5e9,build:12,enemy:.6,front:30,city:1,days:UNH_DAYS,r:34, // real: ≈30 min flight at ≈7 km/s, one or several (MIRV) ≈300 kt–1 Mt warheads; a 1 Mt 5 psi radius ≈7 km (≈150 km²) → a salvo ≈500 km², a whole metro area
        A:500,mort:.6,struct:1,fly:.5,yld:"several × 300 kt–1 Mt",appr:-45,loy:-50,wear:40,resist:40,col:"#f43f5e",need:"Rocketry tech and 40 air wings",ok:m=>hasTech("rocketry")&&m.units.air>=40}},
   queue:3,         // builds in progress at once
-  stockMax:{msl:20,gas:6,nuke:2,icbm:1}, // kept for balance (real arsenals: thousands of cruise missiles, hundreds of ICBMs)
   // strikes alone can't end a war: they never push the front past frontCap or the enemy below strFloor × max strength; battles must finish it
   frontCap:85,strFloor:.15,nukeCap:98, // a nuke may push the front to 98, which wins the war
   
@@ -3580,7 +3579,6 @@ function wpnTick(){const m=wpn(),now=Date.now();let done=0;for(let i=m.wq.length
   m.strikes=m.strikes.filter(s=>s.until>now);return done}
 function wpnBuild(k){const p=pol(),m=wpn(),W=WPNCFG.w[k];if(!W)return;if(!polLeader())return toast("Only a Leader can build weapons");
   if(!W.ok(m))return toast(`${W.n} needs ${W.need}`);if(m.wq.length>=WPNCFG.queue)return toast(`At most ${WPNCFG.queue} weapons in production`);
-  if(m.wpn[k]+m.wq.filter(q=>q.k===k).length>=WPNCFG.stockMax[k])return toast(`Stockpile limit: ${WPNCFG.stockMax[k]} ${W.n.toLowerCase()}s`);
   if(S.cash<W.cost)return toast(`${W.n} costs ${fmt(W.cost)}`);S.cash-=W.cost;
   m.wq.push({k,done:Date.now()+W.build*DAYMS});toast(`${W.n} in production · ready in ${fmtDur(W.build*DAYMS)}`)}
 function wpnFire(k,id,sure){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id],now=Date.now();if(!W||!c)return;if(!polLeader())return toast("Only a Leader can order strikes");
@@ -3730,7 +3728,7 @@ function drawStrikes(ctx){const m=S.pol&&S.pol.mil;if(!m)return;const now=Date.n
     const ia=age-fl,il=WPNCFG.animMs-fl;if(ia>=0&&ia<il){const u=ia/il;ctx.beginPath();ctx.arc(x,y,R*(.3+2.2*u),0,7);ctx.strokeStyle=W.col;ctx.globalAlpha=1-u;ctx.lineWidth=3*(1-u)+1;ctx.stroke();
       ctx.beginPath();ctx.arc(x,y,R*(.9-.6*u),0,7);ctx.fillStyle="#fff7d6";ctx.globalAlpha=(1-u)*.9;ctx.fill();ctx.globalAlpha=1}}}
 function wpnHtml(m,lead,sb,bx,urow){const C=WPNCFG,now=Date.now();wpnTick();
-  let h=`<div class="ph-sub" style="margin-top:10px">Arsenal · production ${m.wq.length}/${C.queue}</div><div class="ph-rows">${Object.keys(C.w).map(k=>{const W=C.w[k],q=m.wq.filter(x=>x.k===k),ok=W.ok(m),full=m.wpn[k]+q.length>=C.stockMax[k];
+  let h=`<div class="ph-sub" style="margin-top:10px">Arsenal · production ${m.wq.length}/${C.queue}</div><div class="ph-rows">${Object.keys(C.w).map(k=>{const W=C.w[k],q=m.wq.filter(x=>x.k===k),ok=W.ok(m),full=false;
     return urow(`${W.ico} ${W.n} <b>× ${m.wpn[k]}</b>`,`${ok?`build ${fmtDur(W.build*DAYMS)}`:`needs ${W.need}`} · ${W.yld}, flight ${fmtDur(W.fly*DAYMS)}${q.length?` · ${q.length} building, next ${fmtDur(Math.max(0,Math.min(...q.map(x=>x.done))-now))}`:""}`,bx("wpnbuild",k,`Build · ${fmt(W.cost)}`,"#7f1d1d",!lead||!ok||full||m.wq.length>=C.queue||S.cash<W.cost,1))}).join("")}</div>`;
   const wk=Object.keys(m.wars),have=Object.keys(C.w).filter(k=>m.wpn[k]>0);
   if(lead&&wk.length&&have.length)for(const n of wk)h+=`<div class="ph-sub" style="margin-top:8px">Strike ${n}</div><div class="ph-rows">${ctyCities(n).map(c=>{const sm=strikeMult(c)*dmgMult(c);return urow(c.name+(S.own[c.id]&&Object.keys(S.own[c.id]).length?` <small style="color:#fbbf24">· yours</small>`:""),sm<1?`<span style="color:#f87171">damaged −${Math.round((1-sm)*100)}%</span>`:"",have.map(k=>bx("wpnfire",k+"|"+c.id,`${C.w[k].ico} ${m.wpn[k]}`,k==="icbm"?"#881337":k==="nuke"?"#713f12":k==="gas"?"#3f6212":"#7c2d12",0,1)).join(""))}).join("")}</div>`;
