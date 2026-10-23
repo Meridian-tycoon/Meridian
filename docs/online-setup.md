@@ -41,3 +41,12 @@ Console steps:
 1. **Re-publish the rules**: Firestore → **Rules** → paste the current `firestore.rules` → **Publish**. Until then profile writes fail (new fields `nb`, `nc`) and `world/rivals` cannot be written.
 2. Nothing to create by hand: the `world` collection and `rivals` document appear the first time the developer signs in on the master save. To check, open Firestore → **Data** → `world` → `rivals`.
 3. No new index is needed.
+
+## Sign-in required to play
+
+While `FIREBASE_CONFIG` is set, the game opens on a sign-in screen and nobody can play until they are signed in (email + password, or Google). It offers Sign in, Create account and Forgot password. Signing out returns to that screen. If Firebase can't load (no internet), the screen shows "Try again" instead of the game. Already signed-in players stay signed in, and their saves are untouched.
+
+Console steps (Authentication):
+1. **Sign-in method**: Email/Password and Google must both be enabled (they already are if accounts work today).
+2. **Templates → Password reset**: optional, set the sender name and wording of the reset email.
+3. No rules or index changes are needed.
