@@ -371,13 +371,14 @@ const BIZ=[
  {k:"smoothie",n:"Smoothie stand",d:"Fresh fruit blends for the gym crowd.",cost:1600,gross:249,up:46},
  {k:"kiosk",n:"Coffee kiosk",d:"Commuter traffic, steady margins.",cost:6000,gross:820,up:240},
  {k:"shop",n:"Corner shop",d:"Groceries and everyday goods.",cost:18000,gross:2200,up:700},
+ {k:"gasstation",n:"Gas station",d:"Pumps and a forecourt shop. Sells fuel from your own depot in this city first (your refinery, or fuel you ship in), and buys the rest at the market price.",cost:36000,gross:3800,up:1200,fuel:1},
  {k:"rest",n:"Restaurant",d:"Staffed kitchen, big tickets.",cost:55000,gross:6200,up:2100},
  {k:"apt",n:"Apartment block",d:"Rent from 24 units. Low upkeep.",cost:140000,gross:9800,up:2300},
  {k:"office",n:"Office tower",d:"Corporate leases. Slow, huge payback.",cost:600000,gross:36000,up:8000},
  {k:"hotel",n:"Hotel",d:"Tourist money. Best in size-5 cities.",cost:1800000,gross:115000,up:34000},
  {k:"secfirm",n:"Security firm",d:"Guards and patrols. Cuts break-ins at your other businesses in this city.",cost:90000,gross:7400,up:2600},
  {k:"ambulance",n:"Ambulance service",d:"Private paramedics on contract to the city. Steady, recession-proof.",cost:260000,gross:17500,up:6400},
- {k:"lawfirm",n:"Law firm",d:"Blocks lawsuits against your businesses here, and halves any prison sentence you get.",cost:420000,gross:27000,up:9500},
+ {k:"lawfirm",n:"Law firm",d:"Blocks lawsuits against your businesses here. With any law firm you are 80% less likely to get caught or audited, prison sentences are halved, and bail and lawyer fees cost half.",cost:420000,gross:27000,up:9500},
  {k:"prison",n:"Private prison",d:"Earns more where policing is strict.",cost:2600000,gross:160000,up:56000,co:1},
  {k:"taxico",n:"Taxi company",d:"A fleet of 30 cabs. Your own taxi rides here are half price.",cost:45000,gross:4200,up:1500,tr:1},
  {k:"busline",n:"Bus line",d:"City and coach routes. Half-price buses for you, here and from here.",cost:160000,gross:11500,up:4200,tr:1},
@@ -698,7 +699,7 @@ function buy(c,k){const b=BIZ.find(x=>x.k===k),p=cost(b,c);if(S.cash<p)return;{c
 function upgrade(c,k,i,quiet){i=+i||0;const b=BIZ.find(x=>x.k===k),x=XU(c.id,k),lv=i?x[i-1]:S.own[c.id][k];if(!lv)return;const p=upCost(b,c,lv);if(S.cash<p||lv>=MAXLV)return;
   S.cash-=p;if(i)x[i-1]=lv+1;else S.own[c.id][k]=lv+1;if(quiet)return;toast(`${b.n} in ${c.name} → Lv ${lv+1}`);commit()}
 // forget per-business manager state (auto-restock switch, cash-short flag) once it's no longer yours
-function clearBizState(c,k){const key=bkey(c,k);if(S.auto2)delete S.auto2[key];if(S.mgrShort)delete S.mgrShort[key];if(S.sched)delete S.sched[key];if(S.wadj)delete S.wadj[key]}
+function clearBizState(c,k){const key=bkey(c,k);if(S.auto2)delete S.auto2[key];if(S.mgrShort)delete S.mgrShort[key];if(S.sched)delete S.sched[key];if(S.wadj)delete S.wadj[key];if(S.gasLast)delete S.gasLast[key]}
 // remove the first unit of type k in c: the next extra unit (if any) takes its place, else the business is gone
 // drop S.xu[city][k] once it has no extra units, then the city's entry and S.xu itself once they're empty
 function xuTidy(id,k){if(!S.xu)return;const m=S.xu[id];if(m){if(k!=null&&m[k]&&!m[k].length)delete m[k];if(!S.own[id]||!Object.keys(m).length)delete S.xu[id]}if(!Object.keys(S.xu).length)delete S.xu}
@@ -746,7 +747,7 @@ OPS.push(
  {k:"oilwell",n:"Oil well",cat:"Mine",out:{oil:8},up:60,build:4000,dep:"oil",req:"oil"},
  {k:"refinery",n:"Oil refinery",cat:"Factory",in:{oil:10},out:{fuel:10},up:25,build:4000,req:"oil"},
  {k:"plastic",n:"Plastics plant",cat:"Factory",in:{oil:6},out:{plastics:8},up:30,build:3500,req:"plastics"},
- {k:"pharma",n:"Pharmaceutical plant",cat:"Factory",in:{corn:10,glass:2},out:{medicine:3},up:150,build:25000,req:"pharma"},
+ {k:"pharma",n:"Pharmaceutical plant",cat:"Factory",in:{oil:6},out:{medicine:3},up:150,build:25000,req:"pharma"},
  {k:"carplant",n:"Car factory",cat:"Factory",in:{steel:4,plastics:2,tools:1},out:{cars:.5},up:300,build:15000,req:"auto"},
  {k:"chipfab",n:"Chip fab",cat:"Factory",in:{sand:10,electronics:1},out:{chips:1},up:250,build:18000,req:"semis"},
  {k:"advlab",n:"Advanced R&D center",cat:"Factory",in:{electronics:.5},rp:8,out:{},up:60,build:20000,req:"semis"},
@@ -769,7 +770,7 @@ const TECH=[
  {k:"plastics",t:0,n:"Petrochemicals",d:"Unlocks plastics plants: oil into plastics.",rp:80,cash:60000,req:["oil"]},
  {k:"auto",t:1,n:"Automotive",d:"Unlocks car factories: steel, plastics and tools into cars.",rp:200,cash:250000,req:["plastics"]},
  {k:"semis",t:1,n:"Semiconductors",d:"Unlocks chip fabs and Advanced R&D centers (4× research).",rp:250,cash:300000},
- {k:"pharma",t:1,n:"Pharmaceuticals",d:"Unlocks pharma plants: corn and glass into medicine.",rp:180,cash:150000},
+ {k:"pharma",t:1,n:"Pharmaceuticals",d:"Unlocks pharma plants: oil into medicine.",rp:180,cash:150000},
  {k:"container",t:1,n:"Containerization",d:"Cargo ships carry twice as much.",rp:150,cash:200000,req:["logi"]},
  {k:"retail",t:1,n:"Retail analytics",d:"Loyalty cards and footfall data. Carts, kiosks, shops and restaurants earn 5% more.",rp:120,cash:100000},
  {k:"payroll",t:1,n:"Payroll automation",d:"Scheduling and payroll software. Business wages drop 5%.",rp:160,cash:180000},
@@ -782,7 +783,7 @@ const TECH=[
  {k:"deepmine",t:2,n:"Deep-core mining",d:"Automated drill rigs. Mines produce 20% more.",rp:750,cash:1.8e6,req:["robotics"]},
  {k:"smartbld",t:2,n:"Smart buildings",d:"Sensors and building automation. Apartments, offices and hotels earn 6% more.",rp:650,cash:1.5e6,req:["semis"]},
  {k:"quantum",t:2,n:"Quantum computing",d:"Research labs produce 25% more points.",rp:1200,cash:4e6,req:["semis"]},
- {k:"nuclear",t:2,n:"Nuclear power",d:"Unlocks nuclear power plants: burn uranium for four times the electricity of a coal plant. Uranium is bought on the market or mined at a permitted uranium mine.",rp:900,cash:3e6,req:["renew"]},
+ {k:"nuclear",t:2,n:"Nuclear power",d:"Unlocks nuclear power plants: burn uranium for four times the electricity of a coal plant. Uranium is bought on the market (you need a uranium permit) or mined at a permitted uranium mine.",rp:900,cash:3e6,req:["renew"]},
  {k:"govlic",t:3,n:"Defense contractor licence",d:"Government buyers in big cities (size 4+) will buy military and space goods at fixed prices.",rp:1500,cash:5e6,req:["aero","robotics"]},
  {k:"armored",t:3,n:"Armored vehicles",d:"Unlocks armored vehicle plants: cars, steel and robots.",rp:2000,cash:8e6,req:["govlic"]},
  {k:"drones",t:3,n:"Military drones",d:"Unlocks drone factories: chips, plastics and aerospace parts.",rp:2500,cash:1e7,req:["govlic"]},
@@ -801,7 +802,7 @@ const canResearch=t=>!hasTech(t.k)&&(t.req||[]).every(hasTech);
 const BASEVEH=JSON.parse(JSON.stringify({truck:{cap:30,spd:400},hvtruck:{cap:60,spd:380},roadtrain:{cap:120,spd:350},ship:{cap:3000,spd:250},bulkship:{cap:8000,spd:230},plane:{cap:60,spd:2500},cargo747:{cap:150,spd:2300}}));
 function applyTechs(){const af=hasTech("autofreight")?1.2:1;for(const k in VEH){const c=VEH[k].cls;if(c==="truck"){VEH[k].spd=BASEVEH[k].spd*(hasTech("logi")?1.3:1)*af;VEH[k].cap=BASEVEH[k].cap*(hasTech("haulage")?1.2:1)}else if(c==="ship"){VEH[k].cap=BASEVEH[k].cap*(hasTech("container")?2:1);VEH[k].spd=BASEVEH[k].spd*af}else VEH[k].spd=BASEVEH[k].spd*(hasTech("aero")?1.4:1)*(hasTech("hypersonic")?1.25:1)}}
 /* later research (retail ... asteroid): small multipliers that stack with everything else; all 1 when not researched, so old saves are unchanged */
-function techBiz(b){return (hasTech("retail")&&["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","rest"].includes(b.k)?1.05:1)*(hasTech("smartbld")&&["apt","office","hotel"].includes(b.k)?1.06:1)*(hasTech("aimgmt")?1.08:1)}
+function techBiz(b){return (hasTech("retail")&&["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","gasstation","rest"].includes(b.k)?1.05:1)*(hasTech("smartbld")&&["apt","office","hotel"].includes(b.k)?1.06:1)*(hasTech("aimgmt")?1.08:1)}
 function techWage(){return hasTech("payroll")?.95:1}
 function techWh(){return hasTech("coldchain")?1.25:1}
 const techOut=o=>(["Farm","Ranch"].includes(o.cat)&&hasTech("mechfarm")?1.25:1)*(["Farm","Ranch"].includes(o.cat)&&hasTech("precag")?1.15:1)*(o.cat==="Mine"?(hasTech("deepmine")?1.2:1)*(hasTech("asteroid")?1.3:1):1)*(o.cat==="Factory"&&hasTech("nanofab")&&!o.rp?1.15:1)*(o.rp&&hasTech("quantum")?1.25:1)*(o.cat==="Factory"&&hasTech("robotics")&&!o.rp?1.2:1)*(hasTech("mars")?1.25:1)*(typeof ishOut==="function"?ishOut(o):1);
@@ -968,9 +969,9 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
         <button class="buy up" data-act="sell" data-g="${g}">${hasHQ(c)?"Sell all":"Sell 20"}</button></div>`}
       h+=`</div><div class="row"><div class="n">Expand warehouse</div><div class="d">Doubles space to ${fmtT(cap*2)}. Goods are weighed in tonnes (armoured vehicles 20 t each, microchips 0.05 t).</div><button class="buy up" data-act="whup" ${S.cash<whUp(c)?"disabled":""}>${fmt(whUp(c))}</button></div>`;
       h+=marketHtml(c);h+=`<div class="sec">Local market · buy at +15%</div>${hasHQ(c)?"":`<p class="d" style="color:var(--bad);font-size:12px;margin:0 0 4px">No registered company here. Open an HQ in ${c.name} to sell in bulk, auto-sell, buy by the hundred, and sell to the government.</p>`}<div class="list">`;
-      for(const g of GK.filter(g=>G[g][2]!=="gov")){const p=px(c,g)*1.15,base=G[g][1],cheap=p<base*1.05;
-        h+=`<div class="row"><div class="n">${G[g][0]}</div><div class="d"><b style="color:${cheap?"var(--good)":"var(--ink)"}">${fmt(p)}</b> each${cheap?" · good price":""}</div>
-        <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2"><button class="buy up" data-act="buy" data-g="${g}" data-q="10" ${S.cash<p*10?"disabled":""}>+10</button><button class="buy" data-act="buy" data-g="${g}" data-q="100" ${S.cash<p*100||!hasHQ(c)?"disabled":""}>+100</button></span></div>`}
+      for(const g of GK.filter(g=>G[g][2]!=="gov")){const p=px(c,g)*1.15,base=G[g][1],cheap=p<base*1.05,nop=g==="uranium"&&!uranAnyPermit();
+        h+=`<div class="row"><div class="n">${G[g][0]}</div><div class="d"><b style="color:${cheap?"var(--good)":"var(--ink)"}">${fmt(p)}</b> each${cheap?" · good price":""}${nop?` · <b style="color:var(--bad)">Needs a uranium permit</b>`:""}</div>
+        <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2"><button class="buy up" data-act="buy" data-g="${g}" data-q="10" ${S.cash<p*10||nop?"disabled":""}>+10</button><button class="buy" data-act="buy" data-g="${g}" data-q="100" ${S.cash<p*100||nop||!hasHQ(c)?"disabled":""}>+100</button></span></div>`}
       h+=`</div>`;
       const here=S.fleet.filter(v=>v.city===c.id&&!v.arr),incoming=S.fleet.filter(v=>v.arr&&v.dest===c.id);
       h+=hireHtml(c)+supHtml(c);
@@ -1018,7 +1019,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="wh"){const p=whCost(c);if(S.cash<p)return;S.cash-=p;ensureWh(c);toast(`Warehouse open in ${c.name}`)}
   else if(a==="whup"){const p=whUp(c);if(S.cash<p)return;S.cash-=p;S.wh[c.id]++;toast("Warehouse expanded")}
   else if(a==="sell"){if(G[b.dataset.g][2]==="gov"&&!govOK(c)){toast(hasTech("govlic")?"Government buyers are only in cities of size 4+":"Research the Defense contractor licence to sell this");return}if(G[b.dataset.g][2]==="gov"&&!hasHQ(c)){toast("Government contracts need a registered company: open an HQ here");return}const g=b.dataset.g,street=!hasHQ(c),q=street?Math.min(20,S.inv[c.id][g]||0):(S.inv[c.id][g]||0),v=sellGood(c,g,q)*(street?.7:1);S.cash+=v;S.earned=(S.earned||0)+v;S.inv[c.id][g]-=q;if(S.inv[c.id][g]<1e-6)delete S.inv[c.id][g];toast(`Sold ${gq(q)} ${G[g][0].toLowerCase()} for ${fmt(v)}`)}
-  else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q,B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q*tpu(g)>whCap(c)+1e-9){toast(`Not enough warehouse space: ${fmtT(whRoom(c))} free, ${q} ${G[g][0].toLowerCase()} weigh ${fmtT(q*tpu(g))}`);return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
+  else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q;if(g==="uranium"&&!uranAnyPermit()){toast("Needs a uranium permit: apply to a government in the Gov tab first");return}const B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q*tpu(g)>whCap(c)+1e-9){toast(`Not enough warehouse space: ${fmtT(whRoom(c))} free, ${q} ${G[g][0].toLowerCase()} weigh ${fmtT(q*tpu(g))}`);return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
   else if(a==="veh"){const k=b.dataset.k,V=VEH[k];if(S.cash<V.cost)return;S.cash-=V.cost;S.fleet.push({id:S.nid++,type:k,city:c.id,paid:V.cost,cond:100});toast(`${V.n} ready in ${c.name}`)}
   else if(a==="ship"){shipForm=shipForm===id?null:id;renderSheet();shipInfo();return}
   else if(a==="go"){const v=S.fleet.find(x=>x.id===id);if(!v||v.job||v.arr||v.cargo){toast("That vehicle is busy");return}const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,km=distKm(c,d),fuel=vFuel(v.type,km,g?Math.min(capU(v.type,g),inv0(c,g))*tpu(g):0,c,d);
@@ -1244,7 +1245,7 @@ const HQNOTE=`Each link: +${HQNET.per*100}% business income in both countries (m
 const bizReg=(c,k)=>!!((S.reg[c.id]||{})[k]);
 const regFeeBiz=(b,c)=>Math.round(cost(b,c)*.07*hqPerk(c));
 const regFeeSite=s=>Math.round(plotPrice(CITIES[s.city],zoneOf(s)||"farm",s.size)*.05*hqPerk(CITIES[s.city]));
-const STAFF={cart:1,coffeecart:1,icecream:1,taco:2,pretzel:1,noodle:1,smoothie:1,kiosk:2,shop:4,rest:12,apt:2,office:20,hotel:60,casino:250,secfirm:25,ambulance:40,lawfirm:30,prison:150,taxico:35,busline:60,trucking:80,rail:400,port:600,airline:900,airport:1500};
+const STAFF={cart:1,coffeecart:1,icecream:1,taco:2,pretzel:1,noodle:1,smoothie:1,kiosk:2,shop:4,gasstation:3,rest:12,apt:2,office:20,hotel:60,casino:250,secfirm:25,ambulance:40,lawfirm:30,prison:150,taxico:35,busline:60,trucking:80,rail:400,port:600,airline:900,airport:1500};
 const siteStaff=s=>{const o=siteOp(s);if(!o)return 0;const ha=LAND[s.size][1];return Math.ceil(ha*(o.rp?1:o.cat==="Farm"?.5:o.cat==="Ranch"?.3:o.cat==="Mine"?2:3)*(1+.2*(slv(s)-1)))};
 const bizStaff=(k,lv)=>Math.ceil(STAFF[k]*(1+.5*(lv-1)));
 function hqTotalUpkeep(){let u=0;for(const id in S.hq)if(S.hq[id]&&CITIES[id]&&!unhOn(CITIES[id]))u+=hqUpkeep(CITIES[id]);return u+hqNetUp()}
@@ -1262,7 +1263,7 @@ function evAudit(quiet,forced){const t=evS(),E=Math.round(t.ev);if(E<=0&&!forced
   const full=E*(1+EVADE.pen),due=Math.min(full,Math.max(E,Math.round(taxCap())));S.cash-=due;t.fined+=due;t.audits++;t.ev=0;t.heat=25;t.lock=Date.now()+EVADE.lockD*DAYMS;t.lastAudit=Date.now();
   if(!quiet){S.log.unshift(`Tax audit: evasion found. Paid ${fmt(due)} (${fmt(E)} back taxes + penalty). Evasion locked for ${EVADE.lockD} days`);S.log=S.log.slice(0,3);if(typeof toast==="function")toast("Tax audit! You paid "+fmt(due)+" in back taxes and fines","bad")}
   return due}
-function evStep(d,quiet,act){const t=evS(),lv=act?evLevel():0,law=(typeof ownsAny==="function"&&ownsAny("lawfirm"))?.5:1;
+function evStep(d,quiet,act){const t=evS(),lv=act?evLevel():0,law=(typeof ownsAny==="function"&&ownsAny("lawfirm"))?.2:1;
   t.heat=Math.max(0,Math.min(100,t.heat+(EVADE.gain[lv]*law-EVADE.decay)*d));
   if(t.ev>0&&t.heat>0){const p=.12*Math.pow(t.heat/100,2);if(Math.random()<1-Math.pow(1-p,d))evAudit(quiet)}}
 function runTax(hours,now){const r=taxableRates(),t0=evS();if(hours>.25&&t0.hide>0&&Date.now()>=t0.lock){t0.hide=0;S.log.unshift(`Away ${fmtDur(hours*DAYMS)}: income hiding switched off so heat and audits don't build while you're gone. Turn it back on in the tax panel`);S.log=S.log.slice(0,3)}const h=EVADE.lv[evLevel()];S.tax.reg+=r.reg*hours*(1-h);S.tax.unreg+=r.un*hours*(1-h);
@@ -1276,7 +1277,7 @@ function runTax(hours,now){const r=taxableRates(),t0=evS();if(hours>.25&&t0.hide
     if(due<full&&full>0){const k=due/full;t0.ev*=k;t0.saved*=k}S.tax.start+=TAXP;S.tax.reg=0;S.tax.unreg=0;S.tax.warned=0}}
 function evHtml(){const t=evS(),lv=evLevel(),locked=Date.now()<t.lock,p=t.ev>0?.12*Math.pow(t.heat/100,2):0;
   return `<div style="padding:10px 12px;border-top:1px solid var(--line,#2a3438)"><div class="n">Hide income <b style="font-family:var(--mono)">${Math.round(EVADE.lv[lv]*100)}%</b> <span class="tag ${t.heat>=60?"bust":t.heat>=30?"":"boom"}">Heat ${Math.round(t.heat)}/100</span></div>
-    <div class="d" style="margin-top:4px;line-height:1.4">Under-report profit to pay less tax, but heat rises (${EVADE.gain.slice(1).join("/")} per day at 25/50/75%, it cools ${EVADE.decay}/day). Audit chance now ${(p*100).toFixed(1)}%/day. A caught audit costs the saved tax plus ${EVADE.pen}x penalty (${fmt(Math.round(t.ev*(1+EVADE.pen)))} if it hit now) and locks evasion for ${EVADE.lockD} days. A law firm halves heat. Saved but unpunished: ${fmt(t.ev)} · all-time saved ${fmt(t.saved)} · fined ${fmt(t.fined)} (${t.audits} audit${t.audits===1?"":"s"})${locked?` · locked ${fmtDur(t.lock-Date.now())}`:""}</div>
+    <div class="d" style="margin-top:4px;line-height:1.4">Under-report profit to pay less tax, but heat rises (${EVADE.gain.slice(1).join("/")} per day at 25/50/75%, it cools ${EVADE.decay}/day). Audit chance now ${(p*100).toFixed(1)}%/day. A caught audit costs the saved tax plus ${EVADE.pen}x penalty (${fmt(Math.round(t.ev*(1+EVADE.pen)))} if it hit now) and locks evasion for ${EVADE.lockD} days. A law firm cuts heat by 80%. Saved but unpunished: ${fmt(t.ev)} · all-time saved ${fmt(t.saved)} · fined ${fmt(t.fined)} (${t.audits} audit${t.audits===1?"":"s"})${locked?` · locked ${fmtDur(t.lock-Date.now())}`:""}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${EVADE.lv.map((v,i)=>`<button class="buy${t.hide===i?" up":""}" data-evade="${i}" ${locked&&i>0?"disabled":""}>${Math.round(v*100)}%</button>`).join("")}</div></div>`}
 document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("[data-evade]");if(!b)return;const t=evS();if(Date.now()<t.lock&&+b.dataset.evade>0)return;t.hide=Math.max(0,Math.min(3,+b.dataset.evade|0));save();if(typeof renderSheet==="function")renderSheet()});
 const taxOwed=()=>Math.round(S.tax.reg*TAX_REG+S.tax.unreg*TAX_UNREG);
@@ -1284,7 +1285,7 @@ const taxOwed=()=>Math.round(S.tax.reg*TAX_REG+S.tax.unreg*TAX_UNREG);
 function audits(quiet){for(const c of CITIES){let v=0,n=0;const o=S.own[c.id]||{};
     for(const b of BIZ)if(o[b.k]&&!bizReg(c,b.k)){const u=uLv(c.id,b.k).length;v+=cost(b,c)*u;n+=u}
     for(const s of S.sites)if(s.city===c.id&&!s.reg){v+=plotPrice(c,zoneOf(s)||"farm",s.size);n++}
-    if(n&&Math.random()<.002*n){let fine=Math.round(v*.15);S.cash-=fine=Math.min(fine,Math.round(taxCap()));if(!quiet){S.log.unshift(`Tax audit in ${c.name}: fined ${fmt(fine)} for ${n} unregistered asset${n>1?"s":""}`);S.log=S.log.slice(0,3)}if(n>=3&&typeof arrest==="function"&&!(typeof jailed==="function"&&jailed()))arrest("tax evasion",10,c,quiet);}}}
+    if(n&&Math.random()<.002*n*lawRisk()){let fine=Math.round(v*.15);S.cash-=fine=Math.min(fine,Math.round(taxCap()));if(!quiet){S.log.unshift(`Tax audit in ${c.name}: fined ${fmt(fine)} for ${n} unregistered asset${n>1?"s":""}`);S.log=S.log.slice(0,3)}if(n>=3&&typeof arrest==="function"&&!(typeof jailed==="function"&&jailed()))arrest("tax evasion",10,c,quiet,1);}}}
 function renderHQ(c){let h=cityHead(c);const o=S.own[c.id]||{},sites=S.sites.filter(s=>s.city===c.id);
   h+=`<div class="meta"><div><span>Tax year ends in </span>${fmtDur(S.tax.start+TAXP-Date.now()).replace(/^(\d+)h/,(m,x)=>x>=48?Math.floor(x/24)+"d "+(x%24)+"h":m)}</div><div><span>Owed so far </span>${fmt(taxOwed())}</div></div>`+tabsHtml();
   if(!hasHQ(c)){h+=`<div class="sec">Open a headquarters in ${c.country}</div><div class="list"><div class="row"><div class="n">Country HQ in ${c.name}</div>
@@ -1616,7 +1617,7 @@ function enterStreet(c,zoom){if(!HAS_STREET)return false;stCity=c;inStreet=true;
 function leaveStreet(){if(placing)cancelPlace();if(offer)closeOffer();inStreet=false;stEl.hidden=true;stBar.hidden=true;
   if(stCity){V.lam=-stCity.lon;V.phi=Math.max(-80,Math.min(80,-stCity.lat));V.k=8}draw()}
 const PIN={biz:["#c2410c","Shop"],prop:["#7c3aed","Rent"],"site-farm":["#4d7c0f","Farm"],"site-mine":["#78716c","Mine"],"site-ind":["#0e7490","Ind"],hq:["#1d2a2b","HQ"],wh:["#a16207","Depot"],home:["#be185d","Home"]};
-const BIZTAG={cart:"Cart",coffeecart:"Coffee",icecream:"Ice",taco:"Taco",pretzel:"Pretzel",noodle:"Noodle",smoothie:"Smoothie",kiosk:"Café",shop:"Shop",rest:"Diner",apt:"Apts",office:"Office",hotel:"Hotel",casino:"Casino"};
+const BIZTAG={cart:"Cart",coffeecart:"Coffee",icecream:"Ice",taco:"Taco",pretzel:"Pretzel",noodle:"Noodle",smoothie:"Smoothie",kiosk:"Café",shop:"Shop",gasstation:"Fuel",rest:"Diner",apt:"Apts",office:"Office",hotel:"Hotel",casino:"Casino"};
 function pinIcon(e){let [col,txt]=PIN[e.cls]||["#333","•"];if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
   return L.divIcon({className:"mpin",html:`<span style="background:${col}">${txt}</span>`,iconSize:null,iconAnchor:[18,30]})}
 function renderPins(){if(!layer)return;layer.clearLayers();ensurePositions();
@@ -1763,11 +1764,11 @@ setInterval(wxNews,30000);setTimeout(wxNews,2000);
 if(WX_TEST)window.__wx={stormAt,activeStorms,stormCenter,cities:CITIES,get city(){return stCity},get inStreet(){return inStreet}};
 
 /* ---------- running a business: stock, staff, managers and auto-restock ---------- */
-S.stock=S.stock||{};S.staff=S.staff||{};S.auto2=S.auto2||{};S.orders=S.orders||[];S.opf=S.opf||{};S.sched=S.sched||{};S.wadj=S.wadj||{};
+S.stock=S.stock||{};S.staff=S.staff||{};S.auto2=S.auto2||{};S.orders=S.orders||[];S.opf=S.opf||{};S.sched=S.sched||{};S.wadj=S.wadj||{};S.gasLast=S.gasLast||{};
 const SUP={cart:{u:"servings",r:29,c:0.91,n:"Sausages, buns and toppings"},
   coffeecart:{u:"cups",r:35,c:0.77,n:"Beans, milk and cups"},icecream:{u:"scoops",r:32,c:0.7,n:"Ice cream tubs and cones"},taco:{u:"tacos",r:46,c:0.98,n:"Tortillas, meat and salsa"},
   pretzel:{u:"pretzels",r:26,c:0.63,n:"Dough, salt and mustard"},noodle:{u:"bowls",r:35,c:0.91,n:"Noodles, broth and toppings"},smoothie:{u:"cups",r:29,c:0.84,n:"Fruit, yoghurt and cups"},kiosk:{u:"cups",r:160,c:1.0,n:"Coffee beans, milk and cups"},
-  shop:{u:"stock units",r:200,c:2.0,n:"Wholesale groceries"},rest:{u:"meals",r:120,c:8,n:"Fresh ingredients"},hotel:{u:"guest kits",r:120,c:80,n:"Linens, toiletries and breakfast"}};
+  shop:{u:"stock units",r:200,c:2.0,n:"Wholesale groceries"},gasstation:{u:"kL of fuel",r:20,c:45,n:"Fuel (1 kL = 1 unit of Fuel)"},rest:{u:"meals",r:120,c:8,n:"Fresh ingredients"},hotel:{u:"guest kits",r:120,c:80,n:"Linens, toiletries and breakfast"}};
 const ORDER_MIN=3;                                    // supplier delivery time, real minutes
 const bkey=(c,k)=>c.id+":"+k;
 const isStaffed=(c,k)=>!!S.staff[bkey(c,k)];
@@ -1777,7 +1778,13 @@ function tenantRun(k){const b=BIZ.find(x=>x.k===k),t=b&&b.t||k;return t==="apt"|
 function hasT(o,k){if(!o)return false;if(o[k])return true;for(const x in o)if(o[x]){const b=BIZ.find(y=>y.k===x);if(b&&b.t===k)return true}return false}
 const present=c=>!!(S.loc&&!S.trip&&S.loc.city===c.id);
 const useRate=(b,lv,c)=>SUP[b.k]?SUP[b.k].r*(1+.55*(lv-1))*(c?menuU(c,b):1):0;  // units per hour at full speed
-const unitCost=(b,c)=>SUP[b.k].c*PRICE[c.size];
+const unitCost=(b,c)=>b.fuel?px(c,"fuel"):SUP[b.k].c*PRICE[c.size];
+// Gas station restock: fuel in your depot here goes in first and costs nothing extra; the rest is bought at this city's market fuel price.
+// fee = carrier/manager surcharge on the bought part only. dep arrives at once, buy arrives as a normal supplier order.
+function gasPlan(c,q,fee){const have=Math.max(0,Math.floor((S.inv[c.id]||{}).fuel||0)),dep=Math.min(q,have),buy=q-dep,p=unitCost(BIZ.find(x=>x.fuel),c);return{dep,buy,p,cost:buy*p*fee}}
+function gasTake(c,key,pl){if(pl.dep>0){const inv=S.inv[c.id];inv.fuel-=pl.dep;if(inv.fuel<1e-6)delete inv.fuel;S.stock[key]=(S.stock[key]||0)+pl.dep}
+  S.gasLast[key]={dep:pl.dep,buy:pl.buy,p:pl.p,t:Date.now()}}
+const gasTxt=(l)=>`${Math.round(l.dep)} from your depot${l.buy>0?`, ${Math.round(l.buy)} bought at ${fmtC(l.p)}`:""}`;
 const stockOf=(c,k)=>S.stock[bkey(c,k)]||0;
 const opFactor=(c,b)=>{const k=bkey(c,b.k);return S.opf[k]==null?0:S.opf[k]};
 const selfRate=.6;                                    // running it yourself: up to 60% speed, only while you're there
@@ -1803,13 +1810,15 @@ function shopStep(h,t,now){const short=[];
   // managers restock automatically when stock drops under 2 hours
   for(const id in S.own){const c=CITIES[id];if(!S.mgr[c.id])continue;for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||!SUP[b.k])continue;const key=bkey(c,b.k);
     if(!S.auto2[key]||S.orders.some(o=>o.key===key))continue;const r=uSum(id,b.k,l=>useRate(b,l,c));if((S.stock[key]||0)>=r*2){delete S.mgrShort[key];continue}
-    const q=Math.round(r*6),cost=q*unitCost(b,c)*1.1;
+    const q=Math.round(r*6),gp=b.fuel?gasPlan(c,q,1.1):null,cost=gp?gp.cost:q*unitCost(b,c)*1.1;
     if(S.cash<cost){const m=S.mgrShort[key]||(S.mgrShort[key]={n:0});
       if(!m.n||now-m.n>3*DAYMS){m.n=now;const msg=`Manager couldn't restock ${b.n} in ${c.name}: needs ${cost<100?fmtC(cost):fmt(cost)}`;S.log.unshift(msg);S.log=S.log.slice(0,3);short.push(msg)}
       continue}
-    delete S.mgrShort[key];S.cash-=cost;S.orders.push({key,q,arr:t+ORDER_MIN*60000,auto:1})}}
+    delete S.mgrShort[key];S.cash-=cost;if(gp){gasTake(c,key,gp);if(gp.buy>0)S.orders.push({key,q:gp.buy,arr:t+ORDER_MIN*60000,auto:1})}else S.orders.push({key,q,arr:t+ORDER_MIN*60000,auto:1})}}
   if(short.length)toast(short.length>1?`Manager couldn't restock ${short.length} businesses — not enough cash`:short[0])}
-function orderStock(c,b,q){const own=supMode()==="own"&&(S.own[c.id]||{}).trucking,cost=q*unitCost(b,c)*(own?1:1.06);if(S.cash<cost){toast(`That order costs ${fmt(cost)}`);return}
+function orderStock(c,b,q){const own=supMode()==="own"&&(S.own[c.id]||{}).trucking,gp=b.fuel?gasPlan(c,q,own?1:1.06):null,cost=gp?gp.cost:q*unitCost(b,c)*(own?1:1.06);if(S.cash<cost){toast(`That order costs ${fmt(cost)}`);return}
+  if(gp){S.cash-=cost;const key=bkey(c,b.k);gasTake(c,key,gp);if(gp.buy>0)S.orders.push({key,q:gp.buy,arr:Date.now()+ORDER_MIN*60000*(own?.5:1)});
+    toast(`Restocked ${Math.round(q)} kL: ${gasTxt(S.gasLast[key])}${gp.buy>0?`. ${own?"Your trucks deliver":"Carrier delivers"} the rest in ${own?ORDER_MIN/2:ORDER_MIN} min`:""}.`);return}
   S.cash-=cost;S.orders.push({key:bkey(c,b.k),q,arr:Date.now()+ORDER_MIN*60000*(own?.5:1)});toast(`Ordered ${q.toLocaleString()} ${SUP[b.k].u}. ${own?"Your trucks deliver":"Carrier delivers"} in ${own?ORDER_MIN/2:ORDER_MIN} min.`)}
 function menuHtml(c,b,lv){if(!MENUS[b.k])return "";const cur=menuOf(c,b.k),fee=Math.round(cost(b,c)*MENU_SW),base=SUP[b.k].r*(1+.55*(lv-1));
   return `<div class="ops"><div class="ops-l"><b>🍽️ Menu</b>: ${cur.n}<br><span style="color:var(--muted)">Switching costs ${fmt(fee)}. Net = sales minus supplies, per hour, here and now:</span>`+MENUS[b.k].map(m=>`<br><button class="buy" style="margin-top:4px;width:100%;text-align:left" data-menu="${b.k}|${m.id}" ${m.id===cur.id||S.cash<fee?"disabled":""}>${m.id===cur.id?"✓ ":""}${m.n}: <b>${fmt(menuNet(c,b,lv,m.id))}/hr net</b> · ${Math.round(base*m.u)} ${SUP[b.k].u}/h<br><small>${m.d}</small></button>`).join("")+`</div></div>`}
@@ -1830,9 +1839,10 @@ function opsHtml(c,b,lv){const key=bkey(c,b.k),st=isStaffed(c,b.k),staff=uSum(c.
   let h=`<div class="ops"><div class="ops-l"><b style="color:${opf>.01?"var(--good)":"var(--bad)"}">${opf>.01?"Open":"Not selling"}</b> · ${runs}`;
   if(sup){const have=stockOf(c,b.k),hrs=r?have/(r*(st?1:Math.max(.01,sf))):0;
     h+=`<br>Stock: <b>${Math.floor(have).toLocaleString()}</b> ${sup.u}${have>0?` · lasts ~${hrs<1?Math.round(hrs*60)+" min":hrs.toFixed(1)+" h"}`:` · <span style="color:var(--bad)">empty, nothing to sell</span>`}${pend.length?` · ${pend.reduce((a,o)=>a+o.q,0).toLocaleString()} arriving in ${fmtDur(Math.max(0,Math.min(...pend.map(o=>o.arr))-Date.now()))}`:""}
-      <br><span style="color:var(--muted)">${sup.n}: $${unitCost(b,c).toFixed(2)} per ${sup.u.replace(/s$/,"")}</span>`}
+      <br><span style="color:var(--muted)">${b.fuel?`Market fuel here: ${fmtC(unitCost(b,c))} per kL`:`${sup.n}: $${unitCost(b,c).toFixed(2)} per ${sup.u.replace(/s$/,"")}`}</span>`;
+    if(b.fuel){const dp=((S.inv[c.id]||{}).fuel||0),gl=S.gasLast[key];h+=`<br><span style="color:var(--muted)">Your depot here has <b>${Math.floor(dp)}</b> kL of fuel, used first (free). The rest is bought at the market price.${gl?` Last restock: ${gasTxt(gl)}.`:""}</span>`}}
   h+=`</div><div class="ops-b">`;
-  if(sup){const q1=Math.round(r*2),q2=Math.round(r*8);h+=`<button class="buy up" data-ops="order" data-k="${b.k}" data-q="${q1}">+${q1.toLocaleString()} · ${fmt(q1*unitCost(b,c))}</button><button class="buy up" data-ops="order" data-k="${b.k}" data-q="${q2}">+${q2.toLocaleString()} · ${fmt(q2*unitCost(b,c))}</button>`}
+  if(sup){const q1=Math.round(r*2),q2=Math.round(r*8),own=supMode()==="own"&&(S.own[c.id]||{}).trucking,oc=q=>b.fuel?gasPlan(c,q,own?1:1.06).cost:q*unitCost(b,c),ol=q=>b.fuel?(()=>{const g=gasPlan(c,q,1);return g.dep>0?` (${Math.round(g.dep)} from depot)`:""})():"";h+=`<button class="buy up" data-ops="order" data-k="${b.k}" data-q="${q1}">+${q1.toLocaleString()} · ${fmt(oc(q1))}${ol(q1)}</button><button class="buy up" data-ops="order" data-k="${b.k}" data-q="${q2}">+${q2.toLocaleString()} · ${fmt(oc(q2))}${ol(q2)}</button>`}
   if(!tenantRun(b.k))h+=`<button class="buy${st?" up":""}" data-ops="staff" data-k="${b.k}">${st?`Let ${staff} staff go`:`Hire ${staff} staff`}</button>`;
   if(sup&&b.cx!=null){const sur=Math.max(0,Math.floor(stockOf(c,b.k)-r*4)),all=Math.floor(stockOf(c,b.k)),px=unitCost(b,c)*CB_OUT;h+=`<button class="buy up" data-fixed="1" data-ops="shipout" data-k="${b.k}" data-q="${sur}" ${sur<1?"disabled":""}>Ship out surplus ${sur.toLocaleString()} · +${fmtC(sur*px)}</button><button class="buy up" data-fixed="1" data-ops="shipout" data-k="${b.k}" data-q="${all}" ${all<1?"disabled":""}>Ship out all · +${fmtC(all*px)}</button>`}
   if(sup&&S.mgr[c.id]&&S.auto2[key]&&(S.mgrShort||{})[key])h+=`<span class="ops-t" style="color:var(--bad)">⚠️ Manager couldn't restock — not enough cash</span>`;
@@ -2122,8 +2132,8 @@ const LAWS={
   casino:{n:"Gambling",v:["Legal","Banned"],e:["Casinos operate normally","Casinos are shut: no income, can't open new ones"]},
   tariff:{n:"Import tariffs",v:["None","Low","High"],e:["Free trade","Retail profit −3%, land output value +4%","Retail profit −7%, land output value +9%"]},
   police:{n:"Policing",v:["Lenient","Standard","Strict"],e:["35% arrest chance, sentences ×0.6, private prisons earn −30%","55% arrest chance, normal sentences","80% arrest chance, sentences ×1.6, private prisons earn +40%"]},
-  grant:{n:"Small-business grants",v:["Off","On"],e:["No support","Carts, kiosks and corner shops earn +10%"]}};
-const RETAIL=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","rest"],SMALL=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop"];
+  grant:{n:"Small-business grants",v:["Off","On"],e:["No support","Carts, kiosks, corner shops and gas stations earn +10%"]}};
+const RETAIL=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","gasstation","rest"],SMALL=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","gasstation"];
 const ELECT=90*DAYMS; // elections every 3 game months (90 game days = 90 real hours)
 const COUNTRIES=[...new Set(CITIES.map(c=>c.country))];
 const ctyCities=n=>CITIES.filter(c=>c.country===n);
@@ -2152,6 +2162,8 @@ function logGov(m){S.log.unshift("Politics: "+m);S.log=S.log.slice(0,3)}
 const URQ={fee:10e6,wait:24*3600000,cd:6*3600000}; // fee, how long a player governor has to answer before the AI decides, retry cooldown after an AI refusal
 const uranFee=()=>URQ.fee;
 const uranPermit=n=>!!(S.gov&&S.gov[n]&&S.gov[n].uPermit);
+/* true if the player holds a uranium permit in at least one country: needed to buy uranium on the market */
+function uranAnyPermit(){const g=S.gov;if(!g||typeof g!=="object")return false;for(const n in g)if(g[n]&&g[n].uPermit)return true;return false}
 function uranNeed(n){if(uranPermit(n))return "";const g=S.gov&&S.gov[n];if(g&&g.uReq)return `Waiting for ${onEsc(g.uReq.name||"the government")} to decide on your nuclear mining permit for ${n}`;
   return `Needs government approval: apply for a nuclear mining permit from the ${n} government (Gov tab, ${fmt(uranFee())})`}
 /* the online player who governs country n: highest office, then most recently seen. null = AI government */
@@ -2194,7 +2206,7 @@ function govHour(quiet){const now=Date.now();
       if(diff.length){const k=diff[Math.floor(Math.random()*diff.length)];g.laws[k]+=Math.sign(pl[k]-g.laws[k]);if(!quiet&&ownsIn(n))logGov(`${n} changes ${LAWS[k].n.toLowerCase()} to ${LAWS[k].v[g.laws[k]]}`)}}
     if(g.laws.wage===0&&g.appr<40&&!(g.strike>now)&&Math.random()<.04){g.strike=now+(6+Math.random()*6)*DAYMS;if(!quiet&&ownsIn(n))logGov(`General strike in ${n}: businesses earn 30% less for a while`)}
     if(g.ctrl){if(g.contract){const v=contractPay(n);S.cash+=v;S.earned=(S.earned||0)+v}
-      if(Math.random()<.004+(g.contract?.006:0))exposed(n,quiet)}
+      if(Math.random()<(.004+(g.contract?.006:0))*lawRisk())exposed(n,quiet)}
     if(now>=g.next)election(n,quiet)}
   warHour(quiet);try{dipDay(quiet)}catch(e){}}
 function ownsIn(n){return ctyCities(n).some(c=>S.own[c.id]||S.hq&&S.hq[c.id]||S.sites.some(s=>s.city===c.id)||(S.props||[]).some(p=>p.city===c.id))}
@@ -2214,7 +2226,7 @@ function election(n,quiet){const g=gov(n),ks=Object.keys(PARTIES);
 function lobby(c,k,dir){const n=c.country,g=gov(n),cost=lobbyCost(n),pl=PARTIES[g.party].pl[k];
   if(S.cash<cost){toast(`Need ${fmt(cost)} to lobby`);return}S.cash-=cost;S.lobbied=(S.lobbied||0)+1;
   const toward=Math.sign(pl-g.laws[k])===dir;let ch=(toward?.65:.3)+g.favor+(hasHQ(c)?.05:0);
-  if(Math.random()<.08+(S.hq&&ctyCities(n).some(x=>S.hq[x.id])?0:.07)){const fine=cost*2;S.cash-=fine;g.appr=Math.max(5,g.appr-6);logGov(`Lobbying scandal in ${n}: fined ${fmt(fine)}`);toast(`Scandal! Fined ${fmt(fine)}`);arrest("bribing officials",12,c);return}
+  if(Math.random()<(.08+(S.hq&&ctyCities(n).some(x=>S.hq[x.id])?0:.07))*lawRisk()){const fine=cost*2;S.cash-=fine;g.appr=Math.max(5,g.appr-6);logGov(`Lobbying scandal in ${n}: fined ${fmt(fine)}`);toast(`Scandal! Fined ${fmt(fine)}`);arrest("bribing officials",12,c,0,1);return}
   if(Math.random()<ch){g.laws[k]+=dir;logGov(`${n} passes your bill: ${LAWS[k].n.toLowerCase()} now ${LAWS[k].v[g.laws[k]]}`);toast("Bill passed")}
   else toast("Bill failed to pass")}
 function govHtml(c){const n=c.country,g=gov(n),P=PARTIES[g.party];let h=cityHead(c)+tabsHtml();
@@ -2262,7 +2274,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)
 const ctrlNeed=n=>donUnit(n)*30;
 const contractPay=n=>Math.round(1200*ctyScale(n));
 function exposed(n,quiet){const g=gov(n),fine=donUnit(n)*30;if(S.pol&&S.pol.c===n&&S.pol.r>=0)S.pol.exCd=Date.now()+(GOVCFG.exposeCd||24)*DAYMS;S.cash-=fine;g.ctrl=false;g.polCtrl=0;g.contract=0;g.appr=Math.max(5,g.appr-25);
-  logGov(`Exposed! Your control of ${n}'s government leaks to the press. Fined ${fmt(fine)}`);arrest("corruption",48,cap(n),quiet);if(!quiet)toast(`Scandal in ${n}: fined ${fmt(fine)}`)}
+  logGov(`Exposed! Your control of ${n}'s government leaks to the press. Fined ${fmt(fine)}`);arrest("corruption",48,cap(n),quiet,1);if(!quiet)toast(`Scandal in ${n}: fined ${fmt(fine)}`)}
 const WARL=["Calm","Tension","Sanctions","Border clashes","War"],WARC=["#3a9","#b9961c","#e07a2a","#d84a4a","#9b1111"];
 const CF_EFF=["","Markets jittery: −3% profit","Sanctions: −10% profit, land output +5%","Clashes: −20% profit, land output +10%","War: −40% profit, land output +20%, businesses can be damaged, no travel in"];
 const cap=n=>ctyCities(n).sort((a,b)=>b.size-a.size)[0];
@@ -2285,7 +2297,7 @@ function warHour(quiet){S.wars=S.wars||[];const ws=S.wars;
   S.wars=ws.filter(w=>w.l>0)}
 function warAct(id,a){const w=(S.wars||[]).find(x=>x.id===id);if(!w)return;const cst=warCost(w);if(S.cash<cst){toast(`Need ${fmt(cst)}`);return}S.cash-=cst;
   if(a==="peace"){if(Math.random()<.55){w.l--;logGov(`Talks you funded ease ${w.a}–${w.b} to ${WARL[w.l].toLowerCase()}`);toast("Talks worked")}else toast("Talks collapsed")}
-  else{if(Math.random()<.12){const f=cst*3;S.cash-=f;logGov(`Arms dealing exposed: fined ${fmt(f)}`);toast(`Caught! Fined ${fmt(f)}`);arrest("arms trafficking",36,cap(w.a));return}
+  else{if(Math.random()<.12*lawRisk()){const f=cst*3;S.cash-=f;logGov(`Arms dealing exposed: fined ${fmt(f)}`);toast(`Caught! Fined ${fmt(f)}`);arrest("arms trafficking",36,cap(w.a),0,1);return}
     S.cash+=cst*1.6;if(w.l<4&&Math.random()<.6){w.l++;logGov(`${w.a}–${w.b} escalates to ${WARL[w.l].toLowerCase()}`)}toast(`Arms sold: +${fmt(cst*.6)} profit`)}
   S.wars=S.wars.filter(x=>x.l>0)}
 function conflictHtml(n){const ws=(S.wars||[]).filter(w=>!n||w.a===n||w.b===n).sort((a,b)=>b.l-a.l);
@@ -2616,7 +2628,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-bank]");if(!b
   else if(a==="cardall")payCard(true);else if(a==="adv"){const c=B().card,v=Math.min(c.lim-c.bal,Math.round(c.lim/4));c.bal+=v*1.05;S.cash+=v;c.paidStmt=false;toast(`Cash advance ${fmt(v)} (5% fee)`)}
   S.debt=bankDebt();save();hud();renderSheet()});
 /* ---------- bank ownership (phase 1): found & run your own bank. S.ob = owned bank, S.bank = personal banking ---------- */
-const BANKCFG={unlockNW:5e6,license:1e6,minCapital:2e6,monthMs:15*60000,maxCatchup:24,histKeep:36,sampleCap:200,baseRate:.04,phKeep:24,atR:[.4,.5,.6,.75], // phase 7: payment-history dots kept per customer; auto-track ratios
+const BANKCFG={unlockNW:15e6,license:8e6,minCapital:2e6,monthMs:15*60000,maxCatchup:24,histKeep:36,sampleCap:200,baseRate:.04,phKeep:24,atR:[.4,.5,.6,.75], // phase 7: payment-history dots kept per customer; auto-track ratios
   
   yieldShare:.3,          // share of base rate earned on reserves (treasury/central-bank deposits); loans are the main income
   appBase:8,appRate:.012,appCap:30,appLife:2, // loan applications/month = appBase+nc*appRate; max pending; months before expiry
@@ -2914,17 +2926,21 @@ S.rec=S.rec||[];
 const POLMULT=[.6,1,1.6];
 function jailed(){return S.jail&&Date.now()<S.jail.until}
 function ownsAny(k){for(const id in S.own)if(hasT(S.own[id],k))return true;return false}
-function arrest(reason,sev,c,quiet){c=c||CITIES[(S.loc||{city:0}).city];const pol=law(c,"police")??1;
-  if(Math.random()>[.35,.55,.8][pol])return false;
+/* any law firm: risk of being caught (arrests, audits, exposure, heat) is 80% lower */
+function lawRisk(){return ownsAny("lawfirm")?.2:1}
+/* any law firm: bail and lawyer fees are 50% cheaper */
+function lawBribe(){return ownsAny("lawfirm")?.5:1}
+function arrest(reason,sev,c,quiet,pre){c=c||CITIES[(S.loc||{city:0}).city];const pol=law(c,"police")??1;
+  if(Math.random()>[.35,.55,.8][pol]*(pre?1:lawRisk()))return false;
   let h=sev*POLMULT[pol]*(ownsAny("lawfirm")?.5:1);if(jailed())h+=(S.jail.until-Date.now())/DAYMS;
   const bail=Math.round(Math.max(2500,incomeHr()*h*.6,sev*1500)*PRICE[c.size]);
   S.jail={until:Date.now()+h*DAYMS,city:c.id,reason,bail,lawyer:0};S.rec.push({t:Date.now(),what:reason});S.trip=null;
   if(S.job&&h>24){S.job=null;logCrime("You lost your job while in prison")}
   logCrime(`Arrested in ${c.name} for ${reason}. Sentence: ${Math.round(h)} h`);if(!quiet)toast(`Arrested: ${Math.round(h)} h in prison`);return true}
 function logCrime(m){S.log.unshift("Justice: "+m);S.log=S.log.slice(0,3)}
-function jailHtml(){if(!jailed())return"";const J=S.jail,c=CITIES[J.city],lc=Math.round(J.bail*.4);
+function jailHtml(){if(!jailed())return"";const J=S.jail,c=CITIES[J.city],lc=Math.round(J.bail*.4*lawBribe()),bl=Math.round(J.bail*lawBribe());
   return `<div class="welcome" style="background:#7f1d1d;color:#fff"><b>In prison · ${c.name}</b><br>${J.reason}. Released in <b>${fmtDur(J.until-Date.now())}</b>. No wages, travel, education or job applications until then. Your businesses keep running.
-    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="buy" data-jail="bail" data-fixed="1" ${S.cash<J.bail?"disabled":""}>Post bail ${fmt(J.bail)}</button>${J.lawyer?"":`<button class="buy up" data-jail="lawyer" data-fixed="1" ${S.cash<lc?"disabled":""}>Hire lawyer ${fmt(lc)}</button>`}${devOn()?`<button class="buy" data-dev="bail" data-fixed="1">Dev: bail out</button>`:""}</div></div>`}
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="buy" data-jail="bail" data-fixed="1" ${S.cash<bl?"disabled":""}>Post bail ${fmt(bl)}</button>${J.lawyer?"":`<button class="buy up" data-jail="lawyer" data-fixed="1" ${S.cash<lc?"disabled":""}>Hire lawyer ${fmt(lc)}</button>`}${devOn()?`<button class="buy" data-dev="bail" data-fixed="1">Dev: bail out</button>`:""}</div></div>`}
 /* ---------- owner-only dev tools: unlocked per device with ?dev=1, cleared with ?dev=0 ---------- */
 function devOn(){try{return localStorage.getItem("meridian-dev")==="1"}catch(e){return false}}
 function devHtml(){if(!devOn())return"";return `<div class="sec">Dev</div><div class="list"><div class="row"><div class="n">Reset loans</div><div class="d">${B().loans.length} loans · ${fmt(B().loans.reduce((a,l)=>a+l.bal,0))} owed</div><button class="buy" data-dev="loans">Reset loans</button></div>
@@ -2935,8 +2951,8 @@ function devAct(b){const k=b.dataset.dev;
   save();hud();renderSheet()}
 document.addEventListener("click",e=>{const b=e.target.closest("[data-dev]");if(b&&devOn())devAct(b)});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-jail]");if(!b||!jailed())return;const J=S.jail;
-  if(b.dataset.jail==="bail"){if(S.cash<J.bail)return;S.cash-=J.bail;S.jail=null;toast("Bail posted. You're free.");logCrime("Released on bail")}
-  else{const lc=Math.round(J.bail*.4);if(S.cash<lc)return;S.cash-=lc;J.lawyer=1;if(Math.random()<.55){J.until=Date.now()+(J.until-Date.now())*.4;J.bail=Math.round(J.bail*.5);toast("Your lawyer got the sentence cut");logCrime("Appeal won: sentence reduced")}else toast("Appeal denied")}
+  if(b.dataset.jail==="bail"){const bl=Math.round(J.bail*lawBribe());if(S.cash<bl)return;S.cash-=bl;S.jail=null;toast("Bail posted. You're free.");logCrime("Released on bail")}
+  else{const lc=Math.round(J.bail*.4*lawBribe());if(S.cash<lc)return;S.cash-=lc;J.lawyer=1;if(Math.random()<.55){J.until=Date.now()+(J.until-Date.now())*.4;J.bail=Math.round(J.bail*.5);toast("Your lawyer got the sentence cut");logCrime("Appeal won: sentence reduced")}else toast("Appeal denied")}
   save();hud();renderSheet()});
 /* ---------- click-to-earn gigs ---------- */
 const fmtc=v=>v<100?"$"+v.toFixed(2):fmt(v);
@@ -3274,7 +3290,7 @@ const CB_STY={bud:{n:"Budget",g:.9,r:1.15,c:.85,u:1,d:"lower prices, more custom
   disc:{n:"Discount",g:.8,r:1.2,c:.7,u:.85,d:"cheapest in town, high volume"},exp:{n:"Express",g:1.05,r:1.05,c:.9,u:.9,d:"fast service, lean staff"},fam:{n:"Family",g:1.05,r:1.1,c:1,u:1.05,d:"kid-friendly, busy weekends"},
   eco:{n:"Eco",g:1.1,r:.9,c:1.2,u:1.05,d:"green image, less waste"},art:{n:"Artisan",g:1.35,r:.8,c:1.5,u:1.3,d:"handmade, loyal regulars"},lux:{n:"Luxury",g:1.6,r:.7,c:1.9,u:1.5,d:"elite clients, tiny volume"}};
 const CB_ICONS=["🏪","🍔","☕","🍦","🌮","🍜","🥤","🍕","🏨","🏢","💈","🏋️","🥐","🍣","🍺","🍷","🍩","🍗","🥗","💊","📚","💐","⛽","🚗","🎬","👗","💍","📱","🐾","🔨","🧺","🏦","🏥","🏫","🎮","🎵","💆","🌱","🛒","✂️","🥯","🧁","🍫","🥪","🍱","🧋","🍵","🛍️","🎨","🧸","🚲","🌿","🔧","💻","🏠","⭐"];
-const cbTpl=()=>BIZ.filter(x=>x.cx==null&&!x.co&&!x.tr&&!x.big).map(x=>x.k);
+const cbTpl=()=>BIZ.filter(x=>x.cx==null&&!x.co&&!x.tr&&!x.big&&!x.fuel).map(x=>x.k);
 // economics of a custom brand: size × style, then cost raised if needed so payback is never better than the template's
 function cbEcon(t,sz,st){const m=(CB_SIZE[sz]||CB_SIZE.m).m,y=CB_STY[st]||CB_STY.std,sp=SUP[t.k],sc=sp?sp.r*sp.c:0,
   gross=Math.round(t.gross*m*y.g),up=Math.round(t.up*m*y.u),r=sp?Math.round(sp.r*m*y.r):0,net0=t.gross-t.up-sc,net=gross-up-(sp?r*sp.c:0);
@@ -4131,8 +4147,8 @@ function dxWire(el){let g=null;
     if(a==="hqcity"){const id=Object.keys(S.hq).find(k=>S.hq[k]);dxClose();if(id!=null&&CITIES[id]){tab="hq";openCity(CITIES[id])}else openPortfolio();return}
     if(a==="hireall"){let n=0;for(const x of dxData(DX.reg).rows)if(!x.staffed){S.staff[x.key]=1;n++}DX.note=n?`Hired staff at ${n} business${n>1?"es":""}. Wages start now.`:"Everyone is already staffed.";DX.noteT=Date.now();save();hud();if(PH.open)phRender();dxRender();return}
     if(a==="restock"){let n=0,cost=0,short=0;for(const x of dxData(DX.reg).rows){if(!SUP[x.b.k]||x.status==="un"||S.orders.some(o=>o.key===x.key))continue;const use=x.use;if(stockOf(x.c,x.b.k)>=use*2)continue;
-        const q=Math.max(1,Math.round(use*6)),own=supMode()==="own"&&(S.own[x.c.id]||{}).trucking,k=q*unitCost(x.b,x.c)*(own?1:1.06);if(S.cash<k){short++;continue}
-        S.cash-=k;cost+=k;n++;S.orders.push({key:x.key,q,arr:Date.now()+ORDER_MIN*60000*(own?.5:1)})}
+        const q=Math.max(1,Math.round(use*6)),own=supMode()==="own"&&(S.own[x.c.id]||{}).trucking,gp=x.b.fuel?gasPlan(x.c,q,own?1:1.06):null,k=gp?gp.cost:q*unitCost(x.b,x.c)*(own?1:1.06);if(S.cash<k){short++;continue}
+        S.cash-=k;cost+=k;n++;if(gp)gasTake(x.c,x.key,gp);if(!gp||gp.buy>0)S.orders.push({key:x.key,q:gp?gp.buy:q,arr:Date.now()+ORDER_MIN*60000*(own?.5:1)})}
       DX.note=n?`Ordered stock for ${n} business${n>1?"es":""} (${dxM(cost)}).`+(short?` ${short} skipped: not enough cash.`:""):short?"Not enough cash to restock.":"Stock levels are healthy.";DX.noteT=Date.now();save();hud();dxTick();return}});
   el.addEventListener("change",e=>{if(e.target.matches("[data-dx=view]")){DX.view=e.target.value;DX.sig=null;dxRender()}});
   el.addEventListener("pointerover",e=>{const g2=e.target.closest(".mdx-bg");if(g2&&e.pointerType!=="touch")dxTipShow(g2)});
@@ -5103,8 +5119,8 @@ const ctSellMult=(c,g)=>{const f=CT&&CT.perk&&CT.perk.fix;return f&&f.on&&f.c===
 const ctTurf=c=>CT&&CT.perk&&CT.perk.turf[c.id]?CT_TURF:1;
 const ctHeatRate=()=>{const P=CT&&CT.perk;if(!P||!CT.mine)return 0;return(P.fix&&P.fix.on&&P.fix.bonus>0?6:0)+Math.min(4,Object.keys(P.turf).length)*1.5};
 /* hourly risk (called from runTax): extra tax heat, and a chance of an antitrust fine while price fixing works */
-function ctRisk(hours){if(!CT||!CT.mine)return;const t=evS(),r=ctHeatRate();if(r>0)t.heat=Math.min(100,t.heat+r*hours);const f=CT.perk.fix;
-  if(f&&f.on&&f.bonus>0){const n=Math.max(1,Math.min(168,Math.ceil(hours)));for(let i=0;i<n;i++){const p=.004+.0004*t.heat;if(Math.random()<1-Math.pow(1-p,hours/n)){const inc=Math.max(0,incomeHr()),fine=Math.round(Math.max(0,Math.min(.025*Math.max(0,S.cash),12*inc,75000)));
+function ctRisk(hours){if(!CT||!CT.mine)return;const t=evS(),r=ctHeatRate();if(r>0)t.heat=Math.min(100,t.heat+r*hours*lawRisk());const f=CT.perk.fix;
+  if(f&&f.on&&f.bonus>0){const n=Math.max(1,Math.min(168,Math.ceil(hours)));for(let i=0;i<n;i++){const p=(.004+.0004*t.heat)*lawRisk();if(Math.random()<1-Math.pow(1-p,hours/n)){const inc=Math.max(0,incomeHr()),fine=Math.round(Math.max(0,Math.min(.025*Math.max(0,S.cash),12*inc,75000)));
       if(fine>0){S.cash-=fine;const m=`Antitrust inquiry into ${CT.mine.name}: fined ${fmt(fine)}`;ctLog(m);S.log.unshift(m);S.log=S.log.slice(0,3);if(typeof toast==="function")toast(m,"bad")}t.heat=Math.max(0,t.heat-20);break}}}}
 /* create / join / leave / admin */
 function ctCreate(){const uid=ctUid(),x=CTS();if(!uid||!ON.db||CT.infl.mk||x.mk)return;if(CT.mine){toast("You are already in a cartel");return}
