@@ -72,3 +72,11 @@ Phone app **Cartel**. Needs the Online tab signed in. Founding costs $25,000 (re
 - **Risk:** price fixing and turf add tax heat (`S.tax.heat`), price fixing can draw an antitrust fine, and a player in a government office can raid a price-fixing cartel (`craid/{cid}`, once a day per cartel, costs $20,000): members pay a 2% fine (max $100k) once and price fixing pauses for 12 h. Holding an office is checked by the game client only.
 
 **Mark must re-publish the rules** (Firebase console, Firestore, Rules, paste `firestore.rules`, Publish) for the new cartel blocks and the changed `players` rule. **Mark must also create two composite indexes** (deploy `firestore.indexes.json` with `firebase deploy --only firestore:indexes`, or accept the console's link on first use): `cmsg` on `cid` ascending + `at` descending (chat), and `cled` on `cid` ascending + `seq` descending (ledger). Without them the chat and ledger lists stay empty (the console logs the creation link). Limits: saves are client-side, so a modified client can still cheat its own cash; the rules guarantee who may change what and that treasury, ledger and payments agree.
+## Sign-in required to play
+
+While `FIREBASE_CONFIG` is set, the game opens on a sign-in screen and nobody can play until they are signed in (email + password, or Google). It offers Sign in, Create account and Forgot password. Signing out returns to that screen. If Firebase can't load (no internet), the screen shows "Try again" instead of the game. Already signed-in players stay signed in, and their saves are untouched.
+
+Console steps (Authentication):
+1. **Sign-in method**: Email/Password and Google must both be enabled (they already are if accounts work today).
+2. **Templates → Password reset**: optional, set the sender name and wording of the reset email.
+3. No rules or index changes are needed.
