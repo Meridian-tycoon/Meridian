@@ -2163,7 +2163,7 @@ function logGov(m){S.log.unshift("Politics: "+m);S.log=S.log.slice(0,3)}
    If another player holds office in that country, the highest office holder decides (Gov tab, Permit requests).
    Otherwise the AI government decides at once. The fee is paid up front and refunded on a refusal. */
 const URQ={fee:10e6,wait:24*3600000,cd:6*3600000};
-const URQ_FREE=["BRGRStgYLlbkVbrBTagBrDbpVyg1"]; // player IDs with no retry cooldown after a refused uranium permit
+const URQ_FREE=["BRGRStgYLlbkVbrBTagBrDbpVyg1"]; // player IDs with no retry cooldown after a refused uranium permit or a lost election (Gov tab)
 const urqCdOn=()=>{try{return !(ON.user&&URQ_FREE.indexOf(ON.user.uid)>=0)}catch(e){return true}}; // fee, how long a player governor has to answer before the AI decides, retry cooldown after an AI refusal
 const uranFee=()=>URQ.fee;
 const uranPermit=n=>!!(S.gov&&S.gov[n]&&S.gov[n].uPermit);
@@ -3479,7 +3479,7 @@ function polRun(){const p=pol(),C=GOVCFG,now=Date.now(),r=p.r+1,O=C.offices[r];i
   if(S.trip)return toast("Finish your trip first");
   if(polHere()!==n)return toast(`You must be in ${n} to campaign`);
   if(dipRuler(n))return toast(`${n} is occupied by ${dipRuler(n)}`);
-  if(now<p.cd)return toast("Campaign cooldown: "+fmtDur(p.cd-now));
+  if(urqCdOn()&&now<p.cd)return toast("Campaign cooldown: "+fmtDur(p.cd-now));
   if(p.r>=0&&now-p.since<C.minHold*DAYMS)return toast("Serve a little longer first: "+fmtDur(p.since+C.minHold*DAYMS-now));
   const {nw}=totals(),cost=polCost(r,n);if(nw<O.nw)return toast(`Need net worth ${fmt(O.nw)}`);if(S.cash<cost)return toast(`Campaign costs ${fmt(cost)}`);
   const ch=polChance(r);S.cash-=cost;
@@ -3520,7 +3520,7 @@ function govApp0(){const p=pol(),C=GOVCFG,now=Date.now(),{nw}=totals(),here=polH
     ${(q=>btn("polpr",`PR campaign · ${fmt(q.c)} (+${Math.round(q.g*10)/10}%)`,p.appr>=95||S.cash<q.c))(polPRq(p))}`
     :`<div class="ph-big" style="font-size:20px">Private citizen</div><div class="ph-sub">Run for office in ${here}</div>`;
   const r=p.r+1,n=p.r>=0?p.c:here;
-  if(O[r]){const cost=polCost(r,n),cd=Math.max(0,p.cd-now),hold=p.r>=0?Math.max(0,p.since+C.minHold*DAYMS-now):0;
+  if(O[r]){const cost=polCost(r,n),cd=urqCdOn()?Math.max(0,p.cd-now):0,hold=p.r>=0?Math.max(0,p.since+C.minHold*DAYMS-now):0;
     h+=`<div class="ph-rows" style="margin-top:10px"><div><span>Next office</span><b>${O[r].n} of ${n}</b></div><div><span>Net worth needed</span><b style="color:${nw>=O[r].nw?"#4ade80":"#f87171"}">${fmt(O[r].nw)}</b></div><div><span>Campaign</span><b>${fmt(cost)}</b></div><div><span>Win chance</span><b>${Math.round(polChance(r)*100)}%</b></div>${polDonCtrl(n)?`<div><span>Party you fund rules ${n}</span><b style="color:#4ade80">+${Math.round(C.ctrlWin*100)}%</b></div>`:""}${cd?`<div><span>Cooldown</span><b>${fmtDur(cd)}</b></div>`:""}${hold?`<div><span>Eligible in</span><b>${fmtDur(hold)}</b></div>`:""}</div>
     ${btn("polrun",`Run for ${O[r].n}`,cd||hold||nw<O[r].nw||S.cash<cost||here!==n)}${here!==n?`<p class="ph-sub">Travel to ${n} to campaign.</p>`:""}`}
   if(lead){const g=gov(p.c),tc=Math.max(0,p.taxCd-now),xc=Math.max(0,(p.exCd||0)-now);
