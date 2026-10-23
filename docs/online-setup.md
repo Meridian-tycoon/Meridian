@@ -41,3 +41,11 @@ Console steps:
 1. **Re-publish the rules**: Firestore → **Rules** → paste the current `firestore.rules` → **Publish**. Until then profile writes fail (new fields `nb`, `nc`) and `world/rivals` cannot be written.
 2. Nothing to create by hand: the `world` collection and `rivals` document appear the first time the developer signs in on the master save. To check, open Firestore → **Data** → `world` → `rivals`.
 3. No new index is needed.
+
+## Bot company "Meridian Freight"
+
+A rule-based company (not an AI) that shows on every globe and on the shared leaderboard with a **BOT** badge. Like the world rivals it is simulated only on the master save (the developer's, `DEV_UIDS`), which stores its state in its own save (`S.botw`) and publishes `world/bot` (name, colour, net worth, trucks, cities, goods stock and prices). Everyone else just mirrors that document.
+
+Players use it from the Bank app (phone): **Buy goods** (bot sells at 120% of base price), **Sell goods** (bot pays 80%) and **Hire truck** (haul goods between your own warehouses on one landmass, fee = $300 + $0.10 per tonne-km, max 120 t). Money and goods are taken from the player first and a request is created in `botreq/{id}`. The master's game (while open and signed in) answers each one with `botres/{id}` and deletes the request in one batch; the player's game credits cash/goods once (deduped by id) and deletes the reply. Rejected requests (no stock, no free trucks, bot out of cash, price moved more than 5%) refund everything. Deliveries and hauls take time (distance / 400 km per day, a quarter of that, min 2 min). If the master is not online, requests simply wait (the Bank app says "processed when the world server is online") and the bot looks greyed out on the board after a week.
+
+**Mark must re-publish the rules** (Firebase console → Firestore → Rules → paste `firestore.rules` → Publish) for the new `world/bot`, `botreq` and `botres` blocks. Until then the bot never appears and bot requests fail with a refund. Nothing to create by hand: the collections appear on first use. No new index is needed. As with transfers, saves are client-side, so this is not cheat-proof; the master validates prices, capacity and amounts and processes each request id once.

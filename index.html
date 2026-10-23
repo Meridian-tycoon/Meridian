@@ -1934,11 +1934,11 @@ function renderPortfolio(){const{inc,nw}=totals();
     h+=`<div class="row link" data-go="${c.id}"><div class="n">${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"}</span>`:""}${S.mgr[c.id]?'<span class="tag" style="border:1px solid var(--line)">MGR</span>':""}</div>
     <div class="d">${n} business${n>1?"es":""} · <b>${fmt(cityProfit(c))}</b>/hr</div><span style="font-family:var(--mono);color:var(--muted)">›</span></div>`}
   h+=`</div><div class="sec">Find a city</div><input id="q" type="search" placeholder="Tokyo, Lagos… or oil, coal, ore" value="${query}" autocomplete="off"><div class="list" id="qres"></div>`;
-  const board=[{n:"You",col:"var(--own)",nw,me:1,dev:devSelf(S.name,(S.online||{}).name)?(S.online&&S.online.name||S.name||DEV_NAME):""},...(onEnabled()?lbPlayers():[]).map(p=>{const age=(Date.now()-onSeen(p))/864e5;return{n:String(p.name||"Player").slice(0,20),col:/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb",nw:Number.isFinite(+p.nw)?+p.nw:0,pl:1,dv:devUid(p.uid),old:age>30,f:`player${Number.isInteger(p.nb)?` · ${p.nb} business${p.nb===1?"":"es"}`:""} · seen ${age<1/24?"just now":age<2?Math.round(age*24)+"h ago":Math.round(age)+"d ago"}`,c:lbCities(p)}}),
+  const board=[{n:"You",col:"var(--own)",nw,me:1,dev:devSelf(S.name,(S.online||{}).name)?(S.online&&S.online.name||S.name||DEV_NAME):""},...(onEnabled()?lbPlayers().concat(botPl()?[botPl()]:[]):[]).map(p=>{const age=(Date.now()-onSeen(p))/864e5;return{n:String(p.name||"Player").slice(0,20),col:/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb",nw:Number.isFinite(+p.nw)?+p.nw:0,pl:1,bot:!!p.bot,dv:devUid(p.uid),old:age>30,f:p.bot?`BOT · ${p.trucks|0} trucks · hire or trade in the Bank app`:`player${Number.isInteger(p.nb)?` · ${p.nb} business${p.nb===1?"":"es"}`:""} · seen ${age<1/24?"just now":age<2?Math.round(age*24)+"h ago":Math.round(age)+"d ago"}`,c:lbCities(p)}}),
     ...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:+r.nw||0,c:r.cities.length,f:`${RIVALS[i].ind} · ${fmtCap(RIVALS[i].cap)} real`}))].sort((a,b)=>b.nw-a.nw);
   const lbTop=board.filter((b,i)=>i<100||b.me);
   h+=govSummary();h+=onlineHtml();
-  h+=`<div class="sec">Leaderboard${onEnabled()?` <small style="font-weight:400;color:var(--muted)">${ON.gotPlayers?"live":"offline · last saved"}</small>`:""}</div><div class="list">`+lbTop.map(b=>`<div class="row"${b.old?' style="opacity:.5"':""}><div class="n" style="${b.me?"color:var(--own)":""}">${board.indexOf(b)+1}. <span style="display:inline-block;width:9px;height:9px;${b.pl?"transform:rotate(45deg);":""}background:${b.col};margin:0 6px 0 2px"></span>${b.dev?gnHtml(b.dev,1)+" (you)":b.me?devEsc(onEnabled()&&S.online&&S.online.name||S.name||"You")+" (you)":b.pl?gnHtml(b.n,b.dv):b.n}</div>
+  h+=`<div class="sec">Leaderboard${onEnabled()?` <small style="font-weight:400;color:var(--muted)">${ON.gotPlayers?"live":"offline · last saved"}</small>`:""}</div><div class="list">`+lbTop.map(b=>`<div class="row"${b.old?' style="opacity:.5"':""}><div class="n" style="${b.me?"color:var(--own)":""}">${board.indexOf(b)+1}. <span style="display:inline-block;width:9px;height:9px;${b.pl?"transform:rotate(45deg);":""}background:${b.col};margin:0 6px 0 2px"></span>${b.dev?gnHtml(b.dev,1)+" (you)":b.me?devEsc(onEnabled()&&S.online&&S.online.name||S.name||"You")+" (you)":b.pl?gnHtml(b.n,b.dv)+(b.bot?' <span class="tag">BOT</span>':''):b.n}</div>
     <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities · ${b.f}`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
   h+=bankHtml();
   if(S.lst.length)h+=`<div class="sec">Market listings</div><div class="list">`+S.lst.map(l=>{const c=CITIES[l.city],stockLv=mLevel(c,l.g);return `<div class="row link" data-go="${c.id}"><div class="n">${G[l.g][0]} · ${c.name}</div><div class="d">${l.q<1e-6?"Sold out":gq(l.q)+" left at "+fmt(l.p)} · ${gq(l.sold||0)} sold · stock ${Math.round(stockLv*100)}%</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`;
@@ -4313,7 +4313,8 @@ function onScript(u){return new Promise((ok,no)=>{const s=document.createElement
 async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
   try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
-    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM)wrPublish(true);else wrMirror(false);onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);onRefresh()});
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM)wrPublish(true);else wrMirror(false);onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);onRefresh()});
+    ON.unsubB=ON.db.collection("world").doc("bot").onSnapshot(d=>{if(WRM&&ON.user&&devUid(ON.user.uid))return;const v=d.exists?botClean(d.data()):null;if(!v)return;ON.bot=v;try{localStorage.setItem(BOTKEY,JSON.stringify(v))}catch(e){}draw();onRefresh();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)))phRender()},e=>{ON.err="Couldn't load the bot company: "+(e&&e.code||e)});
     ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;ON.gotPlayers=true;lbCache(a);draw();onRefresh()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
     ON.unsubW=ON.db.collection("world").doc("rivals").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list)||v.list.length!==RIVALS.length)return;
       WRS={list:v.list.map(x=>({nw:+(x&&x.nw)||0,cities:Array.isArray(x&&x.cities)?x.cities.filter(Number.isInteger):[]})),updated:v.updated&&v.updated.toMillis?v.updated.toMillis():Date.now()};
@@ -4344,22 +4345,22 @@ function onSeen(p){if(typeof p.seen==="number")return p.seen;const t=p.lastSeen;
 function onAlpha(p){const age=(Date.now()-onSeen(p))/864e5;return age>7?.3:1}
 function onCities(p){const s=new Set();if(Number.isInteger(p.home)&&CITIES[p.home])s.add(p.home);for(const i of Array.isArray(p.hq)?p.hq:[])if(CITIES[i])s.add(i);return[...s]}
 const onHere=p=>Number.isInteger(p.loc)&&!!CITIES[p.loc];
-function playersAt(c){return ON.players.filter(p=>onCities(p).includes(c.id)||(Array.isArray(p.biz)&&p.biz.includes(c.id))||p.loc===c.id).sort((a,b)=>(b.loc===c.id)-(a.loc===c.id))}
-function drawOnline(ctx){if(!ON.players.length)return;const by={};
-  for(const p of ON.players){const s=new Set(onCities(p));if(onHere(p))s.add(p.loc);for(const id of s)(by[id]=by[id]||[]).push(p)}
+function playersAt(c){return botAll().filter(p=>onCities(p).includes(c.id)||(Array.isArray(p.biz)&&p.biz.includes(c.id))||p.loc===c.id).sort((a,b)=>(b.loc===c.id)-(a.loc===c.id))}
+function drawOnline(ctx){const PL=botAll();if(!PL.length)return;const by={};
+  for(const p of PL){const s=new Set(onCities(p));if(onHere(p))s.add(p.loc);for(const id of s)(by[id]=by[id]||[]).push(p)}
   for(const id in by)by[id].sort((a,b)=>(b.loc==id)-(a.loc==id));
   ctx.textBaseline="middle";
   for(const id in by){const c=CITIES[id];if(!c||c.sx<-1e3)continue;const list=by[id];
-    list.slice(0,4).forEach((p,i)=>{const x=c.sx+8+i*9,y=c.sy-9;ctx.globalAlpha=onAlpha(p);ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+4.5,y);ctx.lineTo(x,y+5);ctx.lineTo(x-4.5,y);ctx.closePath();
+    list.slice(0,4).forEach((p,i)=>{const x=c.sx+8+i*9,y=c.sy-9;ctx.globalAlpha=onAlpha(p);ctx.beginPath();if(p.bot)ctx.rect(x-4.5,y-4.5,9,9);else{ctx.moveTo(x,y-5);ctx.lineTo(x+4.5,y);ctx.lineTo(x,y+5);ctx.lineTo(x-4.5,y);ctx.closePath()}
       ctx.fillStyle=/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb";ctx.fill();ctx.lineWidth=1.2;ctx.strokeStyle="#fff";ctx.stroke();
       if(p.loc==id){const t=(Date.now()%2000)/2000;ctx.beginPath();ctx.arc(x,y,8,0,6.2832);ctx.lineWidth=2;ctx.strokeStyle=ctx.fillStyle;ctx.stroke();ctx.beginPath();ctx.arc(x,y,8+t*6,0,6.2832);ctx.globalAlpha=onAlpha(p)*(1-t)*.8;ctx.lineWidth=1.5;ctx.stroke()}});
     if(V.k>2.5){const p=list[0];ctx.globalAlpha=onAlpha(p);ctx.font="600 11px Figtree, system-ui, sans-serif";ctx.fillStyle=css("--ink");
       const dv=devUid(p.uid);if(dv){ctx.fillStyle="#ffd23f";ctx.shadowColor="#ffb300";ctx.shadowBlur=8;ctx.font="800 11px Figtree, system-ui, sans-serif"}
-      ctx.fillText(String(p.name||"Player").slice(0,20)+(list.length>1?` +${list.length-1}`:""),c.sx+8+Math.min(4,list.length)*9,c.sy-9);if(dv){ctx.shadowBlur=0;ctx.shadowColor="rgba(0,0,0,0)"}}}
+      ctx.fillText(String(p.name||"Player").slice(0,20)+(p.bot?" [BOT]":"")+(list.length>1?` +${list.length-1}`:""),c.sx+8+Math.min(4,list.length)*9,c.sy-9);if(dv){ctx.shadowBlur=0;ctx.shadowColor="rgba(0,0,0,0)"}}}
   ctx.globalAlpha=1}
-function onPlayersHere(c){if(!ON.players.length)return"";const a=playersAt(c);if(!a.length)return"";
+function onPlayersHere(c){if(!botAll().length)return"";const a=playersAt(c);if(!a.length)return"";
   return `<div class="sec">Players here</div><div class="list">`+a.slice(0,12).map(p=>{const roles=[p.home===c.id?"home":"",(p.hq||[]).includes(c.id)?"HQ":"",(p.biz||[]).includes(c.id)?"business":"",p.loc===c.id?"here now":""].filter(Boolean).join(" · "),age=(Date.now()-onSeen(p))/36e5;
-    return `<div class="row"><div class="n" style="${onAlpha(p)<1?"opacity:.55":""}"><span style="display:inline-block;width:9px;height:9px;transform:rotate(45deg);background:${/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb"};margin:0 6px 0 2px"></span>${gnHtml(String(p.name||"Player").slice(0,20),devUid(p.uid))}</div><div class="d">${roles} · seen ${age<1?"just now":age<48?Math.round(age)+"h ago":Math.round(age/24)+"d ago"}</div><span style="font-family:var(--mono);font-weight:600">${fmt(+p.nw||0)}</span></div>`}).join("")+`</div>`}
+    return `<div class="row"><div class="n" style="${onAlpha(p)<1?"opacity:.55":""}"><span style="display:inline-block;width:9px;height:9px;transform:rotate(45deg);background:${/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb"};margin:0 6px 0 2px"></span>${gnHtml(String(p.name||"Player").slice(0,20),devUid(p.uid))}${p.bot?'<span class="tag">BOT</span>':""}</div><div class="d">${roles} · seen ${age<1?"just now":age<48?Math.round(age)+"h ago":Math.round(age/24)+"d ago"}</div><span style="font-family:var(--mono);font-weight:600">${fmt(+p.nw||0)}</span></div>`}).join("")+`</div>`}
 function onlineHtml(){if(!onEnabled())return"";const p=onProf(),u=ON.user,inp="width:100%;box-sizing:border-box;font:inherit;padding:8px;margin-top:6px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink)";
   let h=`<div class="sec">Online</div><div class="list"><div class="row" style="display:block">`;
   if(!ON.ready)h+=`<div class="d">${ON.err?onEsc(ON.err):"Connecting…"}</div>`;
@@ -4389,7 +4390,7 @@ function onlineWire(){if(!onEnabled())return;csWire();const v=s=>{const e=$(s);r
           if(a==="up")await ON.auth.createUserWithEmailAndPassword(e,pw);else await ON.auth.signInWithEmailAndPassword(e,pw)}
         ON.draft={e:"",p:"",n:""};save()}
     }catch(e){ON.err=String(e&&e.message||e).replace(/^Firebase:\s*/,"").slice(0,140)}ON.busy=false;if(document.activeElement)document.activeElement.blur();onRefresh()})}
-if(onEnabled()){onInit();setInterval(()=>{if(ON.user){onPublish(false);wrPublish(false)}},15000)}
+if(onEnabled()){onInit();setInterval(()=>{if(ON.user){onPublish(false);wrPublish(false);try{botTick()}catch(e){console.warn("bot",e)}}},15000)}
 /* ---------- cloud save: private copy of this slot's save at saves/{uid} so the account works on other devices ---------- */
 const CS={doc:null,checked:false,pending:null,last:0,lastStr:"",busy:false,err:""},CSPART=600000,CSBAK="meridian-cloud-backup";
 const csMetaKey=()=>"meridian-cloud-meta-"+SLOT;
@@ -4476,6 +4477,120 @@ function xfHtml(){if(!onEnabled()||!ON.user)return"";const x=xfS(),p=ON.players.
     <button class="buy" data-ph="xfsend" style="width:100%;margin-top:8px;background:#1e3a8a!important;color:#fff;border-color:#3b82f6" ${XF.busy?"disabled":""}>${XF.busy?"Sending…":p?"Send to "+gnHtml(xfName(p),devUid(p.uid)):"Send"}</button>`;
   if(x.hist.length)h+=`<p class="ph-sub" style="margin-top:12px">Recent transfers</p><div class="ph-list">${x.hist.map(e=>`<div><b style="color:${e.fail?"#f87171":e.d==="in"?"#4ade80":"#fff"}">${e.d==="in"?"+":"−"}${fmt(e.a)} ${e.d==="in"?"from":"to"} ${gnHtml(e.n,devUid(e.u))}${e.fail?" · failed":""}</b>${fmtDur(Date.now()-e.t)} ago${e.note?" · "+onEsc(e.note):""}</div>`).join("")}</div>`;
   return h}
+/* ---------- bot company "Meridian Freight": a rule-based (not AI) player run by the master world (the developer's save, like world/rivals) ----------
+   Master (WRM): S.botw simulates it (cash, trucks, cities, goods stock, jobs) and botTick() publishes world/bot {name,col,nw,nc,trucks,free,cities,stock[{g,q,p}],updated}.
+   Everyone else mirrors it (ON.bot) and sees it on the globe and leaderboard with a BOT badge. Requests (hire a truck "haul", "buy" goods, "sell" goods) are
+   botreq/{id} documents created by the player, who pays or hands over the goods up front (S.botc.pend). The master answers each with a botres/{sameId} document
+   (create-only, so it can exist once) and deletes the request in one batch; the player claims botres (cash + goods back/delivered), deduping on S.botc.seen.
+   Prices are validated by the master (BOTTOL slack), capacity and bot cash are enforced there, rejects refund everything. If the master is offline requests just wait. */
+const BOTKEY="meridian-bot-co",BOTG=["wheat","corn","ore","coal","sand"],BOTSTK=1000,BOTMAXT=120,BOTTRK=30,BUYM=1.2,SELLM=.8,BOTTOL=.95,BOTSTALE=10*60000,BOTMAXQ=500,BOTSPD=400;
+const BX={kind:"buy",c:"",d:"",g:"wheat",q:"",busy:false};
+const botPrice=(g,day)=>{const i=BOTG.indexOf(g);return Math.max(.01,Math.round(G[g][1]*(1+.08*Math.sin((day||0)*.5+i*1.7))*100)/100)};
+const botFee=(km,tons)=>Math.ceil(300+km*tons*.1);
+const botDur=km=>Math.max(2*60000,km/BOTSPD*DAYMS/4);
+function botClean(v){if(!v||typeof v!=="object")return null;const n=(x,a,b)=>Math.max(a,Math.min(b,Math.round(+x)||0));
+  const u=v.updated&&v.updated.toMillis?v.updated.toMillis():typeof v.updated==="number"?v.updated:Date.now();
+  return{name:String(v.name||"Meridian Freight").slice(0,20),col:/^#[0-9a-f]{6}$/i.test(v.col||"")?v.col:"#f59e0b",nw:Math.max(-1e12,Math.min(1e12,+v.nw||0)),nc:n(v.nc,0,10),trucks:n(v.trucks,0,100),free:n(v.free,0,100),
+    cities:(Array.isArray(v.cities)?v.cities:[]).filter(i=>Number.isInteger(i)&&CITIES[i]).slice(0,10),
+    stock:(Array.isArray(v.stock)?v.stock:[]).filter(x=>x&&BOTG.includes(x.g)).map(x=>({g:x.g,q:n(x.q,0,1e6),p:Math.max(.01,Math.min(1e6,+x.p||.01))})).slice(0,10),updated:u}}
+function botPl(){let b=ON.bot;if(!b){try{b=botClean(JSON.parse(localStorage.getItem(BOTKEY)||"null"))}catch(e){}if(b)ON.bot=b}
+  return b?{uid:"bot",bot:1,name:b.name,col:b.col,nw:b.nw,nc:b.nc,nb:b.trucks,trucks:b.trucks,hq:b.cities,biz:[],home:null,loc:null,seen:b.updated}:null}
+const botAll=()=>{const b=onEnabled()?botPl():null;return b?ON.players.concat([b]):ON.players};
+const botStale=()=>!ON.bot||Date.now()-ON.bot.updated>BOTSTALE;
+/* client side: lazy state */
+function BC(){const x=S.botc=S.botc&&typeof S.botc==="object"&&!Array.isArray(S.botc)?S.botc:{};for(const k of["pend","seen","hist"])if(!Array.isArray(x[k]))x[k]=[];return x}
+const botWh=()=>Object.keys(S.wh||{}).map(Number).filter(i=>CITIES[i]);
+const botHave=(c,g)=>((S.inv[c]||{})[g])||0;
+function botQuote(){const b=ON.bot,k=BX.kind,q=Math.floor(+BX.q||0),g=BX.g,c=BX.c===""?null:CITIES[+BX.c],d=BX.d===""?null:CITIES[+BX.d];
+  if(!c)return{err:"Pick a warehouse city (you need a warehouse)"};if(!G[g])return{err:"Pick a good"};if(q<1)return{err:"Enter a quantity"};if(q>BOTMAXQ)return{err:`Maximum ${BOTMAXQ} units per request`};
+  if(k==="haul"){if(!d||d.id===c.id)return{err:"Pick a different destination warehouse"};if(landmass(c)!==landmass(d))return{err:"Trucks can't cross oceans"};
+    const t=q*tpu(g);if(t>BOTMAXT)return{err:`Too heavy: max ${BOTMAXT} t per request`};if(botHave(c.id,g)<q)return{err:`Only ${Math.floor(botHave(c.id,g))} in ${c.name}`};
+    const km=distKm(c,d),fee=botFee(km,t);if(fee>S.cash)return{err:`You need ${fmt(fee)} in cash`};
+    return{amt:fee,give:q,line:`Haul ${q} ${G[g][0].toLowerCase()} (${fmtT?fmtT(t):t+" t"}) ${c.name} → ${d.name}, ${Math.round(km)} km, for ${fmt(fee)}`}}
+  const s=b&&b.stock.find(x=>x.g===g);if(!BOTG.includes(g)||!s)return{err:"The bot doesn't trade that good"};
+  if(k==="buy"){const cost=Math.ceil(q*s.p*BUYM);if(q>s.q)return{err:`Bot only has ${s.q} in stock`};if(cost>1e6)return{err:"Too expensive for one request"};if(cost>S.cash)return{err:`You need ${fmt(cost)} in cash`};
+    return{amt:cost,give:0,line:`Buy ${q} ${G[g][0].toLowerCase()} for ${fmt(cost)} (${fmtc(s.p*BUYM)} each), delivered to ${c.name}`}}
+  if(botHave(c.id,g)<q)return{err:`Only ${Math.floor(botHave(c.id,g))} in ${c.name}`};
+  return{amt:0,give:q,line:`Sell ${q} ${G[g][0].toLowerCase()} from ${c.name} for about ${fmt(Math.floor(q*s.p*SELLM))} (${fmtc(s.p*SELLM)} each)`}}
+function botQuoteHtml(){const r=botQuote();return r.err?`<span style="opacity:.7">${onEsc(r.err)}</span>`:onEsc(r.line)}
+function botSend(){if(BX.busy||!ON.user||!ON.db)return;if(!ON.bot){toast("The bot company hasn't been published yet");return}const r=botQuote();if(r.err){toast(r.err);return}
+  const k=BX.kind,c=+BX.c,q=Math.floor(+BX.q),g=BX.g,me=onProf(),ref=ON.db.collection("botreq").doc(),FV=window.firebase.firestore.FieldValue;
+  const doc={from:ON.user.uid,fromName:(me.name||"Tycoon").slice(0,20),kind:k,city:c,g,q,amt:r.amt,at:FV.serverTimestamp()};if(k==="haul")doc.dest=+BX.d;
+  S.cash-=r.amt;if(r.give)S.inv[c][g]-=r.give;const x=BC(),pe={id:ref.id,kind:k,city:c,dest:k==="haul"?+BX.d:-1,g,q,amt:r.amt,t:Date.now()};x.pend.unshift(pe);x.pend=x.pend.slice(0,20);BX.busy=true;save();hud();
+  const undo=()=>{S.cash+=r.amt;if(r.give){const inv=S.inv[c]=S.inv[c]||{};inv[g]=(inv[g]||0)+r.give}x.pend=x.pend.filter(p=>p.id!==pe.id)};
+  ref.set(doc).then(()=>{BX.busy=false;BX.q="";toast("Request sent to Meridian Freight");if(PH.open&&PH.app==="bank")phRender()},
+    e=>{BX.busy=false;undo();save();hud();toast("Request failed, refunded: "+(e&&e.code||e));if(PH.open&&PH.app==="bank")phRender()})}
+function botClaim(d){const id=d.id,v=d.data()||{},x=BC();if(!ON.user||v.to!==ON.user.uid)return;
+  if(!x.seen.includes(id)){const cash=Number.isInteger(v.cash)&&v.cash>=0&&v.cash<=2e6?v.cash:0,q=+v.q,ok=!!(CITIES[v.city]&&G[v.g]&&q>0&&q<=1e6),pe=x.pend.find(p=>p.id===id);
+    x.seen.unshift(id);x.seen=x.seen.slice(0,300);S.cash+=cash;
+    if(ok){ensureWh(CITIES[v.city]);const inv=S.inv[v.city]=S.inv[v.city]||{};inv[v.g]=(inv[v.g]||0)+q}
+    x.pend=x.pend.filter(p=>p.id!==id);const msg=String(v.msg||"").slice(0,60);
+    x.hist.unshift({id,ok:!!v.ok,k:pe?pe.kind:"",msg,cash,g:ok?v.g:"",q:ok?q:0,city:ok?v.city:-1,t:Date.now()});x.hist=x.hist.slice(0,10);
+    toast(`Meridian Freight: ${v.ok?"done":"declined, refunded"}${msg?" · "+msg:""}`);save();hud();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)))phRender()}
+  d.ref.delete().catch(()=>{})}
+function botListen(u){for(const k of["unsubBR","unsubBX"])if(ON[k]){try{ON[k]()}catch(_){}ON[k]=null}ON.botReqs={};if(!u||!ON.db)return;
+  ON.unsubBR=ON.db.collection("botres").where("to","==",u.uid).onSnapshot(q=>q.forEach(d=>botClaim(d)),e=>{ON.err="Couldn't check bot replies: "+(e&&e.code||e)});
+  if(devUid(u.uid))ON.unsubBX=ON.db.collection("botreq").onSnapshot(q=>{const m={};q.forEach(d=>m[d.id]=d.data()||{});ON.botReqs=m;try{botTick()}catch(e){console.warn("bot",e)}},e=>{ON.err="Couldn't read bot requests: "+(e&&e.code||e)})}
+/* master side */
+function BW(){let w=S.botw;if(!w||typeof w!=="object"||Array.isArray(w)){const n=CITIES.length,cs=[];for(let k=1;cs.length<3&&k<60;k++){const i=(k*2654435761+12345)%n;if(!cs.includes(i))cs.push(i)}
+    w=S.botw={t:Date.now(),day:0,cash:250000,trucks:4,cities:cs,stock:{},jobs:[],out:[],done:[]};for(const g of BOTG)w.stock[g]=600}
+  for(const k of["jobs","out","done","cities"])if(!Array.isArray(w[k]))w[k]=[];if(!w.stock||typeof w.stock!=="object")w.stock={};for(const g of BOTG)if(!Number.isFinite(w.stock[g]))w.stock[g]=0;
+  for(const k of["t","day","cash","trucks"])if(!Number.isFinite(w[k]))w[k]=k==="t"?Date.now():k==="trucks"?4:0;return w}
+const botFree=w=>Math.max(0,w.trucks-w.jobs.reduce((a,j)=>a+(j.tr||0),0));
+const botNw=w=>Math.round(w.cash+BOTG.reduce((a,g)=>a+w.stock[g]*botPrice(g,w.day),0)+w.trucks*50000+w.cities.length*150000);
+function botSim(w){const n=Date.now(),raw=Math.floor((n-w.t)/DAYMS);if(raw<=0)return false;const steps=Math.min(raw,60);w.t=raw>60?n:w.t+steps*DAYMS;
+  for(let i=0;i<steps;i++){w.day++;w.cash=Math.min(1e9,w.cash+w.trucks*2000+w.cities.length*1500);for(const g of BOTG)w.stock[g]=Math.min(BOTSTK,w.stock[g]+80);
+    if(w.day%3===0&&w.trucks<40&&w.cash>w.trucks*60000+100000){w.trucks++;w.cash-=60000}
+    if(w.day%5===0&&w.cities.length<10){const id=(w.day*7919+w.cities.length*31)%CITIES.length;if(!w.cities.includes(id))w.cities.push(id)}}
+  return true}
+function botProc(w,id,v){const now=Date.now(),uid=typeof v.from==="string"&&v.from.length<=128?v.from:"";w.done.push(id);w.done=w.done.slice(-400);if(!uid)return;
+  const amt=Number.isInteger(v.amt)&&v.amt>=0&&v.amt<=1e6?v.amt:0,q=Number.isInteger(v.q)&&v.q>=1&&v.q<=1e6?v.q:0,c=Number.isInteger(v.city)?CITIES[v.city]:null,g=typeof v.g==="string"&&G[v.g]?v.g:null,k=v.kind;
+  const gb=c&&g&&q&&(k==="sell"||k==="haul")?{city:c.id,g,q}:{};
+  const fin=res=>{w.out.push({id,to:uid,res})},no=msg=>fin(Object.assign({ok:0,cash:amt,msg},gb));
+  if(!c||!g||!q||q>BOTMAXQ||(k!=="buy"&&k!=="sell"&&k!=="haul"))return no("Bad request");
+  const nearest=()=>Math.min(...w.cities.map(i=>distKm(CITIES[i],c)));
+  if(k==="buy"||k==="sell"){if(!BOTG.includes(g))return no("Not traded");const p=botPrice(g,w.day);
+    if(k==="buy"){const cost=Math.ceil(q*p*BUYM);if(amt<Math.floor(cost*BOTTOL))return no("Price moved, try again");if(w.stock[g]<q)return no("Out of stock");
+      const ch=Math.min(amt,cost);w.stock[g]-=q;w.cash+=ch;w.jobs.push({id,to:uid,arr:now+botDur(nearest()),tr:0,res:{ok:1,cash:amt-ch,city:c.id,g,q,msg:"Delivered"}});return}
+    if(amt!==0)return no("Bad request");const pay=Math.floor(q*p*SELLM);if(w.cash<pay+20000)return no("Bot is short of cash");if(w.stock[g]+q>BOTSTK*2)return no("Bot warehouse is full");
+    w.stock[g]+=q;w.cash-=pay;return fin({ok:1,cash:pay,msg:"Sold"})}
+  const d=Number.isInteger(v.dest)?CITIES[v.dest]:null;if(!d||d.id===c.id||landmass(c)!==landmass(d))return no("No road route");
+  const tons=q*tpu(g);if(tons>BOTMAXT)return no("Too heavy");const km=distKm(c,d),fee=botFee(km,tons);if(amt<fee)return no("Fee too low");
+  const tr=Math.ceil(tons/BOTTRK);if(botFree(w)<tr)return no("No free trucks, try later");
+  w.cash+=fee;w.jobs.push({id,to:uid,arr:now+botDur(km),tr,res:{ok:1,cash:amt-fee,city:d.id,g,q,msg:"Hauled"}})}
+function botPubData(w){return{name:"Meridian Freight",col:"#f59e0b",nw:Math.max(-1e12,Math.min(1e12,botNw(w))),nc:w.cities.length,trucks:w.trucks,free:botFree(w),cities:w.cities.slice(0,10),stock:BOTG.map(g=>({g,q:Math.floor(w.stock[g]),p:botPrice(g,w.day)}))}}
+function botFlush(w){if(!ON.botInfl)ON.botInfl={};
+  for(const o of w.out.slice(0,20)){if(ON.botInfl[o.id])continue;ON.botInfl[o.id]=1;const FV=window.firebase.firestore.FieldValue,rr=ON.db.collection("botres").doc(o.id),qr=ON.db.collection("botreq").doc(o.id),r=o.res,
+      doc={to:o.to,ok:!!r.ok,cash:r.cash|0,msg:String(r.msg||"").slice(0,60),at:FV.serverTimestamp()};if(r.g){doc.city=r.city;doc.g=r.g;doc.q=r.q}
+    const fin=()=>{delete ON.botInfl[o.id];w.out=w.out.filter(z=>z.id!==o.id);if(ON.botReqs)delete ON.botReqs[o.id];save()};
+    const b=ON.db.batch();b.set(rr,doc);b.delete(qr);
+    b.commit().then(fin,e=>{if(e&&e.code==="permission-denied"){rr.get().then(s=>{if(s.exists)qr.delete().catch(()=>{}).then(fin);else{delete ON.botInfl[o.id];ON.err="Couldn't answer a bot request (publish firestore.rules): "+e.code}},()=>{delete ON.botInfl[o.id]})}else{delete ON.botInfl[o.id];ON.err="Couldn't answer a bot request: "+(e&&e.code||e)}})}}
+function botTick(){if(!ON.ready||!ON.user||!WRM||!devUid(ON.user.uid))return;const w=BW(),now=Date.now();let dirty=botSim(w);
+  for(const id of Object.keys(ON.botReqs||{})){const v=ON.botReqs[id];if(!w.done.includes(id)){botProc(w,id,v);dirty=true}
+    else if(!w.out.some(o=>o.id===id)&&!(ON.botInfl||{})["d"+id]){(ON.botInfl=ON.botInfl||{})["d"+id]=1;ON.db.collection("botreq").doc(id).delete().then(()=>{delete ON.botInfl["d"+id]},()=>{delete ON.botInfl["d"+id]})}}
+  const due=w.jobs.filter(j=>j.arr<=now);if(due.length){w.jobs=w.jobs.filter(j=>j.arr>now);for(const j of due)w.out.push({id:j.id,to:j.to,res:j.res});dirty=true}
+  if(dirty)save();botFlush(w);
+  const d=botPubData(w);ON.bot=botClean(Object.assign({},d,{updated:now}));
+  if(now-(ON.botPubT||0)>=30000||dirty){ON.botPubT=now;d.updated=window.firebase.firestore.FieldValue.serverTimestamp();ON.db.collection("world").doc("bot").set(d).catch(e=>{ON.err="Couldn't publish the bot company: "+(e&&e.code||e)})}}
+/* phone: Bank app section */
+function botHtml(){if(!onEnabled()||!ON.user)return"";botPl();const b=ON.bot,x=BC(),ip="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border-radius:10px;border:1px solid #ffffff44;background:#0003;color:#fff;font:inherit;font-size:16px",wh=botWh();
+  const opt=(v,t,sel)=>`<option value="${v}" style="color:#000"${sel?" selected":""}>${onEsc(t)}</option>`;
+  if(!wh.includes(+BX.c))BX.c=wh.length?String(wh[0]):"";if(BX.d!==""&&!wh.includes(+BX.d))BX.d="";if(BX.kind==="haul"&&BX.d===""&&wh.length>1)BX.d=String(wh.find(i=>i!==+BX.c));
+  let gs=BOTG;if(BX.kind==="haul"&&BX.c!=="")gs=Object.keys(G).filter(k=>botHave(+BX.c,k)>0);if(!gs.includes(BX.g))BX.g=gs[0]||"wheat";
+  let h=`<p class="ph-sub" style="margin-top:14px">Meridian Freight <span class="tag" style="background:#f59e0b;color:#000;border-radius:6px">BOT</span> · rule-based company</p>`;
+  h+=b?`<div class="ph-rows"><div><span>Net worth</span><b>${fmt(b.nw)}</b></div><div><span>Trucks free</span><b>${b.free} / ${b.trucks}</b></div><div><span>World server</span><b style="color:${botStale()?"#f87171":"#4ade80"}">${botStale()?"offline · "+fmtDur(Date.now()-b.updated)+" ago":"online"}</b></div></div>`
+    :`<div class="ph-sub">Not published yet. It appears when the developer's game is online.</div>`;
+  if(!b)return h;
+  h+=`<div style="display:flex;gap:4px;margin-top:6px">${[["buy","Buy goods"],["sell","Sell goods"],["haul","Hire truck"]].map(([k,t])=>`<button class="buy" data-ph="bxk" data-k="${k}" style="flex:1;min-width:0;padding:6px 2px;font-size:12px;color:#fff${BX.kind===k?";outline:2px solid #3b82f6":""}">${t}</button>`).join("")}</div>`;
+  if(!wh.length)return h+`<div class="ph-sub" style="margin-top:8px">You need a warehouse (Depot tab in a city) to trade or haul.</div>`+botList(x);
+  h+=`<select id="bxc" style="${ip}">${wh.map(i=>opt(i,(BX.kind==="buy"?"Deliver to ":"From ")+CITIES[i].name,+BX.c===i)).join("")}</select>`;
+  if(BX.kind==="haul")h+=`<select id="bxd" style="${ip}">${wh.filter(i=>i!==+BX.c).map(i=>opt(i,"To "+CITIES[i].name,+BX.d===i)).join("")||opt("","(no other warehouse)",1)}</select>`;
+  h+=`<select id="bxg" style="${ip}">${gs.map(k=>opt(k,G[k][0]+(BOTG.includes(k)&&b.stock.find(s=>s.g===k)?` · bot ${BX.kind==="sell"?"pays":"asks"} ${fmtc(b.stock.find(s=>s.g===k).p*(BX.kind==="sell"?SELLM:BUYM))}`:"")+(BX.kind!=="buy"?` · you have ${Math.floor(botHave(+BX.c,k))}`:""),BX.g===k)).join("")||opt("","(nothing stored here)",1)}</select>
+    <input id="bxq" type="number" inputmode="numeric" min="1" max="${BOTMAXQ}" step="1" placeholder="Quantity" value="${onEsc(BX.q)}" style="${ip}"><div id="bxquote" class="ph-sub" style="margin-top:6px">${botQuoteHtml()}</div>
+    <button class="buy" data-ph="bxgo" style="width:100%;margin-top:8px;background:#92400e!important;color:#fff;border-color:#f59e0b" ${BX.busy?"disabled":""}>${BX.busy?"Sending…":BX.kind==="buy"?"Buy":BX.kind==="sell"?"Sell":"Hire a truck"}</button>`;
+  return h+botList(x)}
+function botList(x){let h="";if(x.pend.length)h+=`<p class="ph-sub" style="margin-top:12px">Pending with Meridian Freight</p><div class="ph-list">${x.pend.map(p=>`<div><b style="display:block">${{buy:"Buy",sell:"Sell",haul:"Haul"}[p.kind]||"Request"} ${p.q} ${G[p.g]?G[p.g][0].toLowerCase():""}</b>${botStale()?"Waiting: processed when the world server is online":"Being processed"} · ${fmtDur(Date.now()-p.t)} ago</div>`).join("")}</div>`;
+  if(x.hist.length)h+=`<p class="ph-sub" style="margin-top:12px">Meridian Freight replies</p><div class="ph-list">${x.hist.slice(0,5).map(e=>`<div><b style="display:block;color:${e.ok?"#4ade80":"#f87171"}">${e.ok?(e.k==="sell"?"Sold":e.k==="haul"?"Hauled":"Delivered"):"Declined"}${e.q&&G[e.g]?` ${e.q} ${G[e.g][0].toLowerCase()}`:""}${e.cash?" · "+(e.ok&&e.k!=="sell"?"change ":"")+"+"+fmt(e.cash):""}</b>${onEsc(e.msg)} · ${fmtDur(Date.now()-e.t)} ago</div>`).join("")}</div>`;return h}
 /* ---------- first-time guide (S.tut: 0 = not yet shown, 9 = done) + one-time tips (S.tips) ---------- */
 if(S.tut==null)S.tut=0;S.tips=S.tips&&typeof S.tips==="object"?S.tips:{};
 if(S.tut===0&&(nOwnedSafe()||(S.sites||[]).length||S.day>2))S.tut=9;
@@ -5396,7 +5511,7 @@ function appHtml(k){const {inc,nw}=totals();
     <div class="ph-rows"><div><span>Combo</span><b>×${(1+Math.min(1,g.combo/50)).toFixed(2)}</b></div><div><span>Energy</span><b>${Math.round(g.en)}%</b></div><div><span>Earned today</span><b>${fmtc(g.today)}</b></div><div><span>All-time taps</span><b>${g.taps.toLocaleString()}</b></div></div>
     <div class="ph-seg" style="margin-top:8px">${GIGS.map((x,i)=>`<button data-ph="gigpick" data-k="${i}" aria-pressed="${g.i===i}" ${g.taps<x.u?"disabled":""}>${g.taps<x.u?x.u+" taps":x.n}</button>`).join("")}</div>
     <p class="ph-sub" style="margin-top:6px">Tap fast to build a combo. Energy refills over time and drops when you tap.</p>`}
-  if(k==="bank"){const sc=creditScore(),[bd,col]=scoreBand(sc),c=B().card;return `<div class="ph-big" style="color:${col}">${sc}</div><div class="ph-sub">credit score · ${bd}</div>${scoreSpark()}<div class="ph-rows"><div><span>Card</span><b>${c?fmt(c.bal)+" / "+fmt(c.lim):"none"}</b></div><div><span>Loans</span><b>${fmt(B().loans.reduce((a,l)=>a+l.bal,0))}</b></div><div><span>Payments</span><b>${fmt(bankPayHr())}/hr</b></div>${c?`<div><span>Card due</span><b>${fmtDur(c.due-Date.now())}</b></div>`:""}</div><button class="buy" data-ph="gobank" style="width:100%;margin-top:8px;background:#1e3a8a!important;color:#fff;border-color:#3b82f6">Open bank</button>${xfHtml()}`}
+  if(k==="bank"){const sc=creditScore(),[bd,col]=scoreBand(sc),c=B().card;return `<div class="ph-big" style="color:${col}">${sc}</div><div class="ph-sub">credit score · ${bd}</div>${scoreSpark()}<div class="ph-rows"><div><span>Card</span><b>${c?fmt(c.bal)+" / "+fmt(c.lim):"none"}</b></div><div><span>Loans</span><b>${fmt(B().loans.reduce((a,l)=>a+l.bal,0))}</b></div><div><span>Payments</span><b>${fmt(bankPayHr())}/hr</b></div>${c?`<div><span>Card due</span><b>${fmtDur(c.due-Date.now())}</b></div>`:""}</div><button class="buy" data-ph="gobank" style="width:100%;margin-top:8px;background:#1e3a8a!important;color:#fff;border-color:#3b82f6">Open bank</button>${xfHtml()}${botHtml()}`}
   if(k==="wallet")return `<div class="ph-big">${fmt(S.cash)}</div><div class="ph-sub">cash on hand</div>
     <div class="ph-rows"><div><span>Income</span><b style="color:${inc<0?"var(--bad)":"var(--good)"}">${fmt(inc)}/hr</b></div><div><span>Net worth</span><b>${fmt(nw)}</b></div><div><span>Loan</span><b>${fmt(S.debt)}</b></div><div><span>Taxes owed</span><b>${fmt(taxOwed())}</b></div><div><span>Wages</span><b>${S.job?fmt(wage(JK[S.job.k],CITIES[S.job.city])*wageMult()*rankMult())+"/hr":"—"}</b></div></div>
     ${S.debt&&S.cash>0?`<button class="buy" data-ph="repay" style="width:100%;margin-top:8px">Repay ${fmt(Math.min(S.debt,S.cash))}</button>`:""}`;
@@ -5451,7 +5566,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="sellgear"){const x=GEAR.find(y=>y.k===b.dataset.k),g=gearOwn();if(!x||!g[x.k])return;delete g[x.k];S.cash+=x.p*.5;toast(`${x.n} sold`);save();hud()}
   else if(a==="buyitem"){const it=ITEMS.find(x=>x.k===b.dataset.k),p=itemPrice(it,CITIES[(S.home||{city:0}).city]);if(S.cash<p)return;S.cash-=p;for(const [q] of NEEDS)if(it[q])S.need[q]=Math.max(0,Math.min(100,S.need[q]+it[q]));toast(`${it.n} delivered`);save();hud()}
   else if(a==="repay"){if(B().card&&B().card.bal)payCard(true);else if(B().loans[0])repayLoan(B().loans[0].id,true);S.debt=bankDebt();save();hud()}
-  else if(a==="xfto"){XF.to=b.dataset.k}else if(a==="xfsend"){xfSend()}
+  else if(a==="xfto"){XF.to=b.dataset.k}else if(a==="xfsend"){xfSend()}else if(a==="bxk"){BX.kind=b.dataset.k;phRender()}else if(a==="bxgo"){botSend()}
   else if(a==="gobank"){openPortfolio();setTimeout(()=>{const x=[...sheet.querySelectorAll(".sec")].find(e=>/credit score/.test(e.textContent));if(x)x.scrollIntoView()},50);PH.open=false}
   else if(a==="gigtap"){gigTap(b);return}
   else if(a==="ridego"){rideStart();return}
@@ -5464,7 +5579,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="gojob"){const c=CITIES[(S.home||S.job||{city:0}).city];tab="life";flyTo(c);PH.open=false}
   else if(a==="go"){flyTo(CITIES[+b.dataset.c]);PH.open=false}
   phSave();phRender()});
-PH.el.addEventListener("input",e=>{const t=e.target;if(t.id==="xfq"){XF.q=t.value;const l=PH.el.querySelector("#xflist");if(l)l.innerHTML=xfList()}else if(t.id==="xfa")XF.amt=t.value;else if(t.id==="xfn")XF.n=t.value;else return;PH.touched=Date.now()});
+PH.el.addEventListener("input",e=>{const t=e.target;if(t.id==="xfq"){XF.q=t.value;const l=PH.el.querySelector("#xflist");if(l)l.innerHTML=xfList()}else if(t.id==="xfa")XF.amt=t.value;else if(t.id==="xfn")XF.n=t.value;else if(t.id==="bxq"){BX.q=t.value;const l=PH.el.querySelector("#bxquote");if(l)l.innerHTML=botQuoteHtml()}else if(/^bx[cdg]$/.test(t.id)){BX[t.id.slice(2)]=t.value;PH.touched=Date.now();phRender();return}else return;PH.touched=Date.now()});
 PH.el.addEventListener("input",e=>{if(e.target.id!=="phc")return;const v=e.target.value.replace(/[×x]/g,"*").replace(/÷/g,"/").replace(/−/g,"-").replace(/,/g,"");
   let r="";if(/^[\d\s.+\-*/()%]*$/.test(v)&&v.trim()){try{const n=Function(`"use strict";return (${v})`)();r=Number.isFinite(n)?(+n.toFixed(4)).toLocaleString():"—"}catch(_){r="…"}}$("#phr").textContent=r||"0"});
 /* drag the phone (or its folded tab) anywhere */

@@ -88,6 +88,61 @@ service cloud.firestore {
         && validRival(request.resource.data.list[6]) && validRival(request.resource.data.list[7])
         && request.resource.data.updated == request.time;
     }
+    // Bot company "Meridian Freight" (rule-based, simulated only by the master world = the developer's save).
+    // world/bot: only the developer writes it, everyone reads it. Rules cannot loop, so the lists are only size-capped.
+    match /world/bot {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1'
+        && request.resource.data.keys().hasOnly(['name', 'col', 'nw', 'nc', 'trucks', 'free', 'cities', 'stock', 'updated'])
+        && request.resource.data.keys().hasAll(['name', 'col', 'nw', 'nc', 'trucks', 'free', 'cities', 'stock', 'updated'])
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 20
+        && request.resource.data.col is string && request.resource.data.col.matches('^#[0-9a-fA-F]{6}$')
+        && request.resource.data.nw is number
+        && request.resource.data.nc is int && request.resource.data.nc >= 0 && request.resource.data.nc <= 10
+        && request.resource.data.trucks is int && request.resource.data.trucks >= 0 && request.resource.data.trucks <= 100
+        && request.resource.data.free is int && request.resource.data.free >= 0 && request.resource.data.free <= 100
+        && request.resource.data.cities is list && request.resource.data.cities.size() <= 10
+        && request.resource.data.stock is list && request.resource.data.stock.size() <= 10
+        && request.resource.data.updated == request.time;
+    }
+    // Requests to the bot (hire a truck "haul", "buy" or "sell" goods): the player creates one (money/goods are taken from the player's own save first),
+    // the master reads them all, answers with a botres document and deletes the request. No updates, so a request cannot be changed after sending.
+    match /botreq/{id} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['from', 'fromName', 'kind', 'city', 'dest', 'g', 'q', 'amt', 'at'])
+        && request.resource.data.keys().hasAll(['from', 'fromName', 'kind', 'city', 'g', 'q', 'amt', 'at'])
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.fromName is string && request.resource.data.fromName.size() <= 20
+        && request.resource.data.kind in ['buy', 'sell', 'haul']
+        && request.resource.data.city is int && request.resource.data.city >= 0 && request.resource.data.city < 10000
+        && (!('dest' in request.resource.data) || (request.resource.data.dest is int && request.resource.data.dest >= 0 && request.resource.data.dest < 10000))
+        && request.resource.data.g is string && request.resource.data.g.size() > 0 && request.resource.data.g.size() <= 20
+        && request.resource.data.q is int && request.resource.data.q >= 1 && request.resource.data.q <= 1000000
+        && request.resource.data.amt is int && request.resource.data.amt >= 0 && request.resource.data.amt <= 1000000
+        && request.resource.data.at == request.time;
+      allow read: if request.auth != null
+        && (request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1' || resource.data.from == request.auth.uid);
+      allow delete: if request.auth != null && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1';
+    }
+    // Bot replies: created only by the developer's save, once per request id (no update, so a reply cannot be re-sent over an existing one).
+    // The addressed player reads it, credits cash/goods in their own save, then deletes it.
+    match /botres/{id} {
+      allow create: if request.auth != null
+        && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1'
+        && request.resource.data.keys().hasOnly(['to', 'ok', 'cash', 'city', 'g', 'q', 'msg', 'at'])
+        && request.resource.data.keys().hasAll(['to', 'ok', 'cash', 'msg', 'at'])
+        && request.resource.data.to is string && request.resource.data.to.size() > 0 && request.resource.data.to.size() <= 128
+        && request.resource.data.ok is bool
+        && request.resource.data.cash is int && request.resource.data.cash >= 0 && request.resource.data.cash <= 2000000
+        && request.resource.data.msg is string && request.resource.data.msg.size() <= 60
+        && (!('city' in request.resource.data) || (request.resource.data.city is int && request.resource.data.city >= 0 && request.resource.data.city < 10000))
+        && (!('g' in request.resource.data) || (request.resource.data.g is string && request.resource.data.g.size() <= 20))
+        && (!('q' in request.resource.data) || (request.resource.data.q is int && request.resource.data.q >= 1 && request.resource.data.q <= 1000000))
+        && request.resource.data.at == request.time;
+      allow read, delete: if request.auth != null
+        && (resource.data.to == request.auth.uid || request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1');
+    }
     match /{document=**} {
       allow read, write: if false;
     }
