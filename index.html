@@ -4146,7 +4146,8 @@ async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=
 function onRefresh(){if(mode==="pf"&&sheet.classList.contains("open")&&!(document.activeElement&&/^(INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}}
 function onPubData(){const p=onProf(),{nw}=totals(),ids=o=>Object.keys(o||{}).filter(k=>o[k]&&CITIES[k]&&(typeof o[k]!=="object"||Object.keys(o[k]).length)).map(Number).slice(0,100);
   const rank=1+S.rivals.filter(r=>r.nw>nw).length;
-  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:Math.round(isFinite(nw)?nw:0),rank}}
+  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:Math.round(isFinite(nw)?nw:0),rank,loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null}}
+function onLocPub(){try{if(!ON.ready||!ON.user)return;const l=S.loc&&S.loc.city;if(l!==ON.lastLoc){ON.lastLoc=l;onPublish(true)}}catch(e){}}
 function onPublish(force){if(!ON.ready||!ON.user)return;const d=onPubData(),sig=JSON.stringify(d),n=Date.now();
   if(!force&&!(n-ON.lastPub>=60000||(sig!==ON.lastSig&&n-ON.lastPub>=60000)))return;
   if(!force&&sig===ON.lastSig&&n-ON.lastPub<300000)return;
@@ -4155,24 +4156,27 @@ function onPublish(force){if(!ON.ready||!ON.user)return;const d=onPubData(),sig=
 function onSeen(p){const t=p.lastSeen;return t&&t.toMillis?t.toMillis():typeof t==="number"?t:0}
 function onAlpha(p){const age=(Date.now()-onSeen(p))/864e5;return age>7?.3:1}
 function onCities(p){const s=new Set();if(Number.isInteger(p.home)&&CITIES[p.home])s.add(p.home);for(const i of Array.isArray(p.hq)?p.hq:[])if(CITIES[i])s.add(i);return[...s]}
-function playersAt(c){return ON.players.filter(p=>onCities(p).includes(c.id)||(Array.isArray(p.biz)&&p.biz.includes(c.id)))}
+const onHere=p=>Number.isInteger(p.loc)&&!!CITIES[p.loc];
+function playersAt(c){return ON.players.filter(p=>onCities(p).includes(c.id)||(Array.isArray(p.biz)&&p.biz.includes(c.id))||p.loc===c.id).sort((a,b)=>(b.loc===c.id)-(a.loc===c.id))}
 function drawOnline(ctx){if(!ON.players.length)return;const by={};
-  for(const p of ON.players)for(const id of onCities(p))(by[id]=by[id]||[]).push(p);
+  for(const p of ON.players){const s=new Set(onCities(p));if(onHere(p))s.add(p.loc);for(const id of s)(by[id]=by[id]||[]).push(p)}
+  for(const id in by)by[id].sort((a,b)=>(b.loc==id)-(a.loc==id));
   ctx.textBaseline="middle";
   for(const id in by){const c=CITIES[id];if(!c||c.sx<-1e3)continue;const list=by[id];
     list.slice(0,4).forEach((p,i)=>{const x=c.sx+8+i*9,y=c.sy-9;ctx.globalAlpha=onAlpha(p);ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+4.5,y);ctx.lineTo(x,y+5);ctx.lineTo(x-4.5,y);ctx.closePath();
-      ctx.fillStyle=/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb";ctx.fill();ctx.lineWidth=1.2;ctx.strokeStyle="#fff";ctx.stroke()});
+      ctx.fillStyle=/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb";ctx.fill();ctx.lineWidth=1.2;ctx.strokeStyle="#fff";ctx.stroke();
+      if(p.loc==id){const t=(Date.now()%2000)/2000;ctx.beginPath();ctx.arc(x,y,8,0,6.2832);ctx.lineWidth=2;ctx.strokeStyle=ctx.fillStyle;ctx.stroke();ctx.beginPath();ctx.arc(x,y,8+t*6,0,6.2832);ctx.globalAlpha=onAlpha(p)*(1-t)*.8;ctx.lineWidth=1.5;ctx.stroke()}});
     if(V.k>2.5){const p=list[0];ctx.globalAlpha=onAlpha(p);ctx.font="600 11px Figtree, system-ui, sans-serif";ctx.fillStyle=css("--ink");
       const dv=devUid(p.uid);if(dv){ctx.fillStyle="#ffd23f";ctx.shadowColor="#ffb300";ctx.shadowBlur=8;ctx.font="800 11px Figtree, system-ui, sans-serif"}
       ctx.fillText(String(p.name||"Player").slice(0,20)+(list.length>1?` +${list.length-1}`:""),c.sx+8+Math.min(4,list.length)*9,c.sy-9);if(dv){ctx.shadowBlur=0;ctx.shadowColor="rgba(0,0,0,0)"}}}
   ctx.globalAlpha=1}
 function onPlayersHere(c){if(!ON.players.length)return"";const a=playersAt(c);if(!a.length)return"";
-  return `<div class="sec">Players here</div><div class="list">`+a.slice(0,12).map(p=>{const roles=[p.home===c.id?"home":"",(p.hq||[]).includes(c.id)?"HQ":"",(p.biz||[]).includes(c.id)?"business":""].filter(Boolean).join(" · "),age=(Date.now()-onSeen(p))/36e5;
+  return `<div class="sec">Players here</div><div class="list">`+a.slice(0,12).map(p=>{const roles=[p.home===c.id?"home":"",(p.hq||[]).includes(c.id)?"HQ":"",(p.biz||[]).includes(c.id)?"business":"",p.loc===c.id?"here now":""].filter(Boolean).join(" · "),age=(Date.now()-onSeen(p))/36e5;
     return `<div class="row"><div class="n" style="${onAlpha(p)<1?"opacity:.55":""}"><span style="display:inline-block;width:9px;height:9px;transform:rotate(45deg);background:${/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb"};margin:0 6px 0 2px"></span>${gnHtml(String(p.name||"Player").slice(0,20),devUid(p.uid))}</div><div class="d">${roles} · seen ${age<1?"just now":age<48?Math.round(age)+"h ago":Math.round(age/24)+"d ago"}</div><span style="font-family:var(--mono);font-weight:600">${fmt(+p.nw||0)}</span></div>`}).join("")+`</div>`}
 function onlineHtml(){if(!onEnabled())return"";const p=onProf(),u=ON.user,inp="width:100%;box-sizing:border-box;font:inherit;padding:8px;margin-top:6px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink)";
   let h=`<div class="sec">Online</div><div class="list"><div class="row" style="display:block">`;
   if(!ON.ready)h+=`<div class="d">${ON.err?onEsc(ON.err):"Connecting…"}</div>`;
-  else if(u){h+=`<div class="n">Signed in${devSelf(p.name,S.name)?` as <span class="devname">${devEsc(p.name||S.name)}</span>`:""} · ${ON.players.length} other player${ON.players.length===1?"":"s"} on the map</div><div class="d">Others see your name, colour, home, HQ and business cities, net worth and rank. Never your email.</div>
+  else if(u){h+=`<div class="n">Signed in${devSelf(p.name,S.name)?` as <span class="devname">${devEsc(p.name||S.name)}</span>`:""} · ${ON.players.length} other player${ON.players.length===1?"":"s"} on the map</div><div class="d">Others see your name, colour, home, HQ and business cities, the city you are in right now, net worth and rank. Never your email.</div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="onname" maxlength="20" value="${onEsc(p.name)}" placeholder="Display name" style="${inp};margin-top:0;flex:1;min-width:0"><input id="oncol" type="color" value="${p.col}" style="width:40px;height:36px;padding:0;border:1px solid var(--line);border-radius:4px;background:none"></div>
     <div style="display:flex;gap:8px;margin-top:8px"><button class="buy" data-on="save" style="flex:1">Save profile</button><button class="buy" data-on="out">Sign out</button></div>
     <div class="d" style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="min-width:0">Your player ID: <code id="onuid" style="font-family:var(--mono);font-size:11px;word-break:break-all;user-select:all">${onEsc(u.uid)}</code></span><button class="buy up" data-on="copyid" style="flex:none">Copy</button></div>${csHtml()}`}
@@ -5321,7 +5325,7 @@ function startTrip(dest,opt,local){if(jailed()){toast("You can't travel from pri
   const toPt=local?dest:(opt.m==="plane"?airportPos(dest):opt.m==="car"?dest:stationPos(dest));
   S.trip={mode:opt.m,n:opt.n,from:{...S.loc},to:{city:dest.city!=null?dest.city:dest.id,lat:toPt.lat,lon:toPt.lon,label:dest.label||dest.name},dep:Date.now(),arr:Date.now()+dur,local:!!local};
   S.log.unshift(local?`${opt.n} to ${S.trip.to.label}`:`${opt.n} to ${dest.name} · ${fmtDur(dur).replace(" min","m")} · ${fmt(opt.price)}`);S.log=S.log.slice(0,3);save();hud();draw();return true}
-function runTrip(now){const t=S.trip;if(!t||now<t.arr)return;S.loc={city:t.to.city,lat:t.to.lat,lon:t.to.lon};S.trip=null;
+function runTrip(now){const t=S.trip;if(!t||now<t.arr)return;S.loc={city:t.to.city,lat:t.to.lat,lon:t.to.lon};S.trip=null;onLocPub();
   S.log.unshift(t.local?`Arrived at ${t.to.label}`:`Landed in ${CITIES[t.to.city].name}`.replace("Landed",t.mode==="plane"?"Landed":"Arrived"));S.log=S.log.slice(0,3);
   if(!t.local)toast(`Welcome to ${CITIES[t.to.city].name}`);save();hud();draw();if(typeof inStreet!=="undefined"&&inStreet)renderPins()}
 function tripPos(now){const t=S.trip;if(!t)return null;const u=Math.min(1,(now-t.dep)/(t.arr-t.dep));const g=d3.geoInterpolate([t.from.lon,t.from.lat],[t.to.lon,t.to.lat])(u);return{lon:g[0],lat:g[1],u}}
