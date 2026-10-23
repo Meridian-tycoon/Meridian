@@ -699,7 +699,7 @@ function buy(c,k){const b=BIZ.find(x=>x.k===k),p=cost(b,c);if(S.cash<p)return;{c
 function upgrade(c,k,i,quiet){i=+i||0;const b=BIZ.find(x=>x.k===k),x=XU(c.id,k),lv=i?x[i-1]:S.own[c.id][k];if(!lv)return;const p=upCost(b,c,lv);if(S.cash<p||lv>=MAXLV)return;
   S.cash-=p;if(i)x[i-1]=lv+1;else S.own[c.id][k]=lv+1;if(quiet)return;toast(`${b.n} in ${c.name} → Lv ${lv+1}`);commit()}
 // forget per-business manager state (auto-restock switch, cash-short flag) once it's no longer yours
-function clearBizState(c,k){const key=bkey(c,k);if(S.auto2)delete S.auto2[key];if(S.mgrShort)delete S.mgrShort[key];if(S.sched)delete S.sched[key];if(S.wadj)delete S.wadj[key]}
+function clearBizState(c,k){const key=bkey(c,k);if(S.auto2)delete S.auto2[key];if(S.mgrShort)delete S.mgrShort[key];if(S.sched)delete S.sched[key];if(S.wadj)delete S.wadj[key];if(S.gasLast)delete S.gasLast[key]}
 // remove the first unit of type k in c: the next extra unit (if any) takes its place, else the business is gone
 // drop S.xu[city][k] once it has no extra units, then the city's entry and S.xu itself once they're empty
 function xuTidy(id,k){if(!S.xu)return;const m=S.xu[id];if(m){if(k!=null&&m[k]&&!m[k].length)delete m[k];if(!S.own[id]||!Object.keys(m).length)delete S.xu[id]}if(!Object.keys(S.xu).length)delete S.xu}
@@ -1781,10 +1781,10 @@ const useRate=(b,lv,c)=>SUP[b.k]?SUP[b.k].r*(1+.55*(lv-1))*(c?menuU(c,b):1):0;  
 const unitCost=(b,c)=>b.fuel?px(c,"fuel"):SUP[b.k].c*PRICE[c.size];
 // Gas station restock: fuel in your depot here goes in first and costs nothing extra; the rest is bought at this city's market fuel price.
 // fee = carrier/manager surcharge on the bought part only. dep arrives at once, buy arrives as a normal supplier order.
-function gasPlan(c,q,fee){const have=Math.max(0,(S.inv[c.id]||{}).fuel||0),dep=Math.min(q,have),buy=q-dep,p=unitCost(BIZ.find(x=>x.fuel),c);return{dep,buy,p,cost:buy*p*fee}}
+function gasPlan(c,q,fee){const have=Math.max(0,Math.floor((S.inv[c.id]||{}).fuel||0)),dep=Math.min(q,have),buy=q-dep,p=unitCost(BIZ.find(x=>x.fuel),c);return{dep,buy,p,cost:buy*p*fee}}
 function gasTake(c,key,pl){if(pl.dep>0){const inv=S.inv[c.id];inv.fuel-=pl.dep;if(inv.fuel<1e-6)delete inv.fuel;S.stock[key]=(S.stock[key]||0)+pl.dep}
   S.gasLast[key]={dep:pl.dep,buy:pl.buy,p:pl.p,t:Date.now()}}
-const gasTxt=(l)=>`${Math.round(l.dep*10)/10} from your depot${l.buy>0?`, ${Math.round(l.buy*10)/10} bought at ${fmtC(l.p)}`:""}`;
+const gasTxt=(l)=>`${Math.round(l.dep)} from your depot${l.buy>0?`, ${Math.round(l.buy)} bought at ${fmtC(l.p)}`:""}`;
 const stockOf=(c,k)=>S.stock[bkey(c,k)]||0;
 const opFactor=(c,b)=>{const k=bkey(c,b.k);return S.opf[k]==null?0:S.opf[k]};
 const selfRate=.6;                                    // running it yourself: up to 60% speed, only while you're there
@@ -1840,9 +1840,9 @@ function opsHtml(c,b,lv){const key=bkey(c,b.k),st=isStaffed(c,b.k),staff=uSum(c.
   if(sup){const have=stockOf(c,b.k),hrs=r?have/(r*(st?1:Math.max(.01,sf))):0;
     h+=`<br>Stock: <b>${Math.floor(have).toLocaleString()}</b> ${sup.u}${have>0?` · lasts ~${hrs<1?Math.round(hrs*60)+" min":hrs.toFixed(1)+" h"}`:` · <span style="color:var(--bad)">empty, nothing to sell</span>`}${pend.length?` · ${pend.reduce((a,o)=>a+o.q,0).toLocaleString()} arriving in ${fmtDur(Math.max(0,Math.min(...pend.map(o=>o.arr))-Date.now()))}`:""}
       <br><span style="color:var(--muted)">${b.fuel?`Market fuel here: ${fmtC(unitCost(b,c))} per kL`:`${sup.n}: $${unitCost(b,c).toFixed(2)} per ${sup.u.replace(/s$/,"")}`}</span>`;
-    if(b.fuel){const dp=((S.inv[c.id]||{}).fuel||0),gl=S.gasLast[key];h+=`<br><span style="color:var(--muted)">Your depot here has <b>${Math.floor(dp*10)/10}</b> kL of fuel, used first (free). The rest is bought at the market price.${gl?` Last restock: ${gasTxt(gl)}.`:""}</span>`}}
+    if(b.fuel){const dp=((S.inv[c.id]||{}).fuel||0),gl=S.gasLast[key];h+=`<br><span style="color:var(--muted)">Your depot here has <b>${Math.floor(dp)}</b> kL of fuel, used first (free). The rest is bought at the market price.${gl?` Last restock: ${gasTxt(gl)}.`:""}</span>`}}
   h+=`</div><div class="ops-b">`;
-  if(sup){const q1=Math.round(r*2),q2=Math.round(r*8),oc=q=>b.fuel?gasPlan(c,q,1.06).cost:q*unitCost(b,c),ol=q=>b.fuel?(()=>{const g=gasPlan(c,q,1);return g.dep>0?` (${Math.round(g.dep)} from depot)`:""})():"";h+=`<button class="buy up" data-ops="order" data-k="${b.k}" data-q="${q1}">+${q1.toLocaleString()} · ${fmt(oc(q1))}${ol(q1)}</button><button class="buy up" data-ops="order" data-k="${b.k}" data-q="${q2}">+${q2.toLocaleString()} · ${fmt(oc(q2))}${ol(q2)}</button>`}
+  if(sup){const q1=Math.round(r*2),q2=Math.round(r*8),own=supMode()==="own"&&(S.own[c.id]||{}).trucking,oc=q=>b.fuel?gasPlan(c,q,own?1:1.06).cost:q*unitCost(b,c),ol=q=>b.fuel?(()=>{const g=gasPlan(c,q,1);return g.dep>0?` (${Math.round(g.dep)} from depot)`:""})():"";h+=`<button class="buy up" data-ops="order" data-k="${b.k}" data-q="${q1}">+${q1.toLocaleString()} · ${fmt(oc(q1))}${ol(q1)}</button><button class="buy up" data-ops="order" data-k="${b.k}" data-q="${q2}">+${q2.toLocaleString()} · ${fmt(oc(q2))}${ol(q2)}</button>`}
   if(!tenantRun(b.k))h+=`<button class="buy${st?" up":""}" data-ops="staff" data-k="${b.k}">${st?`Let ${staff} staff go`:`Hire ${staff} staff`}</button>`;
   if(sup&&b.cx!=null){const sur=Math.max(0,Math.floor(stockOf(c,b.k)-r*4)),all=Math.floor(stockOf(c,b.k)),px=unitCost(b,c)*CB_OUT;h+=`<button class="buy up" data-fixed="1" data-ops="shipout" data-k="${b.k}" data-q="${sur}" ${sur<1?"disabled":""}>Ship out surplus ${sur.toLocaleString()} · +${fmtC(sur*px)}</button><button class="buy up" data-fixed="1" data-ops="shipout" data-k="${b.k}" data-q="${all}" ${all<1?"disabled":""}>Ship out all · +${fmtC(all*px)}</button>`}
   if(sup&&S.mgr[c.id]&&S.auto2[key]&&(S.mgrShort||{})[key])h+=`<span class="ops-t" style="color:var(--bad)">⚠️ Manager couldn't restock — not enough cash</span>`;
@@ -2132,7 +2132,7 @@ const LAWS={
   casino:{n:"Gambling",v:["Legal","Banned"],e:["Casinos operate normally","Casinos are shut: no income, can't open new ones"]},
   tariff:{n:"Import tariffs",v:["None","Low","High"],e:["Free trade","Retail profit −3%, land output value +4%","Retail profit −7%, land output value +9%"]},
   police:{n:"Policing",v:["Lenient","Standard","Strict"],e:["35% arrest chance, sentences ×0.6, private prisons earn −30%","55% arrest chance, normal sentences","80% arrest chance, sentences ×1.6, private prisons earn +40%"]},
-  grant:{n:"Small-business grants",v:["Off","On"],e:["No support","Carts, kiosks and corner shops earn +10%"]}};
+  grant:{n:"Small-business grants",v:["Off","On"],e:["No support","Carts, kiosks, corner shops and gas stations earn +10%"]}};
 const RETAIL=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","gasstation","rest"],SMALL=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","gasstation"];
 const ELECT=90*DAYMS; // elections every 3 game months (90 game days = 90 real hours)
 const COUNTRIES=[...new Set(CITIES.map(c=>c.country))];
@@ -4147,8 +4147,8 @@ function dxWire(el){let g=null;
     if(a==="hqcity"){const id=Object.keys(S.hq).find(k=>S.hq[k]);dxClose();if(id!=null&&CITIES[id]){tab="hq";openCity(CITIES[id])}else openPortfolio();return}
     if(a==="hireall"){let n=0;for(const x of dxData(DX.reg).rows)if(!x.staffed){S.staff[x.key]=1;n++}DX.note=n?`Hired staff at ${n} business${n>1?"es":""}. Wages start now.`:"Everyone is already staffed.";DX.noteT=Date.now();save();hud();if(PH.open)phRender();dxRender();return}
     if(a==="restock"){let n=0,cost=0,short=0;for(const x of dxData(DX.reg).rows){if(!SUP[x.b.k]||x.status==="un"||S.orders.some(o=>o.key===x.key))continue;const use=x.use;if(stockOf(x.c,x.b.k)>=use*2)continue;
-        const q=Math.max(1,Math.round(use*6)),own=supMode()==="own"&&(S.own[x.c.id]||{}).trucking,k=q*unitCost(x.b,x.c)*(own?1:1.06);if(S.cash<k){short++;continue}
-        S.cash-=k;cost+=k;n++;S.orders.push({key:x.key,q,arr:Date.now()+ORDER_MIN*60000*(own?.5:1)})}
+        const q=Math.max(1,Math.round(use*6)),own=supMode()==="own"&&(S.own[x.c.id]||{}).trucking,gp=x.b.fuel?gasPlan(x.c,q,own?1:1.06):null,k=gp?gp.cost:q*unitCost(x.b,x.c)*(own?1:1.06);if(S.cash<k){short++;continue}
+        S.cash-=k;cost+=k;n++;if(gp)gasTake(x.c,x.key,gp);if(!gp||gp.buy>0)S.orders.push({key:x.key,q:gp?gp.buy:q,arr:Date.now()+ORDER_MIN*60000*(own?.5:1)})}
       DX.note=n?`Ordered stock for ${n} business${n>1?"es":""} (${dxM(cost)}).`+(short?` ${short} skipped: not enough cash.`:""):short?"Not enough cash to restock.":"Stock levels are healthy.";DX.noteT=Date.now();save();hud();dxTick();return}});
   el.addEventListener("change",e=>{if(e.target.matches("[data-dx=view]")){DX.view=e.target.value;DX.sig=null;dxRender()}});
   el.addEventListener("pointerover",e=>{const g2=e.target.closest(".mdx-bg");if(g2&&e.pointerType!=="touch")dxTipShow(g2)});
