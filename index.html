@@ -3214,23 +3214,14 @@ function mktStep(){const m=MK(),now=Date.now();const war=typeof tension==="funct
     const shock=Math.random()<.004?(Math.random()<.5?-1:1)*a.vol*4:0;
     m.px[a.s]=Math.max(a.p0*.05,m.px[a.s]*Math.exp(drift+(Math.random()-.5)*2*a.vol*.25+shock));
     if(shock&&Math.abs(shock)>0)mktNews(a,shock)}
-  xrpBoomStep(m,now);
+  if(m.xb){const b=m.xb;if(b.lf&&b.lf!==1&&!(now-m.live<5*60000&&m.liveSet&&m.liveSet.XRP))m.px.XRP=Math.max(AK.XRP.p0*.05,m.px.XRP/b.lf);delete m.xb}   // XRP boom was removed: undo any boom price saved in old saves
   for(const a of ASSETS){const h=m.h[a.s];h.push(m.px[a.s]);if(h.length>90)h.shift()}
   const d=Math.floor(now/(24*DAYMS));if(m.day!==d){m.day=d;for(const a of ASSETS)m.open[a.s]=m.px[a.s]}}
-/* XRP boom: a 30-min rally (up to 1000x) that cools back off; first one fires on load, then rarely (~every 6h) */
-const XRPB={dur:30*60000,peak:999,p:.0005};
-function xrpBoomF(m,now){const b=m.xb;if(!b||!b.t0)return 1;const t=(now-b.t0)/XRPB.dur;if(t<=0||t>=1)return 1;
-  const ease=x=>x*x*(3-2*x);return 1+XRPB.peak*(t<1/3?ease(t*3):t<.5?1:ease((1-t)*2))}
-function xrpBoomStep(m,now){const b=m.xb=m.xb||{};const live=now-m.live<5*60000&&m.liveSet&&m.liveSet.XRP;
-  if(!(b.t0&&now-b.t0<XRPB.dur)&&(!b.first||Math.random()<XRPB.p)){if(b.t0&&b.lf&&b.lf!==1&&!live)m.px.XRP/=b.lf;b.first=1;b.t0=now;b.lf=1;b.end=0;
-    S.log.unshift("Markets: XRP is booming! Traders pile in as the rally takes off");S.log=S.log.slice(0,3)}
-  const f=xrpBoomF(m,now);if(!live)m.px.XRP=Math.max(AK.XRP.p0*.05,m.px.XRP*f/(b.lf||1));b.lf=f;
-  if(b.t0&&f===1&&!b.end&&now-b.t0>=XRPB.dur){b.end=1;S.log.unshift("Markets: the XRP boom cools off as traders take profits");S.log=S.log.slice(0,3)}}
 function mktNews(a,sh){S.log.unshift(`Markets: ${a.n} ${sh>0?"surges":"plunges"} ${Math.abs(sh*100).toFixed(0)}% on ${sh>0?["strong earnings","takeover rumours","a big contract"][Math.floor(Math.random()*3)]:["a profit warning","a lawsuit","a data breach"][Math.floor(Math.random()*3)]}`);S.log=S.log.slice(0,3)}
 /* real crypto prices from CoinGecko when the network allows it */
 async function mktLive(){try{const ids=ASSETS.filter(a=>a.t==="c").map(a=>a.sec).join(",");
   const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);if(!r.ok)return;const j=await r.json(),m=MK();m.liveSet={};
-  for(const a of ASSETS)if(a.t==="c"&&j[a.sec]&&j[a.sec].usd){m.px[a.s]=j[a.sec].usd*(a.s==="XRP"?xrpBoomF(m,Date.now()):1);m.liveSet[a.s]=1}m.live=Date.now()}catch(e){}}
+  for(const a of ASSETS)if(a.t==="c"&&j[a.sec]&&j[a.sec].usd){m.px[a.s]=j[a.sec].usd;m.liveSet[a.s]=1}m.live=Date.now()}catch(e){}}
 setInterval(mktStep,10000);setInterval(mktLive,90000);setTimeout(mktLive,3000);
 const holdVal=()=>{const m=MK();let v=0;for(const s in m.hold)v+=m.hold[s].q*m.px[s];return v};
 const fee=a=>a.t==="c"?.005:.001;
