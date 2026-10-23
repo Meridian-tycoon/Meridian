@@ -432,8 +432,8 @@ const unhLeft=c=>{const d=Math.max(0,Math.ceil(((S.unh||{})[c.id]-Date.now())/DA
 function evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="function"?stormMult(c):1)*(typeof strikeMult==="function"?strikeMult(c):1)*(typeof dmgMult==="function"?dmgMult(c):1)*popDem(c)*sancMult()}
 /* rival companies */
 /* Rivals are real companies. Real figures (market cap in US$ bn, staff, founding year) are about 2025 and shown as facts only.
-   Game scale: the economy is far smaller than real dollars, so game net worth is seeded from market cap as rivalSeed = 5000 x sqrt(cap in $bn)
-   (Maersk 25k ... Apple 296k): the real size ranking is kept but the spread is squeezed to ~12x, so buy-outs, city growth (nw/120000) and the 1e12 cap behave as before. */
+   Net worth is the real market cap in US dollars (rivalSeed = cap x 1e9, Apple US$3.5T). Anything that used to scale with the old squeezed net worth
+   (5000 x sqrt(cap in $bn), 25k...296k) goes through rvk(i), the ratio of new to old seed, so city growth, buy-out damage and payments to rivals play as before. */
 const RIVALS=[
  {n:"Walmart",col:"#0071ce",ind:"Retail",hq:"Bentonville, USA",yr:1962,emp:"2.1M",cap:750},
  {n:"Amazon",col:"#ff9900",ind:"E-commerce & cloud",hq:"Seattle, USA",yr:1994,emp:"1.5M",cap:2300},
@@ -443,19 +443,22 @@ const RIVALS=[
  {n:"Maersk",col:"#42b0d5",ind:"Shipping",hq:"Copenhagen, Denmark",yr:1904,emp:"100K",cap:25},
  {n:"JPMorgan Chase",col:"#7a5c3a",ind:"Banking",hq:"New York, USA",yr:1799,emp:"318K",cap:800},
  {n:"Nestlé",col:"#0b8f8c",ind:"Food & drink",hq:"Vevey, Switzerland",yr:1866,emp:"277K",cap:250}];
-const rivalSeed=i=>Math.round(5000*Math.sqrt(RIVALS[i].cap));
+const rivalSeed=i=>Math.round(RIVALS[i].cap*1e9),rivalOld=i=>Math.round(5000*Math.sqrt(RIVALS[i].cap)),rvk=i=>rivalSeed(i)/rivalOld(i),NWCAP=1e14;
 const fmtCap=b=>b>=1000?"US$"+(b/1000).toFixed(1).replace(/\.0$/,"")+"T":"US$"+b+"B";
-const rivalFacts=i=>{const r=RIVALS[i];return `${r.ind} · HQ ${r.hq} · est. ${r.yr} · ${r.emp} staff · ${fmtCap(r.cap)} market cap (real, 2025)`};
+const rivalFacts=i=>{const r=RIVALS[i];return `${r.ind} · HQ ${r.hq} · est. ${r.yr} · ${r.emp} staff · ${fmtCap(r.cap)} market cap (real, 2025) · net worth in game matches`};
 // HQ city first (nearest game city: Houston~Bentonville, Vancouver~Seattle, Tokyo~Toyota City, London, LA~Cupertino, Stockholm~Copenhagen, New York, Paris~Vevey), then major real markets
 const RIVAL_START=[[7,5,8,1],[2,3,13,36],[39,3,16,38],[13,7,18,27],[4,3,36,39],[19,32,36,18],[3,13,35,39],[14,11,3,29]];
 const RIVAL_MAXC=10; // most cities one rival can hold (about a sixth of the map); keeps ~2 rivals per player city late game
-if(!Array.isArray(S.rivals))S.rivals=[];while(S.rivals.length<RIVALS.length){const i=S.rivals.length;S.rivals.push({nw:rivalSeed(i),cities:RIVAL_START[i].slice()})}
+if(!Array.isArray(S.rivals))S.rivals=[];
+/* one-time scale migration: old saves hold the squeezed net worth; keep each rival's growth ratio vs its old seed and apply it to the real seed (S.rvs=2 marks it done) */
+{const n0=S.rivals.length;if(S.rvs!==2){for(let i=0;i<Math.min(n0,RIVALS.length);i++){const r=S.rivals[i];if(r&&typeof r==="object"){const x=+r.nw;r.nw=Number.isFinite(x)&&x>0?Math.min(NWCAP,Math.round(x/rivalOld(i)*rivalSeed(i))):rivalSeed(i)}}S.rvs=2}}
+while(S.rivals.length<RIVALS.length){const i=S.rivals.length;S.rivals.push({nw:rivalSeed(i),cities:RIVAL_START[i].slice()})}
 /* save repair: older saves let rivals spread into every city, which crashed simDay; reset a broken net worth and trim their cities */
 if(S.rivals.length>RIVALS.length)S.rivals.length=RIVALS.length;
 S.rivals.forEach((r,i)=>{if(!r||typeof r!=="object")r=S.rivals[i]={nw:rivalSeed(i),cities:RIVAL_START[i].slice()};
   if(!(Number.isFinite(r.nw)&&r.nw>0)||r.nw<rivalSeed(i)*.3)r.nw=rivalSeed(i); // old saves held fictional firms at these slots: keep their cities and growth, lift an absurdly small net worth to the real company's seed
   r.cities=[...new Set(Array.isArray(r.cities)?r.cities.filter(x=>CITIES[x]&&CITIES[x].id===x):[])].slice(0,RIVAL_MAXC)});
-S.rivals.forEach(r=>{if(r.nw>1e12)r.nw=1e12});
+S.rivals.forEach(r=>{if(r.nw>NWCAP)r.nw=NWCAP});
 /* shared world rivals: the developer's save (DEV_UIDS, signed in) is the master world. Only it grows rivals and publishes world/rivals {list:[{nw,cities}],updated};
    every other player mirrors that list into S.rivals (cached in localStorage for offline) and skips its own rival growth. A local buy-out is remembered in S.rbo
    (rival index -> city ids) and kept out of the mirror until the master world itself drops that branch. Never loaded and no cache: local growth as before. */
@@ -464,7 +467,7 @@ try{const c=JSON.parse(localStorage.getItem(WRKEY)||"null");if(c&&Array.isArray(
 try{WRM=localStorage.getItem(WRMKEY)==="1"}catch(e){}
 const wrShared=()=>!!WRS&&!WRM;
 function wrMirror(quiet){if(!wrShared())return;S.rbo=S.rbo&&typeof S.rbo==="object"?S.rbo:{};
-  WRS.list.forEach((x,i)=>{const r=S.rivals[i];if(!r||!x)return;if(Number.isFinite(+x.nw))r.nw=Math.min(1e12,+x.nw);
+  WRS.list.forEach((x,i)=>{const r=S.rivals[i];if(!r||!x)return;if(Number.isFinite(+x.nw)){if(+x.nw>=rivalSeed(i)*.3)r.nw=Math.min(NWCAP,+x.nw)}  /* a mirrored value far below the real seed is the old squeezed scale: keep the local one */
     const sh=[...new Set((Array.isArray(x.cities)?x.cities:[]).filter(id=>Number.isInteger(id)&&CITIES[id]))].slice(0,RIVAL_MAXC);
     const bo=(Array.isArray(S.rbo[i])?S.rbo[i]:[]).filter(id=>sh.includes(id));if(bo.length)S.rbo[i]=bo;else delete S.rbo[i];
     const nc=sh.filter(id=>!bo.includes(id));
@@ -689,7 +692,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
   const ad=$("#ads");if(ad)ad.onclick=()=>{const k=adCost(c);if(S.cash<k)return;S.cash-=k;S.events[c.id]={m:1.4,d:5};toast(`Ads running in ${c.name} for 5 hours`);commit()};
   const ua=$("#upall");if(ua)ua.onclick=()=>{const pl=upgradePlan(c);for(const [k,i] of pl.steps)upgrade(c,k,i,1);toast(`${pl.n} upgrades done in ${c.name}`);commit()};
   sheet.querySelectorAll("[data-bo]").forEach(btn=>btn.onclick=()=>{const i=+btn.dataset.bo,k=buyoutCost(c);if(S.cash<k)return;S.cash-=k;
-    S.rivals[i].cities=S.rivals[i].cities.filter(x=>x!==c.id);if(wrShared()){S.rbo=S.rbo||{};(S.rbo[i]=S.rbo[i]||[]).push(c.id)}S.rivals[i].nw=Math.max(10000,S.rivals[i].nw-k*.5);toast(`Bought out ${RIVALS[i].n} in ${c.name}`);bigMove(`our company bought out ${RIVALS[i].n} in ${c.name} for ${fmt(k)}`,k,1);commit()});
+    S.rivals[i].cities=S.rivals[i].cities.filter(x=>x!==c.id);if(wrShared()){S.rbo=S.rbo||{};(S.rbo[i]=S.rbo[i]||[]).push(c.id)}S.rivals[i].nw=Math.max(rivalSeed(i)*.35,S.rivals[i].nw-k*.5*rvk(i));toast(`Bought out ${RIVALS[i].n} in ${c.name}`);bigMove(`our company bought out ${RIVALS[i].n} in ${c.name} for ${fmt(k)}`,k,1);commit()});
   const hb=$("#hire");if(hb)hb.onclick=()=>{const mc=mgrCost(c);if(S.cash<mc)return;S.cash-=mc;S.mgr[c.id]=1;toast(`Manager hired in ${c.name}`);commit()};
   const fb=$("#fire");if(fb)fb.onclick=()=>{if(!fb.dataset.arm){fb.dataset.arm=1;fb.textContent="Tap again to fire";return}delete S.mgr[c.id];if(S.mgrShort)for(const b of BIZ)delete S.mgrShort[bkey(c,b.k)];toast(`Manager fired in ${c.name}. No refund.`);commit()};
   const sa=$("#sellall");if(sa)sa.onclick=()=>{if(sa.dataset.arm){sellAll(c)}else{sa.dataset.arm=1;sa.textContent="Tap again to confirm sale"}};
@@ -1930,8 +1933,8 @@ function simDay(quiet){const{nw}=totals();S.day++;if(typeof hrDay==="function")h
     if(!S.iev[id]){const ks=Object.keys(IEV),t=ks[Math.floor(Math.random()*ks.length)];S.iev[id]={t,d:2+Math.floor(Math.random()*5)};
       if(!quiet&&S.sites.some(x=>x.city==id)){S.log.unshift(`${IEV[t].n} in ${CITIES[id].name} (${S.iev[id].d}h)`);S.log=S.log.slice(0,3)}}}
   if(!quiet)for(const c of CITIES){const p=S.own[c.id]?cityProfit(c):0;if(p)pops.push({c,v:p,t:performance.now()})}
-  if(!wrShared())S.rivals.forEach((r,i)=>{r.nw=Math.min(1e12,Math.round(r.nw*(1.012+Math.random()*.02)+2000)); // one simDay = one game day; capped so it stays finite
-    if(Math.random()<.06&&r.cities.length<Math.min(RIVAL_MAXC,5+Math.floor(r.nw/120000))){const mine=CITIES.filter(c=>S.own[c.id]&&!r.cities.includes(c.id));const opts=mine.length&&Math.random()<.1?mine:CITIES.filter(c=>!r.cities.includes(c.id));if(!opts.length)return;const c=opts[Math.floor(Math.random()*opts.length)];
+  if(!wrShared())S.rivals.forEach((r,i)=>{r.nw=Math.min(NWCAP,Math.round(r.nw*(1.012+Math.random()*.02)+2000*rvk(i))); // one simDay = one game day; capped so it stays finite
+    if(Math.random()<.06&&r.cities.length<Math.min(RIVAL_MAXC,5+Math.floor(r.nw/rvk(i)/120000))){const mine=CITIES.filter(c=>S.own[c.id]&&!r.cities.includes(c.id));const opts=mine.length&&Math.random()<.1?mine:CITIES.filter(c=>!r.cities.includes(c.id));if(!opts.length)return;const c=opts[Math.floor(Math.random()*opts.length)];
       r.cities.push(c.id);if(!quiet&&S.own[c.id]){S.log.unshift(`${RIVALS[i].n} opened in your city ${c.name}`);S.log=S.log.slice(0,3)}}});
   S.hist.push(Math.round(nw));if(S.hist.length>60)S.hist.shift();
   for(const id in S.events){if(--S.events[id].d<=0)delete S.events[id]}
@@ -1999,7 +2002,7 @@ function renderPortfolio(){const{inc,nw}=totals();
     <div class="d">${n} business${n>1?"es":""} · <b>${fmt(cityProfit(c))}</b>/hr</div><span style="font-family:var(--mono);color:var(--muted)">›</span></div>`}
   h+=`</div><div class="sec">Find a city</div><input id="q" type="search" placeholder="Tokyo, Lagos… or oil, coal, ore" value="${query}" autocomplete="off"><div class="list" id="qres"></div>`;
   const board=[{n:"You",col:"var(--own)",nw,me:1,ct:ON.user&&CT.mine?ctTagHtml(ON.user.uid,CT.mine.id):"",dev:devSelf(S.name,(S.online||{}).name)?(S.online&&S.online.name||S.name||DEV_NAME):""},...(onEnabled()?lbPlayers().concat(botPl()?[botPl()]:[]):[]).map(p=>{const age=(Date.now()-onSeen(p))/864e5;return{n:String(p.name||"Player").slice(0,20),col:/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb",nw:Number.isFinite(+p.nw)?+p.nw:0,pl:1,bot:!!p.bot,dv:devUid(p.uid),ct:ctTagHtml(p.uid,p.cid),old:age>30,f:p.bot?`BOT · ${p.trucks|0} trucks · hire or trade in the Bank app`:`player${Number.isInteger(p.nb)?` · ${p.nb} business${p.nb===1?"":"es"}`:""} · seen ${age<1/24?"just now":age<2?Math.round(age*24)+"h ago":Math.round(age)+"d ago"}`,c:lbCities(p)}}),
-    ...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:+r.nw||0,c:r.cities.length,f:`${RIVALS[i].ind} · ${fmtCap(RIVALS[i].cap)} real`}))].sort((a,b)=>b.nw-a.nw);
+    ...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:+r.nw||0,c:r.cities.length,f:`${RIVALS[i].ind} · ${fmtCap(RIVALS[i].cap)} market cap`}))].sort((a,b)=>b.nw-a.nw);
   const lbTop=board.filter((b,i)=>i<100||b.me);
   h+=govSummary();h+=onlineHtml();
   h+=`<div class="sec">Leaderboard${onEnabled()?` <small style="font-weight:400;color:var(--muted)">${ON.gotPlayers?"live":"offline · last saved"}</small>`:""}</div><div class="list">`+lbTop.map(b=>`<div class="row"${b.old?' style="opacity:.5"':""}><div class="n" style="${b.me?"color:var(--own)":""}">${board.indexOf(b)+1}. <span style="display:inline-block;width:9px;height:9px;${b.pl?"transform:rotate(45deg);":""}background:${b.col};margin:0 6px 0 2px"></span>${b.ct||""}${b.dev?gnHtml(b.dev,1)+" (you)":b.me?(n=>n?devEsc(n)+" (you)":"You")(onEnabled()&&S.online&&S.online.name||S.name):b.pl?gnHtml(b.n,b.dv)+(b.bot?' <span class="tag">BOT</span>':''):b.n}</div>
@@ -3119,7 +3122,7 @@ function hireHtml(c){const inv=S.inv[c.id]||{},goods=GK.filter(g=>inv[g]>=1),ds=
 sheet.addEventListener("change",e=>{const f=e.target.closest("[data-hf]");if(!f)return;hireF[f.dataset.hf]=f.dataset.hf==="q"?+f.value:f.value;if(f.dataset.hf==="g")hireF.q=0;renderSheet()});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-hire]");if(!b||!sel)return;const c=sel,i=+b.dataset.hire,inv=S.inv[c.id]||{},q=Math.max(1,Math.min(inv[hireF.g]||0,hireF.q||inv[hireF.g]));
   const d=CITIES[hireF.d],Q=carrierQuote(i,c,d,q,hireF.g);if(S.cash<Q.price||!(inv[hireF.g]>=1))return;S.cash-=Q.price;inv[hireF.g]-=q;if(inv[hireF.g]<1e-6)delete inv[hireF.g];
-  S.rivals[i].nw+=Q.price;S.hired.push({ri:i,from:c.id,to:d.id,g:hireF.g,q,price:Q.price,dep:Date.now(),arr:Date.now()+Q.ms,lost:Math.random()>Q.rel});
+  S.rivals[i].nw=Math.min(NWCAP,S.rivals[i].nw+Q.price*rvk(i));S.hired.push({ri:i,from:c.id,to:d.id,g:hireF.g,q,price:Q.price,dep:Date.now(),arr:Date.now()+Q.ms,lost:Math.random()>Q.rel});
   toast(`${RIVALS[i].n} is shipping it: arrives in ${fmtDur(Q.ms)}`);hireF.q=0;save();hud();renderSheet()});
 /* supplier deliveries for shops: through your own network or a hired carrier */
 const supMode=()=>S.supMode||"hire";
@@ -4964,7 +4967,7 @@ function onPublish(force){if(!ON.ready||!ON.user||ON.deleting)return;const d=onP
   ON.lastPub=n;ON.lastSig=sig;d.lastSeen=window.firebase.firestore.FieldValue.serverTimestamp();
   return ON.db.collection("players").doc(ON.user.uid).set(d).catch(e=>{ON.err="Couldn't publish: "+(e&&e.code||e)})}
 /* shared leaderboard: master publishes world/rivals; everyone's profile is published on save (throttled by onPublish) and every 15 s tick */
-function wrPubData(){return{list:S.rivals.map(r=>({nw:Math.round(Math.max(-1e12,Math.min(1e12,+r.nw||0))),cities:r.cities.filter(id=>Number.isInteger(id)&&CITIES[id]).slice(0,RIVAL_MAXC)}))}}
+function wrPubData(){return{list:S.rivals.map(r=>({nw:Math.round(Math.max(-NWCAP,Math.min(NWCAP,+r.nw||0))),cities:r.cities.filter(id=>Number.isInteger(id)&&CITIES[id]).slice(0,RIVAL_MAXC)}))}}
 function wrPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;const d=wrPubData(),sig=JSON.stringify(d),n=Date.now();
   if(!force&&(n-(ON.wrPub||0)<60000||(sig===ON.wrSig&&n-(ON.wrPub||0)<300000)))return;
   ON.wrPub=n;ON.wrSig=sig;d.updated=window.firebase.firestore.FieldValue.serverTimestamp();
@@ -5757,7 +5760,7 @@ function lxExec(item,c,d,q,kind,P,ord){const X=LX(),now=Date.now();if(!P||!P.ok|
   const k2=kind==="mkt"?"mkt":"wh",g=fromStock?item.bk:item.g;
   if(P.mode==="own"){const j={id:X.nid++,g,q,left:q,got:0,ret:0,from:c.id,to:d.id,kind:k2,vs:P.vs.map(v=>v.id),cost:0,val:0,p0:px(c,g),t0:now,ord:ord||0,why:""};X.jobs.push(j);
     for(const v of P.vs)v.job=j.id;for(const v of P.vs)lxVeh(v,now);return j}
-  S.cash-=P.total;if(S.rivals[P.i])S.rivals[P.i].nw+=P.total;
+  S.cash-=P.total;if(S.rivals[P.i])S.rivals[P.i].nw=Math.min(NWCAP,S.rivals[P.i].nw+P.total*rvk(P.i));
   if(typeof dxTx==="function")dxTx({d:"Freight · "+(fromStock?lxStockName(g):lxN(g)),s:`${c.name} → ${d.name}`,ty:"exp",a:-P.total,r:1});
   const s={id:X.nid++,k:fromStock?"s":"g",g,q,from:c.id,to:d.id,kind:k2,ri:P.i,price:P.total,dep:now,arr:now+P.last,lost:Math.random()>P.rel,ord:ord||0,p0:fromStock?0:px(c,g)};X.sh.push(s);return s}
 function lxStockName(bk){const b=BIZ.find(x=>x.k===bk);return (b?b.n:bk)+" stock"}
@@ -5788,7 +5791,7 @@ function lxRecall(v){if(!v.arr||(v.cargo&&v.cargo.rc))return false;const now=Dat
 /* ----- hired shipments ----- */
 function lxShArrive(s){const X=LX(),A=CITIES[s.from],B=CITIES[s.to],rn=(RIVALS[s.ri]||{n:"Carrier"}).n;let ok=true,val=0,note="";const nm=s.k==="s"?lxStockName(s.g):lxN(s.g);
   const back=()=>{if(s.k==="g"){ensureWh(A);S.inv[A.id][s.g]=(S.inv[A.id][s.g]||0)+s.q}else S.stock[bkey(A,s.g)]=(S.stock[bkey(A,s.g)]||0)+s.q};
-  if(s.lost){S.cash+=s.price;if(S.rivals[s.ri])S.rivals[s.ri].nw=Math.max(0,S.rivals[s.ri].nw-s.price);back();ok=false;note="carrier failed: fee refunded, goods back at the source";lxLog(`${rn} lost your ${nm.toLowerCase()}: refunded ${fmt(s.price)}, goods returned`)}
+  if(s.lost){S.cash+=s.price;if(S.rivals[s.ri])S.rivals[s.ri].nw=Math.max(rivalSeed(s.ri)*.35,S.rivals[s.ri].nw-s.price*rvk(s.ri));back();ok=false;note="carrier failed: fee refunded, goods back at the source";lxLog(`${rn} lost your ${nm.toLowerCase()}: refunded ${fmt(s.price)}, goods returned`)}
   else if(s.k==="g"){if(s.kind==="mkt"&&lxCanSell(B,s.g)&&!unhOn(B)){val=sellGood(B,s.g,s.q);S.cash+=val;S.earned=(S.earned||0)+val;note="sold on arrival"}
     else{ensureWh(B);S.inv[B.id][s.g]=(S.inv[B.id][s.g]||0)+s.q;val=s.q*px(B,s.g);if(s.kind==="mkt")note="no buyer, held in the warehouse"}
     lxLog(`${rn} delivered ${lxg(s.q)} ${nm.toLowerCase()} to ${B.name}${val&&s.kind==="mkt"&&!note.startsWith("no")?`, sold for ${fmt(val)}`:""}`)}
