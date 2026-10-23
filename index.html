@@ -438,7 +438,7 @@ S.rivals.forEach(r=>{if(r.nw>1e12)r.nw=1e12});
 /* shared world rivals: the developer's save (DEV_UIDS, signed in) is the master world. Only it grows rivals and publishes world/rivals {list:[{nw,cities}],updated};
    every other player mirrors that list into S.rivals (cached in localStorage for offline) and skips its own rival growth. A local buy-out is remembered in S.rbo
    (rival index -> city ids) and kept out of the mirror until the master world itself drops that branch. Never loaded and no cache: local growth as before. */
-const WRKEY="meridian-world-rivals",WRMKEY="meridian-world-master";let WRS=null,WRM=false;
+const WRKEY="meridian-world-rivals",WRMKEY="meridian-world-master";let WRS=null,WRM=false,WRG=false;
 try{const c=JSON.parse(localStorage.getItem(WRKEY)||"null");if(c&&Array.isArray(c.list)&&c.list.length===RIVALS.length)WRS=c}catch(e){}
 try{WRM=localStorage.getItem(WRMKEY)==="1"}catch(e){}
 const wrShared=()=>!!WRS&&!WRM;
@@ -1927,7 +1927,7 @@ function spark(){const h=S.hist;if(h.length<2)return `<p class="d" style="color:
    <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--muted)"><span>${fmt(mn)}</span><span>last ${h.length} hours</span><span>${fmt(mx)}</span></div>`}
 function renderPortfolio(){const{inc,nw}=totals();
   const mine=CITIES.filter(c=>S.own[c.id]).sort((a,b)=>cityProfit(b)-cityProfit(a));
-  let h=`<div class="shead"><div><h2>Your empire</h2><p>${nOwned()} businesses in ${nCities()} cities · ${fmt(S.earned||0)} earned all-time</p></div>
+  let h=`<div class="shead"><div><h2>Your empire</h2><p>${nOwned()} businesses in ${nCities()} cit${nCities()===1?"y":"ies"} · ${fmt(S.earned||0)} earned all-time</p></div>
     <button class="x" id="cls" aria-label="Close">×</button></div>
     <div class="meta"><div><span>Net worth </span>${fmt(nw)}</div><div><span>Profit </span>${fmt(inc)}/hr</div></div>${spark()}<div class="list" style="margin-top:8px"><div class="row link" data-go="${(S.home||{city:0}).city}"><div class="n">${S.job?JK[S.job.k].n+" · "+CITIES[S.job.city].name:"Unemployed"}</div><div class="d">${S.home?HK[S.home.k].n+" in "+CITIES[S.home.city].name+(S.home.own?" (owned)":""):"No home yet"} · ${S.exp.toFixed(1)} h work experience</div><span style="color:var(--muted)">›</span></div></div>`;
   h+=`<div class="sec">Cities</div><div class="list">`;
@@ -1940,8 +1940,8 @@ function renderPortfolio(){const{inc,nw}=totals();
     ...S.rivals.map((r,i)=>({n:RIVALS[i].n,col:RIVALS[i].col,nw:+r.nw||0,c:r.cities.length,f:`${RIVALS[i].ind} · ${fmtCap(RIVALS[i].cap)} real`}))].sort((a,b)=>b.nw-a.nw);
   const lbTop=board.filter((b,i)=>i<100||b.me);
   h+=govSummary();h+=onlineHtml();
-  h+=`<div class="sec">Leaderboard${onEnabled()?` <small style="font-weight:400;color:var(--muted)">${ON.gotPlayers?"live":"offline · last saved"}</small>`:""}</div><div class="list">`+lbTop.map(b=>`<div class="row"${b.old?' style="opacity:.5"':""}><div class="n" style="${b.me?"color:var(--own)":""}">${board.indexOf(b)+1}. <span style="display:inline-block;width:9px;height:9px;${b.pl?"transform:rotate(45deg);":""}background:${b.col};margin:0 6px 0 2px"></span>${b.ct||""}${b.dev?gnHtml(b.dev,1)+" (you)":b.me?devEsc(onEnabled()&&S.online&&S.online.name||S.name||"You")+" (you)":b.pl?gnHtml(b.n,b.dv)+(b.bot?' <span class="tag">BOT</span>':''):b.n}</div>
-    <div class="d">${b.me?`${nCities()} cities`:`${b.c} cities · ${b.f}`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
+  h+=`<div class="sec">Leaderboard${onEnabled()?` <small style="font-weight:400;color:var(--muted)">${ON.gotPlayers?"live":"offline · last saved"}</small>`:""}</div><div class="list">`+lbTop.map(b=>`<div class="row"${b.old?' style="opacity:.5"':""}><div class="n" style="${b.me?"color:var(--own)":""}">${board.indexOf(b)+1}. <span style="display:inline-block;width:9px;height:9px;${b.pl?"transform:rotate(45deg);":""}background:${b.col};margin:0 6px 0 2px"></span>${b.ct||""}${b.dev?gnHtml(b.dev,1)+" (you)":b.me?(n=>n?devEsc(n)+" (you)":"You")(onEnabled()&&S.online&&S.online.name||S.name):b.pl?gnHtml(b.n,b.dv)+(b.bot?' <span class="tag">BOT</span>':''):b.n}</div>
+    <div class="d">${b.me?`${nCities()} cit${nCities()===1?"y":"ies"}`:`${b.c} cit${b.c===1?"y":"ies"} · ${b.f}`}</div><span style="font-family:var(--mono);font-weight:600">${fmt(b.nw)}</span></div>`).join("")+`</div>`;
   h+=bankHtml();
   if(S.lst.length)h+=`<div class="sec">Market listings</div><div class="list">`+S.lst.map(l=>{const c=CITIES[l.city],stockLv=mLevel(c,l.g);return `<div class="row link" data-go="${c.id}"><div class="n">${G[l.g][0]} · ${c.name}</div><div class="d">${l.q<1e-6?"Sold out":gq(l.q)+" left at "+fmt(l.p)} · ${gq(l.sold||0)} sold · stock ${Math.round(stockLv*100)}%</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`;
   h+=`<div class="sec">Taxes · every ${TAXDAYS} days</div><div class="list"><div class="row"><div class="n">Owed this tax year <b style="font-family:var(--mono)">${fmt(taxOwed())}</b></div>
@@ -4317,12 +4317,12 @@ function onScript(u){return new Promise((ok,no)=>{const s=document.createElement
 async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
   try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
-    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM)wrPublish(true);else wrMirror(false);onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);gateSync();onRefresh()});
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM)wrPublish(true);else wrMirror(true);onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);gateSync();onRefresh()});
     ON.unsubB=ON.db.collection("world").doc("bot").onSnapshot(d=>{if(WRM&&ON.user&&devUid(ON.user.uid))return;const v=d.exists?botClean(d.data()):null;if(!v)return;ON.bot=v;try{localStorage.setItem(BOTKEY,JSON.stringify(v))}catch(e){}draw();onRefresh();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)))phRender()},e=>{ON.err="Couldn't load the bot company: "+(e&&e.code||e)});
     ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;ON.gotPlayers=true;lbCache(a);try{ctCalc()}catch(e){}draw();onRefresh()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
     ON.unsubW=ON.db.collection("world").doc("rivals").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list)||v.list.length!==RIVALS.length)return;
       WRS={list:v.list.map(x=>({nw:+(x&&x.nw)||0,cities:Array.isArray(x&&x.cities)?x.cities.filter(Number.isInteger):[]})),updated:v.updated&&v.updated.toMillis?v.updated.toMillis():Date.now()};
-      try{localStorage.setItem(WRKEY,JSON.stringify(WRS))}catch(e){}if(ON.authKnown&&!WRM){wrMirror(false);draw();onRefresh()}},e=>{ON.err="Couldn't load world rivals: "+(e&&e.code||e)});
+      try{localStorage.setItem(WRKEY,JSON.stringify(WRS))}catch(e){}if(ON.authKnown&&!WRM){wrMirror(!WRG);WRG=true;draw();onRefresh()}},e=>{ON.err="Couldn't load world rivals: "+(e&&e.code||e)});
   }catch(e){ON.err="Online unavailable: "+(e&&e.message||e)}ON.loading=false;gateSync();onRefresh()}
 function onRefresh(){if(mode==="pf"&&sheet.classList.contains("open")&&!(document.activeElement&&/^(INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}}
 function onPubData(){const p=onProf(),{nw}=totals(),ids=o=>Object.keys(o||{}).filter(k=>o[k]&&CITIES[k]&&(typeof o[k]!=="object"||Object.keys(o[k]).length)).map(Number).slice(0,100);
