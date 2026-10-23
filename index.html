@@ -439,7 +439,7 @@ S.rivals.forEach(r=>{if(r.nw>1e12)r.nw=1e12});
 /* shared world rivals: the developer's save (DEV_UIDS, signed in) is the master world. Only it grows rivals and publishes world/rivals {list:[{nw,cities}],updated};
    every other player mirrors that list into S.rivals (cached in localStorage for offline) and skips its own rival growth. A local buy-out is remembered in S.rbo
    (rival index -> city ids) and kept out of the mirror until the master world itself drops that branch. Never loaded and no cache: local growth as before. */
-const WRKEY="meridian-world-rivals",WRMKEY="meridian-world-master";let WRS=null,WRM=false,WRG=false;
+const WRKEY="meridian-world-rivals",WRMKEY="meridian-world-master";let WRS=null,WRM=false,WRG=false,WRL=false;
 try{const c=JSON.parse(localStorage.getItem(WRKEY)||"null");if(c&&Array.isArray(c.list)&&c.list.length===RIVALS.length)WRS=c}catch(e){}
 try{WRM=localStorage.getItem(WRMKEY)==="1"}catch(e){}
 const wrShared=()=>!!WRS&&!WRM;
@@ -4364,12 +4364,12 @@ function onScript(u){return new Promise((ok,no)=>{const s=document.createElement
 async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
   try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
-    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM)wrPublish(true);else wrMirror(true);onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);pmListen(u);gateSync();onRefresh()});
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM)wrPublish(true);else{wrMirror(true);if(WRL)WRG=true}onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{WRG=false;CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);pmListen(u);gateSync();onRefresh()});
     ON.unsubB=ON.db.collection("world").doc("bot").onSnapshot(d=>{if(WRM&&ON.user&&devUid(ON.user.uid))return;const v=d.exists?botClean(d.data()):null;if(!v)return;ON.bot=v;try{localStorage.setItem(BOTKEY,JSON.stringify(v))}catch(e){}draw();onRefresh();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)))phRender()},e=>{ON.err="Couldn't load the bot company: "+(e&&e.code||e)});
     ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;ON.gotPlayers=true;lbCache(a);try{ctCalc()}catch(e){}draw();onRefresh()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
     ON.unsubW=ON.db.collection("world").doc("rivals").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list)||v.list.length!==RIVALS.length)return;
       WRS={list:v.list.map(x=>({nw:+(x&&x.nw)||0,cities:Array.isArray(x&&x.cities)?x.cities.filter(Number.isInteger):[]})),updated:v.updated&&v.updated.toMillis?v.updated.toMillis():Date.now()};
-      try{localStorage.setItem(WRKEY,JSON.stringify(WRS))}catch(e){}if(ON.authKnown&&!WRM){wrMirror(!WRG);WRG=true;draw();onRefresh()}},e=>{ON.err="Couldn't load world rivals: "+(e&&e.code||e)});
+      WRL=true;try{localStorage.setItem(WRKEY,JSON.stringify(WRS))}catch(e){}if(ON.authKnown&&!WRM){wrMirror(!WRG);WRG=true;draw();onRefresh()}},e=>{ON.err="Couldn't load world rivals: "+(e&&e.code||e)});
   }catch(e){ON.err="Online unavailable: "+(e&&e.message||e)}ON.loading=false;gateSync();onRefresh()}
 function onRefresh(){if(mode==="pf"&&sheet.classList.contains("open")&&!(document.activeElement&&/^(INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}}
 function onPubData(){const p=onProf(),{nw}=totals(),ids=o=>Object.keys(o||{}).filter(k=>o[k]&&CITIES[k]&&(typeof o[k]!=="object"||Object.keys(o[k]).length)).map(Number).slice(0,100);
