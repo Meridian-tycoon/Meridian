@@ -61,6 +61,17 @@ canvas#map:active{cursor:grabbing}
 #bunkhud .bk-warn{background:#7f1d1d;border:1px solid #f87171;animation:bkpulse 1s infinite alternate}
 @keyframes bkpulse{to{background:#b91c1c}}
 #ticker div{background:var(--panel);padding:5px 10px;border:1px solid var(--line);border-radius:8px;max-width:100%;box-sizing:border-box;color:var(--muted)}
+#cfbox{position:absolute;z-index:3;left:max(12px,env(safe-area-inset-left,0px));bottom:90px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none}
+#cfbox>*{pointer-events:auto}
+#cfchip{display:flex;align-items:center;gap:6px}#cfchip[aria-pressed=false]{opacity:.7}#cfchip i{font-style:normal;background:var(--bad);color:#fff;border-radius:999px;padding:0 6px;font-size:11px}
+#cfleg{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:11px;color:var(--ink);display:grid;gap:3px;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+#cfleg span{display:flex;align-items:center;gap:6px;white-space:nowrap}#cfleg b{width:10px;height:10px;border-radius:3px;display:inline-block}
+#cfpop{position:absolute;z-index:6;width:min(290px,calc(100% - 24px));box-sizing:border-box;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px 14px;box-shadow:0 12px 30px rgba(0,0,0,.25);font-size:13px;line-height:1.4}
+#cfpop h4{margin:0 26px 4px 0;font-size:15px;overflow-wrap:anywhere}#cfpop .x{all:unset;cursor:pointer;position:absolute;right:10px;top:8px;font-size:18px;line-height:1;padding:2px 4px;color:var(--muted)}
+#cfpop .stg{display:flex;gap:3px;margin:8px 0 4px}#cfpop .stg i{flex:1;height:5px;border-radius:3px;background:var(--line)}
+#cfpop .stl{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:8px}
+#cfpop p{margin:6px 0}#cfpop .m{color:var(--muted);font-size:12px}#cfpop .bt{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}#cfpop .bt .chip{padding:6px 10px}
+#cfpop .bt .chip:disabled{opacity:.5;cursor:default}
 #hint{position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:12px;color:var(--muted);pointer-events:none}
 #sheet{position:absolute;left:0;right:0;bottom:0;max-height:58%;overflow:auto;overscroll-behavior:contain;background:var(--panel);
   border-radius:16px 16px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.14);
@@ -280,6 +291,8 @@ button.buy:not(.up):not(:disabled){background:linear-gradient(180deg,color-mix(i
     <button id="tostreet" class="chip" hidden>View streets</button>
     <div id="hint">Drag to spin · pinch or scroll on a city to zoom into its streets · double-tap a city</div>
     <div id="toast"></div>
+    <div id="cfbox" hidden><div id="cfleg" aria-hidden="true"></div><button id="cfchip" class="chip" aria-pressed="true"></button></div>
+    <div id="cfpop" hidden role="dialog" aria-label="Conflict details"></div>
     <button id="daily" hidden>🎁 Daily reward</button>
     <aside id="sheet" aria-live="polite"></aside>
   </div>
@@ -546,6 +559,7 @@ function drawNow(){applyView();
   if(typeof drawStorms==="function")drawStorms(ctx,C);
   if(typeof drawDmg==="function")drawDmg(ctx);
   if(typeof drawStrikes==="function")drawStrikes(ctx);
+  if(typeof drawConflicts==="function")drawConflicts(ctx);
   if(S.pol&&(S.pol.r>=0||S.pol.ctrl&&Object.keys(S.pol.ctrl).length)){const lead=S.pol.r>=0?S.pol.c:null;for(const c of CITIES){const mine=c.country===lead,inf=S.pol.ctrl&&S.pol.ctrl[c.country];if(!mine&&!inf||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]);
     ctx.beginPath();ctx.arc(x,y,9,0,7);ctx.strokeStyle=mine?"#f59e0b":"#fb923c";ctx.globalAlpha=.85;ctx.lineWidth=mine?2.2:1.6;ctx.setLineDash(mine?[]:[3,2]);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}}
   if(S.pol&&S.pol.mil){const M=S.pol.mil;for(const c of CITIES){const w=M.wars&&M.wars[c.country],o=M.occ&&M.occ[c.country];if(!w&&!o||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]);
@@ -594,6 +608,7 @@ cv.addEventListener("click",e=>{if(dragMoved)return;const r=cv.getBoundingClient
   const now=performance.now();
   if(lastTap.c&&now-lastTap.t<450&&Math.hypot(x-lastTap.x,y-lastTap.y)<30&&typeof enterStreet==="function"&&HAS_STREET){const c=lastTap.c;lastTap={t:0,c:null};sheet.classList.remove("open","full");enterStreet(c,14);return}
   lastTap={t:now,c:best,x,y};
+  if(typeof cfTap==="function"&&cfTap(x,y,best,bd))return;
   if(best)openCity(best)});
 /* idle spin: after 15 s without input, a zoomed-out globe slowly turns on its own */
 let lastInput=Date.now(),idleRaf=0,idleT=0;
@@ -2242,6 +2257,7 @@ const contractPay=n=>Math.round(1200*ctyScale(n));
 function exposed(n,quiet){const g=gov(n),fine=donUnit(n)*30;if(S.pol&&S.pol.c===n&&S.pol.r>=0)S.pol.exCd=Date.now()+(GOVCFG.exposeCd||24)*DAYMS;S.cash-=fine;g.ctrl=false;g.polCtrl=0;g.contract=0;g.appr=Math.max(5,g.appr-25);
   logGov(`Exposed! Your control of ${n}'s government leaks to the press. Fined ${fmt(fine)}`);arrest("corruption",48,cap(n),quiet);if(!quiet)toast(`Scandal in ${n}: fined ${fmt(fine)}`)}
 const WARL=["Calm","Tension","Sanctions","Border clashes","War"],WARC=["#3a9","#b9961c","#e07a2a","#d84a4a","#9b1111"];
+const CF_EFF=["","Markets jittery: −3% profit","Sanctions: −10% profit, land output +5%","Clashes: −20% profit, land output +10%","War: −40% profit, land output +20%, businesses can be damaged, no travel in"];
 const cap=n=>ctyCities(n).sort((a,b)=>b.size-a.size)[0];
 function warLvl(n){let m=0;for(const w of S.wars||[])if(w.a===n||w.b===n)m=Math.max(m,w.l);return m}
 const warMult=c=>[1,.97,.9,.8,.6][warLvl(c.country)];
@@ -2250,9 +2266,9 @@ const tension=()=>Math.min(100,Math.round((S.wars||[]).reduce((a,w)=>a+w.l*w.l,0
 function warHour(quiet){S.wars=S.wars||[];const ws=S.wars;
   if(ws.length<6&&Math.random()<.05){const a=COUNTRIES[Math.floor(Math.random()*COUNTRIES.length)];
     const near=COUNTRIES.filter(b=>b!==a&&kmBetween(cap(a),cap(b))<5000&&!ws.some(w=>(w.a===a&&w.b===b)||(w.a===b&&w.b===a)));
-    if(near.length){const b=near[Math.floor(Math.random()*near.length)];ws.push({id:(S.wid=(S.wid||0)+1),a,b,l:1});if(!quiet)logGov(`Tension rising between ${a} and ${b}`)}}
+    if(near.length){const b=near[Math.floor(Math.random()*near.length)];ws.push({id:(S.wid=(S.wid||0)+1),a,b,l:1,d0:S.day});if(!quiet)logGov(`Tension rising between ${a} and ${b}`)}}
   const glob=tension();
-  for(const w of ws){const up=.05+glob/800,dn=w.inv?0:w.l>=4?.05:.07,r=w.inv?.5:Math.random();
+  for(const w of ws){if(w.d0==null)w.d0=S.day;const up=.05+glob/800,dn=w.inv?0:w.l>=4?.05:.07,r=w.inv?.5:Math.random();
     if(r<up&&w.l<4){w.l++;if(!quiet)logGov(`${w.a}–${w.b}: escalates to ${WARL[w.l].toLowerCase()}`);
       if(w.l===4)for(const n of [w.a,w.b])gov(n).appr=Math.min(90,gov(n).appr+10)}
     else if(r>1-dn){w.l--;if(!quiet)logGov(w.l?`${w.a}–${w.b}: de-escalates to ${WARL[w.l].toLowerCase()}`:`${w.a} and ${w.b} sign a peace deal`)}
@@ -2269,9 +2285,71 @@ function conflictHtml(n){const ws=(S.wars||[]).filter(w=>!n||w.a===n||w.b===n).s
   if(!ws.length)return n?"":`<div class="sec">World conflicts</div><p class="d" style="color:var(--muted);font-size:13px">The world is calm. For now.</p>`;
   let h=`<div class="sec">${n?"Conflicts":"World conflicts · global tension "+tension()+"%"}</div><div class="list">`;
   for(const w of ws){const c=warCost(w);h+=`<div class="row"><div class="n">${w.a} – ${w.b} <span class="tag" style="background:${WARC[w.l]};color:#fff">${WARL[w.l].toUpperCase()}</span></div>
-    <div class="d">${["","Markets jittery: −3% profit","Sanctions: −10% profit, land output +5%","Clashes: −20% profit, land output +10%","War: −40% profit, land output +20%, businesses can be damaged, no travel in"][w.l]}</div>
+    <div class="d">${CF_EFF[w.l]}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="buy" data-gov="peace" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="buy" data-gov="stoke" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Sell arms ${fmt(c)}</button></div></div>`}
   return h+`</div>`}
+/* ---------- conflicts on the globe ----------
+   Display only: draws the existing S.wars (tension/sanctions/clashes/war) as shaded countries, a front line between capitals with a badge, and a tap popup.
+   No economic change: effects stay those of warMult/siteLaw/warHour. Optional save fields: S.cfOff (overlay hidden), w.d0 (day the crisis was first seen). */
+const CF_GEO={USA:"United States",UK:"United Kingdom","Türkiye":"Turkey",UAE:"United Arab Emirates","South Korea":"Korea","DR Congo":"Dem. Rep. Congo"};
+let _cfF=null;const _cfC={},_cfHit=[];let _cfPop=null,_cfKey="";
+/* country outline for shading; drops empty or degenerate rings (some ECharts countries carry an empty polygon that breaks d3 area/contains) */
+function cfFeat(n){if(!world)return null;if(!_cfF){_cfF={};for(const f of world.features)_cfF[f.properties.name]=f}const k=CF_GEO[n]||n,f=_cfF[k];if(!f||f.cf)return f||null;
+  const G=f.geometry,ok=r=>r&&r.length>=4,ps=(G.type==="Polygon"?[G.coordinates]:G.coordinates).map(p=>p.filter(ok)).filter(p=>p.length);
+  return _cfF[k]={type:"Feature",cf:1,properties:f.properties,geometry:{type:"MultiPolygon",coordinates:ps}}}
+const cfCap=n=>_cfC[n]||(_cfC[n]=cap(n));
+const cfOn=()=>!S.cfOff;
+function cfLevels(){const o={};for(const w of S.wars||[])if(w.l>0)for(const n of [w.a,w.b])o[n]=Math.max(o[n]||0,w.l);return o}
+function cfMid(w){const A=cfCap(w.a),B=cfCap(w.b);return d3.geoInterpolate([A.lon,A.lat],[B.lon,B.lat])(.5)}
+function cfChip(){const el=document.getElementById("cfbox");if(!el)return;const ws=(S.wars||[]).filter(w=>w.l>0),st=typeof inStreet!=="undefined"&&inStreet,
+  k=[ws.length,cfOn(),st,ws.map(w=>w.l).join("")].join();if(k===_cfKey)return;_cfKey=k;
+  el.hidden=!ws.length||st;if(!ws.length&&_cfPop)cfClose();const hot=ws.filter(w=>w.l>=3).length;
+  const ch=document.getElementById("cfchip");ch.setAttribute("aria-pressed",cfOn());ch.title=cfOn()?"Hide conflicts on the map":"Show conflicts on the map";
+  ch.innerHTML=`⚔ Conflicts${cfOn()?"":" (hidden)"} <i>${ws.length}</i>`;if(!hot)ch.querySelector("i").style.background=WARC[1];
+  const lg=document.getElementById("cfleg");lg.hidden=!cfOn();lg.innerHTML=[1,2,3,4].map(l=>`<span><b style="background:${WARC[l]}"></b>${WARL[l]}</span>`).join("")}
+function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filter(w=>w.l>0);if(!ws.length||!cfOn())return;
+  const t=performance.now()/1000,lv=cfLevels(),zs=Math.min(1.6,.85+V.k*.08),anim=typeof reduce==="undefined"||!reduce;ctx.save();
+  for(const n in lv){const l=lv[n],col=WARC[l],pu=l>=3&&anim?.5+.5*Math.sin(t*(l>=4?3.2:2)):0,f=cfFeat(n);
+    if(f){ctx.beginPath();path(f);ctx.globalAlpha=.12+.05*l+.12*pu;ctx.fillStyle=col;ctx.fill();ctx.globalAlpha=.8;ctx.lineWidth=l>=4?1.6:1.1;ctx.strokeStyle=col;ctx.stroke()}
+    const c=cfCap(n);if(c&&visible(c.lon,c.lat)){const [x,y]=proj([c.lon,c.lat]);ctx.globalAlpha=.75-.35*pu;ctx.beginPath();ctx.arc(x,y,(12+l*1.5+pu*5)*zs,0,7);ctx.strokeStyle=col;ctx.lineWidth=l>=3?2:1.4;ctx.setLineDash(l>=3?[]:[3,3]);ctx.stroke();ctx.setLineDash([])}}
+  for(const w of ws){const A=cfCap(w.a),B=cfCap(w.b);if(!A||!B)continue;const col=WARC[w.l];
+    ctx.globalAlpha=.9;ctx.beginPath();path({type:"LineString",coordinates:[[A.lon,A.lat],[B.lon,B.lat]]});ctx.setLineDash(w.l>=4?[]:[6,4]);ctx.strokeStyle=col;ctx.lineWidth=1+w.l*.45;ctx.stroke();ctx.setLineDash([]);
+    const m=cfMid(w);if(!visible(m[0],m[1]))continue;const [x,y]=proj(m),r=9*zs;
+    ctx.globalAlpha=1;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=col;ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle="#fff";ctx.stroke();
+    ctx.fillStyle="#fff";ctx.font=`700 ${Math.round(10*zs)}px system-ui, sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(["","!","$","⚔","⚔"][w.l],x,y+.5);ctx.textAlign="start";
+    if(_cfPop&&_cfPop.id===w.id){ctx.beginPath();ctx.arc(x,y,r+4,0,7);ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke()}
+    _cfHit.push({x,y,r:Math.max(16,r+6),w})}
+  ctx.restore()}
+/* tap: a badge opens its popup; with no city under the finger, a shaded country opens its worst conflict */
+function cfTap(x,y,best,bd){const ws=(S.wars||[]).filter(w=>w.l>0);if(!ws.length||!cfOn()){if(_cfPop)cfClose();return false}
+  let hit=null,hd=1e9;for(const h of _cfHit){const d=Math.hypot(h.x-x,h.y-y);if(d<h.r&&d<hd){hd=d;hit=h.w}}
+  if(!hit&&best){if(_cfPop)cfClose();return false}
+  if(!hit&&!best){const g=proj.invert([x,y]);if(g&&visible(g[0],g[1])){const lv=cfLevels();for(const n in lv){const f=cfFeat(n);if(f&&d3.geoContains(f,g)){hit=ws.filter(w=>w.a===n||w.b===n).sort((a,b)=>b.l-a.l)[0];break}}}}
+  if(!hit){if(_cfPop){cfClose();return true}return false}
+  cfOpen(hit,x,y);return true}
+function cfExposure(w){let n=0,loss=0;for(const c of CITIES){if(c.country!==w.a&&c.country!==w.b)continue;const o=S.own[c.id];if(!o)continue;const k=Object.keys(o).filter(x=>o[x]).length;if(!k)continue;n+=k;const m=warMult(c);loss+=Math.max(0,cityProfit(c))/m*(1-m)}return{n,loss}}
+function cfHtml(w){const days=w.d0!=null?Math.max(0,S.day-w.d0):null,ex=cfExposure(w),c=warCost(w),ag=w.att&&(w.att===w.a||w.att===w.b)?w.att:null;
+  return `<button class="x" data-cf="x" aria-label="Close">×</button><h4>${w.a} – ${w.b}</h4>
+  <span class="tag" style="background:${WARC[w.l]};color:#fff">${WARL[w.l].toUpperCase()}</span>${ag?` <span class="m">started by ${ag}</span>`:""}
+  <div class="stg">${[1,2,3,4].map(l=>`<i style="${l<=w.l?"background:"+WARC[l]:""}"></i>`).join("")}</div><div class="stl"><span>Tension</span><span>Sanctions</span><span>Clashes</span><span>War</span></div>
+  <p><b>Effect in ${w.a} and ${w.b}:</b> ${CF_EFF[w.l]}.</p>
+  <p class="m">${days!=null?`Running ${days} day${days===1?"":"s"}. `:"Ongoing. "}No fixed end: each day it can escalate or ease until a peace deal.</p>
+  <p class="m">${ex.n?`Your ${ex.n} business${ex.n===1?"":"es"} there lose about ${fmt(ex.loss)}/hr to conflicts.`:"You have no businesses in either country."}</p>
+  <div class="bt"><button class="chip" data-cf="peace" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="chip" data-cf="gov">Gov tab</button></div>`}
+function cfOpen(w,x,y){const el=document.getElementById("cfpop");_cfPop={id:w.id,x,y};el.innerHTML=cfHtml(w);el.hidden=false;
+  const pw=el.parentElement.clientWidth,ph=el.parentElement.clientHeight,bw=el.offsetWidth,bh=el.offsetHeight;
+  el.style.left=Math.max(12,Math.min(pw-bw-12,x-bw/2))+"px";el.style.top=Math.max(52,Math.min(ph-bh-12,y+18>ph-bh-12?y-bh-18:y+18))+"px";draw()}
+function cfClose(){_cfPop=null;const el=document.getElementById("cfpop");if(el)el.hidden=true;draw()}
+document.getElementById("cfchip").addEventListener("click",()=>{S.cfOff=cfOn()?1:0;if(!S.cfOff)delete S.cfOff;_cfKey="";if(!cfOn())cfClose();cfChip();draw();save()});
+document.getElementById("cfpop").addEventListener("click",e=>{const b=e.target.closest("[data-cf]");if(!b||!_cfPop)return;const w=(S.wars||[]).find(x=>x.id===_cfPop.id);
+  if(b.dataset.cf==="x"||!w){cfClose();return}
+  if(b.dataset.cf==="gov"){const c=cfCap(w.a);cfClose();tab="gov";openCity(c);return}
+  if(b.dataset.cf==="peace"){warAct(w.id,"peace");hud();if(sel)renderSheet();const w2=(S.wars||[]).find(x=>x.id===w.id);if(w2)cfOpen(w2,_cfPop.x,_cfPop.y);else cfClose();_cfKey="";cfChip()}});
+/* gentle pulse for clashes/wars (about 12 fps, only while one is drawn on the globe view); also keeps the chip in sync */
+let cfLast=0,cfChipT=0;function cfLoop(t){const st=typeof inStreet!=="undefined"&&inStreet;
+  if(t-cfChipT>500){cfChipT=t;cfChip();if(_cfPop&&!(S.wars||[]).some(w=>w.id===_cfPop.id))cfClose()}
+  if(!st&&cfOn()&&document.visibilityState==="visible"&&!(typeof reduce!=="undefined"&&reduce)&&t-cfLast>80&&(S.wars||[]).some(w=>w.l>=3)){cfLast=t;draw()}requestAnimationFrame(cfLoop)}
+requestAnimationFrame(cfLoop);
 /* ---------- NPC governments: economy, diplomacy, conquest ("Diplomacy & power") ----------
    MODEL (all state in S.dip, created lazily by dip(); every field has a safe default, so old saves load):
    - One step per game day, run at the end of govHour (after warHour). Offline catch-up calls it in quiet mode (<=49 times), cost is O(countries + wars).
@@ -2367,7 +2445,7 @@ function dipDay(quiet){const C=DIPCFG,d=dip();d.day++;S.wars=S.wars||[];const ws
     if(fr.length>1){const wt=fr.map(n=>n===dipPlayerC()?0:dipPower(n)*dipAggr(n)),tot=wt.reduce((x,y)=>x+y,0);let r=Math.random()*tot,a=fr[fr.length-1];for(let i=0;i<fr.length;i++){r-=wt[i];if(r<=0){a=fr[i];break}}
       const cand=fr.filter(b=>b!==a&&!dipWarOf(a,b)&&(d.pcd[dipKey(a,b)]||0)<=d.day&&dipDist(a,b)<C.nearKm);
       if(cand.length){const w2=cand.map(b=>Math.max(.3,Math.min(3,dipPower(a)/dipPower(b)))),t2=w2.reduce((x,y)=>x+y,0);let r2=Math.random()*t2,b=cand[cand.length-1];for(let i=0;i<cand.length;i++){r2-=w2[i];if(r2<=0){b=cand[i];break}}
-        ws.push({id:(S.wid=(S.wid||0)+1),a,b,l:1,att:a,sc:d.day+C.stepCd});d.cd=d.day+C.startCd;
+        ws.push({id:(S.wid=(S.wid||0)+1),a,b,l:1,att:a,sc:d.day+C.stepCd,d0:S.day});d.cd=d.day+C.startCd;
         dipSay(`${a} accuses ${b} of ${["border violations","airspace incursions","backing rebels","insulting its envoy"][Math.floor(Math.random()*4)]}`,dipRel(a,b),quiet)}}}
   // escalation / de-escalation / conquest
   let n=0;for(const w of ws){if(++n>C.maxScan)break;if(w.l<1||d.ruler[w.a]||d.ruler[w.b])continue;
