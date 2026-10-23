@@ -1996,7 +1996,7 @@ function renderSaves(){save();let h=`<div class="shead"><div><h2>Save slots</h2>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${act?`<button class="buy up" data-sv="rename" data-n="${n}">Rename</button>`:`<button class="buy" data-sv="load" data-n="${n}">${i?"Load":"New game"}</button>`}
     ${i&&!act?`<button class="buy up" data-sv="del" data-n="${n}">Delete</button>`:""}</span></div>`;
     if(act&&renaming)h+=`<div style="display:flex;gap:8px;padding:8px 0 12px"><input id="svname" maxlength="24" value="${(S.name||"").replace(/"/g,"")}" placeholder="Name this game" style="flex:1;min-width:0;font:inherit;padding:8px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink)"><button class="buy" data-sv="setname">Save</button></div>`}
-  h+=`</div><div class="row"><div class="n">Theme</div><div class="d">Light or dark look for the game and dashboard (default dark).</div><span style="display:flex;gap:6px;grid-row:1/3;grid-column:2"><button class="buy${themeGet()==="dark"?"":" up"}" data-sv="theme" data-t="dark">Dark</button><button class="buy${themeGet()==="light"?"":" up"}" data-sv="theme" data-t="light">Light</button></span></div><div class="row"><div class="n">Share progress</div><div class="d">Send this game's numbers to the developer for playtesting${PTP.name?` as ${ptEsc(PTP.name)}`:""}.</div><button class="buy" data-sv="share">Share progress</button></div><p class="d" style="font-size:12px;color:var(--muted);padding:8px 0">Every slot keeps earning while you play another one, up to the usual 48 hours of offline income when you come back to it.</p>`;
+  h+=`</div><div class="row"><div class="n">Theme</div><div class="d">Light or dark look for the game and dashboard (default dark).</div><span style="display:flex;gap:6px;grid-row:1/3;grid-column:2"><button class="buy${themeGet()==="dark"?"":" up"}" data-sv="theme" data-t="dark">Dark</button><button class="buy${themeGet()==="light"?"":" up"}" data-sv="theme" data-t="light">Light</button></span></div><div class="row"><div class="n">Share progress</div><div class="d">Send this game's numbers to the developer for playtesting${PTP.name?` as ${ptEsc(PTP.name)}`:""}.</div><button class="buy" data-sv="share">Share progress</button></div>${delAccHtml()}<p class="d" style="font-size:12px;color:var(--muted);padding:8px 0">Every slot keeps earning while you play another one, up to the usual 48 hours of offline income when you come back to it.</p>`;
   sheet.innerHTML=h;$("#cls").onclick=closeSheet}
 let renaming=false;
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-sv]");if(!b)return;const n=+b.dataset.n,a=b.dataset.sv;
@@ -2005,6 +2005,8 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-sv]");if(!b)r
   else if(a==="del"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}try{localStorage.removeItem(slotKey(n))}catch(e){}toast(`Slot ${n} deleted`);renderSaves()}
   else if(a==="rename"){renaming=!renaming;renderSaves();const i=$("#svname");if(i)i.focus()}
   else if(a==="share")ptSend();
+  else if(a==="delacc"){DA.open=!DA.open;DA.err="";renderSaves()}
+  else if(a==="delgo")delAccount();
   else if(a==="setname"){S.name=$("#svname").value.trim().slice(0,24)||undefined;renaming=false;save();renderSaves()}});
 $("#rsbtn").onclick=()=>mode==="rs"&&sheet.classList.contains("open")?closeSheet():openResearch();
 function openResearch(){mode="rs";sel=null;renderResearch();sheet.scrollTop=0;sheet.classList.add("open");draw()}
@@ -4327,7 +4329,7 @@ function onPubData(){const p=onProf(),{nw}=totals(),ids=o=>Object.keys(o||{}).fi
   const v=Math.round(isFinite(nw)?nw:0),rank=Math.min(1000,1+S.rivals.filter(r=>r.nw>v).length+ON.players.filter(q=>(+q.nw||0)>v).length);
   return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null,...(typeof CT!=="undefined"&&CT&&CT.mine?{cid:CT.mine.id}:{})}}
 function onLocPub(){try{if(!ON.ready||!ON.user)return;const l=S.loc&&S.loc.city;if(l!==ON.lastLoc){ON.lastLoc=l;onPublish(true)}}catch(e){}}
-function onPublish(force){if(!ON.ready||!ON.user)return;const d=onPubData(),sig=JSON.stringify(d),n=Date.now();
+function onPublish(force){if(!ON.ready||!ON.user||ON.deleting)return;const d=onPubData(),sig=JSON.stringify(d),n=Date.now();
   if(!force&&!(n-ON.lastPub>=60000||(sig!==ON.lastSig&&n-ON.lastPub>=60000)))return;
   if(!force&&sig===ON.lastSig&&n-ON.lastPub<300000)return;
   ON.lastPub=n;ON.lastSig=sig;d.lastSeen=window.firebase.firestore.FieldValue.serverTimestamp();
@@ -4392,6 +4394,43 @@ function onlineWire(){if(!onEnabled())return;csWire();const v=s=>{const e=$(s);r
           if(a==="up")await ON.auth.createUserWithEmailAndPassword(e,pw);else await ON.auth.signInWithEmailAndPassword(e,pw)}
         ON.draft={e:"",p:"",n:""};save()}
     }catch(e){ON.err=String(e&&e.message||e).replace(/^Firebase:\s*/,"").slice(0,140)}ON.busy=false;if(document.activeElement)document.activeElement.blur();onRefresh()})}
+/* ---------- permanent account deletion (Save slots screen). Removes this player's online data, then the Firebase account itself.
+   Removed: players/{uid}, saves/{uid} (+parts), cmlast/{uid}, own cjoin requests, own cartel chat messages, own open freight posts,
+   own cartel if it is empty (else the player just leaves; a boss with members must hand over or disband first). Never touches other players' data or world/rivals. ---------- */
+const DA={open:false,busy:false,err:"",step:""};
+function delAccHtml(){if(!onEnabled()||!ON.user)return"";const u=ON.user,pw=(u.providerData||[]).some(p=>p&&p.providerId==="password"),inp="width:100%;box-sizing:border-box;font:inherit;padding:8px;margin-top:6px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink)";
+  let h=`<div class="row"><div class="n" style="color:var(--bad)">Delete account</div><div class="d">Permanently delete your online account${u.email?" ("+onEsc(u.email)+")":""}, your cloud save and your profile on the map. This can't be undone.</div><button class="buy up" data-sv="delacc">${DA.open?"Cancel":"Delete account"}</button></div>`;
+  if(DA.open)h+=`<div class="row" id="delbox" style="display:block;border:1px solid var(--bad);border-radius:6px;padding:10px;margin:6px 0"><div class="d"><b>This permanently deletes:</b> your sign-in, cloud save, map profile, your open freight posts, your cartel chat messages and join requests, and your cartel if you're its only member (otherwise you leave it). Save slots on this device stay. You'll be signed out.</div>
+    ${pw?`<input id="delpw" type="password" autocomplete="current-password" placeholder="Your password" style="${inp}">`:`<div class="d" style="margin-top:6px">You'll be asked to confirm with Google.</div>`}
+    <input id="delok" autocomplete="off" placeholder='Type DELETE to confirm' style="${inp}">
+    ${DA.err?`<div class="d" style="color:var(--bad);margin-top:6px">${onEsc(DA.err)}</div>`:""}
+    <button class="buy" data-sv="delgo" style="margin-top:8px;width:100%;background:#b91c1c!important;border-color:#ef4444"${DA.busy?" disabled":""}>${DA.busy?onEsc(DA.step||"Deleting…"):"Delete my account forever"}</button></div>`;
+  return h}
+async function delAccount(){if(DA.busy||!ON.user)return;const u=ON.user,uid=u.uid,db=ON.db,ok=($("#delok")||{}).value||"",pw=($("#delpw")||{}).value||"";
+  if(ok.trim()!=="DELETE"){DA.err="Type DELETE (in capitals) to confirm";renderSaves();return}
+  const isPw=(u.providerData||[]).some(p=>p&&p.providerId==="password");if(isPw&&!pw){DA.err="Enter your password";renderSaves();return}
+  const m=CT.mine;if(m&&m.boss===uid&&m.members.length>1){DA.err="You run a cartel with other members. Remove them and disband it first (Cartel app).";renderSaves();return}
+  if(m&&m.boss===uid&&m.tre>0){DA.err="Empty your cartel's treasury and disband it first (Cartel app).";renderSaves();return}
+  const st=t=>{DA.step=t;renderSaves()};DA.busy=true;DA.err="";
+  try{st("Checking it's you…");const A=window.firebase.auth;
+    if(isPw)await u.reauthenticateWithCredential(A.EmailAuthProvider.credential(u.email,pw));else await u.reauthenticateWithPopup(new A.GoogleAuthProvider());
+    ON.deleting=true;st("Removing your data…");
+    await db.collection("cmlast").doc(uid).delete();
+    const del=async q=>{const r=await q.get();for(const d of r.docs)await d.ref.delete()};
+    if(m)await del(db.collection("cmsg").where("cid","==",m.id).where("uid","==",uid));
+    if(m){if(m.boss===uid)await db.collection("cartels").doc(m.id).delete();else await db.collection("cartels").doc(m.id).update({members:m.members.filter(x=>x!==uid)})}
+    await del(db.collection("cjoin").where("uid","==",uid));
+    const fr=await db.collection("freight").where("shipper","==",uid).get();for(const d of fr.docs)if(!("carrier" in (d.data()||{})))await d.ref.delete();
+    for(let i=0;i<31;i++)await db.collection("saves").doc(uid).collection("parts").doc(String(i)).delete();
+    await db.collection("saves").doc(uid).delete();
+    await db.collection("players").doc(uid).delete();
+    st("Deleting your account…");await u.delete();
+    try{await ON.auth.signOut()}catch(e){}
+    try{localStorage.removeItem(WRMKEY)}catch(e){}
+    DA.busy=false;DA.open=false;ON.deleting=false;ON.user=null;toast("Your account has been deleted");closeSheet();gateSync()}
+  catch(e){DA.busy=false;ON.deleting=false;const c=e&&e.code||"";
+    DA.err=c==="auth/wrong-password"||c==="auth/invalid-credential"||c==="auth/invalid-login-credentials"?"Wrong password":c==="auth/popup-closed-by-user"?"Google confirmation was cancelled":"Couldn't delete: "+String(e&&e.message||e).replace(/^Firebase:\s*/,"").slice(0,140);
+    if(ON.user){onPublish(true)}renderSaves()}}
 /* ---------- sign-in gate: every player must be signed in (email account) to play while Firebase is on ---------- */
 const GATE={busy:false,err:"",msg:"",up:false};
 function gateSync(){const need=onEnabled()&&!ON.user;let ov=document.getElementById("gate");
@@ -4446,7 +4485,7 @@ function csRef(){return ON.db.collection("saves").doc(ON.user.uid)}
 async function csFetch(){const s=await csRef().get();if(!s.exists)return null;const d=s.data()||{};return d}
 async function csData(d){if(!(d.n>0))return d.d;let out="";for(let i=0;i<d.n;i++){const p=await csRef().collection("parts").doc(String(i)).get();const v=p.exists?p.data():null;
   if(!v||v.sid!==d.sid)throw new Error("cloud save is incomplete, try again");out+=v.d}return out}
-async function csUpload(force){if(!ON.ready||!ON.user||CS.busy||CS.pending||!CS.checked)return;save();let str;try{str=localStorage.getItem(KEY)||JSON.stringify(S)}catch(e){str=JSON.stringify(S)}
+async function csUpload(force){if(!ON.ready||!ON.user||ON.deleting||CS.busy||CS.pending||!CS.checked)return;save();let str;try{str=localStorage.getItem(KEY)||JSON.stringify(S)}catch(e){str=JSON.stringify(S)}
   if(!force&&str===CS.lastStr)return;CS.busy=true;const sid=Date.now().toString(36)+Math.random().toString(36).slice(2,7),sm=csSummary();
   try{if(!force){const cur=await csFetch(),m=csMeta();if(cur&&cur.sid!==m.sid){CS.doc=cur;CS.pending=cur;CS.busy=false;csAsk();onRefresh();return}}
     const big=str.length>CSPART,n=big?Math.ceil(str.length/CSPART):0,ts=window.firebase.firestore.FieldValue.serverTimestamp();
