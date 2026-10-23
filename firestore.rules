@@ -143,6 +143,55 @@ service cloud.firestore {
       allow read, delete: if request.auth != null
         && (resource.data.to == request.auth.uid || request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1');
     }
+    // Online freight board: a shipper posts a haul (goods + pay are escrowed in the shipper's own save); one carrier accepts; the carrier marks it done; the shipper pays through transfers.
+    // Accept = an update that adds {carrier, carrierName, acc, eta} and is only allowed while no carrier is set, so of two racing carriers exactly one commits.
+    // Done = the carrier adds {done} with server time between eta and dl. Cancel = shipper deletes before acceptance. Delete after done must come in the same batch as
+    // transfers/f<id> paying the carrier the full pay (existsAfter/getAfter), so a haul cannot be settled without paying. An accepted haul that is not done by dl may be deleted by the shipper (refund).
+    match /freight/{id} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['shipper', 'shipperName', 'g', 'q', 'from', 'to', 'pay', 'dl', 'at'])
+        && request.resource.data.keys().hasAll(['shipper', 'shipperName', 'g', 'q', 'from', 'to', 'pay', 'dl', 'at'])
+        && request.resource.data.shipper == request.auth.uid
+        && request.resource.data.shipperName is string && request.resource.data.shipperName.size() <= 20
+        && request.resource.data.g is string && request.resource.data.g.size() > 0 && request.resource.data.g.size() <= 20
+        && request.resource.data.q is int && request.resource.data.q >= 1 && request.resource.data.q <= 5000
+        && request.resource.data.from is int && request.resource.data.from >= 0 && request.resource.data.from < 10000
+        && request.resource.data.to is int && request.resource.data.to >= 0 && request.resource.data.to < 10000
+        && request.resource.data.from != request.resource.data.to
+        && request.resource.data.pay is int && request.resource.data.pay >= 100 && request.resource.data.pay <= 1000000
+        && request.resource.data.dl is int
+        && request.resource.data.dl > request.time.toMillis() + 60000
+        && request.resource.data.dl <= request.time.toMillis() + 259200000 + 300000
+        && request.resource.data.at == request.time;
+      allow update: if request.auth != null && (
+        (!('carrier' in resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['carrier', 'carrierName', 'acc', 'eta'])
+          && request.resource.data.keys().hasAll(['carrier', 'carrierName', 'acc', 'eta'])
+          && request.resource.data.carrier == request.auth.uid
+          && request.auth.uid != resource.data.shipper
+          && request.resource.data.carrierName is string && request.resource.data.carrierName.size() <= 20
+          && request.resource.data.acc == request.time
+          && request.resource.data.eta is int
+          && request.resource.data.eta >= request.time.toMillis() + 60000
+          && request.resource.data.eta <= resource.data.dl
+          && resource.data.dl > request.time.toMillis())
+        ||
+        ('carrier' in resource.data && !('done' in resource.data)
+          && resource.data.carrier == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['done'])
+          && request.resource.data.done == request.time
+          && request.time.toMillis() >= resource.data.eta
+          && request.time.toMillis() <= resource.data.dl));
+      allow delete: if request.auth != null && resource.data.shipper == request.auth.uid && (
+        !('carrier' in resource.data)
+        || ('done' in resource.data
+            && existsAfter(/databases/$(database)/documents/transfers/$('f' + id))
+            && getAfter(/databases/$(database)/documents/transfers/$('f' + id)).data.to == resource.data.carrier
+            && getAfter(/databases/$(database)/documents/transfers/$('f' + id)).data.from == request.auth.uid
+            && getAfter(/databases/$(database)/documents/transfers/$('f' + id)).data.amt == resource.data.pay)
+        || (!('done' in resource.data) && request.time.toMillis() > resource.data.dl));
+    }
     match /{document=**} {
       allow read, write: if false;
     }

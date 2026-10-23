@@ -4313,7 +4313,7 @@ function onScript(u){return new Promise((ok,no)=>{const s=document.createElement
 async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
   try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
-    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM)wrPublish(true);else wrMirror(false);onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);onRefresh()});
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM)wrPublish(true);else wrMirror(false);onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);onRefresh()});
     ON.unsubB=ON.db.collection("world").doc("bot").onSnapshot(d=>{if(WRM&&ON.user&&devUid(ON.user.uid))return;const v=d.exists?botClean(d.data()):null;if(!v)return;ON.bot=v;try{localStorage.setItem(BOTKEY,JSON.stringify(v))}catch(e){}draw();onRefresh();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)))phRender()},e=>{ON.err="Couldn't load the bot company: "+(e&&e.code||e)});
     ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;ON.gotPlayers=true;lbCache(a);draw();onRefresh()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
     ON.unsubW=ON.db.collection("world").doc("rivals").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list)||v.list.length!==RIVALS.length)return;
@@ -4591,6 +4591,100 @@ function botHtml(){if(!onEnabled()||!ON.user)return"";botPl();const b=ON.bot,x=B
   return h+botList(x)}
 function botList(x){let h="";if(x.pend.length)h+=`<p class="ph-sub" style="margin-top:12px">Pending with Meridian Freight</p><div class="ph-list">${x.pend.map(p=>`<div><b style="display:block">${{buy:"Buy",sell:"Sell",haul:"Haul"}[p.kind]||"Request"} ${p.q} ${G[p.g]?G[p.g][0].toLowerCase():""}</b>${botStale()?"Waiting: processed when the world server is online":"Being processed"} · ${fmtDur(Date.now()-p.t)} ago</div>`).join("")}</div>`;
   if(x.hist.length)h+=`<p class="ph-sub" style="margin-top:12px">Meridian Freight replies</p><div class="ph-list">${x.hist.slice(0,5).map(e=>`<div><b style="display:block;color:${e.ok?"#4ade80":"#f87171"}">${e.ok?(e.k==="sell"?"Sold":e.k==="haul"?"Hauled":"Delivered"):"Declined"}${e.q&&G[e.g]?` ${e.q} ${G[e.g][0].toLowerCase()}`:""}${e.cash?" · "+(e.ok&&e.k!=="sell"?"change ":"")+"+"+fmt(e.cash):""}</b>${onEsc(e.msg)} · ${fmtDur(Date.now()-e.t)} ago</div>`).join("")}</div>`;return h}
+/* ---------- online freight board: players post hauls, other players' Trucking companies carry them. Firestore freight/{id} ----------
+   Shipper posts {shipper,shipperName,g,q,from,to,pay,dl,at}: the goods and the pay are escrowed in the shipper's own save (S.frt.my[id]), refunded on cancel/expiry.
+   A carrier with a Trucking hub on that landmass and enough free trucks accepts with ONE update adding {carrier,carrierName,acc,eta}; rules only allow it while no carrier is set,
+   so exactly one of two racing carriers wins. At eta the carrier writes {done} (rules: server time between eta and dl). The shipper's client then credits the goods at the destination
+   and, in ONE batch, creates transfers/f<id> (the existing player transfer, paying the carrier) and deletes the haul; rules refuse that delete unless the matching transfer is created in the same batch.
+   Cancel (shipper deletes) is only possible before acceptance; an accepted haul that is not done by dl is deleted by the shipper (rules: only after dl) and refunded.
+   Local ledgers make every step idempotent: S.frt.my (open escrow), S.frt.owe (goods credited, payment batch to retry), S.frt.run (carrier's accepted jobs). */
+const FR_MINPAY=100,FR_MAXPAY=1e6,FR_MAXT=120,FR_TRK=30,FR_MAXQ=5000,FR_GRACE=120000,FR_SPD=300;
+const FR={tab:"open",c:"",d:"",g:"",q:"",p:"",h:"12",busy:false,unsub:null,docs:[],got:false,infl:{}};
+function FS(){const x=S.frt=S.frt&&typeof S.frt==="object"&&!Array.isArray(S.frt)?S.frt:{};for(const k of["my","run","owe"])if(!x[k]||typeof x[k]!=="object"||Array.isArray(x[k]))x[k]={};if(!Array.isArray(x.hist))x.hist=[];return x}
+function frLog(e){const x=FS();e.t=Date.now();x.hist.unshift(e);x.hist=x.hist.slice(0,12)}
+const frTons=(g,q)=>q*tpu(g),frKm=(a,b)=>distKm(CITIES[a],CITIES[b]);
+const frFee=(g,q,a,b)=>Math.min(FR_MAXPAY,Math.ceil(300+frKm(a,b)*frTons(g,q)*.1));
+const frTr=(g,q)=>Math.max(1,Math.ceil(frTons(g,q)/FR_TRK));
+const frUsed=()=>Object.values(FS().run).reduce((a,r)=>a+(r.done?0:(+r.tr||0)),0);
+const frFree=()=>Math.max(0,freeTrucks()-frUsed());
+function frHub(c){const l=landmass(CITIES[c]);let best=null,bd=1e9;for(const h of hubs())if(landmass(h)===l){const k=distKm(h,CITIES[c]);if(k<bd){bd=k;best=h}}return best?{h:best,km:bd}:null}
+const frEtaMs=km=>Math.max(120000,km/FR_SPD*DAYMS/4*.75);
+function frListen(u){if(FR.unsub){try{FR.unsub()}catch(_){}FR.unsub=null}FR.docs=[];FR.got=false;if(!u||!ON.db)return;
+  FR.unsub=ON.db.collection("freight").onSnapshot(q=>{const a=[];q.forEach(d=>a.push({id:d.id,data:d.data()||{}}));FR.docs=a;FR.got=true;try{frSweep()}catch(e){console.warn("fr",e)}frPaint()},e=>{ON.err="Couldn't load the freight board: "+(e&&e.code||e)})}
+function frPaint(){if(PH.open&&PH.app==="freight"&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))phRender()}
+/* shipper: post */
+function frPostChk(){const wh=botWh(),c=FR.c===""?null:CITIES[+FR.c],d=FR.d===""?null:CITIES[+FR.d],g=FR.g,q=Math.floor(+FR.q||0);
+  if(!c)return{err:"Pick a warehouse city (you need a warehouse)"};if(!d||d.id===c.id)return{err:"Pick a different destination warehouse"};if(landmass(c)!==landmass(d))return{err:"Trucks can't cross oceans"};
+  if(!G[g])return{err:"Pick a good"};if(q<1)return{err:"Enter a quantity"};if(q>FR_MAXQ)return{err:`Maximum ${FR_MAXQ} units per haul`};const t=frTons(g,q);if(t>FR_MAXT)return{err:`Too heavy: max ${FR_MAXT} t per haul`};
+  if(botHave(c.id,g)<q)return{err:`Only ${Math.floor(botHave(c.id,g))} in ${c.name}`};
+  const sug=frFee(g,q,c.id,d.id),pay=FR.p===""?sug:Math.floor(+FR.p||0);if(pay<FR_MINPAY)return{err:`Minimum pay is ${fmt(FR_MINPAY)}`};if(pay>FR_MAXPAY)return{err:`Maximum pay is ${fmt(FR_MAXPAY)}`};if(pay>S.cash)return{err:`You need ${fmt(pay)} in cash`};
+  return{q,pay,sug,line:`Haul ${q} ${G[g][0].toLowerCase()} (${Math.round(t)} t) ${c.name} → ${d.name}, ${Math.round(distKm(c,d))} km, pay ${fmt(pay)} (suggested ${fmt(sug)})`}}
+function frPost(){if(FR.busy||!ON.user||!ON.db)return;const r=frPostChk();if(r.err){toast(r.err);return}
+  const c=+FR.c,d=+FR.d,g=FR.g,me=onProf(),ref=ON.db.collection("freight").doc(),FV=window.firebase.firestore.FieldValue,dl=Date.now()+(+FR.h||12)*3600000,x=FS();
+  const doc={shipper:ON.user.uid,shipperName:(me.name||"Tycoon").slice(0,20),g,q:r.q,from:c,to:d,pay:r.pay,dl,at:FV.serverTimestamp()};
+  S.cash-=r.pay;S.inv[c][g]-=r.q;x.my[ref.id]={g,q:r.q,from:c,to:d,pay:r.pay,dl,t:Date.now()};FR.infl[ref.id]=1;FR.busy=true;save();hud();
+  ref.set(doc).then(()=>{FR.busy=false;delete FR.infl[ref.id];FR.q="";FR.p="";FR.tab="mine";toast("Haul posted to the freight board");phRender()},
+    e=>{FR.busy=false;delete FR.infl[ref.id];if(x.my[ref.id]){delete x.my[ref.id];S.cash+=r.pay;const inv=S.inv[c]=S.inv[c]||{};inv[g]=(inv[g]||0)+r.q}save();hud();toast("Post failed, refunded: "+(e&&e.code||e));phRender()})}
+function frCancel(id){const m=FS().my[id];if(!m||FR.infl[id])return;const v=(FR.docs.find(d=>d.id===id)||{}).data;if(v&&v.carrier){toast("Too late: a carrier already took it");return}frDelete(id,true)}
+function frDelete(id,say){FR.infl[id]=1;ON.db.collection("freight").doc(id).delete().then(()=>{delete FR.infl[id];frRefund(id,say)},e=>{delete FR.infl[id];if(say)toast("Couldn't cancel: "+(e&&e.code||e))})}
+function frRefund(id,say){const x=FS(),m=x.my[id];if(!m)return;delete x.my[id];S.cash+=m.pay;ensureWh(CITIES[m.from]);const inv=S.inv[m.from]=S.inv[m.from]||{};inv[m.g]=(inv[m.g]||0)+m.q;
+  frLog({r:"refund",g:m.g,q:m.q,a:m.pay});toast(`Haul ${say?"cancelled":"expired"}: goods and ${fmt(m.pay)} refunded`);save();hud();frPaint()}
+function frSettle(id,v){const x=FS(),m=x.my[id];if(!m||FR.infl[id]||typeof v.carrier!=="string"||!v.carrier)return;delete x.my[id];
+  ensureWh(CITIES[m.to]);const inv=S.inv[m.to]=S.inv[m.to]||{};inv[m.g]=(inv[m.g]||0)+m.q;x.owe[id]={to:v.carrier,nm:String(v.carrierName||"Carrier").slice(0,20),pay:m.pay,g:m.g,q:m.q};save();hud();frPay(id)}
+function frPay(id){const x=FS(),o=x.owe[id];if(!o||FR.infl[id]||!ON.user||!ON.db)return;FR.infl[id]=1;const me=onProf(),FV=window.firebase.firestore.FieldValue,b=ON.db.batch();
+  b.set(ON.db.collection("transfers").doc("f"+id),{from:ON.user.uid,fromName:(me.name||"Tycoon").slice(0,20),to:o.to,amt:o.pay,at:FV.serverTimestamp(),note:("Freight: "+(G[o.g]?G[o.g][0]:o.g)).slice(0,40)});
+  b.delete(ON.db.collection("freight").doc(id));
+  b.commit().then(()=>{delete FR.infl[id];delete x.owe[id];frLog({r:"paid",g:o.g,q:o.q,a:o.pay,n:o.nm});toast(`Haul delivered: ${o.q} ${G[o.g]?G[o.g][0].toLowerCase():""} arrived, paid ${o.nm} ${fmt(o.pay)}`);save();frPaint()},e=>{delete FR.infl[id];ON.err="Couldn't pay a carrier, will retry: "+(e&&e.code||e)})}
+/* carrier: accept + run */
+function frAcceptChk(v){if(!ON.user)return"Sign in";if(v.shipper===ON.user.uid)return"Your own haul";if(v.carrier)return"Taken";if(!(v.dl>Date.now()))return"Expired";
+  if(!CITIES[v.from]||!CITIES[v.to]||!G[v.g])return"Bad haul";const hub=frHub(v.from);if(!hub)return"You need a Trucking company on this landmass";
+  const tr=frTr(v.g,v.q);if(frFree()<tr)return`Needs ${tr} free truck${tr>1?"s":""}, you have ${frFree()}`;
+  if(Date.now()+frEtaMs(hub.km+frKm(v.from,v.to))>v.dl)return"Can't make the deadline";return""}
+function frAccept(id){const d=FR.docs.find(z=>z.id===id);if(!d||FR.infl[id])return;const v=d.data,why=frAcceptChk(v);if(why){toast(why);return}
+  const hub=frHub(v.from),eta=Math.ceil(Date.now()+frEtaMs(hub.km+frKm(v.from,v.to))),tr=frTr(v.g,v.q),me=onProf(),FV=window.firebase.firestore.FieldValue;FR.infl[id]=1;
+  ON.db.collection("freight").doc(id).update({carrier:ON.user.uid,carrierName:(me.name||"Tycoon").slice(0,20),acc:FV.serverTimestamp(),eta}).then(()=>{delete FR.infl[id];
+    FS().run[id]={g:v.g,q:v.q,from:v.from,to:v.to,pay:v.pay,eta,dl:v.dl,tr,sh:String(v.shipperName||"Shipper").slice(0,20),done:0};FR.tab="mine";toast(`Haul accepted: deliver by ${fmtDur(eta-Date.now())} from now`);save();phRender()},
+    e=>{delete FR.infl[id];toast(e&&e.code==="permission-denied"?"Too late: another carrier got it first":"Couldn't accept: "+(e&&e.code||e));phRender()})}
+function frSweep(){if(!ON.user||!ON.db||!FR.got)return;const now=Date.now(),x=FS(),uid=ON.user.uid,by={};for(const d of FR.docs)by[d.id]=d.data;
+  for(const id in x.my){if(FR.infl[id])continue;const m=x.my[id],v=by[id];
+    if(!v){FR.infl[id]=1;ON.db.collection("freight").doc(id).get().then(s=>{delete FR.infl[id];if(!s.exists)frRefund(id,false)},()=>{delete FR.infl[id]});continue}
+    if(v.done)frSettle(id,v);else if(!v.carrier?now>m.dl:now>m.dl+FR_GRACE)frDelete(id,false)}
+  for(const id in x.owe){if(FR.infl[id])continue;if(by[id])frPay(id);else delete x.owe[id]}
+  for(const d of FR.docs){const v=d.data,id=d.id;if(v.carrier===uid&&!x.run[id]&&!v.done&&CITIES[v.from]&&G[v.g]&&Number.isFinite(+v.eta)&&v.shipper!==uid)x.run[id]={g:v.g,q:v.q,from:v.from,to:v.to,pay:v.pay,eta:+v.eta,dl:+v.dl,tr:frTr(v.g,v.q),sh:String(v.shipperName||"Shipper").slice(0,20),done:0}}
+  for(const id in x.run){const r=x.run[id],v=by[id];if(FR.infl["r"+id])continue;
+    if(!v){FR.infl["r"+id]=1;ON.db.collection("freight").doc(id).get().then(s=>{delete FR.infl["r"+id];if(!s.exists){frLog({r:r.done?"earned":"lost",g:r.g,q:r.q,a:r.pay});delete x.run[id];save();frPaint()}},()=>{delete FR.infl["r"+id]});continue}
+    if(v.carrier!==uid){delete x.run[id];continue}
+    if(v.done&&!r.done){r.done=1;save()}
+    else if(!r.done&&now>=r.eta){FR.infl["r"+id]=1;ON.db.collection("freight").doc(id).update({done:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete FR.infl["r"+id];r.done=1;toast(`Haul delivered, payment of ${fmt(r.pay)} is coming from ${r.sh}`);save();frPaint()},e=>{delete FR.infl["r"+id]})}}}
+if(onEnabled())setInterval(()=>{try{frSweep()}catch(e){console.warn("fr",e)}},15000);
+/* phone: Freight app */
+function frHtml(){if(!onEnabled()||!ON.user)return`<div class="ph-sub" style="margin-top:12px">Sign in (Online tab) to use the freight board: post hauls and hire other players' trucking companies.</div>`;
+  const x=FS(),now=Date.now(),ip="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border-radius:10px;border:1px solid #ffffff44;background:#0003;color:#fff;font:inherit;font-size:16px",uid=ON.user.uid;
+  const opt=(v,t,sel)=>`<option value="${v}" style="color:#000"${sel?" selected":""}>${onEsc(t)}</option>`,gn=k=>G[k]?G[k][0].toLowerCase():onEsc(k);
+  let h=`<div class="ph-rows"><div><span>Free trucks</span><b>${frFree()} / ${LG().trucks}</b></div><div><span>Trucking hubs</span><b>${hubs().length}</b></div><div><span>Board</span><b>${FR.got?FR.docs.filter(d=>!d.data.carrier&&d.data.dl>now).length+" open":"loading…"}</b></div></div>
+   <div style="display:flex;gap:4px;margin-top:8px">${[["open","Open loads"],["post","Post a haul"],["mine","My hauls"]].map(([k,t])=>`<button class="buy" data-ph="frtab" data-k="${k}" style="flex:1;min-width:0;padding:6px 2px;font-size:12px;color:#fff${FR.tab===k?";outline:2px solid #3b82f6":""}">${t}</button>`).join("")}</div>`;
+  if(FR.tab==="open"){const a=FR.docs.filter(d=>!d.data.carrier&&d.data.dl>now&&CITIES[d.data.from]&&CITIES[d.data.to]&&G[d.data.g]).sort((p,q)=>q.data.pay-p.data.pay).slice(0,30);
+    h+=a.length?`<div class="ph-list" style="margin-top:8px">${a.map(d=>{const v=d.data,mine=v.shipper===uid,why=mine?"Your own haul":frAcceptChk(v);
+      return`<div><b style="display:block">${v.q} ${gn(v.g)} · ${CITIES[v.from].name} → ${CITIES[v.to].name}</b>${Math.round(frKm(v.from,v.to))} km · ${frTr(v.g,v.q)} truck${frTr(v.g,v.q)>1?"s":""} · pays <b style="display:inline;color:#4ade80">${fmt(v.pay)}</b> · ${fmtDur(v.dl-now)} left<br>from ${gnHtml(String(v.shipperName||"Shipper").slice(0,20),devUid(v.shipper))}
+      ${why?`<span style="opacity:.7">${onEsc(why)}</span>`:`<button class="buy" data-ph="fracc" data-k="${onEsc(d.id)}" style="width:100%;margin-top:4px;background:#92400e!important;color:#fff;border-color:#f59e0b">Accept haul</button>`}</div>`}).join("")}</div>`
+      :`<div class="ph-sub" style="margin-top:10px">${FR.got?"No open loads right now. Post one, or check back later.":"Loading the board…"}</div>`;
+    if(!hubs().length)h+=`<div class="ph-sub" style="margin-top:8px">To carry loads you need a Trucking company (Business tab) on the same landmass.</div>`}
+  else if(FR.tab==="post"){const wh=botWh();
+    if(wh.length<2)return h+`<div class="ph-sub" style="margin-top:8px">You need warehouses in two cities on the same landmass (Depot tab) to post a haul.</div>`;
+    if(!wh.includes(+FR.c))FR.c=String(wh[0]);const same=wh.filter(i=>i!==+FR.c&&landmass(CITIES[i])===landmass(CITIES[+FR.c]));if(!same.includes(+FR.d))FR.d=same.length?String(same[0]):"";
+    const gs=Object.keys(G).filter(k=>botHave(+FR.c,k)>0);if(!gs.includes(FR.g))FR.g=gs[0]||"";
+    h+=`<select id="frc" style="${ip}">${wh.map(i=>opt(i,"From "+CITIES[i].name,+FR.c===i)).join("")}</select><select id="frd" style="${ip}">${same.map(i=>opt(i,"To "+CITIES[i].name,+FR.d===i)).join("")||opt("","(no warehouse on the same landmass)",1)}</select>
+     <select id="frg" style="${ip}">${gs.map(k=>opt(k,G[k][0]+" · you have "+Math.floor(botHave(+FR.c,k)),FR.g===k)).join("")||opt("","(nothing stored here)",1)}</select>
+     <input id="frq" type="number" inputmode="numeric" min="1" max="${FR_MAXQ}" step="1" placeholder="Quantity" value="${onEsc(FR.q)}" style="${ip}"><input id="frp" type="number" inputmode="numeric" min="${FR_MINPAY}" max="${FR_MAXPAY}" step="1" placeholder="Pay ($), blank = suggested" value="${onEsc(FR.p)}" style="${ip}">
+     <select id="frh" style="${ip}">${[6,12,24,48].map(n=>opt(n,"Deliver within "+n+" hours",+FR.h===n)).join("")}</select><div id="frquote" class="ph-sub" style="margin-top:6px">${frQuoteHtml()}</div>
+     <button class="buy" data-ph="frpost" style="width:100%;margin-top:8px;background:#92400e!important;color:#fff;border-color:#f59e0b" ${FR.busy?"disabled":""}>${FR.busy?"Posting…":"Post haul (goods and pay held in escrow)"}</button>`}
+  else{const my=Object.keys(x.my),run=Object.keys(x.run);
+    h+=`<p class="ph-sub" style="margin-top:10px">Hauls I posted</p><div class="ph-list">${my.map(id=>{const m=x.my[id],v=(FR.docs.find(d=>d.id===id)||{}).data||{},st=v.done?"delivered, paying":v.carrier?"in transit with "+onEsc(String(v.carrierName||"a carrier")):"waiting for a carrier";
+      return`<div><b style="display:block">${m.q} ${gn(m.g)} · ${CITIES[m.from]?CITIES[m.from].name:"?"} → ${CITIES[m.to]?CITIES[m.to].name:"?"}</b>${fmt(m.pay)} escrowed · ${st} · ${fmtDur(Math.abs(m.dl-now))} ${m.dl>now?"left":"overdue"}${!v.carrier&&!FR.infl[id]?`<button class="buy" data-ph="frcan" data-k="${onEsc(id)}" style="width:100%;margin-top:4px;color:#fff">Cancel and refund</button>`:""}</div>`}).join("")||"<div>None</div>"}</div>
+     <p class="ph-sub" style="margin-top:10px">Hauls I carry</p><div class="ph-list">${run.map(id=>{const r=x.run[id];return`<div><b style="display:block">${r.q} ${gn(r.g)} · ${CITIES[r.from]?CITIES[r.from].name:"?"} → ${CITIES[r.to]?CITIES[r.to].name:"?"}</b>for ${onEsc(r.sh)} · ${fmt(r.pay)} · ${r.done?"delivered, awaiting payment":r.eta>now?"arrives in "+fmtDur(r.eta-now):"arriving"} · ${r.tr} truck${r.tr>1?"s":""}</div>`}).join("")||"<div>None</div>"}</div>`;
+    if(x.hist.length)h+=`<p class="ph-sub" style="margin-top:10px">History</p><div class="ph-list">${x.hist.slice(0,6).map(e=>`<div><b style="color:${e.r==="lost"?"#f87171":e.r==="refund"?"#fbbf24":"#4ade80"}">${{paid:"Delivered, paid ",earned:"Earned ",refund:"Refunded ",lost:"Not delivered "}[e.r]||""}${fmt(e.a)}</b>${e.q} ${gn(e.g)}${e.n?" · "+onEsc(e.n):""} · ${fmtDur(Date.now()-e.t)} ago</div>`).join("")}</div>`}
+  return h}
+function frQuoteHtml(){const r=frPostChk();return r.err?`<span style="opacity:.7">${onEsc(r.err)}</span>`:onEsc(r.line)}
 /* ---------- first-time guide (S.tut: 0 = not yet shown, 9 = done) + one-time tips (S.tips) ---------- */
 if(S.tut==null)S.tut=0;S.tips=S.tips&&typeof S.tips==="object"?S.tips:{};
 if(S.tut===0&&(nOwnedSafe()||(S.sites||[]).length||S.day>2))S.tut=9;
@@ -5479,8 +5573,9 @@ const ICO={hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h
  market:'<path d="M4 19V9 M10 19V5 M16 19v-7 M22 19H2"/>',
  travel:'<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>',
  pop:'<path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1 M16 5.2a3 3 0 0 1 0 5.6 M18 14.2a5 5 0 0 1 3 4.8v1"/>',
+ freight:'<path d="M2 7h12v9H2z M14 10h4l3 3v3h-7z M6 19a1.8 1.8 0 1 0 0-.01 M17 19a1.8 1.8 0 1 0 0-.01"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["pop","Population","#0369a1"]];
+const APPS=[["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["pop","Population","#0369a1"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 function phPlace(){const el=PH.el,sc=phScale();el.style.setProperty("--phs",sc);const r=el.getBoundingClientRect(),w=r.width,h=r.height,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
@@ -5511,6 +5606,7 @@ function appHtml(k){const {inc,nw}=totals();
     <div class="ph-rows"><div><span>Combo</span><b>×${(1+Math.min(1,g.combo/50)).toFixed(2)}</b></div><div><span>Energy</span><b>${Math.round(g.en)}%</b></div><div><span>Earned today</span><b>${fmtc(g.today)}</b></div><div><span>All-time taps</span><b>${g.taps.toLocaleString()}</b></div></div>
     <div class="ph-seg" style="margin-top:8px">${GIGS.map((x,i)=>`<button data-ph="gigpick" data-k="${i}" aria-pressed="${g.i===i}" ${g.taps<x.u?"disabled":""}>${g.taps<x.u?x.u+" taps":x.n}</button>`).join("")}</div>
     <p class="ph-sub" style="margin-top:6px">Tap fast to build a combo. Energy refills over time and drops when you tap.</p>`}
+  if(k==="freight")return frHtml();
   if(k==="bank"){const sc=creditScore(),[bd,col]=scoreBand(sc),c=B().card;return `<div class="ph-big" style="color:${col}">${sc}</div><div class="ph-sub">credit score · ${bd}</div>${scoreSpark()}<div class="ph-rows"><div><span>Card</span><b>${c?fmt(c.bal)+" / "+fmt(c.lim):"none"}</b></div><div><span>Loans</span><b>${fmt(B().loans.reduce((a,l)=>a+l.bal,0))}</b></div><div><span>Payments</span><b>${fmt(bankPayHr())}/hr</b></div>${c?`<div><span>Card due</span><b>${fmtDur(c.due-Date.now())}</b></div>`:""}</div><button class="buy" data-ph="gobank" style="width:100%;margin-top:8px;background:#1e3a8a!important;color:#fff;border-color:#3b82f6">Open bank</button>${xfHtml()}${botHtml()}`}
   if(k==="wallet")return `<div class="ph-big">${fmt(S.cash)}</div><div class="ph-sub">cash on hand</div>
     <div class="ph-rows"><div><span>Income</span><b style="color:${inc<0?"var(--bad)":"var(--good)"}">${fmt(inc)}/hr</b></div><div><span>Net worth</span><b>${fmt(nw)}</b></div><div><span>Loan</span><b>${fmt(S.debt)}</b></div><div><span>Taxes owed</span><b>${fmt(taxOwed())}</b></div><div><span>Wages</span><b>${S.job?fmt(wage(JK[S.job.k],CITIES[S.job.city])*wageMult()*rankMult())+"/hr":"—"}</b></div></div>
@@ -5566,7 +5662,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="sellgear"){const x=GEAR.find(y=>y.k===b.dataset.k),g=gearOwn();if(!x||!g[x.k])return;delete g[x.k];S.cash+=x.p*.5;toast(`${x.n} sold`);save();hud()}
   else if(a==="buyitem"){const it=ITEMS.find(x=>x.k===b.dataset.k),p=itemPrice(it,CITIES[(S.home||{city:0}).city]);if(S.cash<p)return;S.cash-=p;for(const [q] of NEEDS)if(it[q])S.need[q]=Math.max(0,Math.min(100,S.need[q]+it[q]));toast(`${it.n} delivered`);save();hud()}
   else if(a==="repay"){if(B().card&&B().card.bal)payCard(true);else if(B().loans[0])repayLoan(B().loans[0].id,true);S.debt=bankDebt();save();hud()}
-  else if(a==="xfto"){XF.to=b.dataset.k}else if(a==="xfsend"){xfSend()}else if(a==="bxk"){BX.kind=b.dataset.k;phRender()}else if(a==="bxgo"){botSend()}
+  else if(a==="xfto"){XF.to=b.dataset.k}else if(a==="xfsend"){xfSend()}else if(a==="bxk"){BX.kind=b.dataset.k;phRender()}else if(a==="bxgo"){botSend()}else if(a==="frtab"){FR.tab=b.dataset.k}else if(a==="frpost"){frPost()}else if(a==="fracc"){frAccept(b.dataset.k)}else if(a==="frcan"){frCancel(b.dataset.k)}
   else if(a==="gobank"){openPortfolio();setTimeout(()=>{const x=[...sheet.querySelectorAll(".sec")].find(e=>/credit score/.test(e.textContent));if(x)x.scrollIntoView()},50);PH.open=false}
   else if(a==="gigtap"){gigTap(b);return}
   else if(a==="ridego"){rideStart();return}
@@ -5579,7 +5675,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="gojob"){const c=CITIES[(S.home||S.job||{city:0}).city];tab="life";flyTo(c);PH.open=false}
   else if(a==="go"){flyTo(CITIES[+b.dataset.c]);PH.open=false}
   phSave();phRender()});
-PH.el.addEventListener("input",e=>{const t=e.target;if(t.id==="xfq"){XF.q=t.value;const l=PH.el.querySelector("#xflist");if(l)l.innerHTML=xfList()}else if(t.id==="xfa")XF.amt=t.value;else if(t.id==="xfn")XF.n=t.value;else if(t.id==="bxq"){BX.q=t.value;const l=PH.el.querySelector("#bxquote");if(l)l.innerHTML=botQuoteHtml()}else if(/^bx[cdg]$/.test(t.id)){BX[t.id.slice(2)]=t.value;PH.touched=Date.now();phRender();return}else return;PH.touched=Date.now()});
+PH.el.addEventListener("input",e=>{const t=e.target;if(t.id==="xfq"){XF.q=t.value;const l=PH.el.querySelector("#xflist");if(l)l.innerHTML=xfList()}else if(t.id==="xfa")XF.amt=t.value;else if(t.id==="xfn")XF.n=t.value;else if(t.id==="bxq"){BX.q=t.value;const l=PH.el.querySelector("#bxquote");if(l)l.innerHTML=botQuoteHtml()}else if(/^bx[cdg]$/.test(t.id)){BX[t.id.slice(2)]=t.value;PH.touched=Date.now();phRender();return}else if(t.id==="frq"){FR.q=t.value;const l=PH.el.querySelector("#frquote");if(l)l.innerHTML=frQuoteHtml()}else if(t.id==="frp"){FR.p=t.value;const l=PH.el.querySelector("#frquote");if(l)l.innerHTML=frQuoteHtml()}else if(/^fr[cdgh]$/.test(t.id)){FR[t.id.slice(2)]=t.value;PH.touched=Date.now();phRender();return}else return;PH.touched=Date.now()});
 PH.el.addEventListener("input",e=>{if(e.target.id!=="phc")return;const v=e.target.value.replace(/[×x]/g,"*").replace(/÷/g,"/").replace(/−/g,"-").replace(/,/g,"");
   let r="";if(/^[\d\s.+\-*/()%]*$/.test(v)&&v.trim()){try{const n=Function(`"use strict";return (${v})`)();r=Number.isFinite(n)?(+n.toFixed(4)).toLocaleString():"—"}catch(_){r="…"}}$("#phr").textContent=r||"0"});
 /* drag the phone (or its folded tab) anywhere */
