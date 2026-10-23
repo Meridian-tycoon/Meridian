@@ -4327,13 +4327,13 @@ async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=
 function onRefresh(){if(mode==="pf"&&sheet.classList.contains("open")&&!(document.activeElement&&/^(INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}}
 function onPubData(){const p=onProf(),{nw}=totals(),ids=o=>Object.keys(o||{}).filter(k=>o[k]&&CITIES[k]&&(typeof o[k]!=="object"||Object.keys(o[k]).length)).map(Number).slice(0,100);
   const v=Math.round(isFinite(nw)?nw:0),rank=Math.min(1000,1+S.rivals.filter(r=>r.nw>v).length+ON.players.filter(q=>(+q.nw||0)>v).length);
-  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null,...(typeof CT!=="undefined"&&CT&&CT.mine?{cid:CT.mine.id}:{})}}
+  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null,...(typeof CT!=="undefined"&&CT&&CT.mine?{cid:CT.mine.id}:{}),...(S.pol&&S.pol.r>=0?{gov:true}:{})}}
 function onLocPub(){try{if(!ON.ready||!ON.user)return;const l=S.loc&&S.loc.city;if(l!==ON.lastLoc){ON.lastLoc=l;onPublish(true)}}catch(e){}}
 function onPublish(force){if(!ON.ready||!ON.user||ON.deleting)return;const d=onPubData(),sig=JSON.stringify(d),n=Date.now();
   if(!force&&!(n-ON.lastPub>=60000||(sig!==ON.lastSig&&n-ON.lastPub>=60000)))return;
   if(!force&&sig===ON.lastSig&&n-ON.lastPub<300000)return;
   ON.lastPub=n;ON.lastSig=sig;d.lastSeen=window.firebase.firestore.FieldValue.serverTimestamp();
-  ON.db.collection("players").doc(ON.user.uid).set(d).catch(e=>{ON.err="Couldn't publish: "+(e&&e.code||e)})}
+  return ON.db.collection("players").doc(ON.user.uid).set(d).catch(e=>{ON.err="Couldn't publish: "+(e&&e.code||e)})}
 /* shared leaderboard: master publishes world/rivals; everyone's profile is published on save (throttled by onPublish) and every 15 s tick */
 function wrPubData(){return{list:S.rivals.map(r=>({nw:Math.round(Math.max(-1e12,Math.min(1e12,+r.nw||0))),cities:r.cities.filter(id=>Number.isInteger(id)&&CITIES[id]).slice(0,RIVAL_MAXC)}))}}
 function wrPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;const d=wrPubData(),sig=JSON.stringify(d),n=Date.now();
@@ -4788,16 +4788,17 @@ function ctTagHtml(uid,cid){try{if(!CT||!cid||!uid)return"";const c=CT.by[cid];i
 function ctTagTxt(uid,cid){try{const c=CT&&cid&&CT.by[cid];return c&&c.members.includes(uid)?`[${c.tag}] `:""}catch(e){return""}}
 function ctName(u){if(u===ctUid())return(onProf().name||"You").slice(0,20);const p=ON.players.find(y=>y.uid===u);if(p)return String(p.name||"Player").slice(0,20);const m=CT.mine;return m&&m.boss===u?m.bossName:"Member"}
 function ctUnsub(keys){for(const k of keys||Object.keys(CT.sub)){try{CT.sub[k]&&CT.sub[k]()}catch(_){}delete CT.sub[k]}}
-function ctListen(u){ctUnsub();CT.docs=[];CT.by={};CT.mine=null;CT.inv=[];CT.req=[];CT.chat=[];CT.led=[];CT.raid=null;CT.got=false;if(!u||!ON.db)return;
+function ctListen(u){ctUnsub();CT.docs=[];CT.by={};CT.mine=null;CT.inv=[];CT.req=[];CT.chat=[];CT.led=[];CT.raid=null;CT.got=false;CT.own=null;CT.gotOwn=false;if(!u||!ON.db)return;
   const arr=(q,f)=>{const a=[];q.forEach(d=>a.push(f(d)));return a},er=w=>e=>{ON.err="Couldn't load "+w+": "+(e&&e.code||e)};
   CT.sub.c=ON.db.collection("cartels").limit(100).onSnapshot(q=>{CT.docs=arr(q,d=>ctClean(d.id,d.data())).filter(Boolean);CT.got=true;ctSync()},er("cartels"));
+  CT.sub.o=ON.db.collection("cartels").where("members","array-contains",u.uid).limit(1).onSnapshot(q=>{CT.own=arr(q,d=>ctClean(d.id,d.data())).filter(Boolean)[0]||null;CT.gotOwn=true;if(CT.got)ctSync()},er("your cartel"));
   CT.sub.i=ON.db.collection("cjoin").where("uid","==",u.uid).onSnapshot(q=>{CT.inv=arr(q,d=>Object.assign({id:d.id},d.data()||{}));ctPaint()},er("cartel invites"))}
 function ctResub(){ctUnsub(["r","m","l","a"]);CT.req=[];CT.chat=[];CT.led=[];CT.raid=null;const m=CT.mine;if(!m||!ON.db)return;if(CT.rtId!==m.id){CT.rtId=m.id;CT.rt=0}const arr=(q,f)=>{const a=[];q.forEach(d=>a.push(f(d)));return a},er=w=>e=>{ON.err="Couldn't load cartel "+w+": "+(e&&e.code||e);if(e&&e.code==="permission-denied"&&(CT.rt||0)<5&&!CT.rtT){CT.rt=(CT.rt||0)+1;const id=m.id;CT.rtT=setTimeout(()=>{CT.rtT=0;if(CT.mine&&CT.mine.id===id)ctResub()},3000)}};
   if(m.boss===ctUid())CT.sub.r=ON.db.collection("cjoin").where("cid","==",m.id).onSnapshot(q=>{CT.req=arr(q,d=>Object.assign({id:d.id},d.data()||{}));ctPaint()},er("requests"));
   CT.sub.m=ON.db.collection("cmsg").where("cid","==",m.id).orderBy("at","desc").limit(40).onSnapshot(q=>{CT.chat=arr(q,d=>Object.assign({id:d.id},d.data()||{})).sort((a,b)=>ctMs(a.at)-ctMs(b.at));ctPaint()},er("chat"));
   CT.sub.l=ON.db.collection("cled").where("cid","==",m.id).orderBy("seq","desc").limit(12).onSnapshot(q=>{CT.led=arr(q,d=>Object.assign({id:d.id},d.data()||{})).sort((a,b)=>b.seq-a.seq);ctPaint()},er("ledger"));
   CT.sub.a=ON.db.collection("craid").doc(m.id).onSnapshot(d=>{CT.raid=d.exists?d.data():null;ctCalc();try{ctSweep()}catch(e){}ctPaint()},er("raids"))}
-function ctSync(){const uid=ctUid();CT.by={};for(const c of CT.docs)CT.by[c.id]=c;const m=(uid&&CT.docs.find(c=>c.members.includes(uid)))||null,old=CT.mine?CT.mine.id:null,nid=m?m.id:null;CT.mine=m;
+function ctSync(){const uid=ctUid();CT.by={};for(const c of CT.docs)CT.by[c.id]=c;if(CT.gotOwn){for(const c of CT.docs)if(c.members.includes(uid)&&!(CT.own&&CT.own.id===c.id))delete CT.by[c.id];if(CT.own)CT.by[CT.own.id]=CT.own;CT.docs=Object.values(CT.by)}const m=(uid&&CT.docs.find(c=>c.members.includes(uid)))||null,old=CT.mine?CT.mine.id:null,nid=m?m.id:null;CT.mine=m;
   if(nid!==old)ctResub();ctCalc();try{ctSweep()}catch(e){console.warn("ct",e)}if(nid!==old)onPublish(true);try{draw()}catch(e){}ctPaint()}
 function ctPaint(){if(PH.open&&PH.app==="cartel"&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))phRender()}
 /* perks: who owns where (public profiles + my own businesses) */
@@ -4865,8 +4866,8 @@ function ctSay(){const m=CT.mine,t=String(CT.f.msg||"").trim().slice(0,120);if(!
 /* government raid: needs a political office; costs a fee; members are fined once */
 function ctRaid(cid){const c=CT.by[cid],p=S.pol,uid=ctUid();if(!c||!uid||CT.infl.raid)return;if(!(p&&p.r>=0)){toast("Only a government office holder can order a raid");return}if(c.members.includes(uid)||!c.fix){toast("That cartel is not price fixing");return}if(S.cash<CT_RAIDFEE){toast(`A raid costs ${fmt(CT_RAIDFEE)}`);return}
   S.cash-=CT_RAIDFEE;CT.infl.raid=1;save();hud();
-  ON.db.collection("craid").doc(cid).set({cid,by:uid,byName:(onProf().name||"Tycoon").slice(0,20),at:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete CT.infl.raid;p.appr=Math.min(100,(+p.appr||0)+4);const t=`You raided ${c.name}: its members are fined and price fixing is suspended`;ctLog(t);S.log.unshift(t);S.log=S.log.slice(0,3);toast(t);save();hud();ctPaint()},
-    e=>{delete CT.infl.raid;S.cash+=CT_RAIDFEE;save();hud();toast("Raid refused (already raided in the last day?): "+(e&&e.code||e))})}
+  Promise.resolve(onPublish(true)).then(()=>ON.db.collection("craid").doc(cid).set({cid,by:uid,byName:(onProf().name||"Tycoon").slice(0,20),at:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete CT.infl.raid;p.appr=Math.min(100,(+p.appr||0)+4);const t=`You raided ${c.name}: its members are fined and price fixing is suspended`;ctLog(t);S.log.unshift(t);S.log=S.log.slice(0,3);toast(t);save();hud();ctPaint()},
+    e=>{delete CT.infl.raid;S.cash+=CT_RAIDFEE;save();hud();toast("Raid refused (already raided in the last day?): "+(e&&e.code||e))}))}
 function ctSweep(){if(!ON.user||!ON.db||!CT.got)return;const x=CTS(),uid=ctUid();
   if(x.mk&&!CT.infl.mk){if(CT.by[uid]){x.mk=null;x.since=x.since||Date.now();save()}else if(Date.now()-x.mk.t>120000){CT.infl.mk=1;ON.db.collection("cartels").doc(uid).get().then(s=>{delete CT.infl.mk;if(!x.mk)return;if(s.exists)x.mk=null;else{x.mk=null;S.cash+=CT_FEE;toast("Cartel not created, fee refunded")}save();hud()},()=>{delete CT.infl.mk})}}
   if(CT.mine&&CT.raid){const at=ctMs(CT.raid.at);if(at>x.seenRaid){x.seenRaid=at;if(at>=x.since-60000&&CT.raid.by!==uid){const fine=Math.round(Math.min(CT_RAIDFINE*Math.max(0,S.cash),CT_RAIDCAP)),t=`${CT.raid.byName||"The government"} raided ${CT.mine.name}: you paid ${fmt(fine)}; price fixing is suspended for ${fmtDur(CT_RAIDPAUSE)}`;S.cash-=fine;ctLog(t);S.log.unshift(t);S.log=S.log.slice(0,3);toast(t,"bad")}save();hud()}}
