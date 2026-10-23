@@ -931,9 +931,9 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
       h+=coDepotHtml(c);}}
   sheet.innerHTML=h;$("#cls").onclick=closeSheet}
 /* Depot: use trucks from your own trucking company (replaces the old Buy vehicles list; vehicles are bought in the Industrial Shop) */
-function coDepotHtml(c){const own=(S.own[c.id]||{}).trucking,f=freeTrucks(),n=coLent();
+function coDepotHtml(c){const own=(S.own[c.id]||{}).trucking,f=own?trHere(c.id):0,n=coLent();
   if(!own)return `<div class="sec">Trucking company trucks</div><p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Open a Trucking company in ${c.name} to bring its trucks into this depot. Buy more trucks in the Industrial Shop (HQ dashboard).</p>`;
-  return `<div class="sec">Trucking company trucks</div><div class="list"><div class="row"><div class="n">Company fleet · ${f} free</div><div class="d">${LG().trucks} trucks · ${LG().jobs.length} on contracts · ${n} in depots. A company truck works like your own: send it with cargo or run a route. Return it here or at any hub to put it back on contracts.</div><button class="buy" data-act="cotake" ${f<1?"disabled":""}>Use a truck here</button></div></div>`}
+  return `<div class="sec">Trucking company trucks</div><div class="list"><div class="row"><div class="n">Company trucks · ${f} parked here</div><div class="d">${LG().trucks} trucks in all · ${LG().jobs.length} on contracts · ${n} in depots. Contracts from ${c.name} can only start with a truck parked here. A truck you take works like your own: send it with cargo or run a route. Return it at any hub to park it there for contracts.</div><button class="buy" data-act="cotake" ${f<1?"disabled":""}>Use a truck here</button></div></div>`}
 const inv0=(c,g)=>(S.inv[c.id]||{})[g]||0;
 function shipDests(c,v){return CITIES.filter(d=>d!==c&&hasWh(d)&&(v.type!=="truck"||landmass(d)===landmass(c)))}
 function shipFormHtml(c,v){const inv=S.inv[c.id]||{},V=VEH[v.type],ds=shipDests(c,v);
@@ -966,10 +966,10 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="whup"){const p=whUp(c);if(S.cash<p)return;S.cash-=p;S.wh[c.id]++;toast("Warehouse expanded")}
   else if(a==="sell"){if(G[b.dataset.g][2]==="gov"&&!govOK(c)){toast(hasTech("govlic")?"Government buyers are only in cities of size 4+":"Research the Defense contractor licence to sell this");return}if(G[b.dataset.g][2]==="gov"&&!hasHQ(c)){toast("Government contracts need a registered company: open an HQ here");return}const g=b.dataset.g,street=!hasHQ(c),q=street?Math.min(20,S.inv[c.id][g]||0):(S.inv[c.id][g]||0),v=sellGood(c,g,q)*(street?.7:1);S.cash+=v;S.earned=(S.earned||0)+v;S.inv[c.id][g]-=q;if(S.inv[c.id][g]<1e-6)delete S.inv[c.id][g];toast(`Sold ${gq(q)} ${G[g][0].toLowerCase()} for ${fmt(v)}`)}
   else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q,B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q*tpu(g)>whCap(c)+1e-9){toast(`Not enough warehouse space: ${fmtT(whRoom(c))} free, ${q} ${G[g][0].toLowerCase()} weigh ${fmtT(q*tpu(g))}`);return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
-  else if(a==="cotake"){if(!(S.own[c.id]||{}).trucking){toast("Open a Trucking company here first");return}if(freeTrucks()<1){toast("No free company trucks: all are on contracts or already in a Depot");return}
+  else if(a==="cotake"){if(!(S.own[c.id]||{}).trucking){toast("Open a Trucking company here first");return}if(trHere(c.id)<1){toast(`No company trucks parked in ${c.name}`);return}trAt()[c.id]--;
     S.fleet.push({id:S.nid++,type:"truck",city:c.id,paid:VEH.truck.cost,cond:100,co:1});toast(`Company truck ready in ${c.name}`)}
   else if(a==="coret"){const v=S.fleet.find(x=>x.id===id);if(!v||!v.co)return;if(v.job||v.arr||v.cargo||v.route){toast("That truck is busy");return}if(!(S.own[c.id]||{}).trucking){toast("Return it at a city with your Trucking company");return}
-    S.fleet=S.fleet.filter(x=>x!==v);if(shipForm===id)shipForm=null;toast("Truck returned to your trucking company")}
+    S.fleet=S.fleet.filter(x=>x!==v);trAt()[c.id]=(trAt()[c.id]||0)+1;if(shipForm===id)shipForm=null;toast("Truck returned to your trucking company")}
   else if(a==="ship"){shipForm=shipForm===id?null:id;renderSheet();shipInfo();return}
   else if(a==="go"){const v=S.fleet.find(x=>x.id===id);if(!v||v.job||v.arr||v.cargo){toast("That vehicle is busy");return}const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,km=distKm(c,d),fuel=vFuel(v.type,km,g?Math.min(capU(v.type,g),inv0(c,g))*tpu(g):0,c,d);
     if(S.cash<fuel){toast(`Need ${fmt(fuel)} for fuel`);return}
@@ -2828,6 +2828,16 @@ const busyAt=id=>LG().jobs.filter(j=>j.from===id).length;
 /* company trucks taken into a Depot (S.fleet entries with co:1) are out of the contract pool until returned */
 const coLent=()=>S.fleet.filter(v=>v&&v.co).length;
 const freeTrucks=()=>Math.max(0,LG().trucks-LG().jobs.length-coLent());
+/* where idle contract trucks are parked: S.logi.at[hubId] = count. A hub can only start a contract with a truck parked there.
+   Kept in step with the fleet: extra trucks (new purchases, old saves, finished jobs of a closed hub) park at the hub with the fewest,
+   sold trucks leave the fullest hub first, and trucks at a city that lost its Trucking company move to another hub. */
+function trAt(){const l=LG(),H=hubs();let a=l.at&&typeof l.at==="object"&&!Array.isArray(l.at)?l.at:{};const at={};
+  for(const c of H){const n=Math.floor(+a[c.id]);if(n>0)at[c.id]=n}l.at=at;if(!H.length)return at;
+  let sum=0;for(const k in at)sum+=at[k];const P=freeTrucks();
+  while(sum>P){const k=Object.keys(at).sort((x,y)=>at[y]-at[x])[0];const d=Math.min(at[k],sum-P);at[k]-=d;sum-=d;if(!at[k])delete at[k]}
+  if(sum<P){const k=H.map(c=>c.id).sort((x,y)=>(at[x]||0)-(at[y]||0))[0];at[k]=(at[k]||0)+P-sum}
+  return at}
+const trHere=id=>trAt()[id]||0;
 const repOf=i=>LG().rep[i]||0;
 const hubPol=id=>{const p=HB(id).pol;return p||(lvl("dispatch")?"pay":"off")};
 /* total trucks reserved for current hubs, never above the fleet */
@@ -2837,7 +2847,7 @@ function hubRoom(id){const l=LG(),hs=hubs().map(c=>c.id);let R=0,over=0;const by
   for(const x of hs)R+=HB(x).res;R=Math.min(R,l.trucks);
   for(const k in by){const r=hs.includes(+k)?HB(+k).res:0;over+=Math.max(0,by[k]-r)}
   const h=HB(id),b=by[id]||0,pool=Math.max(0,l.trucks-R-over);let room=Math.max(0,h.res-b)+pool;if(h.cap>0)room=Math.min(room,h.cap-b);
-  return Math.max(0,Math.min(room,l.trucks-l.jobs.length-coLent()))}
+  return Math.max(0,Math.min(room,l.trucks-l.jobs.length-coLent(),trHere(id)))}
 const hubSlots=id=>4+2*lvl("depot")+HB(id).dep;
 function makeOffer(from){const l=LG();if(!from||!S.rivals||!S.rivals.length)return null;
   const near=CITIES.filter(c=>c!==from&&distKm(from,c)<3500&&distKm(from,c)>150);if(!near.length)return null;const to=near[Math.floor(Math.random()*near.length)];
@@ -2848,17 +2858,17 @@ function makeOffer(from){const l=LG();if(!from||!S.rivals||!S.rivals.length)retu
   return{id:l.nid++,ri,from:from.id,to:to.id,km,tons,g,pay,exp:Date.now()+(20+Math.random()*40)*60000}}
 const jobDur=o=>Math.max(8*60000,o.km/legPace("truck")*DAYMS/4/Math.pow(1.15,lvl("engine"))*Math.pow(.95,HB(o.from).drv)/ishSpd());
 function acceptOffer(id,quiet){const l=LG(),o=l.offers.find(x=>x.id===id);if(!o||hubRoom(o.from)<1)return false;
-  l.offers=l.offers.filter(x=>x!==o);const late=Math.random()<Math.max(.02,.08-.015*HB(o.from).drv),d=jobDur(o)*(late?1.4:1);l.jobs.push({...o,dep:Date.now(),arr:Date.now()+d,late});
+  const at=trAt();at[o.from]--;l.offers=l.offers.filter(x=>x!==o);const late=Math.random()<Math.max(.02,.08-.015*HB(o.from).drv),d=jobDur(o)*(late?1.4:1);l.jobs.push({...o,dep:Date.now(),arr:Date.now()+d,late});
   if(!quiet)toast(`Contract accepted: ${CITIES[o.from].name} → ${CITIES[o.to].name}`);return true}
 /* which offer of a hub the auto-dispatch policy takes first */
 function trPick(id,pol){const os=LG().offers.filter(o=>o.from===id);if(!os.length)return null;
   const key={pay:o=>-o.pay,rate:o=>-o.pay/jobDur(o),near:o=>o.km,fast:o=>jobDur(o)}[pol];return key?os.sort((a,b)=>key(a)-key(b))[0]:null}
 function runLogi(){const l=LG(),now=Date.now();
-  for(const j of l.jobs.filter(j=>now>=j.arr)){const h=HB(j.from);S.cash+=j.pay;S.earned=(S.earned||0)+j.pay;l.earned+=j.pay;l.done++;l.tons+=j.tons;l.rep[j.ri]=Math.min(50,repOf(j.ri)+1);
+  const at0=trAt();for(const j of l.jobs.filter(j=>now>=j.arr)){const h=HB(j.from);at0[j.from]=(at0[j.from]||0)+1;S.cash+=j.pay;S.earned=(S.earned||0)+j.pay;l.earned+=j.pay;l.done++;l.tons+=j.tons;l.rep[j.ri]=Math.min(50,repOf(j.ri)+1);
     h.done++;h.earned+=j.pay;h.tons+=j.tons;if(j.late){l.late++;h.late++}
     l.hist.unshift({t:now,day:S.day||1,hub:j.from,to:j.to,g:j.g,tons:j.tons,ri:j.ri,pay:j.pay,late:!!j.late});l.hist.length=Math.min(l.hist.length,60);
     S.log.unshift(`Trucking: delivered ${j.tons} t of ${j.g} for ${RIVALS[j.ri].n}, +${fmt(j.pay)}`);S.log=S.log.slice(0,3)}
-  l.jobs=l.jobs.filter(j=>now<j.arr);l.offers=l.offers.filter(o=>o.exp>now&&(S.own[o.from]||{}).trucking);
+  l.jobs=l.jobs.filter(j=>now<j.arr);trAt();l.offers=l.offers.filter(o=>o.exp>now&&(S.own[o.from]||{}).trucking);
   const H=hubs();if(!H.length)return;
   for(const c of H){const h=HB(c.id);if(now-h.last>90000&&l.offers.filter(o=>o.from===c.id).length<hubSlots(c.id)){h.last=now;const o=makeOffer(c);if(o)l.offers.push(o)}}
   if(lvl("dispatch")&&l.auto)for(const c of H){const pol=hubPol(c.id);if(pol==="off")continue;let o;while(hubRoom(c.id)>0&&(o=trPick(c.id,pol))){if(!acceptOffer(o.id,true))break}}}
@@ -5075,7 +5085,7 @@ function txHubCard(c,row){const l=LG(),h=HB(c.id),lv=(S.own[c.id]||{}).trucking|
   const up=k=>{const u=HU[k],n=h[k],done=n>=u.max,cs=huCost(c.id,k);return `<div class="lx-it"><div class="m"><b>${u.n}<span class="lx-tag">Lv ${n}/${u.max}</span></b><span>${u.d}</span></div><div class="a"><button class="lx-btn" data-tx="hup" data-id="${c.id}" data-k="${k}" ${done||S.cash<cs?"disabled":""}>${done?"Maxed":fmt(cs)}</button></div></div>`};
   return `<div class="mdx-card"><div class="mdx-ch"><h3>${dxE(c.name)}</h3><span class="lx-tag b">Level ${lv}</span><span class="lx-tag ${autoOn?"g":""}">${autoOn?dxE(polN):"Manual"}</span><div style="margin-left:auto" class="a"><button class="lx-btn" data-tx="go" data-c="${c.id}">Manage</button></div></div>
   <div class="lx-k"><div><span>Revenue / hr</span><b>${fmt(rev)}</b><small>business</small></div><div><span>Costs / hr</span><b>${fmt(exp)}</b><small>wages, tax, rent</small></div><div><span>Contracts / hr</span><b>${fmt(hr)}</b><small>${h.done} done · ${fmt(h.earned)} total</small></div><div><span>Profit / hr</span><b style="color:${txCol(net)}">${txSgn(net)}</b><small>${Math.round(h.tons)} t · ${txPct(h.done-h.late,h.done)} on time</small></div></div>
-  <div class="lx-it"><div class="m"><b>Trucks</b><span>${b} busy here · ${room} can start now · ${nOff} offer${nOff===1?"":"s"} on the board</span><small>${own?`${own} of your own vehicle${own===1?"":"s"} based here run 25% faster. `:""}${lv>1?`Level ${lv} pays ${10*(lv-1)}% more on contracts.`:"Higher levels pay more on contracts."}</small></div></div>
+  <div class="lx-it"><div class="m"><b>Trucks</b><span>${trHere(c.id)} parked here · ${b} busy here · ${room} can start now · ${nOff} offer${nOff===1?"":"s"} on the board</span><small>${own?`${own} of your own vehicle${own===1?"":"s"} based here run 25% faster. `:""}${lv>1?`Level ${lv} pays ${10*(lv-1)}% more on contracts.`:"Higher levels pay more on contracts."}</small></div></div>
   <div class="lx-it"><div class="m"><b>Reserved for this hub</b><span>${h.res} truck${h.res===1?"":"s"} always available to it</span></div><div class="a"><button class="lx-btn" data-tx="res" data-id="${c.id}" data-d="-1" ${h.res<1?"disabled":""} aria-label="Reserve fewer trucks">−</button><button class="lx-btn" data-tx="res" data-id="${c.id}" data-d="1" ${rm+h.res>=l.trucks?"disabled":""} aria-label="Reserve more trucks">+</button></div></div>
   <div class="lx-it"><div class="m"><b>Most at once</b><span>${h.cap?h.cap+" truck"+(h.cap===1?"":"s"):"No limit (shared pool)"}</span></div><div class="a"><button class="lx-btn" data-tx="cap" data-id="${c.id}" data-d="-1" ${h.cap<1?"disabled":""} aria-label="Lower limit">−</button><button class="lx-btn" data-tx="cap" data-id="${c.id}" data-d="1" ${h.cap>=l.trucks?"disabled":""} aria-label="Raise limit">+</button></div></div>
   <div class="lx-it"><div class="m"><b>Auto-dispatch</b><span>${lvl("dispatch")?(l.auto?"Takes offers by this policy when trucks are free.":"Master switch is off (Board tab)."):"Buy Dispatch software in the Fleet tab to unlock."}</span><select class="lx-in" data-txp="${c.id}" ${lvl("dispatch")?"":"disabled"} style="margin-top:6px">${TPOL.map(p=>lxOpt(p[0],p[1],pol)).join("")}</select></div></div>${up("dep")}${up("drv")}</div>`}
