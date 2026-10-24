@@ -2382,7 +2382,7 @@ function warHour(quiet){S.wars=S.wars||[];const ws=S.wars;
     if(w.l>=4)for(const n of [w.a,w.b])for(const c of ctyCities(n)){const o=S.own[c.id];if(!o||Math.random()>.03)continue;
       const ks=Object.keys(o),k=ks[Math.floor(Math.random()*ks.length)];if(--o[k]<=0)dropUnit(c,k);
       if(!quiet)logGov(`Fighting in ${c.name} damaged your ${BIZ.find(x=>x.k===k).n.toLowerCase()}`)}}
-  S.wars=ws.filter(w=>w.l>0)}
+  S.wars=ws.filter(w=>w.l>0);try{wfHour(quiet)}catch(e){console.warn("wf",e)}}
 /* ---------- war profits: supply contracts ----------
    In a war at border clashes or worse you can sign a supply contract with one side (S.wsup: [{w,s,amt,got,d0}], at most 3, optional for old saves).
    Stake = 2x the war's talks cost, paid up front. Each game day it pays 6% of the stake at war, 3% at clashes, nothing below.
@@ -2758,6 +2758,130 @@ function wwListen(){try{evListen()}catch(e){}try{lnListen()}catch(e){}if(ON.unsu
   ON.unsubWJ=ON.db.collection("wjoin").onSnapshot(q=>{const a=[],old=Date.now()-3*864e5;q.forEach(x=>{const v=x.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():Date.now();if(ON.user&&x.id===ON.user.uid)return;if(at<old||!Number.isInteger(v.w)||(v.s!=="a"&&v.s!=="b"))return;a.push({uid:x.id,w:v.w,s:v.s,n:+v.n||0,name:v.name,c:v.c,at})});
     const seen=new Set((ON.wj||[]).map(j=>j.uid+":"+j.w));ON.wj=a;for(const j of a)if(!seen.has(j.uid+":"+j.w)&&ON.wjGot){const w=(S.wars||[]).find(x=>wlGid(x)===j.w);if(w&&COUNTRIES.includes(j.c))wlMarch(w,j.c,j.s)}ON.wjGot=true;draw()},e=>{ON.err="Couldn't load war joins: "+(e&&e.code||e)})}
 try{wwMirror(true)}catch(e){}
+/* ---------- Anonymous War Funding (government app → "Anonymous War Funding" tab) ----------
+   Companies (players and the AI rivals) send money anonymously to a government: for an active war (level 3+, a living war with troops)
+   or against a rival it isn't at war with yet, which raises that pair's escalation meter (0..100, cools down every hour; 100 = war).
+   The authority world runs it all: the master (developer) save when online, or any save that isn't mirroring shared wars.
+   Other online players write wfund/{id} {k,w,s,to,vs,amt,at} with NO sender id (a war gift whose war has ended feeds that rivalry instead);
+   the master applies and deletes those and publishes
+   world/wfund {tot,b,tens,feed,updated}, which every player reads. Only S.wf.mine (local + cloud save) knows who sent what.
+   S.wf = {tot:{warId:{a,b}} $ received, q:{warId:{a,b}} unspent war budget, g:{warId:{a,b}} troops bought, tens:{"A|B":{v,f:{country:$},hr,hv,t}},
+   feed:[{t,x}], mine:[{t,k,to,vs,amt,st}]} */
+const WFCFG={min:100000,        // smallest donation, players and AI
+  troop:20000,                  // $ per reinforcement soldier bought from a war budget
+  relDay:.04,maxBoost:.25,      // a budget becomes at most 4% of the side's peak troops per day, and 25% in total for the war
+  ptBase:1e6,                   // $ per escalation point = ptBase × √(size of both countries)
+  step:12,hrCap:15,cool:1,      // most points one donation / one hour can add to a pair; points a meter loses each hour
+  stages:[[0,"Calm","#3a9"],[25,"Tense","#b9961c"],[50,"Hostile","#e07a2a"],[80,"Brink of War","#d84a4a"]],
+  headFp:6,                     // front points the funded side starts ahead when its war breaks out
+  ai:{p:.3,min:.00005,max:.0004,war:.55}, // AI: chance per hour to donate, share of its net worth, chance it funds a war (else a tension)
+  feed:40,mine:60,pairs:24};
+const WF={f:{k:"w",w:"",s:"a",to:"",vs:"",amt:""}};let WFW=null;
+function wf(){const d=S.wf=S.wf&&typeof S.wf==="object"?S.wf:{};for(const k of ["tot","q","g","tens"])if(!d[k]||typeof d[k]!=="object"||Array.isArray(d[k]))d[k]={};for(const k of ["feed","mine"])if(!Array.isArray(d[k]))d[k]=[];return d}
+const wfAuth=()=>!wwShared();
+const wfRemote=()=>typeof ON!=="undefined"&&!!ON.ready&&!!ON.user&&!WRM;
+const wfView=()=>!wfAuth()&&WFW?WFW:wf();
+const wfPair=(a,b)=>[a,b].sort().join("|");
+const wfStage=v=>{let s=WFCFG.stages[0];for(const x of WFCFG.stages)if(v>=x[0])s=x;return s};
+const wfPt=(a,b)=>WFCFG.ptBase*Math.sqrt(Math.max(1,ctyScale(a)+ctyScale(b)));
+const wfActive=()=>(S.wars||[]).filter(w=>w&&w.l>=3&&w.a&&w.b);
+const wfAtWar=(a,b)=>(S.wars||[]).some(w=>w.l>=3&&((w.a===a&&w.b===b)||(w.a===b&&w.b===a)));
+const wfE=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function wfSay(x){const d=wf();d.feed.unshift({t:Date.now(),x:String(x).slice(0,140)});d.feed.length=Math.min(d.feed.length,WFCFG.feed);d.dirty=1}
+/* authority only: apply one anonymous donation. o = {k:"w",w:warId,s:"a"|"b",amt} or {k:"e",to,vs,amt} */
+function wfApply(o,quiet){const d=wf(),C=WFCFG,amt=Math.round(+o.amt||0);if(!(amt>=C.min))return false;
+  if(o.k==="w"){const w=wfActive().find(x=>wlGid(x)===+o.w);if(!w||(o.s!=="a"&&o.s!=="b"))return false;const id=wlGid(w);
+    const t=d.tot[id]=d.tot[id]||{a:0,b:0},q=d.q[id]=d.q[id]||{a:0,b:0};t[o.s]+=amt;q[o.s]+=amt;
+    wfSay(`Anonymous donor sent ${fmt(amt)} to ${w[o.s]}`);return true}
+  if(o.k==="e"){const a=o.to,b=o.vs;if(!COUNTRIES.includes(a)||!COUNTRIES.includes(b)||a===b||wfAtWar(a,b))return false;
+    const k=wfPair(a,b),T=d.tens[k]=d.tens[k]||{v:0,f:{}},hr=S.hour||0;if(T.hr!==hr){T.hr=hr;T.hv=0}
+    const was=wfStage(T.v)[1],add=Math.max(0,Math.min(C.step,amt/wfPt(a,b),C.hrCap-(T.hv||0)));
+    T.v=Math.min(100,T.v+add);T.hv=(T.hv||0)+add;T.f[a]=(T.f[a]||0)+amt;T.t=Date.now();
+    wfSay(`Anonymous donor sent ${fmt(amt)} to ${a} against ${b}`);const now=wfStage(T.v)[1];if(now!==was)wfSay(`Tensions rising between ${a} and ${b}: ${now}`);
+    if(T.v>=100)wfBreak(a,b,quiet);return true}
+  return false}
+/* a maxed meter starts a war through the normal war list; the better-funded side gets the front head start and both budgets */
+function wfBreak(a,b,quiet){const d=wf(),k=wfPair(a,b),T=d.tens[k];if(!T)return;const f=T.f||{},fav=(f[a]||0)>=(f[b]||0)?a:b,oth=fav===a?b:a;
+  S.wars=S.wars||[];let w=S.wars.find(x=>(x.a===a&&x.b===b)||(x.a===b&&x.b===a));
+  if(!w){w={id:(S.wid=(S.wid||0)+1),a:fav,b:oth,l:4,d0:S.day,att:fav};S.wars.push(w)}else{w.l=4;w.att=fav;delete w.tr}
+  w.pin=Math.max(w.pin||0,(S.day||0)+1);
+  try{wlInit(w);const s=w.a===fav?"a":"b",o=s==="a"?"b":"a";w.pu=s;w.fp=Math.max(0,Math.min(100,(w.fp||50)+(s==="a"?1:-1)*WFCFG.headFp));
+    const id=wlGid(w),q=d.q[id]=d.q[id]||{a:0,b:0},t=d.tot[id]=d.tot[id]||{a:0,b:0};q[s]+=f[fav]||0;t[s]+=f[fav]||0;q[o]+=f[oth]||0;t[o]+=f[oth]||0}catch(e){console.warn("wf",e)}
+  for(const n of [a,b])try{gov(n).appr=Math.min(90,gov(n).appr+10)}catch(e){}
+  delete d.tens[k];wfSay(`War breaks out between ${fav} and ${oth}!`);if(!quiet)logGov(`War breaks out between ${fav} and ${oth} after a surge of anonymous funding`)}
+/* hourly on the authority world: war budgets buy reinforcements, meters cool, AI companies donate */
+function wfHour(quiet){if(!wfAuth())return;const d=wf(),C=WFCFG,act=wfActive();
+  for(const w of act){const id=wlGid(w),q=d.q[id];if(!q||!w.tr||!w.t0)continue;const g=d.g[id]=d.g[id]||{a:0,b:0};
+    for(const s of ["a","b"]){const p=w.t0[s]||0,n=Math.floor(Math.min((q[s]||0)/C.troop,p*C.relDay/24,Math.max(0,p*C.maxBoost-g[s])));if(n<1)continue;w.tr[s]+=n;g[s]+=n;q[s]-=n*C.troop}}
+  const live=new Set((S.wars||[]).filter(w=>w.l>0).map(wlGid));for(const k of ["tot","q","g"])for(const id in d[k])if(!live.has(+id))delete d[k][id];
+  for(const k in d.tens){const T=d.tens[k];T.v=Math.max(0,(+T.v||0)-C.cool);if(T.v<=0)delete d.tens[k]}
+  for(const k of Object.keys(d.tens).sort((x,y)=>d.tens[y].v-d.tens[x].v).slice(C.pairs))delete d.tens[k];
+  wfAI(quiet);d.dirty=1}
+function wfAI(quiet){const A=WFCFG.ai;if(Math.random()>A.p||!Array.isArray(S.rivals)||!S.rivals.length)return null;const i=Math.floor(Math.random()*S.rivals.length),r=S.rivals[i];if(!r||!(r.nw>0))return null;
+  const amt=Math.round(r.nw*(A.min+Math.random()*(A.max-A.min))/1e5)*1e5;if(amt<WFCFG.min)return null;const act=wfActive(),d=wf(),pick=x=>x[Math.floor(Math.random()*x.length)];let o;
+  if(act.length&&Math.random()<A.war){const w=pick(act);o={k:"w",w:wlGid(w),s:Math.random()<.5?"a":"b",amt}}
+  else{let a,b;const ks=Object.keys(d.tens),lo=(S.wars||[]).filter(w=>w.l>0&&w.l<3);
+    if(ks.length&&Math.random()<.7)[a,b]=pick(ks).split("|");else if(lo.length&&Math.random()<.6){const w=pick(lo);a=w.a;b=w.b}
+    else{a=pick(COUNTRIES);const near=COUNTRIES.filter(x=>x!==a&&kmBetween(cap(a),cap(x))<5000&&!wfAtWar(a,x));if(!near.length)return null;b=pick(near)}
+    if(Math.random()<.5)[a,b]=[b,a];o={k:"e",to:a,vs:b,amt}}
+  if(!wfApply(o,quiet))return null;if(!wrShared())r.nw=Math.max(rivalSeed(i)*.35,r.nw-amt);return o}
+/* player: send from the form. Cash leaves at once; a failed online send is refunded */
+function wfSend(){const f=WF.f,C=WFCFG,amt=Math.floor(+String(f.amt||"").replace(/[^0-9.]/g,"")||0);
+  if(!(amt>=C.min))return toast(`Minimum donation is ${fmt(C.min)}`);if(S.cash<amt)return toast("Not enough cash");
+  let o,w=null;if(f.k==="w"){w=wfActive().find(x=>String(wlGid(x))===String(f.w));if(!w)return toast("Pick an active war");const s=f.s==="b"?"b":"a";o={k:"w",w:wlGid(w),s,amt,to:w[s],vs:w[s==="a"?"b":"a"]}}
+  else{const a=f.to,b=f.vs;if(!COUNTRIES.includes(a)||!COUNTRIES.includes(b)||a===b)return toast("Pick two different countries");if(wfAtWar(a,b))return toast(`${a} and ${b} are already at war: fund the war instead`);o={k:"e",to:a,vs:b,amt}}
+  const d=wf(),rec={t:Date.now(),k:o.k,to:o.to,vs:o.vs,amt,st:"sent"},remote=wfRemote()&&(o.k==="e"?wwShared():!!(w&&w.gid));
+  if(!remote&&!wfApply(o))return toast("That target is no longer available");
+  S.cash-=amt;d.mine.unshift(rec);d.mine.length=Math.min(d.mine.length,C.mine);f.amt="";
+  if(remote){const doc={k:o.k,amt,at:window.firebase.firestore.FieldValue.serverTimestamp()};if(o.k==="w"){doc.w=o.w;doc.s=o.s}doc.to=o.to;doc.vs=o.vs;
+    ON.db.collection("wfund").add(doc).then(()=>{rec.st="delivered";save();if(PH.open&&PH.app==="govt"&&govTab==="wf")phRender()},
+      e=>{S.cash+=amt;rec.st="refunded";toast("Couldn't send the donation, refunded: "+(e&&e.code||e));save();hud()})}
+  else{rec.st="delivered";wfPublish(true)}
+  toast(`Sent ${fmt(amt)} anonymously to ${o.to}`);save();hud()}
+/* online: everyone reads world/wfund; the master also reads and clears the wfund queue (docs carry no sender) */
+function wfClean(v){const num=x=>Number.isFinite(+x)?Math.max(0,+x):0,ab=x=>({a:num(x&&x.a),b:num(x&&x.b)}),o={tot:{},b:{},tens:{},feed:[]};
+  for(const k of ["tot","b"])if(v[k]&&typeof v[k]==="object")for(const id in v[k])o[k][id]=ab(v[k][id]);
+  if(v.tens&&typeof v.tens==="object")for(const k in v.tens){const p=k.split("|"),T=v.tens[k]||{};if(p.length!==2||!COUNTRIES.includes(p[0])||!COUNTRIES.includes(p[1]))continue;const f={};for(const n of p)f[n]=num(T.f&&T.f[n]);o.tens[k]={v:Math.min(100,num(T.v)),f}}
+  if(Array.isArray(v.feed))o.feed=v.feed.slice(0,WFCFG.feed).map(x=>({t:num(x&&x.t),x:String(x&&x.x||"").slice(0,140)}));return o}
+function wfPubData(){const d=wf(),r1=x=>Math.round(x*10)/10,tens={};for(const k in d.tens){const T=d.tens[k],f={};for(const n in T.f||{})f[n]=Math.round(T.f[n]);tens[k]={v:r1(T.v),f}}
+  return JSON.parse(JSON.stringify({tot:d.tot,b:d.g,tens,feed:d.feed.slice(0,WFCFG.feed)}))}
+function wfPublish(force){try{if(typeof ON==="undefined"||!ON.ready||!ON.user||!devUid(ON.user.uid))return;const d=wf(),n=Date.now();if(!d.dirty&&!force)return;if(!force&&n-(ON.wfPub||0)<10000)return;
+  ON.wfPub=n;d.dirty=0;const x=wfPubData();x.updated=window.firebase.firestore.FieldValue.serverTimestamp();ON.db.collection("world").doc("wfund").set(x).catch(e=>{ON.err="Couldn't publish war funding: "+(e&&e.code||e)})}catch(e){}}
+function wfListen(){if(typeof ON==="undefined"||!ON.db)return;
+  if(!ON.unsubWF)ON.unsubWF=ON.db.collection("world").doc("wfund").onSnapshot(s=>{const v=s.exists?s.data()||{}:null;if(!v)return;WFW=wfClean(v);if(PH.open&&PH.app==="govt"&&govTab==="wf"&&Date.now()-(PH.touched||0)>=3000)phRender()},e=>{ON.err="Couldn't load war funding: "+(e&&e.code||e)});
+  if(ON.user&&devUid(ON.user.uid)&&!ON.unsubWFQ)ON.unsubWFQ=ON.db.collection("wfund").onSnapshot(q=>{let n=0;ON.wfDone=ON.wfDone||{};q.forEach(x=>{if(ON.wfDone[x.id])return;ON.wfDone[x.id]=1;n++;const v=x.data()||{};
+      try{const amt=Math.min(+v.amt||0,1e13);if(!wfApply({k:v.k,w:+v.w,s:v.s,to:v.to,vs:v.vs,amt})&&v.k==="w")wfApply({k:"e",to:v.to,vs:v.vs,amt})}catch(e){console.warn("wf",e)}x.ref.delete().catch(()=>{})});if(n){save();wfPublish(true)}},
+    e=>{ON.err="Couldn't read war funding: "+(e&&e.code||e)})}
+function wfTick(){try{wfListen()}catch(e){}wfPublish(false)}
+/* the tab */
+function wfApp(){const v=wfView(),C=WFCFG,act=wfActive(),f=WF.f,now=Date.now(),ago=t=>{const s=Math.max(0,Math.round((now-t)/1000));return s<60?s+"s":s<3600?Math.round(s/60)+"m":s<86400?Math.round(s/3600)+"h":Math.round(s/86400)+"d"};
+  const inp="width:100%;padding:6px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-top:4px;box-sizing:border-box";
+  const opt=(val,t,sel)=>`<option value="${wfE(val)}" ${sel?"selected":""}>${wfE(t)}</option>`;
+  if(f.k==="w"&&act.length&&!act.some(w=>String(wlGid(w))===String(f.w)))f.w=String(wlGid(act[0]));
+  const seg=`<div class="ph-seg" style="margin:6px 0"><button data-ph="wfk" data-k="w" aria-pressed="${f.k==="w"}">Fund a war</button><button data-ph="wfk" data-k="e" aria-pressed="${f.k==="e"}">Escalate a rivalry</button></div>`;
+  let form;
+  if(f.k==="w"){const w=act.find(x=>String(wlGid(x))===String(f.w));
+    form=act.length?`<select id="wff_w" style="${inp}">${act.map(x=>opt(wlGid(x),`${x.a} vs ${x.b} · ${WARL[x.l]||"War"}`,x===w)).join("")}</select>
+      ${w?`<select id="wff_s" style="${inp}">${opt("a","Support "+w.a,f.s!=="b")}${opt("b","Support "+w.b,f.s==="b")}</select>`:""}`:`<div style="opacity:.7;margin-top:6px">No active wars right now. Try escalating a rivalry.</div>`}
+  else{const cs=COUNTRIES.slice().sort();form=`<select id="wff_to" style="${inp}">${opt("","Government to fund…",!f.to)}${cs.map(n=>opt(n,n,f.to===n)).join("")}</select>
+    <select id="wff_vs" style="${inp}">${opt("","…against rival country",!f.vs)}${cs.filter(n=>n!==f.to).map(n=>opt(n,n,f.vs===n)).join("")}</select>
+    ${f.to&&f.vs&&f.to!==f.vs?`<small style="opacity:.75">≈ ${fmt(wfPt(f.to,f.vs))} per meter point · at most ${C.step} points a donation, ${C.hrCap} an hour</small>`:""}`}
+  let h=`<div class="ph-card"><b>🕶 Anonymous War Funding</b><span>Send company money to a government in secret. It sees the amount, never the sender. War budgets buy reinforcements (up to ${Math.round(C.relDay*100)}% of an army a day, ${Math.round(C.maxBoost*100)}% in total). Funding a rivalry raises its escalation meter; at 100 war breaks out and the funded side gets a head start. Minimum ${fmt(C.min)}.</span>
+    ${seg}${form}<input id="wff_amt" type="text" inputmode="numeric" placeholder="Amount (min ${fmt(C.min)})" value="${wfE(f.amt)}" style="${inp}">
+    <button class="buy" data-ph="wfsend" style="width:100%;margin-top:6px;color:#fff;background:#312e81!important;border-color:#a78bfa">Send anonymously · cash ${fmt(S.cash)}</button></div>`;
+  h+=`<div class="ph-sub" style="margin-top:10px">Active wars · anonymous funding received</div><div class="ph-rows">${act.length?act.map(w=>{const id=wlGid(w),t=(v.tot||{})[id]||{a:0,b:0},bt=(v.b||{})[id]||{a:0,b:0};
+    return `<div style="display:block"><div style="display:flex;justify-content:space-between;gap:6px"><span>⚔ <b>${wfE(w.a)}</b> vs <b>${wfE(w.b)}</b></span><small style="opacity:.7">${WARL[w.l]||"War"}</small></div>
+      <small style="opacity:.85">${wfE(w.a)}: ${fmt(t.a)}${bt.a?` · +${wlK(bt.a)} troops`:""} &nbsp;|&nbsp; ${wfE(w.b)}: ${fmt(t.b)}${bt.b?` · +${wlK(bt.b)} troops`:""}</small></div>`}).join(""):`<div style="opacity:.7">No active wars.</div>`}</div>`;
+  const tk=Object.keys(v.tens||{}).sort((x,y)=>v.tens[y].v-v.tens[x].v);
+  h+=`<div class="ph-sub" style="margin-top:10px">Rising tensions · escalation meters</div><div class="ph-rows">${tk.length?tk.map(k=>{const T=v.tens[k],[a,b]=k.split("|"),st=wfStage(T.v),fa=(T.f||{})[a]||0,fb=(T.f||{})[b]||0;
+    return `<div style="display:block"><div style="display:flex;justify-content:space-between;gap:6px"><span><b>${wfE(a)}</b> – <b>${wfE(b)}</b></span><small style="color:${st[2]};font-weight:700">${st[1]} · ${Math.floor(T.v)}/100</small></div>
+      <div style="height:6px;border-radius:3px;background:#33415588;margin:4px 0"><div style="height:6px;border-radius:3px;width:${Math.min(100,T.v)}%;background:${st[2]}"></div></div>
+      <small style="opacity:.75">funding: ${wfE(a)} ${fmt(fa)} · ${wfE(b)} ${fmt(fb)}</small></div>`}).join(""):`<div style="opacity:.7">All calm. No rivalry is being funded.</div>`}</div>`;
+  const fd=(v.feed||[]).slice(0,15);
+  h+=`<div class="ph-sub" style="margin-top:10px">Live feed</div><div class="ph-rows">${fd.length?fd.map(x=>`<div style="display:flex;justify-content:space-between;gap:6px"><span>${wfE(x.x)}</span><small style="opacity:.6">${ago(x.t)}</small></div>`).join(""):`<div style="opacity:.7">Nothing yet.</div>`}</div>`;
+  const mine=wf().mine.slice(0,20);
+  h+=`<div class="ph-sub" style="margin-top:10px">Your funding history · only you can see this</div><div class="ph-rows">${mine.length?mine.map(x=>`<div style="display:flex;justify-content:space-between;gap:6px"><span>${fmt(x.amt)} → ${wfE(x.to)}${x.vs?` <small style="opacity:.7">vs ${wfE(x.vs)}</small>`:""}${x.k==="e"?" <small>(escalation)</small>":""}</span><small style="opacity:.6">${x.st==="refunded"?"refunded · ":""}${ago(x.t)}</small></div>`).join(""):`<div style="opacity:.7">You haven't funded anyone yet.</div>`}</div>`;
+  return h}
 const dipWarOf=(n,by)=>(S.wars||[]).find(w=>(w.a===n&&w.b===by)||(w.a===by&&w.b===n));
 function dipGrow(n,d,C){const g=gov(n),base=dipBase(n);let ph=d.ph[n];
   let r=C.g0+(g.appr-50)/50*C.apprG+(2-g.laws.tax)*C.taxG+C.warG*warLvl(n)-Math.log(d.gdp[n]/base)*C.revert+(d.ruler[n]?C.ruledG:0);
@@ -3889,8 +4013,8 @@ function polHour(quiet){const p=S.pol;if(!p)return;pol();const C=GOVCFG;
   for(const n in p.ctrl){const c=p.ctrl[n];c.loy=Math.max(0,Math.min(100,c.loy+C.loyDrift*(1-presFx("loy"))+(!polLeader()||p.appr<35?C.loyLowAppr:0)));
     if(c.loy<C.loyLose&&Math.random()<.25){delete p.ctrl[n];if(!quiet)logPol(`${n} broke away from your influence`)}}
   if(typeof milHour==="function")milHour(quiet)}
-function govApp(){const p=pol();const seg=`<div class="ph-seg" style="margin-bottom:8px"><button data-ph="govtab" data-k="pol" aria-pressed="${govTab==="pol"}">Politics</button><button data-ph="govtab" data-k="mil" aria-pressed="${govTab==="mil"}">Military</button><button data-ph="govtab" data-k="bunk" aria-pressed="${govTab==="bunk"}">🛡 Bunker</button><button data-ph="govtab" data-k="air" aria-pressed="${govTab==="air"}">✈ Air One</button><button data-ph="govtab" data-k="off" aria-pressed="${govTab==="off"}">🏛 Office</button><button data-ph="govtab" data-k="mis" aria-pressed="${govTab==="mis"}">🎯 Missions</button></div>`;
-  const gn=govNotesHtml(),nh=gn?`<div class="ph-card"><b>Government notices</b><span>${gn}</span></div>`:"";if(govTab==="mil")return seg+phInvCard()+milApp()+nh;if(govTab==="bunk")return seg+phInvCard()+bunkApp()+nh;if(govTab==="off")return seg+phInvCard()+officeApp()+nh;if(govTab==="air")return seg+phInvCard()+airApp()+nh;if(govTab==="mis")return seg+phInvCard()+misApp()+nh;return seg+phInvCard()+govApp0()+nh}
+function govApp(){const p=pol();const seg=`<div class="ph-seg" style="margin-bottom:8px;flex-wrap:wrap;row-gap:4px"><button data-ph="govtab" data-k="pol" aria-pressed="${govTab==="pol"}">Politics</button><button data-ph="govtab" data-k="mil" aria-pressed="${govTab==="mil"}">Military</button><button data-ph="govtab" data-k="bunk" aria-pressed="${govTab==="bunk"}">🛡 Bunker</button><button data-ph="govtab" data-k="air" aria-pressed="${govTab==="air"}">✈ Air One</button><button data-ph="govtab" data-k="off" aria-pressed="${govTab==="off"}">🏛 Office</button><button data-ph="govtab" data-k="mis" aria-pressed="${govTab==="mis"}">🎯 Missions</button><button data-ph="govtab" data-k="wf" aria-pressed="${govTab==="wf"}">🕶 Anonymous War Funding</button></div>`;
+  const gn=govNotesHtml(),nh=gn?`<div class="ph-card"><b>Government notices</b><span>${gn}</span></div>`:"";if(govTab==="mil")return seg+phInvCard()+milApp()+nh;if(govTab==="bunk")return seg+phInvCard()+bunkApp()+nh;if(govTab==="off")return seg+phInvCard()+officeApp()+nh;if(govTab==="air")return seg+phInvCard()+airApp()+nh;if(govTab==="mis")return seg+phInvCard()+misApp()+nh;if(govTab==="wf")return seg+wfApp()+nh;return seg+phInvCard()+govApp0()+nh}
 function phInvCard(){const d=dip(),inv=d.inv;if(!inv)return "";const w=(S.wars||[]).find(x=>x.id===inv.w);if(!w)return "";const rc=Math.round(warCost(w)*DIPCFG.rallyCost),tc=warCost(w),warn=inv.stage===1;
   const bt=(a,t,dis)=>`<button class="buy" data-ph="${a}" style="flex:1;color:#fff;background:#7c2d12!important;border-color:#f59e0b" ${dis?"disabled":""}>${t}</button>`;
   return `<div class="ph-card" style="border:1px solid #b91c1c;background:#7f1d1d33"><b>⚠ ${inv.by} ${warn?"threatens":"is invading"} ${inv.n}</b>
@@ -7273,7 +7397,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="dashtruck"){DX.page="truck";dxOpen();return}
   else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
-  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="rigpmt"){rigPermit();save();hud()}else if(a==="rigbuy"){rigStart();return}else if(a==="rigdash"){rxOpen();return}else if(a==="obdash"){bxOpen();return}else if(a==="rigship"){const sel=PH.el.querySelector(`[data-rigto="${b.dataset.k}"]`);if(sel)rigShip(+b.dataset.k,+sel.value);save();hud()}else if(a==="rigup"){rigUp(+b.dataset.k);save();hud()}else if(a==="airbuy"){airBuy();save();hud()}else if(a==="evbuy"){evBuy();save();hud()}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrf"){milReinforce(b.dataset.k);save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){const qi=PH.el.querySelector(`[data-wq="${b.dataset.k}"]`);wpnBuildN(b.dataset.k,qi?qi.value:1);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnbar"){wpnBarrage(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
+  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="wfk"){WF.f.k=b.dataset.k==="e"?"e":"w"}else if(a==="wfsend"){wfSend()}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="rigpmt"){rigPermit();save();hud()}else if(a==="rigbuy"){rigStart();return}else if(a==="rigdash"){rxOpen();return}else if(a==="obdash"){bxOpen();return}else if(a==="rigship"){const sel=PH.el.querySelector(`[data-rigto="${b.dataset.k}"]`);if(sel)rigShip(+b.dataset.k,+sel.value);save();hud()}else if(a==="rigup"){rigUp(+b.dataset.k);save();hud()}else if(a==="airbuy"){airBuy();save();hud()}else if(a==="evbuy"){evBuy();save();hud()}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrf"){milReinforce(b.dataset.k);save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){const qi=PH.el.querySelector(`[data-wq="${b.dataset.k}"]`);wpnBuildN(b.dataset.k,qi?qi.value:1);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnbar"){wpnBarrage(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
   else if(a==="misopen"){mxOpen();return}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
@@ -7317,6 +7441,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="go"){flyTo(CITIES[+b.dataset.c]);PH.open=false}
   phSave();phRender()});
 PH.el.addEventListener("input",e=>{const t=e.target;if(!t.id||t.id.slice(0,4)!=="ctf_")return;const k=t.id.slice(4);CT.f[k]=t.value;PH.touched=Date.now();if(k==="q"){const l=PH.el.querySelector("#ctlist");if(l)l.innerHTML=ctInvList()}});
+PH.el.addEventListener("input",e=>{const t=e.target;if(!t.id||t.id.slice(0,4)!=="wff_")return;const k=t.id.slice(4);WF.f[k]=t.value;PH.touched=Date.now();if(k!=="amt")phRender()});
 PH.el.addEventListener("input",e=>{if(e.target.id!=="mkcq")return;mkCQ=e.target.value;PH.touched=Date.now();mkLive()});
 PH.el.addEventListener("input",e=>{const t=e.target;if(t.id==="xfq"){XF.q=t.value;const l=PH.el.querySelector("#xflist");if(l)l.innerHTML=xfList()}else if(t.id==="xfa")XF.amt=t.value;else if(t.id==="xfn")XF.n=t.value;else if(t.id==="bxq"){BX.q=t.value;const l=PH.el.querySelector("#bxquote");if(l)l.innerHTML=botQuoteHtml()}else if(/^bx[cdg]$/.test(t.id)){BX[t.id.slice(2)]=t.value;PH.touched=Date.now();phRender();return}else if(t.id==="frq"){FR.q=t.value;const l=PH.el.querySelector("#frquote");if(l)l.innerHTML=frQuoteHtml()}else if(t.id==="frp"){FR.p=t.value;const l=PH.el.querySelector("#frquote");if(l)l.innerHTML=frQuoteHtml()}else if(/^fr[cdgh]$/.test(t.id)){FR[t.id.slice(2)]=t.value;PH.touched=Date.now();phRender();return}else return;PH.touched=Date.now()});
 PH.el.addEventListener("input",e=>{if(e.target.id!=="phc")return;const v=e.target.value.replace(/[×x]/g,"*").replace(/÷/g,"/").replace(/−/g,"-").replace(/,/g,"");
@@ -7481,7 +7606,7 @@ let nextAt=0;
 async function chk(){if(shown||Date.now()<nextAt||document.hidden||!/^https?:/.test(location.protocol)||!Number.isFinite(base))return;
   try{const r=await fetch(location.pathname,{method:"HEAD",cache:"no-store"});const t=Date.parse(r.headers.get("last-modified")||"");if(Number.isFinite(t)&&t-base>5000)ask()}catch(e){}}
 setInterval(chk,5*60000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)chk()});setTimeout(chk,20000)})();
-resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}},1000);
+resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}try{wfTick()}catch(e){}},1000);
 if(!S.log.length){S.log=["You start with nothing. Tap a city, open Jobs & home, rent a room and apply for work."];hud()}
 if(!world)toast("Map outline didn't load. Cities still work.");
 })();

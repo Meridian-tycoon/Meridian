@@ -51,6 +51,34 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.from == request.auth.uid;
     }
 
+    // Anonymous war funding: a donation carries NO sender id. Any signed-in player may create one; only the master world
+    // (developer save) may read and delete them, to add them to world/wfund. Nobody, the master included, can see who sent it.
+    match /wfund/{id} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['k', 'w', 's', 'to', 'vs', 'amt', 'at'])
+        && request.resource.data.k in ['w', 'e']
+        && request.resource.data.amt is int && request.resource.data.amt >= 100000 && request.resource.data.amt <= 10000000000000
+        && ((request.resource.data.k == 'e'
+             && request.resource.data.to is string && request.resource.data.to.size() <= 40
+             && request.resource.data.vs is string && request.resource.data.vs.size() <= 40)
+          || (request.resource.data.k == 'w'
+             && request.resource.data.w is int && request.resource.data.s in ['a', 'b']
+             && request.resource.data.to is string && request.resource.data.to.size() <= 40
+             && request.resource.data.vs is string && request.resource.data.vs.size() <= 40))
+        && request.resource.data.at == request.time;
+      allow read, delete: if request.auth != null && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1';
+    }
+    // Shared war funding totals, escalation meters and feed: written only by the master world, read by everyone. No donor ids.
+    match /world/wfund {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1'
+        && request.resource.data.keys().hasOnly(['tot', 'b', 'tens', 'feed', 'updated'])
+        && request.resource.data.tot is map && request.resource.data.b is map && request.resource.data.tens is map
+        && request.resource.data.feed is list && request.resource.data.feed.size() <= 40
+        && request.resource.data.updated == request.time;
+    }
+
     match /players/{uid} {
       // Anyone (signed in or not) may read profiles. Profiles never contain emails.
       allow read: if true;
