@@ -19,7 +19,7 @@ the **opposition** figure takes over as the Leader in text, and the old Leader b
 | France | **President Étienne Marchais** (Conservatives), farmers' friend, Nestlé's ally | **Solène Darrieux**, Workers' Party firebrand from Marseille |
 | Türkiye | **President Kerem Aydınlı** (Liberal Alliance), host of every peace conference | **Selin Oztürkmen**, drone-industry critic |
 | Brazil | **President Rodrigo Bastião** (National Front), "the Cone is ours" | **Lívia Montenegro**, São Paulo economist |
-| Canada | **Prime Minister Mark Dev** (Liberal Alliance), in office since day one, calm, courted Amazon | **Doug Tremblay**, prairie populist |
+| Canada | **Prime Minister Mark Dev** (Conservatives), in office since day one, calm, courted Amazon; motto: "Move in silence." | **Doug Tremblay**, prairie populist |
 | Australia | **Prime Minister Kieran Walsh** (Liberal Alliance), "she'll be right" until the sheep tariff | — |
 | New Zealand | **Prime Minister Hana Te Rangi** (Conservatives), unflappable | — |
 | South Korea | **President Park Ji-hwan** (Workers' Party), caught between Tokyo and Shanghai | — |
