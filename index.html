@@ -4206,19 +4206,32 @@ function airApp(){const a=air1(),C=AIRCFG,now=Date.now(),off=GOVCFG.offices[0].n
    All-in-one: crude is drilled and refined on board and sold as fuel; the rig makes its own power from its own gas (no power bill).
    A helipad flies in high-value passengers and medical charters; supply ships rotate crews and carry cargo. Income goes through totals().inc like every other business. */
 const RIGCFG={max:5,
-  lv:[null, // cost to build/upgrade to this level, income per game hour, barrels of crude per day, share refined on board
-    {n:"Exploration rig",cost:400e6,inc:6e6,bbl:20000,ref:.4},
-    {n:"Production platform",cost:900e6,inc:18e6,bbl:60000,ref:.55},
-    {n:"Deepwater platform",cost:2e9,inc:48e6,bbl:150000,ref:.7},
-    {n:"Mega platform",cost:5e9,inc:120e6,bbl:350000,ref:.85},
-    {n:"Floating refinery complex",cost:12e9,inc:300e6,bbl:800000,ref:1}],
-  split:{fuel:.78,heli:.12,cargo:.10}, // where the income comes from: refined fuel and crude sales, helipad charters, cargo
+  lv:[null, // cost to build/upgrade to this level, value of oil produced per game day (crude + fuel), barrels drilled per day, share refined on board
+    {n:"Exploration rig",cost:400e6,val:2e6,bbl:20000,ref:.4},
+    {n:"Production platform",cost:900e6,val:6e6,bbl:60000,ref:.55},
+    {n:"Deepwater platform",cost:2e9,val:16e6,bbl:150000,ref:.7},
+    {n:"Mega platform",cost:5e9,val:40e6,bbl:350000,ref:.85},
+    {n:"Floating refinery complex",cost:12e9,val:100e6,bbl:800000,ref:1}],
+  store:7,                               // the rig holds up to this many days of output; it stops pumping when full
   asset:.7,heliS:40,shipS:120,
   permit:{fee:25e6,p:.51,wait:6}}; // offshore drilling permit: application fee, approval chance, game hours before you can apply again after a refusal        // asset value share of what you paid; real seconds of one helicopter / ship round trip on the map
 let _rigPick=0;
 const rigs=()=>{if(!Array.isArray(S.rigs))S.rigs=[];return S.rigs.filter(r=>r&&isFinite(r.lat)&&isFinite(r.lon)&&r.lv>=1)};
 const rigLv=r=>RIGCFG.lv[Math.max(1,Math.min(5,Math.floor(r.lv)))];
-function rigIncome(){return rigs().reduce((a,r)=>a+rigLv(r).inc,0)}
+function rigIncome(){return 0} // rigs don't sell: oil piles up on board until you ship it to a depot
+const rigVal=r=>rigLv(r).val;
+const rigPx=g=>(G[g]&&G[g][1])||(g==="oil"?25:45);
+function rigDay(r){const L=rigLv(r);return {oil:L.val*(1-L.ref)/rigPx("oil"),fuel:L.val*L.ref/rigPx("fuel")}} // units made per game day
+function rigCapU(r){const d=rigDay(r);return {oil:d.oil*RIGCFG.store,fuel:d.fuel*RIGCFG.store}}
+function rigTick(now){for(const r of rigs()){if(!r.st)r.st={oil:0,fuel:0};if(!(r.at>0))r.at=r.t||now;const dt=Math.max(0,now-r.at)/DAYMS;r.at=now;const d=rigDay(r),cp=rigCapU(r);
+    for(const g of ["oil","fuel"])r.st[g]=Math.min(cp[g],(r.st[g]||0)+d[g]*dt);
+    if(Array.isArray(r.sh)&&r.sh.length){const due=r.sh.filter(x=>x.arr<=now);r.sh=r.sh.filter(x=>x.arr>now);for(const x of due){const c=CITIES[x.to];if(!c)continue;ensureWh(c);const v=S.inv[c.id];v[x.g]=(v[x.g]||0)+x.q;toast(`🚢 ${fmtN(x.q)} ${G[x.g]?G[x.g][0].toLowerCase():x.g} from ${r.n} arrived in ${c.name}`)}}}}
+const fmtN=n=>Math.round(n).toLocaleString();
+function rigShip(id,to){const r=rigs().find(x=>x.id===id),c=CITIES[to];if(!r||!c)return;if(!hasWh(c))return toast(`You have no depot in ${c.name}`);rigTick(Date.now());
+  let room=whRoom(c);const sent=[];for(const g of ["fuel","oil"]){const q=Math.floor(Math.min(r.st[g]||0,room/tpu(g)));if(q<1)continue;r.st[g]-=q;room-=q*tpu(g);sent.push({g,q})}
+  if(!sent.length)return toast(Object.values(r.st).some(v=>v>=1)?`The depot in ${c.name} is full`:"Nothing on the rig to ship yet");
+  const sec=Math.max(30,Math.min(600,distKm(r,c)/25)),now=Date.now();r.sh=(r.sh||[]).concat(sent.map(x=>({...x,to:c.id,t:now,arr:now+sec*1000})));
+  toast(`🚢 Shipping ${sent.map(x=>fmtN(x.q)+" "+G[x.g][0].toLowerCase()).join(" + ")} to ${c.name} · arrives in ${fmtDur(sec*1000)}`)}
 function rigAssets(){let a=0;for(const r of rigs())for(let l=1;l<=r.lv;l++)a+=RIGCFG.lv[l].cost*RIGCFG.asset;return a}
 function rigHub(r){let b=null,bd=1e18;for(const c of CITIES){if(typeof unhOn==="function"&&unhOn(c))continue;const d=distKm(r,c);if(d<bd){bd=d;b=c}}return b}
 function rigPermit(){const P=RIGCFG.permit,now=Date.now();if(S.rigPmt&&S.rigPmt.ok)return toast("You already hold a drilling permit");
@@ -4231,19 +4244,20 @@ function rigBar(){const mw=document.getElementById("mapwrap");let el=document.ge
   el.innerHTML=`<span>🛢 Tap the ocean to place your oil rig</span><button id="rigcancel" style="background:#111;color:#facc15;border:0;border-radius:14px;padding:4px 10px;font:700 12px system-ui,sans-serif;cursor:pointer">Cancel</button>`;el.querySelector("#rigcancel").onclick=()=>{_rigPick=0;rigBar()}}
 function rigPlace(ll){if(!(S.rigPmt&&S.rigPmt.ok)){_rigPick=0;rigBar();return toast("You need an offshore drilling permit first")}const p={lon:ll[0],lat:ll[1]};if(wtLand(ll)!==null)return toast("That's land: oil rigs go in the ocean");if(rigs().length>=RIGCFG.max){_rigPick=0;rigBar();return toast(`At most ${RIGCFG.max} oil rigs`)}
   const L=RIGCFG.lv[1];if(S.cash<L.cost){_rigPick=0;rigBar();return toast(`An oil rig costs ${fmt(L.cost)}`)}S.cash-=L.cost;const id=(S.rigs||[]).reduce((a,r)=>Math.max(a,r.id||0),0)+1,hub=rigHub(p);
-  S.rigs=rigs().concat([{id,lat:p.lat,lon:p.lon,lv:1,t:Date.now(),n:`Rig ${id}${hub?" · off "+hub.name:""}`}]);_rigPick=0;rigBar();
-  bigMove(`builds an offshore oil rig (${fmt(L.cost)})`,L.cost);toast(`🛢 ${L.n} built${hub?` off ${hub.name}`:""}: ${fmt(L.inc)}/hr`);save();hud();draw()}
+  S.rigs=rigs().concat([{id,lat:p.lat,lon:p.lon,lv:1,t:Date.now(),at:Date.now(),st:{oil:0,fuel:0},n:`Rig ${id}${hub?" · off "+hub.name:""}`}]);_rigPick=0;rigBar();
+  bigMove(`builds an offshore oil rig (${fmt(L.cost)})`,L.cost);toast(`🛢 ${L.n} built${hub?` off ${hub.name}`:""}: ${fmt(L.val)} of oil a day`);save();hud();draw()}
 function rigUp(id){const r=rigs().find(x=>x.id===id);if(!r)return;const L=RIGCFG.lv[r.lv+1];if(!L)return toast("This rig is at max level");if(S.cash<L.cost)return toast(`${L.n} costs ${fmt(L.cost)}`);
-  S.cash-=L.cost;r.lv++;bigMove(`upgrades an oil rig to ${L.n} (${fmt(L.cost)})`,L.cost);toast(`🛢 ${r.n} is now a ${L.n}: ${fmt(L.inc)}/hr`)}
-function rigApp(){const C=RIGCFG,rs=rigs(),fb=n=>Math.round(n).toLocaleString();
-  let h=`<div class="ph-card"><b>🛢 Offshore oil rigs</b><span>Drill and refine at sea: crude comes up, is refined on board and shipped out as fuel. Each rig makes its own power from its own gas, so there is no power bill. A helipad flies in high-value passengers and medical charters; supply ships rotate the crew and carry cargo. Place one anywhere in the ocean (up to ${C.max}).</span>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span>${rs.length}/${C.max} rigs · <b style="color:#4ade80">${fmt(rigIncome())}/hr</b></span>${rs.length<C.max?`<button class="buy" style="color:#fff;background:#0f766e!important;border-color:#f59e0b" data-ph="rigbuy" ${S.cash<C.lv[1].cost||!(S.rigPmt&&S.rigPmt.ok)?"disabled":""}>Build · ${fmt(C.lv[1].cost)}</button>`:""}</div></div>`;
+  rigTick(Date.now());S.cash-=L.cost;r.lv++;bigMove(`upgrades an oil rig to ${L.n} (${fmt(L.cost)})`,L.cost);toast(`🛢 ${r.n} is now a ${L.n}: ${fmt(L.val)} of oil a day`)}
+function rigApp(){rigTick(Date.now());const C=RIGCFG,rs=rigs(),fb=n=>Math.round(n).toLocaleString(),whs=Object.keys(S.wh||{}).filter(i=>S.wh[i]!=null&&CITIES[i]).map(i=>CITIES[i]);
+  let h=`<div class="ph-card"><b>🛢 Offshore oil rigs</b><span>Drill and refine at sea: crude comes up and part of it is refined into fuel on board. The rig keeps what it makes (up to ${C.store} days of output) until you ship it to one of your depots. Each rig makes its own power from its own gas, so there is no power bill. A helipad flies in high-value passengers and medical charters; supply ships rotate the crew and carry cargo. Place one anywhere in the ocean (up to ${C.max}).</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span>${rs.length}/${C.max} rigs · <b style="color:#4ade80">${fmt(rs.reduce((a,r)=>a+rigVal(r),0))} of oil a day</b></span>${rs.length<C.max?`<button class="buy" style="color:#fff;background:#0f766e!important;border-color:#f59e0b" data-ph="rigbuy" ${S.cash<C.lv[1].cost||!(S.rigPmt&&S.rigPmt.ok)?"disabled":""}>Build · ${fmt(C.lv[1].cost)}</button>`:""}</div></div>`;
   {const P=C.permit,pm=S.rigPmt||{},now=Date.now();h+=`<div class="ph-card" style="margin-top:8px"><b>📜 Offshore drilling permit</b>${pm.ok?`<span style="color:#4ade80">Approved: you can build rigs</span>`:`<span>Required to build a rig. Fee ${fmt(P.fee)} per application, ${Math.round(P.p*100)}% approval chance${pm.next>now?` · reapply in ${fmtDur(pm.next-now)}`:""}.</span><button class="buy" style="width:100%;margin-top:6px;color:#fff;background:#7c2d12!important;border-color:#f59e0b" data-ph="rigpmt" ${S.cash<P.fee||pm.next>now?"disabled":""}>Apply · ${fmt(P.fee)}</button>`}</div>`}
   for(const r of rs){const L=rigLv(r),N=C.lv[r.lv+1],hub=rigHub(r),crude=L.bbl*(1-L.ref),fuel=L.bbl*L.ref;
     h+=`<div class="ph-card" style="margin-top:8px"><b>${dxE(r.n)} · Level ${r.lv}</b><span>${L.n}${hub?` · crew and cargo via ${dxE(hub.name)} (${Math.round(distKm(r,hub))} km)`:""}</span>
-      <span style="font-size:12px">${fb(L.bbl)} bbl/day drilled · ${fb(fuel)} refined on board · ${fb(crude)} sold as crude · self-powered</span>
-      <span style="font-size:12px">Income <b style="color:#4ade80">${fmt(L.inc)}/hr</b>: fuel and crude ${fmt(L.inc*C.split.fuel)} · 🚁 helipad ${fmt(L.inc*C.split.heli)} · 🚢 cargo ${fmt(L.inc*C.split.cargo)}</span>
-      ${N?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span style="font-size:12px">Next: ${N.n} · ${fmt(N.inc)}/hr (+${Math.round((N.inc/L.inc-1)*100)}%)</span><button class="buy" style="color:#fff;background:#0f766e!important;border-color:#f59e0b" data-ph="rigup" data-k="${r.id}" ${S.cash<N.cost?"disabled":""}>Upgrade · ${fmt(N.cost)}</button></div>`:`<span style="font-size:12px;color:#fbbf24">Max level</span>`}</div>`}
+      <span style="font-size:12px">${fb(L.bbl)} bbl/day drilled · ${fb(fuel)} refined on board · ${fb(crude)} left as crude · self-powered</span>
+      <span style="font-size:12px">Output worth <b style="color:#4ade80">${fmt(L.val)}/day</b> · on board: <b>${fmtN(r.st?r.st.oil:0)}</b> crude, <b>${fmtN(r.st?r.st.fuel:0)}</b> fuel (≈${fmt((r.st?r.st.oil:0)*rigPx("oil")+(r.st?r.st.fuel:0)*rigPx("fuel"))})${(r.sh||[]).length?` · 🚢 ${r.sh.length} shipment${r.sh.length>1?"s":""} at sea`:""}</span>
+      ${whs.length?`<div style="display:flex;gap:6px;align-items:center;margin-top:6px"><select data-rigto="${r.id}" style="flex:1">${whs.map(c=>`<option value="${c.id}">${dxE(c.name)} · ${fmtN(whRoom(c))} t free</option>`).join("")}</select><button class="buy" style="color:#fff;background:#1d4ed8!important;border-color:#f59e0b;white-space:nowrap;flex:none" data-ph="rigship" data-k="${r.id}">🚢 Ship to</button></div>`:`<span style="font-size:12px;color:#fbbf24">Open a depot (warehouse) in a city to ship your oil there.</span>`}
+      ${N?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span style="font-size:12px">Next: ${N.n} · ${fmt(N.val)}/day (+${Math.round((N.val/L.val-1)*100)}%)</span><button class="buy" style="color:#fff;background:#0f766e!important;border-color:#f59e0b" data-ph="rigup" data-k="${r.id}" ${S.cash<N.cost?"disabled":""}>Upgrade · ${fmt(N.cost)}</button></div>`:`<span style="font-size:12px;color:#fbbf24">Max level</span>`}</div>`}
   return h}
 // map: the rig, a helicopter shuttling to the nearest city and a supply ship going back and forth
 function drawRigs(ctx){const rs=rigs();if(!rs.length)return;const now=Date.now();ctx.save();ctx.textAlign="center";ctx.textBaseline="middle";
@@ -7107,7 +7121,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="dashtruck"){DX.page="truck";dxOpen();return}
   else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
-  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="rigpmt"){rigPermit();save();hud()}else if(a==="rigbuy"){rigStart();return}else if(a==="rigup"){rigUp(+b.dataset.k);save();hud()}else if(a==="airbuy"){airBuy();save();hud()}else if(a==="evbuy"){evBuy();save();hud()}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
+  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="rigpmt"){rigPermit();save();hud()}else if(a==="rigbuy"){rigStart();return}else if(a==="rigship"){const sel=PH.el.querySelector(`[data-rigto="${b.dataset.k}"]`);if(sel)rigShip(+b.dataset.k,+sel.value);save();hud()}else if(a==="rigup"){rigUp(+b.dataset.k);save();hud()}else if(a==="airbuy"){airBuy();save();hud()}else if(a==="evbuy"){evBuy();save();hud()}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
   else if(a==="misopen"){mxOpen();return}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
@@ -7315,7 +7329,7 @@ let nextAt=0;
 async function chk(){if(shown||Date.now()<nextAt||document.hidden||!/^https?:/.test(location.protocol)||!Number.isFinite(base))return;
   try{const r=await fetch(location.pathname,{method:"HEAD",cache:"no-store"});const t=Date.parse(r.headers.get("last-modified")||"");if(Number.isFinite(t)&&t-base>5000)ask()}catch(e){}}
 setInterval(chk,5*60000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)chk()});setTimeout(chk,20000)})();
-resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}},1000);
+resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{rigTick(Date.now())}catch(e){}},1000);
 if(!S.log.length){S.log=["You start with nothing. Tap a city, open Jobs & home, rent a room and apply for work."];hud()}
 if(!world)toast("Map outline didn't load. Cities still work.");
 })();
