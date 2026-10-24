@@ -115,7 +115,7 @@ competitors. Their game HQ country (`wfHQ`, first city in `RIVAL_START`) is what
 | Company | Game HQ | Story role |
 |---|---|---|
 | Walmart | Houston, USA | The populist's favourite employer; lobbies hard for tariffs. |
-| Amazon | Vancouver, Canada | The "company with a country attached" (fault line 1). |
+| Amazon | Vancouver, Canada | The "company with a country attached" (the Northern Line). |
 | Toyota | Tokyo, Japan | Japan's national champion; feuds turn into Yellow Sea headlines. |
 | Shell | London, UK | Gulf oil and the Channel; most often suspected of Quiet Ledger money. |
 | Apple | Los Angeles, USA | Neutral on paper, factories everywhere; hates any war near its suppliers. |
