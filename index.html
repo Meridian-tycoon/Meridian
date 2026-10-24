@@ -3667,8 +3667,8 @@ function polHour(quiet){const p=S.pol;if(!p)return;pol();const C=GOVCFG;
   for(const n in p.ctrl){const c=p.ctrl[n];c.loy=Math.max(0,Math.min(100,c.loy+C.loyDrift*(1-presFx("loy"))+(!polLeader()||p.appr<35?C.loyLowAppr:0)));
     if(c.loy<C.loyLose&&Math.random()<.25){delete p.ctrl[n];if(!quiet)logPol(`${n} broke away from your influence`)}}
   if(typeof milHour==="function")milHour(quiet)}
-function govApp(){const p=pol();const seg=`<div class="ph-seg" style="margin-bottom:8px"><button data-ph="govtab" data-k="pol" aria-pressed="${govTab==="pol"}">Politics</button><button data-ph="govtab" data-k="mil" aria-pressed="${govTab==="mil"}">Military</button><button data-ph="govtab" data-k="bunk" aria-pressed="${govTab==="bunk"}">🛡 Bunker</button><button data-ph="govtab" data-k="off" aria-pressed="${govTab==="off"}">🏛 Office</button></div>`;
-  const gn=govNotesHtml(),nh=gn?`<div class="ph-card"><b>Government notices</b><span>${gn}</span></div>`:"";if(govTab==="mil")return seg+phInvCard()+milApp()+nh;if(govTab==="bunk")return seg+phInvCard()+bunkApp()+nh;if(govTab==="off")return seg+phInvCard()+officeApp()+nh;return seg+phInvCard()+govApp0()+nh}
+function govApp(){const p=pol();const seg=`<div class="ph-seg" style="margin-bottom:8px"><button data-ph="govtab" data-k="pol" aria-pressed="${govTab==="pol"}">Politics</button><button data-ph="govtab" data-k="mil" aria-pressed="${govTab==="mil"}">Military</button><button data-ph="govtab" data-k="bunk" aria-pressed="${govTab==="bunk"}">🛡 Bunker</button><button data-ph="govtab" data-k="off" aria-pressed="${govTab==="off"}">🏛 Office</button><button data-ph="govtab" data-k="mis" aria-pressed="${govTab==="mis"}">🎯 Missions</button></div>`;
+  const gn=govNotesHtml(),nh=gn?`<div class="ph-card"><b>Government notices</b><span>${gn}</span></div>`:"";if(govTab==="mil")return seg+phInvCard()+milApp()+nh;if(govTab==="bunk")return seg+phInvCard()+bunkApp()+nh;if(govTab==="off")return seg+phInvCard()+officeApp()+nh;if(govTab==="mis")return seg+phInvCard()+misApp()+nh;return seg+phInvCard()+govApp0()+nh}
 function phInvCard(){const d=dip(),inv=d.inv;if(!inv)return "";const w=(S.wars||[]).find(x=>x.id===inv.w);if(!w)return "";const rc=Math.round(warCost(w)*DIPCFG.rallyCost),tc=warCost(w),warn=inv.stage===1;
   const bt=(a,t,dis)=>`<button class="buy" data-ph="${a}" style="flex:1;color:#fff;background:#7c2d12!important;border-color:#f59e0b" ${dis?"disabled":""}>${t}</button>`;
   return `<div class="ph-card" style="border:1px solid #b91c1c;background:#7f1d1d33"><b>⚠ ${inv.by} ${warn?"threatens":"is invading"} ${inv.n}</b>
@@ -4352,6 +4352,61 @@ function dxWire(el){let g=null;
 function dxShell(){return `<div class="mdx-bar"><span class="mdx-logo">${dxI("biz",16,"#fff")}</span><b>${devSelf(S.name,(S.online||{}).name)?`<span class="devname">${dxE(S.name||"Meridian")}</span>`:dxE(S.name||"Meridian")} Holdings</b>
   <div class="mdx-seg" role="tablist"><button data-dx="reg" data-v="1" class="${DX.reg?"on":""}">Registered</button><button data-dx="reg" data-v="0" class="${DX.reg?"":"on"}">All owned</button></div>
   <button class="mdx-th" data-dx="theme" aria-label="Switch light or dark theme" title="Light / dark">${themeIco()}</button><button class="mdx-x" data-dx="close" aria-label="Close dashboard">×</button></div><div class="mdx-body">${dxBody()}</div><div class="mdx-rs" aria-hidden="true"></div>`}
+/* ---------- Military Intelligence: Missions dashboard ----------
+   Bought once as the "Military Intelligence" tool in the presidential office shop (S.poff.tools.milint). It unlocks the Missions tab in the
+   Government app, which opens a Military dashboard window in the same style as the business (HQ) dashboard.
+   Missions target a country you are at war with (your own wars) or the enemy of a side your troops fight for (joined wars).
+   Each mission costs cash (scaled by the target's size), has a success chance from your army strength vs the enemy, and a cooldown.
+   Success: recon +3 front · sabotage -12% enemy strength · airstrike +7 front (own wars); in joined wars sabotage/airstrike cut the enemy's GDP 3%/5%.
+   Failure: lose 2% of your troops and 1 approval. Optional save fields: mil().mis {cd:{type:time}, log:[...], ok, n}. */
+const MISCFG={t:{recon:{n:"Recon flight",ic:"🛰️",cost:.25,base:.9,cd:3,d:"Map enemy positions"},sab:{n:"Sabotage",ic:"💣",cost:.6,base:.65,cd:6,d:"Hit supply depots"},air:{n:"Precision airstrike",ic:"✈️",cost:1,base:.55,cd:10,d:"Strike front-line targets"}},
+  k:150000,loss:.02,appr:1,keep:12};
+const misOn=()=>!!(S.poff&&S.poff.tools&&S.poff.tools.milint);
+function misSt(){const m=mil(),x=m.mis=m.mis&&typeof m.mis==="object"?m.mis:{};if(!x.cd||typeof x.cd!=="object")x.cd={};if(!Array.isArray(x.log))x.log=[];if(!(x.ok>=0))x.ok=0;if(!(x.n>=0))x.n=0;return x}
+function misTargets(){const out=[],m=mil(),pc=dipPlayerC();for(const n in m.wars||{})out.push({n,own:1,w:m.wars[n]});
+  if(pc)for(const w of S.wars||[]){const s=w.al&&w.al[pc];if(!s)continue;const en=s==="a"?w.b:w.a;if(!out.some(o=>o.n===en))out.push({n:en,own:0,w,fr:w[s]})}return out}
+const misCost=(k,n)=>Math.round(MISCFG.k*MISCFG.t[k].cost*Math.max(1,ctyScale(n)));
+const misOdds=(k,n)=>{const r=milStr(milTerrain(n))/Math.max(1,milEnemy(n));return Math.max(.1,Math.min(.95,MISCFG.t[k].base*(.6+.4*Math.min(2,r))))};
+function misRun(k,n){const T=MISCFG.t[k],x=misSt(),now=Date.now(),tg=misTargets().find(t=>t.n===n),p=pol();if(!T||!tg)return "No target";if(!misOn())return "Buy Military Intelligence first";
+  if(!polLeader())return "Only a Leader can order missions";if(milStr()<=0)return "Raise an army first";if((x.cd[k]||0)>now)return `${T.n} ready in ${fmtDur(x.cd[k]-now)}`;
+  const c=misCost(k,n);if(S.cash<c)return `Need ${fmt(c)}`;S.cash-=c;x.cd[k]=now+T.cd*60000;x.n++;const ok=Math.random()<misOdds(k,n);let res;
+  if(ok){x.ok++;if(tg.own){const w=tg.w;if(k==="recon"){w.front=Math.min(99,w.front+3);res=`enemy positions mapped, front +3`}else if(k==="sab"){const v=Math.round(w.enemyMax*.12);w.enemyStr=Math.max(0,w.enemyStr-v);res=`depots destroyed, enemy strength −${v}`}else{w.front=Math.min(99,w.front+7);res=`targets hit, front +7`}}
+    else{const d=dip();if(k==="recon")res=`intel shared with ${tg.fr}`;else{const f=k==="sab"?.03:.05;d.gdp[n]*=1-f;res=`${n}'s war economy −${Math.round(f*100)}%`}}}
+  else{milKill(mil(),MISCFG.loss);p.appr=Math.max(0,p.appr-MISCFG.appr);res=`mission failed: troops lost, approval −${MISCFG.appr}`}
+  x.log.unshift({t:now,k,n,ok:ok?1:0,c,res});x.log=x.log.slice(0,MISCFG.keep);logPol(`${T.n} on ${n}: ${res}`);
+  try{if(ok&&k!=="recon")troopFly(p.c,n)}catch(e){}save();hud();return (ok?"✅ ":"❌ ")+`${T.n} on ${n}: ${res}`}
+function misApp(){if(!misOn())return `<div class="ph-card"><b>🎯 Missions</b><span>Locked. Buy <b>Military Intelligence</b> (${fmt(PRES_ITEMS.milint.price)}) in the presidential office shop to open the Military dashboard: recon flights, sabotage and airstrikes against your enemies.</span></div>`;
+  const x=misSt(),t=misTargets();return `<div class="ph-card"><b>🎯 Military dashboard</b><span>${t.length?`${t.length} target${t.length>1?"s":""} in range`:"No active war: declare one or send troops to a war first"} · ${x.n} missions, ${x.ok} successful</span></div>
+    <button class="buy" data-ph="misopen" style="width:100%;margin-top:8px;color:#fff;background:#1e3a8a!important;border-color:#60a5fa">Open Military dashboard</button>`}
+const MX={el:null,open:false,note:"",tg:null};
+function mxOpen(){if(!misOn())return toast("Buy Military Intelligence in the office shop first");if(!document.getElementById("mdx-css")){const st=document.createElement("style");st.id="mdx-css";st.textContent=DXCSS;document.head.appendChild(st)}
+  if(!MX.el){const el=MX.el=document.createElement("div");el.className="mdx-win mx-win";el.setAttribute("role","dialog");el.setAttribute("aria-label","Military dashboard");document.body.appendChild(el);
+    el.addEventListener("click",e=>{const b=e.target.closest("[data-mx]");if(!b)return;const a=b.dataset.mx;
+      if(a==="close"){mxClose();return}if(a==="theme"){themeSet(themeGet()==="dark"?"light":"dark");b.innerHTML=themeIco();return}
+      if(a==="tg"){MX.tg=b.dataset.v;mxRender();return}if(a==="run"){MX.note=misRun(b.dataset.k,MX.tg);mxRender();return}
+      if(a==="milapp"){mxClose();PH.open=true;PH.app="govt";govTab="mil";phRender();return}if(a==="wars"){mxClose();openPortfolio();return}})}
+  const vw=innerWidth,vh=innerHeight,el=MX.el;if(vw<560){el.classList.add("mdx-full");Object.assign(el.style,{left:"0px",top:"0px",width:vw+"px",height:vh+"px"})}
+  else{el.classList.remove("mdx-full");const w=Math.min(1100,vw-48),h=Math.min(780,vh-48);Object.assign(el.style,{left:(vw-w)/2+"px",top:(vh-h)/2+"px",width:w+"px",height:h+"px"})}
+  el.style.display="flex";MX.open=true;MX.note="";mxRender()}
+function mxClose(){MX.open=false;if(MX.el)MX.el.style.display="none"}
+function mxRender(){if(!MX.el)return;const m=mil(),x=misSt(),t=misTargets(),now=Date.now(),U=MILCFG.units,p=pol();if(!t.some(o=>o.n===MX.tg))MX.tg=t[0]?t[0].n:null;const tg=t.find(o=>o.n===MX.tg);
+  const kp=(lb,v,ft,bg,fg,ic)=>`<div class="mdx-card mdx-kpi"><span class="mdx-ic" style="background:${bg};color:${fg};font-size:20px">${ic}</span><div class="mdx-lb"><span>${lb}</span></div><div class="mdx-big">${v}</div><div class="mdx-kfoot"><small>${ft}</small></div></div>`;
+  const units=Object.keys(U).map(k=>[k,m.units[k]||0]),tot=units.reduce((a,u)=>a+u[1],0),cols=["#2563eb","#16a34a","#d97706","#9333ea","#dc2626","#0891b2"];
+  const front=tg&&tg.own?Math.round(tg.w.front):null;
+  MX.el.innerHTML=`<div class="mdx-bar"><span class="mdx-logo" style="background:#1e3a8a;font-size:15px">🎯</span><b>${dxE(p.c||"")} Military Command</b><button class="mdx-th" data-mx="theme" aria-label="Switch light or dark theme" style="margin-left:auto">${themeIco()}</button><button class="mdx-x" data-mx="close" aria-label="Close dashboard">×</button></div>
+  <div class="mdx-body"><div class="mdx-in"><div class="mdx-hd"><h2>War room <span>🛰️</span></h2><div class="mdx-date"><span class="mdx-live"></span>Intelligence feed live</div></div>
+  <div class="mdx-kpis">${kp("Army strength",Math.round(milStr()).toLocaleString(),`${tot.toLocaleString()} units`,"#e0ecff","#2563eb","🪖")}${kp("Morale",Math.round(m.morale||0)+"%",m.morale>=60?"Ready":"Tired","#dcfce7","#16a34a","🎖️")}${kp("Targets",t.length,t.length?"in range":"no active war","#fee2e2","#dc2626","🎯")}${kp("Missions",x.n,`${x.n?Math.round(x.ok/x.n*100):0}% success`,"#fef3c7","#d97706","📋")}</div>
+  <div class="mdx-grid"><div class="mdx-col mdx-c1">
+    <div class="mdx-card"><div class="mdx-ch"><h3>Forces</h3></div><div class="mdx-rows">${units.map(([k,v],i)=>`<div><span><i style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${cols[i%cols.length]};margin-right:6px"></i>${U[k].n||k}</span><b>${v.toLocaleString()}</b></div>`).join("")}</div></div></div>
+  <div class="mdx-col mdx-c2">
+    <div class="mdx-card"><div class="mdx-ch"><h3>Targets</h3></div><div class="mdx-rows">${t.length?t.map(o=>`<div><span>${o.own?"⚔️ Your war":"🤝 With "+dxE(o.fr)} · <b style="color:inherit">${dxE(o.n)}</b></span><button class="mdx-pill ${o.n===MX.tg?"mdx-up":"mdx-flat"}" data-mx="tg" data-v="${dxE(o.n)}" style="border:0;cursor:pointer">${o.n===MX.tg?"Selected":"Select"}</button></div>`).join(""):`<div><span>No targets. Declare war or send troops to a war in the Government app.</span></div>`}</div></div>
+    <div class="mdx-card"><div class="mdx-ch"><h3>Launch a mission${tg?` · ${dxE(tg.n)}`:""}</h3></div>${tg?`${front!=null?`<div class="mdx-rows"><div><span>Front line (100 = victory)</span><b>${front}/100</b></div><div><span>Enemy strength</span><b>${Math.round(tg.w.enemyStr)} / ${Math.round(tg.w.enemyMax)}</b></div></div>`:`<div class="mdx-rows"><div><span>Your troops fight for</span><b>${dxE(tg.fr)}</b></div><div><span>Enemy power</span><b>${Math.round(dipPower(tg.n))}</b></div></div>`}
+      <div class="mdx-qa" style="margin-top:12px">${Object.keys(MISCFG.t).map(k=>{const T=MISCFG.t[k],cd=Math.max(0,(x.cd[k]||0)-now),c=misCost(k,tg.n);return `<button data-mx="run" data-k="${k}" ${cd||S.cash<c||milStr()<=0?"disabled":""}><i style="background:#e0ecff;font-size:18px">${T.ic}</i>${T.n}<small style="font-weight:500;opacity:.75">${cd?"Ready in "+fmtDur(cd):`${fmt(c)} · ${Math.round(misOdds(k,tg.n)*100)}% odds`}</small><small style="font-weight:500;opacity:.6">${T.d}</small></button>`}).join("")}</div>`:`<div class="mdx-empty">Pick a target to plan a mission.</div>`}
+      <div class="mdx-note" style="${/^❌/.test(MX.note||"")?"color:#dc2626":""}">${dxE(MX.note||"")}</div></div>
+    <div class="mdx-card"><div class="mdx-ch"><h3>Mission log</h3></div><div class="mdx-tblw">${x.log.length?`<table class="mdx-tbl"><tr><th>Mission</th><th>Target</th><th>Result</th></tr>${x.log.map(l=>`<tr><td>${MISCFG.t[l.k].ic} ${MISCFG.t[l.k].n}</td><td>${dxE(l.n)}</td><td style="color:${l.ok?"#16a34a":"#dc2626"};white-space:normal">${dxE(l.res)}</td></tr>`).join("")}</table>`:`<div class="mdx-empty">No missions yet.</div>`}</div></div></div>
+  <div class="mdx-col mdx-c3">
+    <div class="mdx-card"><div class="mdx-ch"><h3>Quick Actions</h3></div><div class="mdx-qa"><button data-mx="milapp"><i style="background:#e0ecff;color:#2563eb">🪖</i>Recruit & wars</button><button data-mx="wars"><i style="background:#fee2e2;color:#dc2626">🌍</i>World conflicts</button></div></div>
+    <div class="mdx-card"><div class="mdx-ch"><h3>Intel briefing</h3></div><div class="mdx-rows"><div><span>Approval</span><b>${Math.round(p.appr||0)}%</b></div><div><span>Cash</span><b>${fmt(S.cash)}</b></div><div><span>Wars you joined</span><b>${t.filter(o=>!o.own).length}</b></div><div><span>Your own wars</span><b>${t.filter(o=>o.own).length}</b></div></div></div></div></div></div></div>`}
 /* dashboard pages: any page added later goes into DXPAGES; the Industrial Shop is always appended last, so it is always the right-most tab */
 const DXPAGES=[["fin","Finance"],["log","Logistics"],["truck","Trucking"]],DXLAST=["ind","Industrial Shop"];
 const dxPageList=()=>DXPAGES.filter(p=>p[0]!==DXLAST[0]).concat([DXLAST]);
@@ -4818,6 +4873,7 @@ const PRES_ITEMS={
   giftcase:{kind:"tool",name:"Diplomatic gift cabinet",icon:"🎁",price:3.2e6,fx:{loy:.08},desc:"Allies stay friendly longer."},
   quarter:{kind:"tool",name:"Quartermaster's ledger",icon:"🗂️",price:4.2e6,fx:{upk:.06},desc:"Cut waste in the barracks."},
   logmap:{kind:"tool",name:"Logistics map table",icon:"🗺️",price:3e6,fx:{upk:.04},desc:"Fewer idle convoys."},
+  milint:{kind:"tool",name:"Military Intelligence",icon:"🛰️",price:8.5e6,fx:{},unlock:"Unlocks the Missions dashboard in the Government app",desc:"Satellite feeds, field agents and a war room."},
   // ---- decor ----
   plant_s:{kind:"decor",name:"Potted palm",icon:"🌴",price:25e3,size:[.5,.5],desc:"A touch of green.",spots:[[-7.3,5.1,0],[7.3,5.1,0],[-4.4,-5.2,0],[4.4,-5.2,0]],
     build(T){const g=new T.Group();ofCyl(T,g,.2,.16,.3,0x8b5a2b,0,0,0);ofCyl(T,g,.04,.05,.7,0x6b4a2b,0,.3,0);for(let i=0;i<6;i++)presLeaf(T,g,i*1.05,0x2f855a);return g},
@@ -4883,7 +4939,7 @@ const PRES_ITEMS={
 /* total bonus of one kind from the tools you own, capped per kind. Zero unless you are Leader (the office is a Leader perk). */
 function presFx(kind){const d=S.poff;if(!d||!d.tools||!polLeader())return 0;let v=0;for(const k in d.tools){const it=PRES_ITEMS[k];if(d.tools[k]&&it&&it.kind==="tool"&&it.fx&&it.fx[kind])v+=it.fx[kind]}return Math.min(PRES_FX[kind].cap,v)}
 const milBatchCost=k=>Math.round(MILCFG.units[k].cost*MILCFG.batch*(1-presFx("cost")));
-const presEffText=it=>Object.keys(it.fx).map(k=>`${PRES_FX[k].sg}${Math.round(it.fx[k]*100)}% ${PRES_FX[k].n}`).join(", ");
+const presEffText=it=>it.unlock||Object.keys(it.fx).map(k=>`${PRES_FX[k].sg}${Math.round(it.fx[k]*100)}% ${PRES_FX[k].n}`).join(", ");
 /* per-player layout, created with defaults so old saves load */
 function presData(){const d=S.poff=S.poff&&typeof S.poff==="object"?S.poff:{};
   d.items=(Array.isArray(d.items)?d.items:[]).filter(o=>o&&typeof o==="object"&&PRES_ITEMS[o.type]&&PRES_ITEMS[o.type].kind==="decor"&&typeof o.x==="number"&&typeof o.z==="number"&&Math.abs(o.x)<=OFC_ROOM.w/2&&Math.abs(o.z)<=OFC_ROOM.d/2).slice(0,120);for(const o of d.items)if(!Number.isInteger(o.rot)||o.rot<0||o.rot>3)o.rot=0;
@@ -6731,6 +6787,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
   else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
+  else if(a==="misopen"){mxOpen();return}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
   else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
