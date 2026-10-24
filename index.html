@@ -5531,13 +5531,14 @@ function popTick(days){if(!(days>0))return;days=Math.min(days,48);const now=Date
       if(o)popKill(n,3,p.p*C.occ*days*(o.resist||0)/100)}}}
 /* War deaths: strikes kill more the stronger the weapon (DEATHCFG.mult on top of each weapon's mortality); every strike pops up a death toll,
    and all war deaths (strikes + daily fighting/occupation) are logged in S.wd for the Military dashboard. */
-const DEATHCFG={mult:{msl:1.5,gas:2,nuke:2.5,icbm:3},wound:{msl:3,gas:4,nuke:2,icbm:1.5},popMs:9000,keep:80};
+const DEATHCFG={mult:{msl:1.5,gas:2,nuke:6,icbm:12},cap:{msl:.02,gas:.1,nuke:.6,icbm:.9}, // cap = most of the city population one strike can kill
+  wound:{msl:3,gas:4,nuke:2,icbm:1.5},popMs:9000,keep:80};
 let _wdStrike=0;
 function wd(){let d=S.wd;if(!d||typeof d!=="object")d=S.wd={};if(!(d.tot>=0))d.tot=0;if(!d.c||typeof d.c!=="object")d.c={};if(!Array.isArray(d.log))d.log=[];return d}
 function wdLog(e){const d=wd(),now=Date.now();d.tot+=e.n;d.c[e.c]=(d.c[e.c]||0)+e.n;
   if(e.war){const l=d.log.find(x=>x.war&&x.c===e.c&&x.day===(S.day||0));if(l){l.n+=e.n;l.t=now;return}d.log.unshift({war:1,c:e.c,n:e.n,day:S.day||0,t:now})}
   else d.log.unshift({k:e.k,city:e.city,c:e.c,n:e.n,by:e.by||"",t:now});d.log=d.log.slice(0,DEATHCFG.keep)}
-function popStrike(k,c,by){const W=WPNCFG.w[k];if(!W||!c)return 0;_wdStrike=1;let dead=0;try{dead=popKill(c.country,3,POPCFG.cityPop[c.size]*dmgHit(W,c)*W.mort*(DEATHCFG.mult[k]||1)*(.8+Math.random()*.4))}finally{_wdStrike=0}
+function popStrike(k,c,by){const W=WPNCFG.w[k];if(!W||!c)return 0;_wdStrike=1;let dead=0;try{dead=popKill(c.country,3,Math.min(POPCFG.cityPop[c.size]*(DEATHCFG.cap[k]||1),POPCFG.cityPop[c.size]*dmgHit(W,c)*W.mort*(DEATHCFG.mult[k]||1)*(.8+Math.random()*.4)))}finally{_wdStrike=0}
   wdLog({k,city:c.id,c:c.country,n:dead,by});try{deathPop(k,c,dead)}catch(e){}return dead}
 function deathPop(k,c,dead){const W=WPNCFG.w[k],mw=document.getElementById("mapwrap");if(!W||!mw||document.hidden)return;let box=document.getElementById("deathpop");
   if(!box){box=document.createElement("div");box.id="deathpop";box.style.cssText="position:absolute;right:12px;top:120px;z-index:58;display:flex;flex-direction:column;gap:8px;width:min(300px,80vw);pointer-events:none";mw.appendChild(box)}
