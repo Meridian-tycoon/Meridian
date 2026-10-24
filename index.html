@@ -2749,7 +2749,7 @@ function wwMirror(quiet){if(!wwShared())return;const pc=dipPlayerC(),d=dip(),old
 function wjPub(w,s){try{if(!ON.ready||!ON.user)return;const gid=w.gid||(WRM?w.id:0);if(!gid)return;const r=ON.db.collection("wjoin").doc(ON.user.uid);
   if(!s)return void r.delete().catch(()=>{});
   r.set({w:gid,s,n:wlPT(),name:wlName().slice(0,20),c:String(dipPlayerC()||"").slice(0,40),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't share your troops: "+(e&&e.code||e)})}catch(e){}}
-function wwListen(){try{evListen()}catch(e){}if(ON.unsubWW)return;
+function wwListen(){try{evListen()}catch(e){}try{lnListen()}catch(e){}if(ON.unsubWW)return;
   ON.unsubWW=ON.db.collection("world").doc("wars").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list))return;WW={list:v.list,ruler:v.ruler||{}};
     try{localStorage.setItem(WWKEY,JSON.stringify(WW))}catch(e){}if(ON.authKnown&&!WRM){wwMirror(false);draw();onRefresh()}},e=>{ON.err="Couldn't load world wars: "+(e&&e.code||e)});
   ON.unsubWJ=ON.db.collection("wjoin").onSnapshot(q=>{const a=[],old=Date.now()-3*864e5;q.forEach(x=>{const v=x.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():Date.now();if(ON.user&&x.id===ON.user.uid)return;if(at<old||!Number.isInteger(v.w)||(v.s!=="a"&&v.s!=="b"))return;a.push({uid:x.id,w:v.w,s:v.s,n:+v.n||0,name:v.name,c:v.c,at})});
@@ -4011,12 +4011,29 @@ function wpnBuildN(k,n){const W=WPNCFG.w[k];n=Math.max(1,Math.min(99,Math.floor(
     if(got)toast(`${got} × ${W.n} in production · ready in ${fmtDur(W.build*DAYMS)}${got<n?` · stopped at ${got} of ${n}: ${last}`:""}`);else toast(last)}finally{window.toast=t0}}
 /* Barrage: fire a salvo of regular missiles at one city, one after another (each is a normal missile strike) */
 const BARRAGE={n:30,gap:400};
-function wpnBarrage(id){const m=wpn(),c=CITIES[+id];if(!c)return;if(!polLeader())return toast("Only a Leader can order strikes");if(!m.wars[c.country])return toast(`You're not at war with ${c.country}`);
-  const n=Math.min(BARRAGE.n,m.wpn.msl||0);if(n<2)return toast("A barrage needs at least 2 missiles in stock");toast(`🎆 Missile barrage: ${n} missiles launched at ${c.name}`);
-  for(let i=0;i<n;i++)setTimeout(()=>{if(!(m.wpn.msl>0)||!m.wars[c.country])return;wpnFire("msl",c.id,1);if(i===n-1){save();hud()}},i*BARRAGE.gap)}
-function wpnFire(k,id,sure){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id],now=Date.now();if(!W||!c)return;if(!polLeader())return toast("Only a Leader can order strikes");
+function wpnBarrage(id,go){const m=wpn(),c=CITIES[+id];if(!c)return;if(!polLeader())return toast("Only a Leader can order strikes");if(!m.wars[c.country])return toast(`You're not at war with ${c.country}`);
+  const n=Math.min(BARRAGE.n,m.wpn.msl||0);if(n<2)return toast("A barrage needs at least 2 missiles in stock");if(!go&&govRival(c))return lnStart("msl",c.id,n);toast(`🎆 Missile barrage: ${n} missiles launched at ${c.name}`);
+  for(let i=0;i<n;i++)setTimeout(()=>{if(!(m.wpn.msl>0)||!m.wars[c.country])return;wpnFire("msl",c.id,1,1);if(i===n-1){save();hud()}},i*BARRAGE.gap)}
+/* Player vs player: a strike on a country another player governs waits LCFG.ms. The target player gets a warning popup with a live countdown (Firestore launch/{id}). */
+const LCFG={ms:30000};
+function govRival(c){if(!c||typeof ON==="undefined"||!ON.user||!Array.isArray(ON.players))return null;return ON.players.find(p=>p.govC===c.country&&Number.isInteger(p.govR))||null}
+function lnStart(k,id,n){const c=CITIES[+id],W=WPNCFG.w[k];if(!c||!W)return;const L=S.launch=Array.isArray(S.launch)?S.launch:[],r=govRival(c);
+  if(L.some(x=>x.city===c.id&&x.k===k&&x.n===n))return toast(`A launch at ${c.name} is already counting down`);
+  const x={k,city:c.id,n,at:Date.now()+LCFG.ms};L.push(x);toast(`${W.ico} Launch sequence: ${n>1?n+" × ":""}${W.n} at ${c.name} in ${Math.round(LCFG.ms/1000)}s${r?` · ${r.name||"their leader"} has been warned`:""}`);lnPub(x);save()}
+function lnPub(x){try{if(!ON.ready||!ON.user)return;const c=CITIES[x.city],p=pol();ON.db.collection("launch").add({from:ON.user.uid,name:String(onProf().name||"Tycoon").slice(0,20),fc:String(p.c||"").slice(0,40),tc:c.country,city:c.id,k:x.k,n:x.n,at:x.at}).then(d=>{x.doc=d.id}).catch(()=>{})}catch(e){}}
+function lnTick(){const L=S.launch;if(!Array.isArray(L)||!L.length)return;const now=Date.now();for(const x of L.slice()){if(x.at>now)continue;S.launch=S.launch.filter(y=>y!==x);
+  try{if(x.doc&&ON.db)ON.db.collection("launch").doc(x.doc).delete().catch(()=>{})}catch(e){}if(x.n>1)wpnBarrage(x.city,1);else wpnFire(x.k,x.city,1,1);save();hud()}}
+const LN={seen:{}};
+function lnListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubLN)return;ON.unsubLN=ON.db.collection("launch").onSnapshot(q=>{const now=Date.now(),me=pol().c;q.forEach(d=>{const v=d.data()||{};
+  if(LN.seen[d.id]||(ON.user&&v.from===ON.user.uid)||!me||v.tc!==me||!(v.at>now)||!CITIES[v.city]||!WPNCFG.w[v.k])return;LN.seen[d.id]=1;lnWarn(v)})},()=>{})}catch(e){}}
+function lnWarn(v){const W=WPNCFG.w[v.k],c=CITIES[v.city],mw=document.getElementById("mapwrap");if(!mw)return;const el=document.createElement("div");
+  el.className="lnwarn";el.style.cssText=`position:absolute;left:50%;top:70px;transform:translateX(-50%);z-index:60;width:min(340px,90vw);background:#2a0606;color:#fff;border:3px solid ${W.col};border-radius:14px;padding:12px 14px;font:14px system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.55);text-align:center`;
+  mw.appendChild(el);let iv=0;const paint=()=>{const s=Math.max(0,Math.ceil((v.at-Date.now())/1000));el.innerHTML=`<b style="color:${W.col};font-size:16px">⚠ INCOMING ${v.n>1?v.n+" × ":""}${dxE(W.n.toUpperCase())}</b><div style="margin:4px 0">${dxE(v.name||"A rival")}${v.fc?" ("+dxE(v.fc)+")":""} launched at <b>${dxE(c.name)}</b></div><div style="font-size:28px;font-weight:800">${s}s</div><div style="font-size:12px;opacity:.8">Get to a bunker or evacuate with Air One</div>`;if(s<=0){clearInterval(iv);setTimeout(()=>el.remove(),3000)}};
+  iv=setInterval(paint,500);paint();toast(`⚠ ${W.n} launch detected: ${c.name} hit in ${Math.round((v.at-Date.now())/1000)}s`)}
+function wpnFire(k,id,sure,go){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id],now=Date.now();if(!W||!c)return;if(!polLeader())return toast("Only a Leader can order strikes");
   if((k==="icbm"||k==="nuke")&&present(c)&&!bunkInside(c)&&!sure)return toast(`You are in ${c.name}: a ${W.n.toLowerCase()} here would kill you`);
   const w=m.wars[c.country];if(!w)return toast(`You're not at war with ${c.country}`);if(!m.wpn[k])return toast(`No ${W.n.toLowerCase()} in stock`);
+  if(!go&&govRival(c))return lnStart(k,c.id,1);
   m.wpn[k]--;if(k!=="msl"){w.wmd=1;if(k==="nuke"||k==="icbm")w.nk=1;if(k==="icbm")w.ic=1;wpnSanction(k)}const kill=Math.max(0,Math.min(w.enemyMax*W.enemy,w.enemyStr-w.enemyMax*WPNCFG.strFloor)),f0=w.front;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.max(f0,Math.min(k==="nuke"||k==="icbm"?WPNCFG.nukeCap:WPNCFG.frontCap,f0+W.front));const push=Math.round((w.front-f0)*10)/10;w.weariness=Math.min(100,w.weariness+W.wear);
   p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const n in p.ctrl)p.ctrl[n].loy=Math.max(0,p.ctrl[n].loy+W.loy);for(const n in m.occ)m.occ[n].resist=Math.min(100,m.occ[n].resist+W.resist);
   m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*WPNCFG.ownHit,from:p.c});
@@ -7393,7 +7410,7 @@ let nextAt=0;
 async function chk(){if(shown||Date.now()<nextAt||document.hidden||!/^https?:/.test(location.protocol)||!Number.isFinite(base))return;
   try{const r=await fetch(location.pathname,{method:"HEAD",cache:"no-store"});const t=Date.parse(r.headers.get("last-modified")||"");if(Number.isFinite(t)&&t-base>5000)ask()}catch(e){}}
 setInterval(chk,5*60000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)chk()});setTimeout(chk,20000)})();
-resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{rigTick(Date.now())}catch(e){}},1000);
+resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}},1000);
 if(!S.log.length){S.log=["You start with nothing. Tap a city, open Jobs & home, rent a room and apply for work."];hud()}
 if(!world)toast("Map outline didn't load. Cities still work.");
 })();
