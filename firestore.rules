@@ -112,6 +112,31 @@ service cloud.firestore {
         && request.resource.data.stock is list && request.resource.data.stock.size() <= 10
         && request.resource.data.updated == request.time;
     }
+    // Shared wars (living wars on the map): only the developer's save (the master world) writes world/wars, everyone reads it.
+    match /world/wars {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1'
+        && request.resource.data.keys().hasOnly(['list', 'ruler', 'updated'])
+        && request.resource.data.keys().hasAll(['list', 'ruler', 'updated'])
+        && request.resource.data.list is list && request.resource.data.list.size() <= 30
+        && request.resource.data.ruler is map
+        && request.resource.data.updated == request.time;
+    }
+    // A player's troops fighting in a shared war: one doc per player, written and removed only by that player, read by everyone.
+    match /wjoin/{uid} {
+      allow read: if true;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['w', 's', 'n', 'name', 'c', 'at'])
+        && request.resource.data.keys().hasAll(['w', 's', 'n', 'name', 'c', 'at'])
+        && request.resource.data.w is int && request.resource.data.w > 0
+        && request.resource.data.s in ['a', 'b']
+        && request.resource.data.n is number && request.resource.data.n >= 0 && request.resource.data.n <= 1000000000
+        && request.resource.data.name is string && request.resource.data.name.size() <= 20
+        && request.resource.data.c is string && request.resource.data.c.size() <= 40
+        && request.resource.data.at == request.time;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
     // Requests to the bot (hire a truck "haul", "buy" or "sell" goods): the player creates one (money/goods are taken from the player's own save first),
     // the master reads them all, answers with a botres document and deletes the request. No updates, so a request cannot be changed after sending.
     match /botreq/{id} {
