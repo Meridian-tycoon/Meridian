@@ -4331,7 +4331,7 @@ function wpnBuildN(k,n){const W=WPNCFG.w[k];n=Math.max(1,Math.min(99,Math.floor(
 /* Barrage: fire a salvo of regular missiles at one city, one after another (each is a normal missile strike) */
 const BARRAGE={n:30,gap:400};
 function wpnBarrage(id,go){const m=wpn(),c=CITIES[+id];if(!c)return;if(!polLeader())return toast("Only a Leader can order strikes");if(!m.wars[c.country])return toast(`You're not at war with ${c.country}`);
-  const n=Math.min(BARRAGE.n,m.wpn.msl||0);if(n<2)return toast("A barrage needs at least 2 missiles in stock");if(!go&&govRival(c))return lnStart("msl",c.id,n);toast(`🎆 Missile barrage: ${n} missiles launched at ${c.name}`);
+  const n=Math.min(BARRAGE.n,m.wpn.msl||0);if(n<2)return toast("A barrage needs at least 2 missiles in stock");if(!go&&govRival(c))return lnStart("msl",c.id,n);toast(`🎆 Missile barrage: ${n} missiles launched at ${c.name}`);if(!go)lnFlyPub("msl",c,n);
   for(let i=0;i<n;i++)setTimeout(()=>{if(!(m.wpn.msl>0)||!m.wars[c.country])return;wpnFire("msl",c.id,1,1);if(i===n-1){save();hud()}},i*BARRAGE.gap)}
 /* Player vs player: a strike on a country another player governs waits LCFG.ms. The target player gets a warning popup with a live countdown (Firestore launch/{id}). */
 const LCFG={ms:30000};
@@ -4342,9 +4342,15 @@ function lnStart(k,id,n){const c=CITIES[+id],W=WPNCFG.w[k];if(!c||!W)return;cons
 function lnPub(x){try{if(!ON.ready||!ON.user)return;const c=CITIES[x.city],p=pol();ON.db.collection("launch").add({from:ON.user.uid,name:String(onProf().name||"Tycoon").slice(0,20),fc:String(p.c||"").slice(0,40),tc:c.country,city:c.id,k:x.k,n:x.n,at:x.at}).then(d=>{x.doc=d.id}).catch(()=>{})}catch(e){}}
 function lnTick(){const L=S.launch;if(!Array.isArray(L)||!L.length)return;const now=Date.now();for(const x of L.slice()){if(x.at>now)continue;S.launch=S.launch.filter(y=>y!==x);
   try{if(x.doc&&ON.db)ON.db.collection("launch").doc(x.doc).delete().catch(()=>{})}catch(e){}if(x.n>1)wpnBarrage(x.city,1);else wpnFire(x.k,x.city,1,1);save();hud()}}
+/* public launch notice for every strike that skips the 30 s player-vs-player countdown (e.g. at an AI government): spectators get the banner and the flight, removed after impact. at = impact time. */
+function lnFlyPub(k,c,n){try{if(!ON.ready||!ON.user)return;const p=pol();ON.db.collection("launch").add({from:ON.user.uid,name:String(onProf().name||"Tycoon").slice(0,20),fc:String(p.c||"").slice(0,40),tc:c.country,city:c.id,k,n:Math.max(1,Math.min(99,n|0)),at:Date.now()+trjMs(k)}).then(d=>setTimeout(()=>{try{ON.db.collection("launch").doc(d.id).delete().catch(()=>{})}catch(e){}},trjMs(k)+15000)).catch(()=>{})}catch(e){}}
 const LN={seen:{}};
 function lnListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubLN)return;ON.unsubLN=ON.db.collection("launch").onSnapshot(q=>{const now=Date.now(),me=pol().c;q.forEach(d=>{const v=d.data()||{};
-  if(LN.seen[d.id]||(ON.user&&v.from===ON.user.uid)||!me||v.tc!==me||!(v.at>now)||!CITIES[v.city]||!WPNCFG.w[v.k])return;LN.seen[d.id]=1;lnWarn(v)})},()=>{})}catch(e){}}
+  if(LN.seen[d.id]||(ON.user&&v.from===ON.user.uid)||!(v.at>now)||!CITIES[v.city]||!WPNCFG.w[v.k])return;LN.seen[d.id]=1;try{lnSpec(v)}catch(e){}if(me&&v.tc===me)lnWarn(v)})},()=>{})}catch(e){}}
+/* what every other player sees: a launch banner with an impact countdown and the missile flying across their map */
+function lnSpec(v){const W=WPNCFG.w[v.k],c=CITIES[v.city],t0=Math.max(Date.now(),v.at-trjMs(v.k)),org=COUNTRIES.includes(v.fc)?v.fc:null;
+  if(org&&typeof trjAdd==="function"){const f=trjAdd(org,c,v.k,t0,Math.max(300,v.at-t0),"l"+v.from+v.at);if(f){f.sp=1;if(typeof wpnAnim==="function")wpnAnim()}}
+  wmdBanner(v.k,`${v.name||"A rival"}${v.fc?" ("+v.fc+")":""} launched ${v.n>1?v.n+" × ":""}${W.n.toLowerCase()} at ${c.name}, ${c.country} · {s}`,Math.max(10000,v.at-Date.now()+8000),v.at)}
 function lnWarn(v){const W=WPNCFG.w[v.k],c=CITIES[v.city],mw=document.getElementById("mapwrap");if(!mw)return;const el=document.createElement("div");
   el.className="lnwarn";el.style.cssText=`position:absolute;left:50%;top:70px;transform:translateX(-50%);z-index:60;width:min(340px,90vw);background:#2a0606;color:#fff;border:3px solid ${W.col};border-radius:14px;padding:12px 14px;font:14px system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.55);text-align:center`;
   mw.appendChild(el);let iv=0;const paint=()=>{const s=Math.max(0,Math.ceil((v.at-Date.now())/1000));el.innerHTML=`<b style="color:${W.col};font-size:16px">⚠ INCOMING ${v.n>1?v.n+" × ":""}${dxE(W.n.toUpperCase())}</b><div style="margin:4px 0">${dxE(v.name||"A rival")}${v.fc?" ("+dxE(v.fc)+")":""} launched at <b>${dxE(c.name)}</b></div><div style="font-size:28px;font-weight:800">${s}s</div><div style="font-size:12px;opacity:.8">Get to a bunker or evacuate with Air One</div>`;if(s<=0){clearInterval(iv);setTimeout(()=>el.remove(),3000)}};
@@ -4353,6 +4359,7 @@ function wpnFire(k,id,sure,go){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id]
   if((k==="icbm"||k==="nuke")&&present(c)&&!bunkInside(c)&&!sure)return toast(`You are in ${c.name}: a ${W.n.toLowerCase()} here would kill you`);
   const w=m.wars[c.country];if(!w)return toast(`You're not at war with ${c.country}`);if(!m.wpn[k])return toast(`No ${W.n.toLowerCase()} in stock`);
   if(!go&&govRival(c))return lnStart(k,c.id,1);
+  if(!go)lnFlyPub(k,c,1);
   m.wpn[k]--;if(k!=="msl"){w.wmd=1;if(k==="nuke"||k==="icbm")w.nk=1;if(k==="icbm")w.ic=1;wpnSanction(k)}const kill=Math.max(0,Math.min(w.enemyMax*W.enemy,w.enemyStr-w.enemyMax*WPNCFG.strFloor)),f0=w.front;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.max(f0,Math.min(k==="nuke"||k==="icbm"?WPNCFG.nukeCap:WPNCFG.frontCap,f0+W.front));const push=Math.round((w.front-f0)*10)/10;w.weariness=Math.min(100,w.weariness+W.wear);
   p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const n in p.ctrl)p.ctrl[n].loy=Math.max(0,p.ctrl[n].loy+W.loy);for(const n in m.occ)m.occ[n].resist=Math.min(100,m.occ[n].resist+W.resist);
   m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*WPNCFG.ownHit,from:p.c});
@@ -4720,6 +4727,7 @@ function trjDraw(ctx,now,zs){for(let i=_trj.length-1;i>=0;i--){const f=_trj[i];i
   const hl=f.g(shown);if(visible(hl[0],hl[1])){const [hx,hy0]=proj(hl),hy=hy0-4*shown*(1-shown)*hgt;
     ctx.globalAlpha=fa;ctx.shadowColor=W.col;ctx.shadowBlur=10;ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(hx,hy,3.2*Math.min(1.4,zs),0,7);ctx.fill();ctx.shadowBlur=0;
     if(u<1){const eta=Math.max(0,Math.ceil((f.t0+f.dur-now)/1000)),tx=W.ico+" "+eta+"s";ctx.font="bold 11px system-ui, sans-serif";ctx.textAlign="center";ctx.lineWidth=3;ctx.strokeStyle="rgba(0,0,0,.6)";ctx.strokeText(tx,hx,hy-9);ctx.fillStyle="#fff";ctx.fillText(tx,hx,hy-9)}}
+  if(f.sp&&u>=1&&visible(f.b[0],f.b[1])){const w=Math.min(1,(now-f.t0-f.dur)/f.fade),[bx,by]=proj(f.b),R=(W.r||10)*zs;ctx.globalAlpha=Math.max(0,1-w);ctx.lineWidth=3*(1-w)+1;ctx.beginPath();ctx.arc(bx,by,R*(.3+2.2*w),0,7);ctx.stroke();ctx.fillStyle="#fff7d6";ctx.globalAlpha=Math.max(0,(1-w)*.9);ctx.beginPath();ctx.arc(bx,by,R*(.9-.6*w),0,7);ctx.fill()}
   ctx.restore()}}
 /* red launch banner under the header: ms = lifetime; at = impact time for a live countdown (visual only) */
 const WBN={msl:"MISSILE LAUNCH",gas:"CHEMICAL ATTACK",nuke:"NUCLEAR LAUNCH",icbm:"ICBM LAUNCH"};const WMDBANNER_MS=60000;let _wbT=0;
