@@ -3936,7 +3936,7 @@ const MILCFG={
   supplyBase:55,supplyLogi:10,supplyDist:25, // supply % = base + per logistics unit per 10 combat units, minus up to 25 for distance
   peaceCd:.5,repShare:.25,repHours:48, // peace offer cooldown (days); reparations = share of annex cost, paid over N hours
   lossAppr:-20,winAppr:6,
-  occResist:70,occDrift:.5,occGar:.6,occIncome:2,occCalm:20,occDays:3,occRevolt:85,occLoy:45, // occupation
+  occResist:70,occDrift:.5,occGar:3,occIncome:2,occCalm:20,occDays:.5,occRevolt:85,occLoy:45, // occupation
 };
 function mil(){const p=pol(),m=p.mil=p.mil||{};if(!m.units||typeof m.units!=="object")m.units={};for(const k in MILCFG.units)if(!(m.units[k]>=0))m.units[k]=0;
   if(m.morale==null)m.morale=MILCFG.moraleBase;if(m.supply==null)m.supply=MILCFG.supplyBase;if(!m.wars||typeof m.wars!=="object")m.wars={};if(!m.occ||typeof m.occ!=="object")m.occ={};
@@ -3984,6 +3984,12 @@ function milPeace(n){const m=mil(),w=m.wars[n],now=Date.now();if(!w)return;if(no
   if(Math.random()<ch)milEndWar(n,f>=65?"theyPay":f<=35?"wePay":"white");else toast(`${n} rejected peace (${Math.round(ch*100)}%)`)}
 function milGarrison(n,d){const m=mil(),o=m.occ[n];if(!o)return;const free=m.units.inf-milGar();if(d>0&&free<MILCFG.batch)return toast("Not enough free infantry");o.gar=Math.max(0,(o.gar||0)+d*MILCFG.batch)}
 function milDisbandAll(){const m=mil();let n=0;for(const k in m.units){const keep=k==="inf"?milGar():0,d=Math.max(0,(m.units[k]||0)-keep);m.units[k]-=d;n+=d}if(!n)return toast("No free troops to disband");toast(`Disbanded ${n} units. Upkeep is now ${fmt(milUpkeep())}/hr`)}
+/* real hours left until an occupied country joins your control, shown in the war panel */
+function milOccLeft(n){const m=mil(),o=m.occ[n],C=MILCFG;if(!o)return"";const need=Math.max(1,ctyScale(n)*.5),full=C.occDays*24,
+  dr=C.occDrift-C.occGar*2*Math.min(1.5,(o.gar||0)/need)+(polLeader()?0:.5);
+  if(o.resist<C.occCalm)return ` · ⏳ ~${Math.max(1,full-(o.calm||0))}h left (calm ${o.calm||0}/${full}h)`;
+  if(dr>=0)return " · ⏳ add garrison to calm it";
+  return ` · ⏳ ~${Math.ceil((o.resist-C.occCalm)/-dr)+full}h left`}
 function milAbandon(n){const m=mil();if(m.occ[n]){delete m.occ[n];logPol(`You withdrew from ${n}`)}}
 function milHour(quiet){const p=S.pol;if(!p||!p.mil)return;const m=mil(),C=MILCFG,lead=polLeader(),say=(t)=>{if(!quiet)logPol(t);else S.log.unshift("Government: "+t);milLog(m,t)};
   {const nb=wpnTick();if(nb&&!quiet)toast(`${nb} weapon${nb>1?"s":""} ready in your arsenal`)}
@@ -4025,7 +4031,7 @@ function milApp(){const p=pol(),m=mil(),C=MILCFG,U=C.units,now=Date.now(),lead=p
     ${w.battles.slice(0,3).map(b=>`<div><span><small>${new Date(b.t).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})} · ${b.ps} vs ${b.es}</small></span><b style="color:${b.mv>=0?"#4ade80":"#f87171"}">${b.mv>=0?"+":""}${b.mv}</b></div>`).join("")}</div>
     <div class="ph-rows"><div><span>War pace</span><b>×${milPace(w).toFixed(2)}${(w.enemyMax>0&&w.enemyStr<=w.enemyMax*WARPACE.low)?" · enemy below 20%":""}</b></div></div>${sb("milrf",n,(w.rf||0)>=WARPACE.rfMax?"Max reinforcements sent":`🪖 Send ${WARPACE.rfN} troops · ${fmt(MILCFG.units.inf.cost*WARPACE.rfN*(milBatchCost("inf")/(MILCFG.units.inf.cost*MILCFG.batch)))}`,"#1d4ed8",(w.rf||0)>=WARPACE.rfMax)}
     ${sb("milpeace",n,pc?"Talks in "+fmtDur(pc):`Offer peace${w.front>=65?" (they pay)":w.front<=35?" (you pay)":" (white)"}`,"#374151",pc)}`}
-  const ok=Object.keys(m.occ);if(ok.length)h+=`<div class="ph-sub" style="margin-top:10px">Occupied</div><div class="ph-rows">${ok.map(n=>{const o=m.occ[n];return urow(`${n} · resist <b style="color:${o.resist>60?"#f87171":o.resist<C.occCalm?"#4ade80":"#fbbf24"}">${Math.round(o.resist)}</b>`,`garrison ${o.gar||0} · +${fmt(GOVCFG.share*C.occIncome*ctyScale(n)*(1-o.resist/100))}/hr${o.calm?` · calm ${o.calm}/${C.occDays*24}h`:""}`,bx("milgar",n+"|1",`+${C.batch} garrison`,"#14532d",0,1)+bx("milgar",n+"|-1","−","#374151",!o.gar)+bx("milab",n,"✕","#374151"))}).join("")}</div>`;
+  const ok=Object.keys(m.occ);if(ok.length)h+=`<div class="ph-sub" style="margin-top:10px">Occupied</div><div class="ph-rows">${ok.map(n=>{const o=m.occ[n];return urow(`${n} · resist <b style="color:${o.resist>60?"#f87171":o.resist<C.occCalm?"#4ade80":"#fbbf24"}">${Math.round(o.resist)}</b>`,`garrison ${o.gar||0} · +${fmt(GOVCFG.share*C.occIncome*ctyScale(n)*(1-o.resist/100))}/hr${milOccLeft(n)}`,bx("milgar",n+"|1",`+${C.batch} garrison`,"#14532d",0,1)+bx("milgar",n+"|-1","−","#374151",!o.gar)+bx("milab",n,"✕","#374151"))}).join("")}</div>`;
   if(lead){const cd=Math.max(0,m.cd-now),full=wk.length>=C.maxWars,list=COUNTRIES.filter(x=>x!==p.c&&!p.ctrl[x]&&!m.occ[x]&&!m.wars[x]).sort((a,b)=>milEnemy(a)-milEnemy(b));
     h+=`<div class="ph-sub" style="margin-top:10px">Declare war${cd?" · ready in "+fmtDur(cd):""}${full?" · max wars reached":""} (approval ${C.warAppr})</div><div class="ph-rows">${list.map(x=>`<div><span>${x}<br><small style="opacity:.7">${milTerrain(x)} · enemy ${milEnemy(x)} vs you ${Math.round(milStr(milTerrain(x)))}</small></span>${sb("milwar",x,fmt(milWarCost(x)),"#7f1d1d",cd||full||S.cash<milWarCost(x)||milStr()<=0)}</div>`).join("")}</div>`}
   else h+=`<p class="ph-sub">Only a Leader can recruit and declare war. Losing office forces a white peace and puts the army in reserve: units stay at ${Math.round(C.reserveUp*100)}% upkeep until you lead again.</p>`;
