@@ -502,7 +502,7 @@ function menuNet(c,b,lv,id){menuOv={[c.id+":"+b.k]:id};try{return profit(b,c,lv)
 const USE={cart:{burgers:2},coffeecart:{bread:1},icecream:{bread:1},taco:{beef:1,bread:1},pretzel:{bread:2},noodle:{beef:1},smoothie:{bread:1},kiosk:{bread:3},shop:{bread:4,tools:1},rest:{burgers:5,beef:3},office:{electronics:.5},hotel:{bread:8,electronics:.5}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
-function profit(b,c,lv){if(unhOn(c))return 0;if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)*(typeof ishBiz==="function"?ishBiz(b):1)*(typeof pandMult==="function"?pandMult(b):1)*techBiz(b)*(typeof ctTurf==="function"?ctTurf(c):1)-bizWage(b,c,lv))}
+function profit(b,c,lv){if(unhOn(c))return 0;if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round(b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof mktMult==="function"?mktMult(c):1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)*(typeof ishBiz==="function"?ishBiz(b):1)*(typeof pandMult==="function"?pandMult(b):1)*techBiz(b)*(typeof ctTurf==="function"?ctTurf(c):1)-bizWage(b,c,lv))}
 // hourly wages a business is charged inside profit(); HQ Employees shows the same figure
 function bizWage(b,c,lv){return b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1))*(typeof hrPay==="function"?hrPay(c,b):1)*techWage()}
 const cityUnitsP=(b,c)=>uSum(c.id,b.k,l=>profit(b,c,l));
@@ -747,6 +747,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
     const ac=adCost(c),boom=ev&&ev.m>1;
     h+=`<div class="row"><div class="n">Ad campaign</div><div class="d">${boom?`Customers are already flooding in (${ev.d}h left).`:"Billboards and radio. Starts a 5-hour boom here."}</div>
       <button class="buy up" id="ads" ${S.cash<ac||boom?"disabled":""}>Run ${fmt(ac)}</button></div>`;
+    h+=mktHtml(c);
     const plan=upgradePlan(c);
     if(plan.n)h+=`<div class="row"><div class="n">Upgrade everything I can afford</div><div class="d">${plan.n} upgrade${plan.n>1?"s":""}, cheapest first · +<b>${fmt(plan.gain)}</b>/day</div>
       <button class="buy" id="upall">Do it ${fmt(plan.cost)}</button></div>`;
@@ -779,6 +780,7 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
   const ua=$("#upall");if(ua)ua.onclick=()=>{const pl=upgradePlan(c);for(const [k,i] of pl.steps)upgrade(c,k,i,1);toast(`${pl.n} upgrades done in ${c.name}`);commit()};
   sheet.querySelectorAll("[data-bo]").forEach(btn=>btn.onclick=()=>{const i=+btn.dataset.bo,k=buyoutCost(c);if(S.cash<k)return;S.cash-=k;
     S.rivals[i].cities=S.rivals[i].cities.filter(x=>x!==c.id);if(wrShared()){S.rbo=S.rbo||{};(S.rbo[i]=S.rbo[i]||[]).push(c.id)}S.rivals[i].nw=Math.max(rivalSeed(i)*.35,S.rivals[i].nw-k*.5*rvk(i));toast(`Bought out ${RIVALS[i].n} in ${c.name}`);bigMove(`our company bought out ${RIVALS[i].n} in ${c.name} for ${fmt(k)}`,k,1);commit()});
+  sheet.querySelectorAll("[data-mkt]").forEach(btn=>btn.onclick=()=>{mktLaunch(btn.dataset.mkt,c);commit()});
   const hb=$("#hire");if(hb)hb.onclick=()=>{const mc=mgrCost(c);if(S.cash<mc)return;S.cash-=mc;S.mgr[c.id]=1;toast(`Manager hired in ${c.name}`);commit()};
   const fb=$("#fire");if(fb)fb.onclick=()=>{if(!fb.dataset.arm){fb.dataset.arm=1;fb.textContent="Tap again to fire";return}delete S.mgr[c.id];if(S.mgrShort)for(const b of BIZ)delete S.mgrShort[bkey(c,b.k)];toast(`Manager fired in ${c.name}. No refund.`);commit()};
   const sa=$("#sellall");if(sa)sa.onclick=()=>{if(sa.dataset.arm){sellAll(c)}else{sa.dataset.arm=1;sa.textContent="Tap again to confirm sale"}};
@@ -801,7 +803,7 @@ function sellOne(c,k,i){const b=BIZ.find(x=>x.k===k),o=S.own[c.id]||{};if(!b||!o
 function sellAll(c){const o=S.own[c.id];for(const k in o)clearBizState(c,k);let v=0;for(const b of BIZ){const lv=o[b.k];if(!lv)continue;let x=isLeased(c,b.k)?cost(b,c)*FIT:cost(b,c);for(let l=1;l<lv;l++)x+=upCost(b,c,l);v+=x*.75;for(const l of XU(c.id,b.k))v+=uVal(b,c,l,0)}if(S.xu){delete S.xu[c.id];xuTidy(c.id)}
   if(S.mgr[c.id])v+=mgrCost(c)*.5;
   S.cash+=Math.round(v);delete S.own[c.id];delete S.mgr[c.id];if(S.menu)for(const k in MENUS)delete S.menu[bkey(c,k)];delete S.lease[c.id];toast(`Sold ${c.name} for ${fmt(v)}`);commit()}
-function commit(){checkGoals();save();renderSheet();hud();draw()}
+function commit(){checkGoals();save();renderSheet();hud();draw();if(typeof tutTick==="function")tutTick()}
 
 /* ---------- industry: land, farms, mines, factories, warehouses, fleet ---------- */
 S.sites=S.sites||[];S.lease=S.lease||{};S.sup=S.sup||{};S.iev=S.iev||{};S.pand=S.pand||{cur:null,hist:[]};S.inv=S.inv||{};S.wh=S.wh||{};S.px=S.px||{};S.auto=S.auto||{};S.fleet=S.fleet||[];S.nid=S.nid||1;
@@ -1249,7 +1251,6 @@ function checkApp(){runEdu();const a=S.app;if(!a||Date.now()<a.t)return;const j=
   S.log=S.log.slice(0,3);save();hud();renderSheet()}
 function renderLife(c){let h=cityHead(c);const hm=S.home,jb=S.job;
   h+=`<div class="meta"><div><span>Experience </span>${S.exp.toFixed(1)} h</div><div><span>You </span>${fmt(lifeIncome())}/hr</div></div>`+tabsHtml();
-  if(!hm&&!jb&&S.cash<1000)h+=`<div class="welcome">Start here: rent a home, then apply for a job in the same city. Wages come in every second, even while you're away.</div>`;
   h+=jailHtml();h+=needsHtml(c);
   h+=`<div class="sec">Home</div><div class="list">`;
   if(hm){const hc=CITIES[hm.city],H=HK[hm.k];
@@ -1290,6 +1291,29 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-life]");if(!b
   else return;save();hud();renderSheet()});
 
 /* ---------- HQ, business registration and taxes ---------- */
+/* ---------- Marketing campaigns ----------
+   Paid, timed pushes that multiply business gross (inside profit(), before wages).
+   P = the city's (or whole empire's) profit/day without campaigns. Cost = boost × days × P × 0.75 (+ a flat floor).
+   Gross is ~1.2–1.4× profit, so a fresh campaign returns gross×boost×days ≈ 1.3–1.8× its cost at best; the floor
+   makes tiny cities pay back worse. Fatigue f per place: boost ÷ (1+f); each launch adds +1 (global +1 to "all"),
+   decays 0.25 per game day, so an immediate repeat gives ~half the boost and loses money.
+   Tiers: Flyers 1 day +12% · Radio 2 days +20% · TV 4 days +30% (one at a time per city) · Global 3 days +8% everywhere. */
+S.mkt=S.mkt||{camps:[],fat:{}};if(!Array.isArray(S.mkt.camps))S.mkt.camps=[];S.mkt.fat=S.mkt.fat||{};
+const MKT=[{k:"flyer",n:"Flyers",e:"📄",days:1,b:.12,min:300},{k:"radio",n:"Radio spots",e:"📻",days:2,b:.20,min:2500},{k:"tv",n:"TV campaign",e:"📺",days:4,b:.30,min:20000},{k:"global",n:"Global campaign",e:"🌍",days:3,b:.08,min:60000,g:1}],MKTK=Object.fromEntries(MKT.map(t=>[t.k,t]));
+function mcLive(){const now=Date.now();return((S.mkt&&S.mkt.camps)||[]).filter(x=>x.end>now)}
+function mktMult(c){let m=1;for(const x of mcLive())if(x.city==null||x.city===c.id)m*=1+x.b;return m}
+function mktBase(c){if(c)return Math.max(0,cityProfit(c)/mktMult(c));let t=0;for(const id in S.own)if(CITIES[id])t+=Math.max(0,cityProfit(CITIES[id])/mktMult(CITIES[id]));return t}
+function mktCost(t,c){return Math.round(t.min*(t.g?1:PRICE[c.size])+t.b*t.days*mktBase(t.g?null:c)*.75)}
+function mktBoost(t,c){return t.b/(1+((S.mkt.fat||{})[t.g?"all":c.id]||0))}
+function mktDay(){const f=S.mkt.fat;for(const k in f){f[k]=Math.max(0,f[k]-.25);if(!f[k])delete f[k]}S.mkt.camps=mcLive()}
+function mktLaunch(k,c){const t=MKTK[k];if(!t)return;if(!t.g&&mcLive().some(x=>x.city===c.id)){toast(`A campaign is already running in ${c.name}`);return}if(t.g&&mcLive().some(x=>x.city==null)){toast("A global campaign is already running");return}
+  const p=mktCost(t,c);if(S.cash<p)return;const b=mktBoost(t,c),key=t.g?"all":c.id;S.cash-=p;S.mkt.camps.push({k,city:t.g?null:c.id,b,end:Date.now()+t.days*DAYMS});S.mkt.fat[key]=(S.mkt.fat[key]||0)+1;
+  S.log.unshift(`${t.n}${t.g?"":" in "+c.name}: −${fmt(p)} (+${Math.round(b*100)}% sales for ${t.days} day${t.days>1?"s":""})`);S.log=S.log.slice(0,3);toast(`${t.e} ${t.n} launched: +${Math.round(b*100)}% sales`)}
+function mktLeft(x){const d=(x.end-Date.now())/DAYMS;return d>=1?d.toFixed(1)+" days":Math.max(1,Math.round(d*24))+"h"}
+function mktHtml(c){const live=mcLive(),here=live.filter(x=>x.city===c.id||x.city==null);let h=`<div class="row"><div class="n">Marketing</div><div class="d">${here.length?here.map(x=>`${MKTK[x.k].e} ${MKTK[x.k].n} <b style="color:var(--good)">+${Math.round(x.b*100)}%</b> · ${mktLeft(x)} left`).join("<br>"):"Paid ads lift sales of every business here. Repeating too soon wears out the audience."}</div></div>`;
+  for(const t of MKT){const busy=t.g?live.some(x=>x.city==null):live.some(x=>x.city===c.id),p=mktCost(t,c),b=mktBoost(t,c);
+    h+=`<div class="row"><div class="n">${t.e} ${t.n}</div><div class="d">+${Math.round(b*100)}% sales ${t.g?"in all your cities":"here"} for ${t.days} day${t.days>1?"s":""}${b<t.b-.001?` <span style="color:var(--bad)">(audience tired: was +${Math.round(t.b*100)}%)</span>`:""}</div><button class="buy up" data-mkt="${t.k}" ${S.cash<p||busy?"disabled":""}>${busy?(live.some(x=>x.k===t.k&&(t.g||x.city===c.id))?"Running":"Wait"):"Run "+fmt(p)}</button></div>`}
+  return h}
 S.hq=S.hq||{};S.reg=S.reg||{};S.bonus=S.bonus||{};
 const TAXDAYS=7,TAXP=TAXDAYS*24*DAYMS,TAX_REG=.2,TAX_UNREG=.4;
 if(!S.tax)S.tax={start:Date.now(),reg:0,unreg:0,paid:0};
@@ -2006,7 +2030,7 @@ setInterval(worldNews,4*60000);setTimeout(worldNews,20000);
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
 let pops=[]; // floating income labels
 function simDay(quiet){const{nw}=totals();S.day++;if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}
-  audits(quiet);simProps(quiet);
+  try{mktDay()}catch(e){console.warn("mktDay",e)}audits(quiet);simProps(quiet);
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||Math.random()>.004)continue;
     const kinds=[["Break-in at your",.04],["Equipment breakdown at your",.03],["Health inspection fine at your",.02],["Customer lawsuit against your",.06]],[t,f]=kinds[Math.floor(Math.random()*kinds.length)];
     const o2=S.own[id];if(t.startsWith("Break-in")&&hasT(o2,"secfirm")&&Math.random()<.7)continue;if(t.startsWith("Customer lawsuit")&&hasT(o2,"lawfirm"))continue;
@@ -2051,7 +2075,7 @@ const GOALS=[
  {id:"g10",n:"Billionaire",d:"Reach $1B net worth",t:1e9,v:()=>totals().nw,r:0}
 ];
 function checkGoals(){for(const g of GOALS){if(S.goals.includes(g.id))continue;if(g.v()>=g.t){S.goals.push(g.id);S.cash+=g.r;
-  toast(`Goal: ${g.n}${g.r?` · +${fmt(g.r)}`:""}`);S.log.unshift(`Goal reached: ${g.n}`);S.log=S.log.slice(0,3);try{ptEvent("goal: "+g.n)}catch(e){}}}}
+  toast(`Goal: ${g.n}${g.r?` · +${fmt(g.r)}`:""}`);S.log.unshift(`Goal reached: ${g.n}`);S.log=S.log.slice(0,3);try{ptEvent("goal: "+g.n)}catch(e){}}}if(typeof achCheck==="function")achCheck()}
 
 const adCost=c=>Math.round(6000*PRICE[c.size]+Math.max(0,cityProfit(c))*1.5);
 // every unit (first + extras) of every type here; steps are [type, unit index] for upgrade(c,k,i)
@@ -2063,7 +2087,7 @@ const loanLimit=()=>{let a=0;if(!S.job&&!nOwnedSafe())return 0;for(const id in S
 const loanStep=()=>Math.max(0,Math.min(loanLimit()-S.debt,Math.max(1000,Math.round(loanLimit()/4/1000)*1000)));
 /* ---------- portfolio ---------- */
 let mode="city", query="";
-function openPortfolio(){mode="pf";sel=null;renderPortfolio();sheet.scrollTop=0;sheet.classList.add("open");draw()}
+function openPortfolio(){mode="pf";sel=null;renderPortfolio();sheet.scrollTop=0;sheet.classList.add("open");draw();if(typeof tutTick==="function")tutTick()}
 function spark(){const h=S.hist;if(h.length<2)return `<p class="d" style="color:var(--muted);font-size:12px">Your net-worth chart fills in as days pass.</p>`;
   const w=300,ht=64,mn=Math.min(...h),mx=Math.max(...h),sp=mx-mn||1;
   const pts=h.map((v,i)=>[i/(h.length-1)*w,ht-6-(v-mn)/sp*(ht-14)]);
@@ -6770,13 +6794,16 @@ function ctAct(a,b){const k=b.dataset.k;
 /* ---------- first-time guide (S.tut: 0 = not yet shown, 9 = done) + one-time tips (S.tips) ---------- */
 if(S.tut==null)S.tut=0;S.tips=S.tips&&typeof S.tips==="object"?S.tips:{};
 if(S.tut===0&&(nOwnedSafe()||(S.sites||[]).length||S.day>2))S.tut=9;
+/* action-driven guide: each step finishes when the player really does it (ok() polled by tutTick, called from commit, phone render, empire screen and a 2 s timer). S.tutS = current step; replayed steps already done show a Next button. */
+const tutUp=()=>{for(const id in S.own)for(const k in S.own[id])if(uLv(id,k).some(l=>l>=2))return true;return false};
 const TUT=[
- {a:null,t:"Welcome to Meridian",b:"This globe is your world. Drag to spin it, pinch or scroll to zoom. Each dot is a city you can live and do business in."},
- {a:"#mapwrap",t:"Pick a city",b:"Tap a city to open its sheet. Tabs: Life (home and job), Business (shops), Land (farms, mines, factories), Depot (stored goods), Gov."},
- {a:null,t:"Your first operation",b:"Start small: buy a Business, which earns every hour. Or buy a plot on the Land tab and build on it, like a corn farm on farmland."},
- {a:"#phone",t:"Your phone",b:"Tap the phone for apps: Work to get a job, Bank for loans, Stocks, Market, Travel and more."},
- {a:"#rsbtn",t:"Research",b:"Research points build up over time (faster with a research lab). Spend them, plus cash, to unlock oil, plastics, cars and more."},
- {a:"#pfbtn",t:"Goals and next steps",b:"Your empire screen shows net worth, goals with cash rewards, and city search. 1 real hour is 1 game day, and you keep earning while away."}];
+ {a:null,t:"1. Find a home",b:"Tap your city on the globe, open the Life tab and rent a home. A cheap room is fine to start.",ok:()=>!!S.home},
+ {a:null,t:"2. Get a job",b:"On the same Life tab, apply for a job in your home city. Wages come in every second, even while you're away.",ok:()=>!!(S.job||S.app)},
+ {a:null,t:"3. Buy your first business",b:"Open the Business tab and buy something small, like a cart. It earns profit every hour.",ok:()=>nOwnedSafe()},
+ {a:null,t:"4. Upgrade it",b:"Tap Upgrade on your business when you can afford it. Each level earns more.",ok:tutUp},
+ {a:null,t:"5. Hire a city manager",b:"On the Business tab, hire the city manager: +20% sales on every business in that city, and auto-restocking.",ok:()=>Object.keys(S.mgr||{}).length>0},
+ {a:"#phone",t:"6. Open your phone",b:"Tap the phone for apps: Work, Bank, Stocks, Market, Travel and Settings.",ok:()=>!!PH.open},
+ {a:"#pfbtn",t:"7. Check your empire",b:"Open the empire screen for net worth, goals with cash rewards and city search. 1 real hour is 1 game day.",ok:()=>mode==="pf"&&sheet.classList.contains("open")}];
 const TIPS={
  land:"Deposits shows what is under this city's ground. Mines need a matching deposit, and oil wells need an oil deposit plus Oil drilling research. Search oil, coal, ore, sand or uranium on the empire screen to find cities that have one.",
  power:"“No power” is fine: the factory still runs. With electricity it makes +25%. Build a coal power plant (uses coal), a nuclear power plant (uses uranium, needs research) or a solar farm in the same city; its power goes into that city's depot and factories there use it automatically.",
@@ -6787,24 +6814,32 @@ const TIPS={
  stocks:"Prices move all the time and every trade pays a small fee, so quick back-and-forth trading usually loses money.",
  mil:"You can only recruit while you lead a country and are there. Units cost upkeep every hour, even in reserve, so disband them when you don't need them."};
 (function(){const st=document.createElement("style");st.textContent=`
-#tutbox,#tipbox{position:fixed;z-index:9000;left:16px;right:16px;margin:0 auto;max-width:340px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:13px;line-height:1.4}
+#tutbox,#tipbox{position:fixed;z-index:9000;left:16px;right:16px;margin:0 auto;max-width:340px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:13px;line-height:1.4;box-sizing:border-box}
 #tutbox h4,#tipbox h4{margin:0 0 4px;font-size:15px}#tutbox p,#tipbox p{margin:0}
-#tutbox .tb,#tipbox .tb{display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:10px}
-#tutbox .tb small{margin-right:auto;color:var(--muted)}
+#tutbox .tb,#tipbox .tb{display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:10px;flex-wrap:wrap}
+#tutbox .tb small{margin-right:auto;color:var(--muted)}#tutbox .tdone{color:var(--good,#10b981);font-weight:600}
 #tutbox button,#tipbox button{font:inherit;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
 #tutbox button.go,#tipbox button.go{background:var(--accent);border-color:var(--accent);color:#fff}
+#tutbox{top:calc(env(safe-area-inset-top,0px) + 64px)}
 #tipbox{top:calc(env(safe-area-inset-top,0px) + 64px)}#tipbox h4{font-size:13px;color:var(--muted);font-weight:600}
-#tutring{position:fixed;z-index:8999;border:2px solid var(--accent);border-radius:12px;pointer-events:none;box-shadow:0 0 0 4px rgba(0,0,0,.15)}`;document.head.appendChild(st)})();
-let tutStep=-1;
-function tutClose(done){const b=$("#tutbox"),r=$("#tutring");if(b)b.remove();if(r)r.remove();tutStep=-1;if(done){S.tut=9;save()}setTimeout(tipCheck,300)}
-function tutShow(i){tutStep=i;const s=TUT[i];if(!s){tutClose(1);return}const tb=$("#tipbox");if(tb)tb.remove();
-  let b=$("#tutbox");if(!b){b=document.createElement("div");b.id="tutbox";b.setAttribute("role","dialog");document.body.appendChild(b)}
-  b.innerHTML=`<h4>${s.t}</h4><p>${s.b}</p><div class="tb"><small>${i+1} / ${TUT.length}</small><button data-tutx="skip">Skip</button><button class="go" data-tutx="next">${i===TUT.length-1?"Done":"Next"}</button></div>`;
-  let r=$("#tutring");const el=s.a&&$(s.a),R=el&&el.getBoundingClientRect();
-  if(R&&R.width&&s.a!=="#mapwrap"){if(!r){r=document.createElement("div");r.id="tutring";document.body.appendChild(r)}Object.assign(r.style,{left:R.left-4+"px",top:R.top-4+"px",width:R.width+8+"px",height:R.height+8+"px"})}else if(r)r.remove();
-  b.style.top=b.style.bottom="";const H=innerHeight,bh=b.offsetHeight;
-  if(R&&R.width&&s.a!=="#mapwrap"){const below=R.bottom+12,above=R.top-12-bh;b.style.top=(below+bh<H-8?below:Math.max(8,above))+"px"}else b.style.top=Math.max(8,(H-bh)/2)+"px"}
-function tutStart(){S.tips={};S.tut=0;save();tutShow(0)}
+#tutring{position:fixed;z-index:8999;border:2px solid var(--accent);border-radius:12px;pointer-events:none;box-shadow:0 0 0 4px rgba(0,0,0,.15);animation:tutpulse 1.6s ease-in-out infinite}
+@keyframes tutpulse{50%{box-shadow:0 0 0 8px rgba(0,0,0,.05)}}
+html.set-rm #tutring{animation:none}@media (prefers-reduced-motion:reduce){#tutring{animation:none}}
+html.th-ledger #tutbox,html.th-ledger #tipbox{border-radius:2px}html.th-command #tutbox,html.th-command #tipbox,html.th-command #tutbox button,html.th-command #tipbox button,html.th-command #tutring{border-radius:0}`;document.head.appendChild(st)})();
+let tutStep=-1,tutWas=false;
+function tutClose(done){const b=$("#tutbox"),r=$("#tutring");if(b)b.remove();if(r)r.remove();tutStep=-1;if(done){S.tut=9;delete S.tutS;save()}setTimeout(tipCheck,300)}
+function tutShow(i){i=Math.max(0,+i||0);tutStep=i;const s=TUT[i];if(!s){tutClose(1);toast("Guide done. Replay it any time from Settings on your phone.");return}if(S.tutS!==i){S.tutS=i;save()}const tb=$("#tipbox");if(tb)tb.remove();
+  let ok=false;try{ok=!!s.ok()}catch(e){}tutWas=ok;
+  let b=$("#tutbox");if(!b){b=document.createElement("div");b.id="tutbox";b.setAttribute("role","status");b.setAttribute("aria-live","polite");document.body.appendChild(b)}
+  b.innerHTML=`<h4>${s.t}</h4><p>${s.b}</p><div class="tb"><small>${ok?'<span class="tdone">✓ Done</span>':`${i+1} / ${TUT.length}`}</small><button data-tutx="skip">Skip guide</button>${ok?`<button class="go" data-tutx="next">${i===TUT.length-1?"Finish":"Next"}</button>`:`<button data-tutx="next">Skip step</button>`}</div>`;
+  tutPlace()}
+function tutPlace(){const b=$("#tutbox");if(!b||tutStep<0)return;const s=TUT[tutStep];let r=$("#tutring");const el=s&&s.a&&$(s.a),R=el&&el.getBoundingClientRect();
+  if(R&&R.width){if(!r){r=document.createElement("div");r.id="tutring";document.body.appendChild(r)}Object.assign(r.style,{left:R.left-4+"px",top:R.top-4+"px",width:R.width+8+"px",height:R.height+8+"px"})}else if(r)r.remove();
+  b.style.top="";if(!(R&&R.width)){let y=0;for(const e of document.querySelectorAll("#stback,#stcityb,#st3dt")){const q=e.getBoundingClientRect();if(q.width&&q.top<200)y=Math.max(y,q.bottom)}if(y)b.style.top=y+8+"px"}if(R&&R.width){const bh=b.offsetHeight,H=innerHeight,bt=b.getBoundingClientRect().top;if(bt<R.bottom&&bt+bh>R.top){const below=R.bottom+12,above=R.top-12-bh;b.style.top=(below+bh<H-8?below:Math.max(8,above))+"px"}}}
+/* hook: re-check the current step after real player actions; advances on a not-done → done change */
+function tutTick(){if(tutStep<0||S.tut!==0)return;const s=TUT[tutStep];if(!s)return;tutPlace();let ok=false;try{ok=!!s.ok()}catch(e){}
+  if(ok&&!tutWas){tutWas=true;try{vib(15)}catch(e){}setTimeout(()=>{if(S.tut===0&&TUT[tutStep]===s)tutShow(tutStep+1)},700)}else if(!ok&&tutWas)tutShow(tutStep)}
+function tutStart(){S.tips={};S.tut=0;S.tutS=0;save();tutShow(0)}
 function tipShow(k){if(S.tips[k]||tutStep>=0||!TIPS[k])return false;S.tips[k]=1;save();let b=$("#tipbox");if(!b){b=document.createElement("div");b.id="tipbox";b.setAttribute("role","status");document.body.appendChild(b)}
   b.innerHTML=`<h4>Tip</h4><p>${TIPS[k]}</p><div class="tb"><button class="go" data-tutx="tipok">Got it</button></div>`;return true}
 function tipCheck(){if(tutStep>=0||S.tut!==9||$("#tipbox"))return;const so=sheet.classList.contains("open");
@@ -6813,9 +6848,10 @@ function tipCheck(){if(tutStep>=0||S.tut!==9||$("#tipbox"))return;const so=sheet
   if(PH.open){if(PH.app==="bank"&&tipShow("bank"))return;if(PH.app==="stocks"&&tipShow("stocks"))return;if(PH.app==="govt"&&govTab==="mil"&&tipShow("mil"))return}}
 document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("[data-tutx]");if(!b)return;const a=b.dataset.tutx;
   if(a==="next")tutShow(tutStep+1);else if(a==="skip")tutClose(1);else if(a==="tipok"){const t=$("#tipbox");if(t)t.remove();setTimeout(tipCheck,300)}else if(a==="replay"){e.stopPropagation();closeSheet();tutStart()}},true);
+setInterval(tutTick,2000);
 {let tq=0;const mo=new MutationObserver(()=>{if(tq)return;tq=setTimeout(()=>{tq=0;tipCheck()},400)});mo.observe(sheet,{childList:true});setTimeout(()=>mo.observe($("#phone"),{childList:true}),0)}
-addEventListener("resize",()=>{if(tutStep>=0)tutShow(tutStep)});
-setTimeout(()=>{if(S.tut===0&&!S.pickStart)tutShow(0)},1500);
+addEventListener("resize",()=>{if(tutStep>=0)tutPlace()});
+setTimeout(()=>{if(S.tut===0&&!S.pickStart)tutShow(S.tutS)},1500);
 /* ---------- start screen: new games (fresh save or new slot) choose where to begin. Before this the start was always CITIES[0] (Montréal) via the S.loc default; home stays empty. ---------- */
 (function(){if(!S.pickStart)return;
 const DEF=0;let pick=DEF,q="";
@@ -6842,7 +6878,7 @@ function draw2(keep){const l=$("#stl"),y=keep?l.scrollTop:0,qq=q.trim().toLowerC
   const cs=CITIES.filter(c=>c.country===co&&(!qq||c.name.toLowerCase().includes(qq)||co.toLowerCase().includes(qq))).sort((a,b)=>b.size-a.size||a.name.localeCompare(b.name));
   if(!cs.length)continue;h+=`<div class="stc">${esc2(co)}</div>`+cs.map(c=>{cnt++;return `<button type="button" class="stcity" data-c="${c.id}" aria-pressed="${c.id===pick}"><b>${esc2(c.name)}${c.id===DEF?" · default":""}</b> <span style="color:var(--muted)">${"●".repeat(c.size)}${"○".repeat(5-c.size)}</span><small>${esc2(hint(c))}</small></button>`}).join("")}
  l.innerHTML=h||'<p style="padding:12px 0">No match.</p>';l.scrollTop=y;$("#stgo").textContent="Start in "+CITIES[pick].name}
-function done(){const c=CITIES[pick];S.loc={city:c.id,lat:c.lat,lon:c.lon};delete S.pickStart;d.remove();document.removeEventListener("keydown",kd,true);save();try{rotateTo(c,Math.max(V.k,2.5))}catch(e){}if(S.tut===0)setTimeout(()=>{if(S.tut===0&&tutStep<0)tutShow(0)},1200)}
+function done(){const c=CITIES[pick];S.loc={city:c.id,lat:c.lat,lon:c.lon};delete S.pickStart;d.remove();document.removeEventListener("keydown",kd,true);save();try{rotateTo(c,Math.max(V.k,2.5))}catch(e){}if(S.tut===0)setTimeout(()=>{if(S.tut===0&&tutStep<0)tutShow(S.tutS)},1200)}
 function kd(e){if(!document.body.contains(d))return;if(e.key==="Escape"){e.stopPropagation();e.preventDefault();if(q){q="";$("#stq").value="";draw2()}return}
  if(e.key==="Enter"&&document.activeElement&&document.activeElement.id==="stq"){e.preventDefault();const f=$("#stl .stcity");if(f){pick=+f.dataset.c;draw2(1)}}}
 document.addEventListener("keydown",kd,true);
@@ -7718,9 +7754,90 @@ function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="g
   <div class="ph-sub">Notifications</div>
   ${tog("toast","Pop-up messages","Off keeps only wins and warnings")}
   ${tog("tick","News ticker","Headline strip over the map")}
+  <div class="ph-sub">Help</div>
+  <button class="set-reset set-tut" data-ph="settut">Replay the starter guide</button>
   <button class="set-reset" data-ph="setreset">Reset settings</button>
   <div class="ph-sub" style="opacity:.7">Settings are saved with your game.</div>`}
 setApply(1);
+/* ===== ACHIEVEMENTS =====
+   S.ach = {id: unlockedMs} (optional; missing on old saves). achCheck() runs from checkGoals (after every commit and each game hour).
+   The first check on a save without S.ach unlocks silently and shows one summary toast. Badges carry no cash reward (balance neutral). */
+const achOwnN=()=>{let n=0;for(const id in S.own)for(const k in S.own[id])if(S.own[id][k]>0)n++;return n};
+const achHas=k=>{for(const id in S.own)if(S.own[id]&&S.own[id][k]>0)return true;return false};
+const achCountries=()=>new Set(Object.keys(S.own).filter(id=>CITIES[id]&&Object.values(S.own[id]||{}).some(v=>v>0)).map(id=>CITIES[id].country)).size;
+const achOps=()=>(S.sites||[]).filter(s=>s&&s.op).length,achTech=()=>Object.keys(S.tech||{}).length,achRigs=()=>(Array.isArray(S.rigs)?S.rigs:[]).filter(r=>r&&r.lv>=1);
+const ACH=[
+ ["biz1","🏪","Open for business","Open your first business",c=>c.biz>=1],
+ ["biz5","🛍️","Small chain","Own 5 businesses",c=>c.biz>=5],
+ ["biz25","🏬","Franchise","Own 25 businesses",c=>c.biz>=25],
+ ["biz100","🏙️","Conglomerate","Own 100 businesses",c=>c.biz>=100],
+ ["city3","🗺️","Branching out","Do business in 3 cities",c=>c.cities>=3],
+ ["city10","🧭","Ten-city tour","Do business in 10 cities",c=>c.cities>=10],
+ ["city30","🌆","Metropolitan","Do business in 30 cities",c=>c.cities>=30],
+ ["city60","🌃","Everywhere at once","Do business in 60 cities",c=>c.cities>=60],
+ ["ctry2","✈️","Gone abroad","Do business in 2 countries",c=>c.ctry>=2],
+ ["ctry5","🌍","Multinational","Do business in 5 countries",c=>c.ctry>=5],
+ ["ctry15","🌐","Global player","Do business in 15 countries",c=>c.ctry>=15],
+ ["ctry30","🪐","World empire","Do business in 30 countries",c=>c.ctry>=30],
+ ["cont5","🧳","Five continents","Own something on 5 continents",()=>nCont()>=5],
+ ["nw1e4","💵","Pocket money","Reach $10K net worth",c=>c.nw>=1e4],
+ ["nw1e5","💰","Six figures","Reach $100K net worth",c=>c.nw>=1e5],
+ ["nw1e6","🥂","Millionaire","Reach $1M net worth",c=>c.nw>=1e6],
+ ["nw1e7","🛥️","Multi-millionaire","Reach $10M net worth",c=>c.nw>=1e7],
+ ["nw1e8","🏝️","Nine figures","Reach $100M net worth",c=>c.nw>=1e8],
+ ["nw1e9","👑","Billionaire","Reach $1B net worth",c=>c.nw>=1e9],
+ ["nw1e10","💎","Ten-figure tycoon","Reach $10B net worth",c=>c.nw>=1e10],
+ ["inc1e3","📈","Cash flow","Make $1K profit per hour",c=>c.inc>=1e3],
+ ["inc1e4","📊","Money machine","Make $10K profit per hour",c=>c.inc>=1e4],
+ ["inc1e5","🚀","Printing money","Make $100K profit per hour",c=>c.inc>=1e5],
+ ["earn1e6","🧾","First million earned","Earn $1M over your career",()=>(S.earned||0)>=1e6],
+ ["earn1e9","🏦","Billion-dollar career","Earn $1B over your career",()=>(S.earned||0)>=1e9],
+ ["lv5","⭐","Top of the line","Get a business to level 5",()=>maxLv()>=5],
+ ["hotel","🏨","Hotelier","Own a hotel",()=>achHas("hotel")],
+ ["casino","🎰","The house always wins","Open a casino",()=>achHas("casino")],
+ ["mgr1","🧑‍💼","Delegator","Hire a city manager",()=>Object.keys(S.mgr||{}).length>=1],
+ ["mgr10","👔","Management team","Have 10 city managers",()=>Object.keys(S.mgr||{}).length>=10],
+ ["hq","🏢","Headquarters","Open a company HQ",()=>Object.values(S.hq||{}).some(Boolean)],
+ ["site1","🏭","Breaking ground","Run a farm, mine or factory",()=>achOps()>=1],
+ ["site10","⚙️","Industrial base","Run 10 production sites",()=>achOps()>=10],
+ ["oilwell","🛢️","Black gold","Drill an oil well",()=>(S.sites||[]).some(s=>s&&s.op==="oilwell")],
+ ["veh1","🚚","On the road","Own a vehicle",()=>(S.fleet||[]).length>=1],
+ ["veh10","🚛","Fleet owner","Own 10 vehicles",()=>(S.fleet||[]).length>=10],
+ ["truck1","📦","First haul","Complete a trucking job",()=>!!(S.logi&&S.logi.done>=1)],
+ ["truck50","🛣️","Logistics pro","Complete 50 trucking jobs",()=>!!(S.logi&&S.logi.done>=50)],
+ ["rig1","🌊","Offshore","Build an oil rig",()=>achRigs().length>=1],
+ ["rig3","⛽","Oil baron","Run 3 oil rigs",()=>achRigs().length>=3],
+ ["rig5lv","🏗️","Super rig","Upgrade an oil rig to level 5",()=>achRigs().some(r=>r.lv>=5)],
+ ["tech1","🔬","Eureka","Research a technology",()=>achTech()>=1],
+ ["tech5","🧪","R&D lab","Research 5 technologies",()=>achTech()>=5],
+ ["tech15","🧠","Innovator","Research 15 technologies",()=>achTech()>=15],
+ ["sat","🛰️","Into orbit","Sell an orbital launch",()=>(S.sats||0)>=1],
+ ["pand","😷","Weathered the storm","Live through a pandemic",()=>!!(S.pand&&(S.pand.hist||[]).length)],
+ ["war","⚔️","War profiteer","Earn from a war supply contract",()=>(S.wsupT||0)>0],
+ ["bunk","🛡️","Prepper","Build a bunker",()=>!!(S.bunk&&S.bunk.lv>=1)],
+ ["bank","🏛️","Bank founder","Found your own bank",()=>!!S.ob],
+ ["gang","🕶️","Connected","Join or start a crew",()=>!!(S.ug&&S.ug.gang)],
+ ["stock","📉","Investor","Hold a stock or asset on the market",()=>!!(S.mkt2&&Object.values(S.mkt2.hold||{}).some(h=>h&&h.q>0))],
+ ["day30","📅","Month in","Play to day 30",()=>(S.day||0)>=30],
+ ["day365","🎂","One year on","Play to day 365",()=>(S.day||0)>=365],
+ ["goals","🏆","Goal getter","Complete every goal",()=>(S.goals||[]).length>=GOALS.length]
+].map(([id,i,n,d,v])=>({id,i,n,d,v}));
+function achCheck(){try{ACH}catch(e){return}if(S.dead)return;const first=!S.ach||typeof S.ach!=="object";if(first)S.ach={};
+  let t;try{t=totals()}catch(e){return}const c={nw:t.nw||0,inc:t.inc||0,biz:achOwnN(),cities:nCities(),ctry:achCountries()},got=[],now=Date.now();
+  for(const a of ACH){if(S.ach[a.id])continue;let ok=false;try{ok=!!a.v(c)}catch(e){}if(ok){S.ach[a.id]=now;got.push(a)}}
+  if(!got.length)return;
+  if(first||got.length>3){toast(`🏆 ${got.length} achievement${got.length>1?"s":""} unlocked · see Trophies on your phone`);return}
+  for(const a of got){toast(`🏆 Achievement: ${a.n}`);S.log.unshift(`Achievement: ${a.n}`);S.log=S.log.slice(0,3)}
+  if(typeof PH!=="undefined"&&PH.open&&PH.app==="trophy")phRender()}
+function achApp(){const A=S.ach||{},n=ACH.filter(a=>A[a.id]).length,pct=Math.round(n/ACH.length*100);
+  return `<div style="color:#eef1f4"><p style="margin:2px 0 6px;font-weight:600">${n} / ${ACH.length} unlocked</p>
+   <div style="height:6px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden;margin-bottom:12px"><div style="height:100%;width:${pct}%;background:#facc15"></div></div>
+   <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">${ACH.map(a=>{const u=A[a.id];
+    return `<div title="${a.d}" style="border-radius:10px;padding:8px;background:${u?"rgba(250,204,21,.14)":"rgba(255,255,255,.06)"};border:1px solid ${u?"rgba(250,204,21,.5)":"rgba(255,255,255,.1)"};min-width:0">
+     <div style="font-size:22px;line-height:1;${u?"":"filter:grayscale(1);opacity:.35"}">${u?a.i:"🔒"}</div>
+     <b style="display:block;font-size:12px;margin-top:4px;color:${u?"#fde68a":"#cbd5e1"};overflow-wrap:anywhere">${a.n}</b>
+     <span style="display:block;font-size:10.5px;color:#94a3b8;overflow-wrap:anywhere">${a.d}${u?` · ${new Date(u).toLocaleDateString()}`:""}</span></div>`}).join("")}</div></div>`}
+
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -7743,7 +7860,7 @@ const phScale=()=>Math.max(.5,Math.min(PH.sz,(innerWidth-8)/300,(innerHeight-8)/
 const phSave=()=>{try{localStorage.setItem("meridian-phone",JSON.stringify({open:PH.open,x:PH.x,y:PH.y}))}catch(e){}};
 let lastLog="";
 function trackNews(){const l=S.log[0];if(l&&l!==lastLog){lastLog=l;if(!S.news.length||S.news[0].t!==l){S.news.unshift({t:l,at:Date.now()});S.news=S.news.slice(0,40)}}}
-const ICO={rig:`<path d="M4 20h16 M7 20l3-12h4l3 12 M9 14h6 M10 8V4h4v4 M12 4V2"/>`,hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h.01 M16 9h.01"/>`,govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M3 10l9-6 9 6z"/>`,shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
+const ICO={trophy:`<path d="M8 4h8v5a4 4 0 0 1-8 0z M8 6H5a3 3 0 0 0 3 4 M16 6h3a3 3 0 0 1-3 4 M12 13v4 M8 20h8 M9 17h6"/>`,rig:`<path d="M4 20h16 M7 20l3-12h4l3 12 M9 14h6 M10 8V4h4v4 M12 4V2"/>`,hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h.01 M16 9h.01"/>`,govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M3 10l9-6 9 6z"/>`,shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
  wallet:'<path d="M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z M3 7l12-3v3 M16 13.5h2"/>',
  news:'<path d="M4 5h13v14H6a2 2 0 0 1-2-2z M17 9h3v8a2 2 0 0 1-2 2 M7 9h7 M7 12h7 M7 15h5"/>',
  needs:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -7757,7 +7874,7 @@ const ICO={rig:`<path d="M4 20h16 M7 20l3-12h4l3 12 M9 14h6 M10 8V4h4v4 M12 4V2"
  freight:'<path d="M2 7h12v9H2z M14 10h4l3 3v3h-7z M6 19a1.8 1.8 0 1 0 0-.01 M17 19a1.8 1.8 0 1 0 0-.01"/>',
  settings:'<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["pop","Population","#0369a1"]];
+const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["pop","Population","#0369a1"],["trophy","Trophies","#a16207"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 function phPlace(){const el=PH.el,sc=phScale();el.style.setProperty("--phs",sc);const r=el.getBoundingClientRect(),w=r.width,h=r.height,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
@@ -7787,6 +7904,7 @@ function appHtml(k){const {inc,nw}=totals();
   if(k==="rig")return rigApp();
   if(k==="hq")return hrApp();
   if(k==="pop")return popApp();
+  if(k==="trophy")return achApp();
   if(k==="gig"){const g=gigState(),v=gigPay();return `<div class="ph-sub">${jailed()?"Prison labour":GIGS[g.i].n} · ${CITIES[(S.loc||{city:0}).city].name}</div>
     ${rideHtml()}
     <button data-ph="gigtap" style="width:100%;aspect-ratio:1.4;border:0;border-radius:18px;background:#b45309;color:#fff;font:inherit;font-size:22px;font-weight:700;cursor:pointer;margin:8px 0;touch-action:manipulation">${GIGS[g.i].v}<br><span style="font-size:15px;font-weight:600;opacity:.9">+${fmtc(v)}</span></button>
@@ -7817,7 +7935,7 @@ const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);ret
 ["touchstart","touchmove","wheel","scroll","pointerdown"].forEach(t=>PH.el.addEventListener(t,()=>{PH.touched=Date.now()},{passive:true,capture:true}));
 PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon",hrfire:"Tap again to fire",hqunlink:"Tap again",xfsend:"Tap again to send",ctleave:"Tap again to leave",ctkick:"Tap again to remove",ctdisband:"Tap again to disband",ctraid:"Tap again to raid",wpnbar:"Tap again"}[a]||(a==="wpnfire"&&!/^msl\|/.test(b.dataset.k)?(/^(icbm|nuke)\|/.test(b.dataset.k)&&S.loc&&!S.trip&&S.loc.city===+b.dataset.k.split("|")[1]?"Tap = YOU DIE":"Tap again"):null);if(cfm&&!b.dataset.arm){const t0=b.textContent,w0=b.style.width,f0=b.style.flex;b.dataset.arm=1;b.textContent=cfm;if(a==="milab"||a==="wpnfire"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();
     setTimeout(()=>{if(b.isConnected&&b.dataset.arm){delete b.dataset.arm;b.textContent=t0;b.style.width=w0;b.style.flex=f0}},4000);return} // disarm after 4 s
-  if(a==="unfold"){PH.open=true;PH.app=null}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="phsz"){PH.szUi=!PH.szUi}else if(a==="phsetsz"){PH.sz=+b.dataset.v;try{localStorage.setItem("meridian-phone-size",String(PH.sz))}catch(e){}}else if(a==="app"){PH.app=b.dataset.k}else if(a==="setv"){setPut(b.dataset.k,b.dataset.v)}else if(a==="setreset"){setReset()}
+  if(a==="unfold"){PH.open=true;PH.app=null;setTimeout(()=>{if(typeof tutTick==="function")tutTick()},0)}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="phsz"){PH.szUi=!PH.szUi}else if(a==="phsetsz"){PH.sz=+b.dataset.v;try{localStorage.setItem("meridian-phone-size",String(PH.sz))}catch(e){}}else if(a==="app"){PH.app=b.dataset.k}else if(a==="setv"){setPut(b.dataset.k,b.dataset.v)}else if(a==="setreset"){setReset()}else if(a==="settut"){PH.open=false;phRender();closeSheet();tutStart();return}
   else if(/^hr(sch|up|dn|fire|hire)$/.test(a)){hrAct(a,b.dataset.k);save();hud()}
   else if(a==="dash"){DX.page="fin";dxOpen();return}
   else if(a==="dashlog"){DX.page="log";dxOpen();return}
@@ -8189,6 +8307,7 @@ html.th-command .ph-list>div,html.th-command .ph-list>button,html.th-command .ph
 .set-seg{display:flex;flex:none;background:rgba(255,255,255,.08);border-radius:9px;padding:2px}
 .set-seg button{all:unset;cursor:pointer;padding:5px 8px;border-radius:7px;font-size:11px;font-weight:600;color:#d5dbe2}
 .set-seg button[aria-pressed="true"]{background:#eef1f4;color:#111827}
+.set-reset.set-tut{border-color:rgba(125,211,252,.6);color:#e0f2fe;margin-top:4px}
 .set-reset{all:unset;cursor:pointer;display:block;box-sizing:border-box;width:100%;text-align:center;margin:14px 0 6px;padding:9px;border-radius:10px;border:1px solid rgba(248,113,113,.6);color:#fecaca;font-size:12.5px;font-weight:600}
 .set-th:focus-visible,.set-seg button:focus-visible,.set-reset:focus-visible{outline:2px solid #7dd3fc;outline-offset:2px}
 html.set-notick #ticker{display:none!important}
