@@ -36,3 +36,9 @@ Format: `- [ ] [agent-name] (priority, area) task`
 - [ ] [meridian-scout] (med, Research) Scout 3–6 games like Meridian (tycoon, map strategy, geopolitics) and list the top 5 features Meridian is missing
 - [ ] [meridian-sound] (med, Audio) Add a muted-by-default sound module with UI clicks, strike/explosion effects and mood-based ambient music
 - [ ] [meridian-narrative] (med, Story) Map current events, wars and rivals and design a first story arc that links them
+- [ ] [meridian-narrative] (med, Story) Write the first arc doc docs/story/arc-yellow-sea.md (China–South Korea–Japan, see docs/story/world.md fault line 2): tension → incident → war → aftermath beats tied to WF meter stages and WARL levels, with player choices and a cooldown
+- [ ] [meridian-narrative] (med, Story) Write a headline table per fault line × stage (Tense/Hostile/Brink, WARL 1–4, peace, conquest) using cast.md names, ready to paste into a NEWSPOOL-style array
+- [ ] [meridian-builder] (med, Story) Add fault-line flavour to war news: map a war pair to its fault line (docs/story/world.md "How to use this") and pick a headline from that line's table in warHour/dip escalation, wfStage changes and wfBreak; keep the existing generic text as fallback
+- [ ] [meridian-builder] (low, Story) Name the backer in offers: show backer offers (S.wf.off) as phone messages from "Mr Gray" / the company figure in docs/story/cast.md instead of a bare log line
+- [ ] [meridian-events] (low, Story) Add a "Quiet Ledger leak" world event: rare news line hinting which company funded a recent wfBreak war (from S.wf feed), no gameplay effect
+- [ ] [meridian-docs] (low, Docs) Link docs/story/world.md and cast.md from the README/docs index once the story wiring lands
