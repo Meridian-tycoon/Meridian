@@ -538,11 +538,22 @@ let _landGeo=null;function landGeo(){if(_landGeo)return _landGeo;const ok=r=>Arr
   _landGeo={type:"FeatureCollection",features:(world?world.features:[]).map(f=>{const G=f.geometry;
     const g=G.type==="Polygon"?{type:"Polygon",coordinates:G.coordinates.filter(ok)}:{type:"MultiPolygon",coordinates:G.coordinates.map(q=>q.filter(ok)).filter(q=>q.length)};
     return{type:"Feature",properties:{name:f.properties&&f.properties.name},geometry:g}}).filter(f=>f.geometry.coordinates.length)};return _landGeo}
-const MM=new maplibregl.Map({container:glEl,style:localStyle(),center:[-V.lam,-V.phi],zoom:1.4,minZoom:0,maxZoom:19.4,maxPitch:MAXPITCH,
-  renderWorldCopies:false,attributionControl:{compact:true},pitchWithRotate:false,touchPitch:false,dragRotate:true,fadeDuration:250,
-  transformCameraUpdate:({zoom})=>({pitch:pitchFor(zoom)})});
+/* free camera in a city: from street level down, right-drag (or two fingers) turns and tilts the view however you like.
+   The tilt you choose rides on top of the automatic one; zooming back out of the city hands control back to the automatic camera */
+const FREEPITCH=75;let pOff=0,_cp=null,_lz=null;
+function camUpdate({zoom,pitch}){const w=smooth01(ZST-.5,ZST+.5,zoom),auto=pitchFor(zoom);
+  if(w<=0)pOff=0;else if(_lz!==null&&Math.abs(zoom-_lz)<1e-6&&Math.abs(pitch-_cp)>1e-3)pOff=Math.max(-auto,Math.min(FREEPITCH-auto,pitch-auto)); // the player tilted
+  const p=Math.max(0,Math.min(FREEPITCH,auto+pOff*w));_cp=p;_lz=zoom;return{pitch:p}}
+const MM=new maplibregl.Map({container:glEl,style:localStyle(),center:[-V.lam,-V.phi],zoom:1.4,minZoom:0,maxZoom:19.4,maxPitch:FREEPITCH,
+  renderWorldCopies:false,attributionControl:{compact:true},pitchWithRotate:true,touchPitch:true,dragRotate:true,fadeDuration:250,
+  transformCameraUpdate:camUpdate});
 MM.scrollZoom.setWheelZoomRate(1/72);              // one notch (deltaY 100) ≈ ×1.6, the same at every height
 MM.touchZoomRotate.disableRotation();
+const compass=new maplibregl.NavigationControl({showZoom:false,visualizePitch:true});let _free=false;
+/* turning is unlocked on touch screens and a compass appears once you are in a city; tap the compass to face north again */
+function freeCam(on){if(on===_free)return;_free=on;if(on){MM.touchZoomRotate.enableRotation();MM.addControl(compass,"bottom-right")}
+  else{MM.touchZoomRotate.disableRotation();try{MM.removeControl(compass)}catch(e){}if(Math.abs(MM.getBearing())>.5&&!MM.isMoving())MM.easeTo({bearing:0,duration:reduce?0:600})}}
+MM.on("moveend",()=>freeCam(MM.getZoom()>=ZST-.5));
 window.__MM=MM;
 /* a built-in fallback style (land outlines bundled with the game) so the globe shows at once and still works if the tile server can't be reached */
 function localStyle(){const cs=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim()||"#888";
