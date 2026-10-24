@@ -3319,7 +3319,7 @@ function obLoanMonth(){const o=S.ob,C=BANKCFG,cm=obCMap();let li=0;
     if(Math.random()<obMiss(x.risk,x.rate)){x.miss++;x.st="late";obPH(cm[x.cid],"late");if(x.miss>=C.missDef&&o.autoCut!==0)obRevoke("l",x.id,1);continue}obPH(cm[x.cid],"ok");
     const pr=Math.min(x.bal,x.pay-i);x.bal-=pr;li+=i;o.reserves+=pr;if(x.st==="late")x.st="active";if(x.bal<1){x.st="paid";o.reserves+=x.bal;x.bal=0}}
   o.loans=o.loans.filter(x=>x.st!=="paid");return li}
-function obMonth(){econMonth();if(S.ob.at)S.ob.depRate=Math.max(0,Math.min(.15,Math.round(S.econ.base*S.ob.at*1e4)/1e4));S.ob.nd=0;const o=S.ob,C=BANKCFG,t=obT(),b=S.econ.base,a=obAppeal(),E=obPh();
+function obMonth(){econMonth();try{obMgrPrice()}catch(e){}if(S.ob.at)S.ob.depRate=Math.max(0,Math.min(.15,Math.round(S.econ.base*S.ob.at*1e4)/1e4));S.ob.nd=0;const o=S.ob,C=BANKCFG,t=obT(),b=S.econ.base,a=obAppeal(),E=obPh();
   const add=Math.max(0,Math.round((C.growBase+o.nc*C.growRate)*a*(1-o.nc/t.cap))),lose=Math.round(o.nc*C.churn/a);
   o.nc=Math.max(0,Math.min(t.cap,o.nc+add-lose));
   for(let i=0;i<Math.min(add,20);i++){if(o.customers.length<C.sampleCap)o.customers.push(obCust());else o.customers[Math.random()*o.customers.length|0]=obCust()}
@@ -3356,12 +3356,23 @@ function obMgr(){const o=S.ob,C=BANKCFG,t=obT(),pay=obMgrPay(),floor=()=>o.depos
   if(o.emerg>0){const v=Math.max(0,Math.min(o.emerg,o.reserves-floor()));if(v>0){o.emerg-=v;o.reserves-=v;rp=v}}
   o.capital=obEquity();o.ml={m:o.m,pay,nl,nc,ck,rec,rp};
   if(nl||nc||rec)logBank(`Manager at ${o.name}: ${nl} loan${nl===1?"":"s"}, ${nc} card${nc===1?"":"s"} approved${ck?`, ${ck} collection${ck===1?"":"s"} worked (${fmt(rec)} back)`:""}`)}
+/* Manager auto-pricing (needs a hired manager; o.map 0 off, 1 match market, 2 keep customers), applied at the start of each bank month:
+   1 = loan and card margins set to the fair market margin (lmFair/cmFair) and the deposit rate to the market rate (base x rateRef);
+   2 = margins never above fair (overpricing loses applicants) and the deposit rate never below market (low rates make customers leave).
+   A deposit auto-tracker (o.at) still wins for the deposit rate. */
+const OBMAP=["Off","Match market","Keep customers"];
+function obMgrPrice(){const o=S.ob,C=BANKCFG;if(!o||!o.mgr||!o.map)return;const mk=Math.round(S.econ.base*C.rateRef*1e4)/1e4;
+  if(o.map===1){o.lm=C.lmFair;o.cm=C.cmFair;if(!o.at)o.depRate=mk}
+  else{o.lm=Math.min(o.lm,C.lmFair);o.cm=Math.min(o.cm,C.cmFair);if(!o.at)o.depRate=Math.max(o.depRate,mk)}
+  o.depRate=Math.max(0,Math.min(.15,o.depRate))}
 function obMgrSet(on){const o=S.ob;if(!o)return;if(!on){o.mgr=0;toast("Bank manager let go");return}const fee=obMgrPay()*OBMGR.hire;
   if(S.cash<fee)return toast(`Needs ${fmt(fee)} to hire`);S.cash-=fee;o.mgr=1;toast(`Bank manager hired at ${o.name}`);logBank(`Hired a bank manager for ${fmt(obMgrPay())}/month`)}
 function obMgrHtml(){const o=S.ob,C=BANKCFG,pay=obMgrPay(),L=o.ml,fee=pay*OBMGR.hire;
   return `<div class="ph-card"><b>👔 Bank manager ${o.mgr?'<span style="color:var(--good)">· HIRED</span>':""}</b><br><span style="font-size:12px;color:#cbd5e1">Runs ${o.name} for you every month: approves loans and cards that pass your criteria (best returns first) while keeping reserves ${Math.round(C.reqRes*OBMGR.buf*100)}% of deposits, works collection cases worth chasing, and pays back central-bank borrowing when there is spare cash. Your criteria and rates stay yours to set.</span><br>
     <span style="font-size:12px">Salary ${fmt(pay)}/month from bank reserves${o.mgr?"":` · hiring fee ${fmt(fee)} from your cash`}</span></div>
     ${o.mgr&&L?`<div class="ph-card" style="margin-top:8px"><b>Last month (month ${L.m})</b><br><span style="font-size:12px">${L.nl} loan${L.nl===1?"":"s"} and ${L.nc} card${L.nc===1?"":"s"} approved · ${L.ck} collection${L.ck===1?"":"s"} worked, ${fmt(L.rec)} recovered${L.rp?` · ${fmt(L.rp)} central-bank debt repaid`:""} · salary ${fmt(L.pay)}</span></div>`:o.mgr?`<p class="ph-sub">First report after next month closes.</p>`:""}
+    ${o.mgr?`<div class="ph-card" style="margin-top:8px"><b>Auto-pricing: ${OBMAP[o.map||0]}</b><br><span style="font-size:12px;color:#cbd5e1">Match market: loan and card margins go to the market standard (+${obPct(C.lmFair)} / +${obPct(C.cmFair)}) and savings pay the market rate. Keep customers: margins are never above market and savings never below it, so customers don't leave. Applied every month.</span>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">${OBMAP.map((t,i)=>obBtn("obmap",i,t,0,(o.map||0)===i?"#14532d":"#334155")).join("")}</div></div>`:""}
     <div style="display:flex;gap:6px">${o.mgr?obBtn("obmgr",0,"Let manager go",0,"#7f1d1d"):obBtn("obmgr",1,`Hire manager · ${fmt(fee)}`,S.cash<fee)}</div>`}
 function obTick(now){const o=S.ob;if(!o)return;const M=BANKCFG.monthMs;let n=Math.floor((now-o.t)/M);if(n<=0)return;
   if(n>BANKCFG.maxCatchup){n=BANKCFG.maxCatchup;o.t=now-(now-o.t)%M}else o.t+=n*M;for(let i=0;i<n;i++)obMonth()}
@@ -7627,6 +7638,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="obat"){if(S.ob){S.ob.at=+b.dataset.x;if(S.ob.at)S.ob.depRate=Math.round(S.econ.base*S.ob.at*1e4)/1e4}save()}
   else if(a==="obem"){obEmerg(+b.dataset.x);save()}
   else if(a==="obmgr"){obMgrSet(+b.dataset.x);save();hud()}
+  else if(a==="obmap"){if(S.ob){S.ob.map=Math.max(0,Math.min(2,+b.dataset.x|0));try{obMgrPrice()}catch(e){}toast("Auto-pricing: "+OBMAP[S.ob.map])}save();hud()}
   else if(a==="obfound"){const n=PH.el.querySelector("#obname"),c=PH.el.querySelector("#obhq");obFound(n?n.value:"",c?+c.value:0);save();hud()}
   else if(a==="obrate"){if(S.ob)S.ob.at=0,S.ob.depRate=Math.max(0,Math.min(.15,Math.round((S.ob.depRate+ +b.dataset.x)*1e4)/1e4));save()}
   else if(a==="obmoney"){obMoney(+b.dataset.x);save();hud()}
