@@ -2428,7 +2428,7 @@ function wmdStrike(w,att,def,k,quiet){const C=WMDCFG,W=S.wmd,cities=ctyCities(de
   w.wc=S.day+C.wcd;w.wn=(w.wn||0)+1;w.l=4;w.pin=S.day+C.pin;
   gov(def).appr=Math.max(5,gov(def).appr-C.apprHit);gov(att).appr=Math.max(5,gov(att).appr-C.apprAtt);
   const nk=k==="nuke",t=nk?`${att} launches a nuclear strike on ${def}${ct?" ("+ct.name+")":""}!`:`${att} uses chemical weapons against ${def}${ct?" ("+ct.name+")":""}!`;
-  dipSay(t,1,quiet);if(!quiet){toast((nk?"☢ ":"☠ ")+t);if(ct&&typeof wpnAnim==="function"){trjAdd(att,ct,k,Date.now(),WPNCFG.animMs);wpnAnim()}if(!quiet)wmdBanner(k,nk?`${att} launched a nuclear strike on ${def}${ct?" ("+ct.name+")":""}`:`${att} launched a chemical attack on ${def}${ct?" ("+ct.name+")":""}`,WMDBANNER_MS)}
+  dipSay(t,1,quiet);if(!quiet){toast((nk?"☢ ":"☠ ")+t);if(ct&&typeof wpnAnim==="function"){trjAdd(att,ct,k,Date.now(),trjMs(k));wpnAnim()}if(!quiet)wmdBanner(k,nk?`${att} launched a nuclear strike on ${def}${ct?" ("+ct.name+")":""}`:`${att} launched a chemical attack on ${def}${ct?" ("+ct.name+")":""}`,WMDBANNER_MS)}
   const ws=S.wars,d=dip();let n=0;const pool=COUNTRIES.filter(x=>x!==att&&x!==def&&x!==dipPlayerC()&&!d.ruler[x]&&!dipWarOf(x,att)).sort(()=>Math.random()-.5);
   for(const x of pool){if(n>=C.react||ws.length>=C.maxWars)break;ws.push({id:(S.wid=(S.wid||0)+1),a:x,b:att,l:2,att:x,sc:d.day+3,d0:S.day});n++}
   if(n)dipSay(`${n} countr${n===1?"y":"ies"} impose sanctions on ${att}`,dipRel(att,def),quiet)}
@@ -3818,7 +3818,8 @@ const WPNCFG={ // cost per weapon, build = game days, enemy = share of enemy max
        A:50,mort:.45,struct:1,fly:1,yld:"≈300 kt",appr:-30,loy:-35,wear:25,resist:25,col:"#facc15",need:"Rocketry tech and 20 air wings",ok:m=>hasTech("rocketry")&&m.units.air>=20},
      icbm:{n:"ICBM",ico:"☠",cost:2.5e9,build:12,enemy:.6,front:30,city:1,days:UNH_DAYS,r:34, // real: ≈30 min flight at ≈7 km/s, one or several (MIRV) ≈300 kt–1 Mt warheads; a 1 Mt 5 psi radius ≈7 km (≈150 km²) → a salvo ≈500 km², a whole metro area
        A:500,mort:.6,struct:1,fly:.5,yld:"several × 300 kt–1 Mt",appr:-45,loy:-50,wear:40,resist:40,col:"#f43f5e",need:"Rocketry tech and 40 air wings",ok:m=>hasTech("rocketry")&&m.units.air>=40}},
-  queue:3,         // builds in progress at once
+  queue:3,         // nukes and ICBMs in production at once (missiles and gas: no limit, see free)
+  free:["msl","gas"],
   // strikes alone can't end a war: they never push the front past frontCap or the enemy below strFloor × max strength; battles must finish it
   frontCap:85,strFloor:.15,nukeCap:98, // a nuke may push the front to 98, which wins the war
   
@@ -3835,7 +3836,7 @@ function wpn(){const m=mil();if(!m.wpn||typeof m.wpn!=="object")m.wpn={};for(con
 function wpnTick(){const m=wpn(),now=Date.now();let done=0;for(let i=m.wq.length-1;i>=0;i--){const q=m.wq[i];if(q.done<=now){if(WPNCFG.w[q.k])m.wpn[q.k]++;m.wq.splice(i,1);done++}}
   m.strikes=m.strikes.filter(s=>s.until>now);return done}
 function wpnBuild(k){const p=pol(),m=wpn(),W=WPNCFG.w[k];if(!W)return;if(!polLeader())return toast("Only a Leader can build weapons");
-  if(!W.ok(m))return toast(`${W.n} needs ${W.need}`);if(m.wq.length>=WPNCFG.queue)return toast(`At most ${WPNCFG.queue} weapons in production`);
+  if(!W.ok(m))return toast(`${W.n} needs ${W.need}`);if(!WPNCFG.free.includes(k)&&m.wq.filter(q=>!WPNCFG.free.includes(q.k)).length>=WPNCFG.queue)return toast(`At most ${WPNCFG.queue} nukes/ICBMs in production`);
   if(S.cash<W.cost)return toast(`${W.n} costs ${fmt(W.cost)}`);S.cash-=W.cost;
   m.wq.push({k,done:Date.now()+W.build*DAYMS});toast(`${W.n} in production · ready in ${fmtDur(W.build*DAYMS)}`)}
 function wpnFire(k,id,sure){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id],now=Date.now();if(!W||!c)return;if(!polLeader())return toast("Only a Leader can order strikes");
@@ -3848,7 +3849,7 @@ function wpnFire(k,id,sure){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id],no
   const t=`${W.ico} ${W.n} hit ${c.name}, ${c.country}: ${fmtPop(dead)} killed, city ${dmgWord(dl)} ${dmgPct(dl)}, enemy −${Math.round(kill)}, front +${push}${W.appr?`, approval ${W.appr}`:""}${W.loy?`, allies' loyalty ${W.loy}`:""}`;logPol(t);milLog(m,t);
   toast(t+(mine?` · your businesses in ${c.name} lose ${Math.round(W.city*WPNCFG.ownHit*100)}% demand for a while`:""));
   if((k==="nuke"||k==="icbm")&&w.front>=WPNCFG.nukeCap&&m.wars[c.country])milEndWar(c.country,"win");
-  if(typeof PH!=="undefined"&&PH.open){PH.open=false}{const st=m.strikes[m.strikes.length-1];const og=p.c||(S.loc&&CITIES[S.loc.city]&&CITIES[S.loc.city].country);if(st&&og){_trjFl[c.id+"|"+k+"|"+st.t]=st.t+WPNCFG.animMs*.8;trjAdd(og,c,k,st.t,WPNCFG.animMs*.8);wmdBanner(k,`${WBN[k]}: ${og} → ${c.country} (${c.name}) · {s}`,WMDBANNER_MS,st.t+WPNCFG.animMs*.8)}}rotateTo(c,Math.max(V.k,2.5));wpnAnim();
+  if(typeof PH!=="undefined"&&PH.open){PH.open=false}{const st=m.strikes[m.strikes.length-1];const og=p.c||(S.loc&&CITIES[S.loc.city]&&CITIES[S.loc.city].country);if(st&&og){_trjFl[c.id+"|"+k+"|"+st.t]=st.t+trjMs(k);trjAdd(og,c,k,st.t,trjMs(k));wmdBanner(k,`${WBN[k]}: ${og} → ${c.country} (${c.name}) · {s}`,WMDBANNER_MS,st.t+trjMs(k));trjView(og,c)}else rotateTo(c,Math.max(V.k,2.5))}wpnAnim();
   if(k==="icbm")unhStrike(c,p.c);bunkPlayer(k,c,p.c,0,1)}
 /* ICBM impact: the city is uninhabitable until S.unh[id]. Blast radius = the struck city only. If the player is physically in it (present(c)), the game is over. */
 function unhStrike(c,by){S.unh=S.unh&&typeof S.unh==="object"?S.unh:{};S.unh[c.id]=Date.now()+UNH_DAYS*DAYMS;
@@ -3967,6 +3968,10 @@ function bunkApp(){const p=pol(),b=bunk(),C=BUNKCFG,now=Date.now(),off=GOVCFG.of
 function strikeMult(c){const m=S.pol&&S.pol.mil;if(!m||!Array.isArray(m.strikes)||!m.strikes.length)return 1;const now=Date.now();let f=1;
   for(const s of m.strikes)if(s.city===c.id&&now<s.until)f*=1-s.dmg*Math.max(0,(s.until-now)/(s.until-s.t));return Math.max(.1,f)}
 /* live trajectories (visual only, never saved): arc from origin to target with a travelling warhead, fades 1.5 s after impact */
+const TRJMS={msl:6000,gas:7000,nuke:9000,icbm:12000},trjMs=k=>TRJMS[k]||WPNCFG.animMs; // on-screen flight time of a WMD arc (real ms)
+// frame launch site and target together on the globe so the whole arc is visible
+function trjView(from,c){try{const o=typeof from==="string"?cap(from):from;if(!o||!c)return;const mid=d3.geoInterpolate([o.lon,o.lat],[c.lon,c.lat])(.5),dk=d3.geoDistance([o.lon,o.lat],[c.lon,c.lat]);
+  MM.easeTo({center:mid,zoom:Math.max(1.2,Math.min(4,3.6-dk*1.6)),bearing:0,duration:reduce?0:1200})}catch(e){}}
 const TRJX={air:{col:"#60a5fa",ico:"✈"}}; // troop airlifts use the same arc as weapons
 function troopFly(from,to){const c=typeof to==="string"?cap(to):to;if(trjAdd(from,c,"air",Date.now(),7000))wpnAnim()}
 const _trj=[],_trjFl={},_trjRM=matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -4012,8 +4017,8 @@ function drawStrikes(ctx){const now=Date.now(),zs=Math.min(2.5,.7+V.k*.3),m=S.po
     const ia=age-fl,il=WPNCFG.animMs*.55;if(ia>=0&&ia<il){const u=ia/il;ctx.beginPath();ctx.arc(x,y,R*(.3+2.2*u),0,7);ctx.strokeStyle=W.col;ctx.globalAlpha=1-u;ctx.lineWidth=3*(1-u)+1;ctx.stroke();
       ctx.beginPath();ctx.arc(x,y,R*(.9-.6*u),0,7);ctx.fillStyle="#fff7d6";ctx.globalAlpha=(1-u)*.9;ctx.fill();ctx.globalAlpha=1}}}
 function wpnHtml(m,lead,sb,bx,urow){const C=WPNCFG,now=Date.now();wpnTick();
-  let h=`<div class="ph-sub" style="margin-top:10px">Arsenal · production ${m.wq.length}/${C.queue}</div><div class="ph-rows">${Object.keys(C.w).map(k=>{const W=C.w[k],q=m.wq.filter(x=>x.k===k),ok=W.ok(m),full=false;
-    return urow(`${W.ico} ${W.n} <b>× ${m.wpn[k]}</b>`,`${ok?`build ${fmtDur(W.build*DAYMS)}`:`needs ${W.need}`} · ${W.yld}, flight ${fmtDur(W.fly*DAYMS)}${q.length?` · ${q.length} building, next ${fmtDur(Math.max(0,Math.min(...q.map(x=>x.done))-now))}`:""}`,bx("wpnbuild",k,`Build · ${fmt(W.cost)}`,"#7f1d1d",!lead||!ok||full||m.wq.length>=C.queue||S.cash<W.cost,1)+bx("wpntest",k,_wtPick===k?"Cancel":"Test","#a16207",!lead||!m.wpn[k],1))}).join("")}</div>`;
+  let h=`<div class="ph-sub" style="margin-top:10px">Arsenal · ${m.wq.length} in production · missiles & gas unlimited, nukes/ICBMs ${m.wq.filter(q=>!C.free.includes(q.k)).length}/${C.queue}</div><div class="ph-rows">${Object.keys(C.w).map(k=>{const W=C.w[k],q=m.wq.filter(x=>x.k===k),ok=W.ok(m),full=false;
+    return urow(`${W.ico} ${W.n} <b>× ${m.wpn[k]}</b>`,`${ok?`build ${fmtDur(W.build*DAYMS)}`:`needs ${W.need}`} · ${W.yld}, flight ${fmtDur(W.fly*DAYMS)}${q.length?` · ${q.length} building, next ${fmtDur(Math.max(0,Math.min(...q.map(x=>x.done))-now))}`:""}`,bx("wpnbuild",k,`Build · ${fmt(W.cost)}`,"#7f1d1d",!lead||!ok||full||(!C.free.includes(k)&&m.wq.filter(q=>!C.free.includes(q.k)).length>=C.queue)||S.cash<W.cost,1)+bx("wpntest",k,_wtPick===k?"Cancel":"Test","#a16207",!lead||!m.wpn[k],1))}).join("")}</div>`;
   const wk=Object.keys(m.wars),have=Object.keys(C.w).filter(k=>m.wpn[k]>0);
   if(lead&&wk.length&&have.length)for(const n of wk)h+=`<div class="ph-sub" style="margin-top:8px">Strike ${n}</div><div class="ph-rows">${ctyCities(n).map(c=>{const sm=strikeMult(c)*dmgMult(c);return urow(c.name+(S.own[c.id]&&Object.keys(S.own[c.id]).length?` <small style="color:#fbbf24">· yours</small>`:""),sm<1?`<span style="color:#f87171">damaged −${Math.round((1-sm)*100)}%</span>`:"",have.map(k=>bx("wpnfire",k+"|"+c.id,`${C.w[k].ico} ${m.wpn[k]}`,k==="icbm"?"#881337":k==="nuke"?"#713f12":k==="gas"?"#3f6212":"#7c2d12",0,1)).join(""))}).join("")}</div>`;
   else if(lead&&have.length)h+=`<p class="ph-sub">Declare war to use your weapons.</p>`;
@@ -4041,7 +4046,7 @@ function wtName(ll,n){if(n)return n;if(n==="")return "remote land";const [lo,la]
 function wtRoll(k,ll){const r={fail:0,ll,ia:null};if(wtRand()<(WTCFG.fail[k]||.08)){if(wtRand()<WTCFG.fizzle)r.fail=1;else{r.fail=2;r.ia=ll;r.ll=wtVeer(ll)}}r.n=wtLand(r.ll);return r}
 function wtRec(k,by,r,quiet){const W=wt(),now=Date.now(),win=WTCFG.winH*DAYMS/24;const x={k,by,lat:+r.ll[1].toFixed(3),lon:+r.ll[0].toFixed(3),t:now,until:now+(r.fail===1?win/3:win),fail:r.fail,hit:r.n||null};
   if(r.ia)x.ia=[+r.ia[0].toFixed(3),+r.ia[1].toFixed(3)];W.l.push(x);W.l=W.l.slice(-WTCFG.keep);W.ld=S.day;
-  if(!quiet){const o=cap(by);if(o){trjAdd(o,{lon:x.lon,lat:x.lat},k,now,WPNCFG.animMs);if(typeof wpnAnim==="function")wpnAnim()}}return x}
+  if(!quiet){const o=cap(by);if(o){trjAdd(o,{lon:x.lon,lat:x.lat},k,now,trjMs(k));if(typeof wpnAnim==="function")wpnAnim()}}return x}
 const WTN={msl:"MISSILE TEST",gas:"CHEMICAL TEST",nuke:"NUCLEAR TEST",icbm:"ICBM TEST"};
 function wtSay(x,r,quiet,who){const W0=WPNCFG.w[x.k],W={n:W0.n==='ICBM'?'ICBM':W0.n.toLowerCase()},site=wtName(r.ia||r.ll,r.ia?wtLand(r.ia):r.n),t=r.fail===1?`TEST FAILED: ${who}'s ${W.n} fizzled over the ${site}`:r.fail===2?`TEST FAILED: ${who}'s ${W.n} veered ${r.n?"into "+r.n:"off course into the "+wtName(r.ll,r.n)}`:`${WTN[x.k]}: ${who} → ${site}`;
   if(!quiet)wmdBanner(x.k,(r.fail?"":"")+t,WMDBANNER_MS,0,r.fail===2&&r.n?"":"wt");return t}
