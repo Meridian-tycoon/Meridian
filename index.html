@@ -327,6 +327,9 @@ const DEV_UIDS=["BRGRStgYLlbkVbrBTagBrDbpVyg1"];
 const DEV_NAME="Mark Vani";
 const devNorm=x=>String(x==null?"":x).toLowerCase().replace(/\s+/g,"");
 const devUid=u=>!!u&&DEV_UIDS.indexOf(u)>=0;
+/* Government immunity: these accounts keep 100% approval and can't be removed from office or arrested while they hold one */
+const GOV_IMMUNE=["BRGRStgYLlbkVbrBTagBrDbpVyg1"];
+function polImmune(){try{return typeof ON!=="undefined"&&!!ON.user&&GOV_IMMUNE.includes(ON.user.uid)}catch(e){return false}}
 function devSelf(){try{if(ON.user&&devUid(ON.user.uid))return true}catch(e){}for(let k=0;k<arguments.length;k++)if(arguments[k]&&devNorm(arguments[k])===devNorm(DEV_NAME))return true;return false}
 const devEsc=x=>String(x==null?"":x).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 const gnHtml=(x,on)=>on?`<span class="devname">${devEsc(x)}</span>`:devEsc(x);
@@ -2774,7 +2777,7 @@ function dipInvade(w,by,quiet){const d=dip(),n=dipPlayerC();d.inv={by,n,w:w.id,d
   setTimeout(()=>{if(!quiet)toast(`⚠ War is coming to ${n}: ${bunk().lv?"know the way to your bunker":"consider building a bunker (Gov › Bunker)"}`)},2500);
   const t=`WARNING: ${by} masses troops on ${n}'s border. Invasion in ${DIPCFG.warn} days: fund talks, rally defences, build an army`;dipSay(t,1,quiet);if(!quiet)toast(t)}
 function dipFall(by,quiet){const d=dip(),p=pol(),n=p.c,o=GOVCFG.offices[p.r].n,lv=Math.round(Math.max(0,S.cash)*DIPCFG.levy);S.cash-=lv;
-  d.inv=null;dipConquer(by,n,quiet);polFall();const t=`${by} occupies ${n}! You lose office as ${o}. Occupation levy ${fmt(lv)}; your businesses stay but earn ${Math.round((1-DIPCFG.occMult)*100)}% less until it is liberated`;
+  d.inv=null;dipConquer(by,n,quiet);if(!polImmune())polFall();const t=`${by} occupies ${n}! You lose office as ${o}. Occupation levy ${fmt(lv)}; your businesses stay but earn ${Math.round((1-DIPCFG.occMult)*100)}% less until it is liberated`;
   S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);if(!quiet)toast(t)}
 function dipInvDay(d,quiet){const C=DIPCFG,inv=d.inv,p=S.pol,w=inv&&(S.wars||[]).find(x=>x.id===inv.w);
   if(!inv)return;if(typeof inv!=="object"){d.inv=null;return}if(!(inv.day>=0))inv.day=d.day;if(inv.stage===2&&!(inv.sd>=0))inv.sd=d.day;if(inv.stage===2&&!(inv.prog>=0))inv.prog=C.start; // odd saves
@@ -3254,7 +3257,7 @@ function ownsAny(k){for(const id in S.own)if(hasT(S.own[id],k))return true;retur
 function lawRisk(){return ownsAny("lawfirm")?.2:1}
 /* any law firm: bail and lawyer fees are 50% cheaper */
 function lawBribe(){return ownsAny("lawfirm")?.5:1}
-function arrest(reason,sev,c,quiet,pre){c=c||CITIES[(S.loc||{city:0}).city];const pol=law(c,"police")??1;
+function arrest(reason,sev,c,quiet,pre){if(S.pol&&S.pol.r>=0&&polImmune())return false;c=c||CITIES[(S.loc||{city:0}).city];const pol=law(c,"police")??1;
   if(Math.random()>[.35,.55,.8][pol]*(pre?1:lawRisk()))return false;
   let h=sev*POLMULT[pol]*(ownsAny("lawfirm")?.5:1);if(jailed())h+=(S.jail.until-Date.now())/DAYMS;
   const bail=Math.round(Math.max(2500,incomeHr()*h*.6,sev*1500)*PRICE[c.size]);
@@ -3782,7 +3785,7 @@ const GOVCFG={
   exposeCd:24,      // hours after a journalist exposes you before a Leader regains control of the government
   loyStart:60,loyDrift:-.4,loyLowAppr:-1.5,loyLose:12,loyCost:.015,loyGain:15, // loyalty of controlled countries
 };
-function pol(){const p=S.pol=S.pol||{};if(p.r==null)p.r=-1;if(!p.c)p.c=null;if(p.appr==null)p.appr=GOVCFG.apprStart;if(!p.since)p.since=0;if(!p.cd)p.cd=0;if(!p.taxCd)p.taxCd=0;if(!p.acd)p.acd=0;if(!p.ctrl||typeof p.ctrl!=="object")p.ctrl={};if(p.tax==null)p.tax=null;if(!p.exCd)p.exCd=0;if(!Array.isArray(p.notes))p.notes=[];p.notes=p.notes.filter(n=>n&&typeof n==="object"&&typeof n.t==="string").map(n=>({t:n.t,at:+n.at||0}));return p}
+function pol(){const p=S.pol=S.pol||{};if(p.r>=0&&polImmune())p.appr=100;if(p.r==null)p.r=-1;if(!p.c)p.c=null;if(p.appr==null)p.appr=GOVCFG.apprStart;if(!p.since)p.since=0;if(!p.cd)p.cd=0;if(!p.taxCd)p.taxCd=0;if(!p.acd)p.acd=0;if(!p.ctrl||typeof p.ctrl!=="object")p.ctrl={};if(p.tax==null)p.tax=null;if(!p.exCd)p.exCd=0;if(!Array.isArray(p.notes))p.notes=[];p.notes=p.notes.filter(n=>n&&typeof n==="object"&&typeof n.t==="string").map(n=>({t:n.t,at:+n.at||0}));return p}
 /* Big moves by a player who holds office are announced in the News app (S.news) and the Government notices (S.pol.notes) */
 function bigMove(txt,amt,always){try{const p=S.pol;if(!p||!(p.r>=0)||!p.c)return;const O=GOVCFG.offices[p.r];if(!O)return;txt=String(txt).replace(/^the leader\b/,"the "+O.n);
   if(!always){let nw=0;try{nw=totals().nw}catch(e){}if(!(amt>=Math.max(250e3,.03*nw)))return}
@@ -3828,7 +3831,8 @@ function polLoyal(n){const p=pol(),c=p.ctrl[n];if(!c)return;const v=Math.round(a
 function polRelease(n){const p=pol();if(p.ctrl[n]){delete p.ctrl[n];logPol(`You released ${n}`)}}
 function polHour(quiet){const p=S.pol;if(!p)return;pol();const C=GOVCFG;
   if(p.r>=0){p.appr=Math.max(0,Math.min(95,p.appr+C.apprDrift*(1-presFx("drift"))+(Math.random()-.5)*C.apprNoise+(typeof jailed==="function"&&jailed()?C.apprJail:0)));
-    if(p.appr<C.apprOut){const o=C.offices[p.r].n;polFall();if(!quiet)logPol(`Approval collapsed: you were removed as ${o}`);else S.log.unshift(`Government: removed from office`)}
+    if(polImmune())p.appr=100;
+    if(p.appr<C.apprOut&&!polImmune()){const o=C.offices[p.r].n;polFall();if(!quiet)logPol(`Approval collapsed: you were removed as ${o}`);else S.log.unshift(`Government: removed from office`)}
     else if(polLeader()){const g=gov(p.c);if(!g.ctrl&&Date.now()>=(p.exCd||0)){g.ctrl=true;g.polCtrl=1;if(!quiet)logPol(`As Leader you now run the government of ${p.c}`)}if(p.tax!=null)g.laws.tax=p.tax}}
   for(const n in p.ctrl){const c=p.ctrl[n];c.loy=Math.max(0,Math.min(100,c.loy+C.loyDrift*(1-presFx("loy"))+(!polLeader()||p.appr<35?C.loyLowAppr:0)));
     if(c.loy<C.loyLose&&Math.random()<.25){delete p.ctrl[n];if(!quiet)logPol(`${n} broke away from your influence`)}}
