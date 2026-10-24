@@ -2474,12 +2474,14 @@ function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filte
     const c=cfCap(n);if(c&&visible(c.lon,c.lat)){const [x,y]=proj([c.lon,c.lat]);ctx.globalAlpha=.75-.35*pu;ctx.beginPath();ctx.arc(x,y,(12+l*1.5+pu*5)*zs,0,7);ctx.strokeStyle=col;ctx.lineWidth=l>=3?2:1.4;ctx.setLineDash(l>=3?[]:[3,3]);ctx.stroke();ctx.setLineDash([])}}
   for(const w of ws){const A=cfCap(w.a),B=cfCap(w.b);if(!A||!B)continue;const col=WARC[w.l];
     ctx.globalAlpha=.9;ctx.beginPath();path({type:"LineString",coordinates:[[A.lon,A.lat],[B.lon,B.lat]]});ctx.setLineDash(w.l>=4?[]:[6,4]);ctx.strokeStyle=col;ctx.lineWidth=1+w.l*.45;ctx.stroke();ctx.setLineDash([]);
-    const bd=w.l>=3?bgFor(w):null,m=bd&&bd.pos?bd.pos:cfMid(w);if(!visible(m[0],m[1]))continue;const [x,y]=proj(m),r=9*zs;
+    const bd=w.l>=3?bgFor(w):null,m=w.tr&&w.l>=3?(cfMid(w)):bd&&bd.pos?bd.pos:cfMid(w);if(!visible(m[0],m[1]))continue;const [x,y]=proj(m),r=9*zs;
     ctx.globalAlpha=1;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=col;ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle="#fff";ctx.stroke();
     ctx.fillStyle="#fff";ctx.font=`700 ${Math.round(10*zs)}px system-ui, sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(["","!","$","⚔","⚔"][w.l],x,y+.5);ctx.textAlign="start";
     if(_cfPop&&_cfPop.id===w.id){ctx.beginPath();ctx.arc(x,y,r+4,0,7);ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke()}
-    if(bd)bgLabel(ctx,x,y+r+3,zs,bd);
+    if(bd&&!w.tr)bgLabel(ctx,x,y+r+3,zs,bd);
     _cfHit.push({x,y,r:Math.max(16,r+6),w})}
+  let live=false;for(const w of ws)if(w.l>=3)try{if(wlDraw(ctx,w,zs,t,anim))live=true}catch(e){console.warn("wldraw",e)}
+  if(wlDrawFx(ctx,zs,t,anim))live=true;
   for(const n of pw){const A=cfCap(pol().c),B=cfCap(n),bd=bgMil(n);if(!A||!B||!bd)continue;const col=WARC[4];
     ctx.globalAlpha=.9;ctx.beginPath();path({type:"LineString",coordinates:[[A.lon,A.lat],[B.lon,B.lat]]});ctx.strokeStyle=col;ctx.lineWidth=2.8;ctx.stroke();
     if(!bd.pos||!visible(bd.pos[0],bd.pos[1]))continue;const [x,y]=proj(bd.pos),r=9*zs;
@@ -2492,7 +2494,7 @@ function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filte
     ctx.globalAlpha=1;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle="#111";ctx.fill();ctx.lineWidth=2;ctx.strokeStyle=col;ctx.stroke();
     ctx.fillStyle=col;ctx.font=`700 ${Math.round(12*zs)}px system-ui, sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(nk?"☢":"☠",x,y+.5);ctx.textAlign="start";
     const w=ws.find(q=>q.a===n||q.b===n);if(w)_cfHit.push({x,y,r:Math.max(16,r+6),w})}
-  ctx.restore()}
+  ctx.restore();if(anim&&live)wlTick()}
 /* tap: a badge opens its popup; with no city under the finger, a shaded country opens its worst conflict */
 function cfTap(x,y,best,bd){const ws=(S.wars||[]).filter(w=>w.l>0);if((!ws.length&&!bgMilKeys().length)||!cfOn()){if(_cfPop)cfClose();return false}
   let hit=null,hd=1e9;for(const h of _cfHit){const d=Math.hypot(h.x-x,h.y-y);if(d<h.r&&d<hd){hd=d;hit=h.w}}
@@ -2505,7 +2507,7 @@ function cfHtml(w){if(w.pm)return bgPopMil(w);const bg=w.l>=3?bgFor(w):null,days
   return `<button class="x" data-cf="x" aria-label="Close">×</button><h4>${w.a} – ${w.b}</h4>
   <span class="tag" style="background:${WARC[w.l]};color:#fff">${WARL[w.l].toUpperCase()}</span>${ag?` <span class="m">started by ${ag}</span>`:""}
   <div class="stg">${[1,2,3,4].map(l=>`<i style="${l<=w.l?"background:"+WARC[l]:""}"></i>`).join("")}</div><div class="stl"><span>Tension</span><span>Sanctions</span><span>Clashes</span><span>War</span></div>
-  ${bg?bgBlock(bg):""}<p><b>Effect in ${w.a} and ${w.b}:</b> ${CF_EFF[w.l]}.</p>${allyLine(w)}${wmdNote(w)}
+  ${w.tr&&w.l>=3?wlHtml(w):bg?bgBlock(bg):""}<p><b>Effect in ${w.a} and ${w.b}:</b> ${CF_EFF[w.l]}.</p>${w.tr&&w.l>=3?"":allyLine(w)}${wmdNote(w)}
   <p class="m">${days!=null?`Running ${days} day${days===1?"":"s"}. `:"Ongoing. "}No fixed end: each day it can escalate or ease until a peace deal.</p>
   <p class="m">${ex.n?`Your ${ex.n} business${ex.n===1?"":"es"} there lose about ${fmt(ex.loss)}/hr to conflicts.`:"You have no businesses in either country."}</p>
   <div class="bt">${allyBtns(w,["chip","data-cf"])}<button class="chip" data-cf="peace" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="chip" data-cf="gov">Gov tab</button></div>`}
@@ -2584,22 +2586,147 @@ function allyDay(ws,d,quiet){const C=ALLYCFG,pc=dipPlayerC();
   for(const w of ws){if(!w.al)continue;for(const n in w.al)if(n===w.a||n===w.b||d.ruler[n]||!COUNTRIES.includes(n)||(w.al[n]!=="a"&&w.al[n]!=="b"))delete w.al[n]}
   for(const w of ws){if(w.l<3||d.ruler[w.a]||d.ruler[w.b])continue;const al=w.al||{};
     if(pc&&al[pc]&&w.l>=4&&S.pol.mil&&milStr()>0&&!quiet)milKill(S.pol.mil,C.loss); // your troops at the front take losses
-    if(Object.keys(al).length>=C.max||Math.random()>C.p)continue;
+    if(w.gid||Object.keys(al).length>=C.max||Math.random()>C.p)continue;
     const cand=COUNTRIES.filter(n=>n!==w.a&&n!==w.b&&n!==pc&&!al[n]&&!d.ruler[n]&&!(dipWarOf(n,w.a)&&dipWarOf(n,w.b))&&Math.min(dipDist(n,w.a),dipDist(n,w.b))<DIPCFG.nearKm);
     if(!cand.length)continue;const n=cand[Math.floor(Math.random()*cand.length)];
     const s=dipWarOf(n,w.a)?"b":dipWarOf(n,w.b)?"a":dipDist(n,w.a)<=dipDist(n,w.b)?"a":"b",fr=w[s],en=s==="a"?w.b:w.a;
-    w.al=al;al[n]=s;if(!quiet)try{troopFly(n,fr)}catch(e){}dipSay(`${n} sends troops to back ${fr} against ${en}`,dipRel(w.a,w.b)||dipRel(n,n),quiet)}}
+    w.al=al;al[n]=s;if(!quiet)try{troopFly(n,fr);wlMarch(w,n,s)}catch(e){}dipSay(`${n} sends troops to back ${fr} against ${en}`,dipRel(w.a,w.b)||dipRel(n,n),quiet)}}
 function warJoin(id,s){const w=(S.wars||[]).find(x=>x.id===id),pc=dipPlayerC();if(!w)return;
   if(!pc||!polLeader())return toast("Only a Leader can send troops");if(w.a===pc||w.b===pc)return;
-  if(s==="leave"){if(w.al&&w.al[pc]){delete w.al[pc];logGov(`${pc} pulls its troops out of the ${w.a}–${w.b} war`);toast("Troops brought home")}return}
+  if(s==="leave"){if(w.al&&w.al[pc]){const s0=w.al[pc];wlMarch(w,pc,s0,1);delete w.al[pc];if(w.at)delete w.at[pc];wjPub(w,null);logGov(`${pc} pulls its troops out of the ${w.a}–${w.b} war`);toast("Troops brought home")}return}
   if(w.l<3)return toast("Only once it reaches border clashes");if(s!=="a"&&s!=="b")return;
   const c=Math.round(warCost(w)*ALLYCFG.cost);if(S.cash<c)return toast(`Need ${fmt(c)}`);if(milStr()<=0)return toast("Raise an army first (Gov › Military)");
-  S.cash-=c;w.al=w.al||{};w.al[pc]=s;const fr=w[s],en=s==="a"?w.b:w.a;try{troopFly(pc,fr)}catch(e){}logGov(`${pc} sends troops to fight for ${fr} against ${en}`);toast(`Your troops join ${fr}'s side`)}
+  S.cash-=c;w.al=w.al||{};w.al[pc]=s;w.at=w.at||{};w.at[pc]=wlPT();const fr=w[s],en=s==="a"?w.b:w.a;try{troopFly(pc,fr);wlMarch(w,pc,s)}catch(e){}wjPub(w,s);logGov(`${pc} sends troops to fight for ${fr} against ${en}`);toast(`Your troops join ${fr}'s side`)}
 function allyBtns(w,attr){const pc=dipPlayerC();if(!pc||!polLeader()||w.l<3||w.a===pc||w.b===pc||w.inv)return "";const c=Math.round(warCost(w)*ALLYCFG.cost),mine=w.al&&w.al[pc],dis=S.cash<c||milStr()<=0?"disabled":"";
   return mine?`<button class="${attr[0]}" ${attr[1]}="leave" data-w="${w.id}" data-fixed="1">Bring troops home</button>`:
     ["a","b"].map(s=>`<button class="${attr[0]}" ${attr[1]}="join" data-s="${s}" data-w="${w.id}" data-fixed="1" ${dis}>Fight for ${w[s]} ${fmt(c)}</button>`).join("")}
 function allyLine(w){const al=w.al||{},pc=dipPlayerC(),f=s=>Object.keys(al).filter(n=>al[n]===s).map(n=>n===pc?`<b>${n} (you)</b>`:n).join(", ");const A=f("a"),B=f("b");
   return A||B?`<div class="d">Allies: ${A?`${A} with ${w.a}`:""}${A&&B?" · ":""}${B?`${B} with ${w.b}`:""}</div>`:""}
+/* ---------- Living wars (level 3+): real troops per side, daily battles for cities, captures and a moving front ----------
+   w.tr/w.t0 {a,b} troops now/peak, w.at {country: troops} allies (incl. your country), w.fp front 0..100 (0 = a's capital, 100 = b's),
+   w.pu pushing side, w.bt {c,s,ha,hb} the battle under way (health 0..1), w.cc {cityId:"a"|"b"} captured cities, w.ev last captures.
+   Online players fighting in a shared war come from wjoin (ON.wj). All optional: old saves start them on the next day. */
+const WLCFG={k:2500,reg:.05,cap:.08,loss:.03,dmg:.22,fp:7,ev:8,pT:100,ally:.35};
+const WLCOL={a:"#4aa3ff",b:"#ff7a59"};
+const wlTroops=n=>Math.round(Math.sqrt(Math.max(1,dipPower(n)))*WLCFG.k);
+const wlPT=()=>{try{return Math.round(milStr()*WLCFG.pT)}catch(e){return 0}};
+const wlK=n=>{n=Math.max(0,Math.round(+n||0));return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e4?Math.round(n/1e3)+"k":n>=1e3?(n/1e3).toFixed(1)+"k":String(n)};
+const wlGid=w=>w.gid||w.id;
+const wlName=()=>(S.online&&S.online.name)||"You";
+function wlRemote(w,s){const j=typeof ON!=="undefined"&&Array.isArray(ON.wj)?ON.wj:[];return j.filter(x=>x.w===wlGid(w)&&(!s||x.s===s))}
+function wlInit(w){if(w.tr&&w.tr.a>=0&&w.tr.b>=0)return;w.tr={a:wlTroops(w.a),b:wlTroops(w.b)};w.t0={a:w.tr.a,b:w.tr.b};w.fp=50;w.pu=w.att===w.b?"b":"a";w.cc={};w.ev=[];w.at={}}
+function wlSide(w,s){let v=(w.tr&&w.tr[s])||0;for(const n in w.at||{})if(w.al&&w.al[n]===s)v+=w.at[n]||0;for(const j of wlRemote(w,s))v+=Math.max(0,+j.n||0);return v}
+function wlTarget(w,s){const o=s==="a"?"b":"a",cc=w.cc||{},f=bgLerp(w.a,w.b,(w.fp||50)/100);if(!f)return null;
+  const own=ctyCities(w[s]).filter(c=>cc[c.id]===o),def=ctyCities(w[o]).filter(c=>cc[c.id]!==s),pool=own.length?own:def;if(!pool.length)return null;
+  return pool.slice().sort((x,y)=>d3.geoDistance([x.lon,x.lat],f)-d3.geoDistance([y.lon,y.lat],f))[0]}
+function wlDay(ws,d,quiet){const C=WLCFG,pc=dipPlayerC();
+  for(const w of ws){if(w.gid)continue;if(w.l<3||d.ruler[w.a]||d.ruler[w.b]){if(w.cc&&Object.keys(w.cc).length&&w.l<3&&!quiet)dipSay(`${w.a} and ${w.b} hand back captured cities`,dipRel(w.a,w.b),quiet);delete w.cc;delete w.bt;delete w.tr;continue}
+    wlInit(w);w.at=w.at||{};for(const n in w.al||{})if(!(n in w.at))w.at[n]=n===pc?wlPT():Math.round(wlTroops(n)*C.ally);for(const n in w.at)if(!w.al||!w.al[n])delete w.at[n];
+    if(pc&&w.al&&w.al[pc])w.at[pc]=wlPT();if(w.inv)continue;
+    const inten=w.l>=4?1:.35,A=wlSide(w,"a"),B=wlSide(w,"b"),qa=sidePower(w,"a")/Math.max(1e-9,dipPower(w.a)),qb=sidePower(w,"b")/Math.max(1e-9,dipPower(w.b));
+    const ea=A*Math.min(2,qa)*(.6+.8*Math.random()),eb=B*Math.min(2,qb)*(.6+.8*Math.random()),tot=Math.max(1,ea+eb);
+    const la=Math.min(A*C.cap,eb*C.loss*inten),lb=Math.min(B*C.cap,ea*C.loss*inten);
+    for(const [s,l,T] of [["a",la,A],["b",lb,B]]){const f=T>0?1-l/T:1;w.tr[s]=Math.round(w.tr[s]*f);for(const n in w.at)if(w.al[n]===s&&n!==pc)w.at[n]=Math.round(w.at[n]*f);
+      w.tr[s]=Math.round(w.tr[s]+(w.t0[s]-w.tr[s])*C.reg)}
+    const mv=(ea-eb)/tot*C.fp*inten*2;w.fp=Math.max(5,Math.min(95,(w.fp||50)+mv));w.pu=mv>=0?"a":"b";
+    const s=w.pu,o=s==="a"?"b":"a";if(!w.bt||w.bt.s!==s||!CITIES[w.bt.c]){const c=wlTarget(w,s);w.bt=c?{c:c.id,s,ha:1,hb:1}:null}if(!w.bt)continue;
+    const bt=w.bt,r=(s==="a"?ea:eb)/tot;bt["h"+o]=Math.max(0,bt["h"+o]-C.dmg*r*inten*2);bt["h"+s]=Math.max(0,bt["h"+s]-C.dmg*(1-r)*inten*1.4);
+    const c=CITIES[bt.c];
+    if(bt["h"+o]<=0){const back=c.country===w[s];w.cc=w.cc||{};if(back)delete w.cc[c.id];else w.cc[c.id]=s;
+      const t=`${w[s]} ${back?"recaptured":"captured"} ${c.name}`;w.ev=[{d:S.day,c:c.id,s},...(w.ev||[])].slice(0,C.ev);w.bt=null;w.fp=Math.max(5,Math.min(95,w.fp+(s==="a"?6:-6)));
+      dipSay(t,1,quiet);if(!quiet){toast("⚔ "+t);wlBoom(c)}}
+    else if(bt["h"+s]<=0){w.bt=null;w.fp=Math.max(5,Math.min(95,w.fp+(s==="a"?-5:5)));dipSay(`${w[o]} holds ${c.name} against ${w[s]}`,dipRel(w.a,w.b),quiet)}}}
+/* marching units: home capital -> front (or back on recall); display only */
+const _wlm=[];let _wlB=[];
+function wlMarch(w,n,s,back){try{const h=cfCap(n),f=bgLerp(w.a,w.b,(w.fp||50)/100);if(!h||!f)return;const p=[h.lon,h.lat],col=WLCOL[s]||"#fff";
+  _wlm.push({from:back?f:p,to:back?p:f,t0:Date.now(),dur:9000,col,n,txt:(n===dipPlayerC()?"★ "+wlName():n)+(back?" ↩":"")});if(_wlm.length>12)_wlm.shift();draw()}catch(e){}}
+function wlBoom(c){_wlB.push({c:c.id,t0:Date.now()});_wlB=_wlB.slice(-6);draw()}
+const _wlFl={};function wlFlag(n){try{return _wlFl[n]||(_wlFl[n]=presFlagCv(n))}catch(e){return null}}
+function wlBox(ctx,x0,y0,W,H){ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x0,y0,W,H,4);else ctx.rect(x0,y0,W,H)}
+function wlUnit(ctx,x,y,col,n,txt,zs,sm){const k=sm?.8:1,fs=Math.round(Math.max(8,9*zs*k)),fw=Math.round(15*zs*k),fh=Math.round(10*zs*k);ctx.font=`700 ${fs}px system-ui, sans-serif`;
+  const tw=ctx.measureText(txt).width,W=fw+tw+10,H=Math.max(fh,fs)+6,x0=x-W/2,y0=y-H/2;
+  ctx.globalAlpha=.94;ctx.fillStyle="rgba(10,14,22,.86)";wlBox(ctx,x0,y0,W,H);ctx.fill();ctx.lineWidth=1.6;ctx.strokeStyle=col;ctx.stroke();ctx.globalAlpha=1;
+  const fl=n&&wlFlag(n);if(fl)ctx.drawImage(fl,x0+3,y-fh/2,fw,fh);
+  ctx.fillStyle="#fff";ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(txt,x0+fw+6,y+.5);ctx.textAlign="start";return H}
+const wlH=i=>{const x=Math.sin(i*127.1+311.7)*43758.5453;return x-Math.floor(x)};
+/* one war on the map: captured regions, front line with arrows, armies with flags and troop counts, the city battle. Returns true if animated on screen. */
+function wlDraw(ctx,w,zs,t,anim){if(w.l<3)return false;wlInit(w);const Ac=cfCap(w.a),Bc=cfCap(w.b);if(!Ac||!Bc)return false;let live=false;const cc=w.cc||{};
+  for(const id in cc){const c=CITIES[id],s=cc[id];if(!c||!WLCOL[s])continue;ctx.globalAlpha=.26;ctx.beginPath();path(d3.geoCircle().center([c.lon,c.lat]).radius(.9)());ctx.fillStyle=WLCOL[s];ctx.fill();ctx.globalAlpha=.7;ctx.lineWidth=1.2;ctx.strokeStyle=WLCOL[s];ctx.stroke();
+    if(!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]),fw=Math.round(14*zs),fh=Math.round(9*zs),fl=wlFlag(w[s]);ctx.globalAlpha=1;
+    if(fl){ctx.drawImage(fl,x-fw/2,y-fh-4,fw,fh);ctx.lineWidth=1.4;ctx.strokeStyle=WLCOL[s];ctx.strokeRect(x-fw/2,y-fh-4,fw,fh)}_cfHit.push({x,y:y-fh/2,r:14,w})}
+  const fp=bgLerp(w.a,w.b,(w.fp||50)/100);if(!fp)return false;
+  if(visible(fp[0],fp[1])){const [fx,fy]=proj(fp),q=d3.geoInterpolate([Ac.lon,Ac.lat],[Bc.lon,Bc.lat])(Math.max(.1,Math.min(.9,(w.fp||50)/100))+.03),[qx,qy]=proj(q);
+    let dx=qx-fx,dy=qy-fy;const L0=Math.hypot(dx,dy)||1;dx/=L0;dy/=L0;const px=-dy,py=dx,L=40*zs,col=WLCOL[w.pu]||"#fff",sg=w.pu==="b"?-1:1;
+    ctx.globalAlpha=.95;ctx.beginPath();for(let i=0;i<=12;i++){const u=i/12-.5,wv=Math.sin(i*1.9+(anim?t*3:0))*2.2*zs;ctx[i?"lineTo":"moveTo"](fx+px*u*2*L+dx*wv,fy+py*u*2*L+dy*wv)}
+    ctx.strokeStyle="#111";ctx.lineWidth=5;ctx.stroke();ctx.strokeStyle=col;ctx.lineWidth=3;ctx.stroke();
+    const ph=anim?(t*.9)%1:.5;ctx.strokeStyle=col;ctx.lineWidth=2.4;
+    for(const o of [-.6,0,.6])for(let i=0;i<2;i++){const dd=(8+(i+ph)*10)*zs*sg,cx=fx+px*o*L+dx*dd,cy=fy+py*o*L+dy*dd,a=5*zs;ctx.globalAlpha=(1-(i+ph)/2)*.95;
+      ctx.beginPath();ctx.moveTo(cx-dx*a*sg+px*a,cy-dy*a*sg+py*a);ctx.lineTo(cx,cy);ctx.lineTo(cx-dx*a*sg-px*a,cy-dy*a*sg-py*a);ctx.stroke()}
+    const pc=dipPlayerC();
+    for(const s of ["a","b"]){const k=s==="a"?-1:1,ux=fx+dx*k*30*zs,uy=fy+dy*k*30*zs;let yy=uy;const h=wlUnit(ctx,ux,yy,WLCOL[s],w[s],wlK(w.tr[s]),zs);_cfHit.push({x:ux,y:uy,r:18,w});yy+=h/2+2;
+      const sub=[];for(const n in w.al||{})if(w.al[n]===s)sub.push([n,(n===pc?"★ "+wlName()+" ":"")+wlK((w.at||{})[n])]);for(const j of wlRemote(w,s))sub.push([j.c,"★ "+String(j.name||"Player").slice(0,14)+" "+wlK(j.n)]);
+      for(const [n,txt] of sub.slice(0,5)){const h2=wlUnit(ctx,ux,yy+7*zs,WLCOL[s],n,txt,zs,1);yy+=h2+2}}
+    live=true}
+  const bt=w.bt,c=bt&&CITIES[bt.c];
+  if(c&&visible(c.lon,c.lat)){const [x,y]=proj([c.lon,c.lat]),z=typeof V!=="undefined"&&V.k?V.k:3,np=anim?Math.round(Math.max(4,Math.min(16,3+z*1.4))):3;
+    ctx.globalAlpha=.35+(anim?.25*Math.sin(t*5):0);ctx.beginPath();ctx.arc(x,y,16*zs,0,7);ctx.fillStyle="#b91c1c";ctx.fill();
+    for(let i=0;i<np;i++){const ph=((anim?t*.8:0)+wlH(i))%1,ang=wlH(i+9)*6.283,rd=(4+wlH(i+3)*14)*zs,ex=x+Math.cos(ang)*rd,ey=y+Math.sin(ang)*rd*.7;
+      ctx.globalAlpha=.4*(1-ph);ctx.beginPath();ctx.arc(ex+ph*5*zs,ey-ph*16*zs,(3+ph*8)*zs,0,7);ctx.fillStyle="#6b7280";ctx.fill();
+      if(ph<.3){const e=ph/.3;ctx.globalAlpha=1-e;ctx.beginPath();ctx.arc(ex,ey,(2+e*7)*zs,0,7);ctx.fillStyle=e<.4?"#fde68a":"#f97316";ctx.fill()}}
+    if(anim)for(let j=0;j<Math.ceil(np/2);j++){if(((t*7+wlH(j+20))%1)>.45)continue;const a1=wlH(j+30)*6.283,r1=12*zs;ctx.globalAlpha=.9;ctx.beginPath();
+      ctx.moveTo(x+Math.cos(a1)*r1,y+Math.sin(a1)*r1);ctx.lineTo(x+Math.cos(a1+Math.PI)*r1*.3,y+Math.sin(a1+Math.PI)*r1*.3);ctx.strokeStyle="#facc15";ctx.lineWidth=1.2;ctx.stroke()}
+    const bw=38*zs,bh=Math.max(3,3.5*zs),by=y-22*zs;ctx.globalAlpha=1;
+    for(const [s,i] of [["a",0],["b",1]]){const yy=by+i*(bh+2);ctx.fillStyle="rgba(0,0,0,.7)";ctx.fillRect(x-bw/2-1,yy-1,bw+2,bh+2);ctx.fillStyle=WLCOL[s];ctx.fillRect(x-bw/2,yy,bw*Math.max(0,Math.min(1,bt["h"+s])),bh)}
+    if(z>=3.2){ctx.font=`700 ${Math.round(Math.max(8,8.5*zs))}px system-ui, sans-serif`;ctx.textAlign="center";ctx.textBaseline="bottom";ctx.fillStyle="#fff";ctx.fillText("⚔ "+c.name,x,by-3);ctx.textAlign="start"}
+    _cfHit.push({x,y,r:Math.max(16,18*zs),w});live=true}
+  return live}
+function wlDrawFx(ctx,zs,t,anim){const now=Date.now();let live=false;
+  for(let i=_wlm.length-1;i>=0;i--){const m=_wlm[i],f=(now-m.t0)/m.dur;if(f>=1){_wlm.splice(i,1);continue}live=true;const e=f<.5?2*f*f:1-Math.pow(-2*f+2,2)/2,g=d3.geoInterpolate(m.from,m.to);
+    ctx.globalAlpha=.6;ctx.beginPath();path({type:"LineString",coordinates:[m.from,g(e)]});ctx.setLineDash([2,4]);ctx.strokeStyle=m.col;ctx.lineWidth=2;ctx.stroke();ctx.setLineDash([]);
+    const p=g(e);if(visible(p[0],p[1])){const [x,y]=proj(p);wlUnit(ctx,x,y,m.col,m.n,m.txt,zs,1)}}
+  _wlB=_wlB.filter(b=>now-b.t0<2500);for(const b of _wlB){const c=CITIES[b.c];if(!c||!visible(c.lon,c.lat))continue;live=true;const [x,y]=proj([c.lon,c.lat]),f=(now-b.t0)/2500;
+    ctx.globalAlpha=1-f;ctx.beginPath();ctx.arc(x,y,(8+f*40)*zs,0,7);ctx.strokeStyle="#fbbf24";ctx.lineWidth=3;ctx.stroke();ctx.beginPath();ctx.arc(x,y,(6+f*16)*zs,0,7);ctx.fillStyle="#f97316";ctx.fill()}
+  return live}
+let _wlT=0;function wlTick(){if(_wlT||document.hidden)return;_wlT=setTimeout(()=>{_wlT=0;draw()},innerWidth<700?80:40)}
+function wlHtml(w){if(!w.tr||w.l<3)return "";const pc=dipPlayerC(),A=wlSide(w,"a"),B=wlSide(w,"b"),T=Math.max(1,A+B),fp=Math.round(w.fp||50),lead=fp>=52?"a":fp<=48?"b":null,cc=w.cc||{};
+  const row=(s,v)=>`<div class="d" style="display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:2px;background:${WLCOL[s]}"></span><b>${w[s]}</b> side · ${wlK(v)} troops<span style="flex:1"></span>${Math.round(v/T*100)}%</div>`;
+  const held=s=>Object.keys(cc).filter(id=>cc[id]===s&&CITIES[id]).map(id=>CITIES[id].name);
+  const join=s=>[...Object.keys(w.al||{}).filter(n=>w.al[n]===s).map(n=>n===pc?`<b>★ ${wlName()} (${n}, you) ${wlK((w.at||{})[n])}</b>`:`${n} ${wlK((w.at||{})[n])}`),...wlRemote(w,s).map(j=>`★ ${String(j.name||"Player").replace(/[&<>]/g,"")} (${String(j.c||"").replace(/[&<>]/g,"")}) ${wlK(j.n)}`)].join(", ");
+  const bt=w.bt&&CITIES[w.bt.c],ha=bt?Math.round(w.bt.ha*100):0,hb=bt?Math.round(w.bt.hb*100):0;
+  return `<div class="wl" style="margin:6px 0;padding:6px 8px;border:1px solid var(--line);border-radius:8px">${row("a",A)}${row("b",B)}
+  <div style="height:8px;border-radius:4px;background:${WLCOL.b};overflow:hidden;margin:4px 0"><div style="height:100%;width:${fp}%;background:${WLCOL.a}"></div></div>
+  <div class="d">${lead?`<b>${w[lead]} is winning</b>`:"Stalemate"}, ${w[w.pu]||w.a} pushing${w.inv?" (invasion front)":""}.</div>
+  ${bt?`<div class="d">⚔ Battle for <b>${bt.name}</b>: ${w.a} ${ha}% · ${w.b} ${hb}%</div>`:""}
+  ${held("a").length?`<div class="d">${w.a} holds: ${held("a").join(", ")}</div>`:""}${held("b").length?`<div class="d">${w.b} holds: ${held("b").join(", ")}</div>`:""}
+  ${(w.ev||[]).length?`<div class="d">Changed hands: ${(w.ev||[]).slice(0,4).map(e=>CITIES[e.c]?`${CITIES[e.c].name} → ${w[e.s]} (day ${e.d})`:"").filter(Boolean).join(" · ")}</div>`:""}
+  ${join("a")?`<div class="d">With ${w.a}: ${join("a")}</div>`:""}${join("b")?`<div class="d">With ${w.b}: ${join("b")}</div>`:""}</div>`}
+/* shared online wars: the master world (developer's save) publishes world/wars {list,ruler,updated}; other saves mirror it (ids +100000, w.gid = master id),
+   keep their own invasion war and their own troops (w.al/w.at for their country). Players who join a shared war write wjoin/{uid} {w,s,n,name,c,at}. */
+const WWKEY="meridian-world-wars";let WW=null;try{const c=JSON.parse(localStorage.getItem(WWKEY)||"null");if(c&&Array.isArray(c.list))WW=c}catch(e){}
+const wwShared=()=>!!WW&&!WRM;
+function wwPubData(){const d=dip(),keep=["id","a","b","l","att","d0","tr","t0","fp","pu","bt","cc","ev","al","at","inv"];
+  return JSON.parse(JSON.stringify({list:(S.wars||[]).filter(w=>w.l>0&&!w.gid).slice(0,30).map(w=>{const o={};for(const k of keep)if(w[k]!=null)o[k]=w[k];return o}),ruler:d.ruler||{}}))}
+function wwPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;const d=wwPubData(),sig=JSON.stringify(d),n=Date.now();
+  if(!force&&(n-(ON.wwPub||0)<(sig!==ON.wwSig?15000:300000)))return;if(sig===ON.wwSig&&!force)return;
+  ON.wwPub=n;ON.wwSig=sig;d.updated=window.firebase.firestore.FieldValue.serverTimestamp();
+  ON.db.collection("world").doc("wars").set(d).catch(e=>{ON.err="Couldn't publish world wars: "+(e&&e.code||e)})}
+function wwMirror(quiet){if(!wwShared())return;const pc=dipPlayerC(),d=dip(),old=S.wars||[];
+  const list=WW.list.filter(x=>x&&x.a&&x.b&&x.a!==pc&&x.b!==pc&&COUNTRIES.includes(x.a)&&COUNTRIES.includes(x.b)).map(x=>{const id=100000+(+x.id||0),o=old.find(w=>w.id===id),w=Object.assign({},x,{id,gid:+x.id||0,inv:0});
+    if(o&&o.al&&pc&&o.al[pc]){w.al=Object.assign({},w.al||{},{[pc]:o.al[pc]});w.at=Object.assign({},w.at||{},{[pc]:wlPT()})}else if(pc&&w.al&&w.al[pc]){delete w.al[pc];if(w.at)delete w.at[pc]}
+    if(o&&o.pin)w.pin=o.pin;
+    if(!quiet&&o)for(const cid in w.cc||{})if((o.cc||{})[cid]!==w.cc[cid]&&CITIES[cid]){const t=`${w[w.cc[cid]]} captured ${CITIES[cid].name}`;dipSay(t,1,0);toast("⚔ "+t);wlBoom(CITIES[cid])}
+    return w});
+  S.wars=[...old.filter(w=>!w.gid&&(w.inv||w.a===pc||w.b===pc)),...list];
+  if(WW.ruler&&typeof WW.ruler==="object"){const mine=pc&&d.ruler[pc];for(const n in d.ruler)if(n!==pc&&!WW.ruler[n])delete d.ruler[n];for(const n in WW.ruler)if(n!==pc&&COUNTRIES.includes(n)&&COUNTRIES.includes(WW.ruler[n])){if(!d.ruler[n])d.rsince[n]=d.day;d.ruler[n]=WW.ruler[n]}if(mine)d.ruler[pc]=mine}}
+function wjPub(w,s){try{if(!ON.ready||!ON.user)return;const gid=w.gid||(WRM?w.id:0);if(!gid)return;const r=ON.db.collection("wjoin").doc(ON.user.uid);
+  if(!s)return void r.delete().catch(()=>{});
+  r.set({w:gid,s,n:wlPT(),name:wlName().slice(0,20),c:String(dipPlayerC()||"").slice(0,40),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't share your troops: "+(e&&e.code||e)})}catch(e){}}
+function wwListen(){if(ON.unsubWW)return;
+  ON.unsubWW=ON.db.collection("world").doc("wars").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list))return;WW={list:v.list,ruler:v.ruler||{}};
+    try{localStorage.setItem(WWKEY,JSON.stringify(WW))}catch(e){}if(ON.authKnown&&!WRM){wwMirror(false);draw();onRefresh()}},e=>{ON.err="Couldn't load world wars: "+(e&&e.code||e)});
+  ON.unsubWJ=ON.db.collection("wjoin").onSnapshot(q=>{const a=[],old=Date.now()-3*864e5;q.forEach(x=>{const v=x.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():Date.now();if(ON.user&&x.id===ON.user.uid)return;if(at<old||!Number.isInteger(v.w)||(v.s!=="a"&&v.s!=="b"))return;a.push({uid:x.id,w:v.w,s:v.s,n:+v.n||0,name:v.name,c:v.c,at})});
+    const seen=new Set((ON.wj||[]).map(j=>j.uid+":"+j.w));ON.wj=a;for(const j of a)if(!seen.has(j.uid+":"+j.w)&&ON.wjGot){const w=(S.wars||[]).find(x=>wlGid(x)===j.w);if(w&&COUNTRIES.includes(j.c))wlMarch(w,j.c,j.s)}ON.wjGot=true;draw()},e=>{ON.err="Couldn't load war joins: "+(e&&e.code||e)})}
+try{wwMirror(true)}catch(e){}
 const dipWarOf=(n,by)=>(S.wars||[]).find(w=>(w.a===n&&w.b===by)||(w.a===by&&w.b===n));
 function dipGrow(n,d,C){const g=gov(n),base=dipBase(n);let ph=d.ph[n];
   let r=C.g0+(g.appr-50)/50*C.apprG+(2-g.laws.tax)*C.taxG+C.warG*warLvl(n)-Math.log(d.gdp[n]/base)*C.revert+(d.ruler[n]?C.ruledG:0);
@@ -2648,12 +2775,12 @@ function dipDay(quiet){const C=DIPCFG,d=dip();d.day++;S.wars=S.wars||[];const ws
   // new rivalry
   if(d.day>=d.cd&&ws.length<C.maxWars&&Math.random()<C.startP){const fr=COUNTRIES.filter(n=>!d.ruler[n]);
     if(fr.length>1){const wt=fr.map(n=>n===dipPlayerC()?0:dipPower(n)*dipAggr(n)),tot=wt.reduce((x,y)=>x+y,0);let r=Math.random()*tot,a=fr[fr.length-1];for(let i=0;i<fr.length;i++){r-=wt[i];if(r<=0){a=fr[i];break}}
-      const cand=fr.filter(b=>b!==a&&!dipWarOf(a,b)&&(d.pcd[dipKey(a,b)]||0)<=d.day&&dipDist(a,b)<C.nearKm);
+      const cand=fr.filter(b=>b!==a&&(!wwShared()||b===dipPlayerC())&&!dipWarOf(a,b)&&(d.pcd[dipKey(a,b)]||0)<=d.day&&dipDist(a,b)<C.nearKm);
       if(cand.length){const w2=cand.map(b=>Math.max(.3,Math.min(3,dipPower(a)/dipPower(b)))),t2=w2.reduce((x,y)=>x+y,0);let r2=Math.random()*t2,b=cand[cand.length-1];for(let i=0;i<cand.length;i++){r2-=w2[i];if(r2<=0){b=cand[i];break}}
         ws.push({id:(S.wid=(S.wid||0)+1),a,b,l:1,att:a,sc:d.day+C.stepCd,d0:S.day});d.cd=d.day+C.startCd;
         dipSay(`${a} accuses ${b} of ${["border violations","airspace incursions","backing rebels","insulting its envoy"][Math.floor(Math.random()*4)]}`,dipRel(a,b),quiet)}}}
   // escalation / de-escalation / conquest
-  let n=0;for(const w of ws){if(++n>C.maxScan)break;if(w.l<1||d.ruler[w.a]||d.ruler[w.b])continue;
+  let n=0;for(const w of ws){if(++n>C.maxScan)break;if(w.gid||w.l<1||d.ruler[w.a]||d.ruler[w.b])continue;
     if(!w.att||w.att===dipPlayerC())w.att=(dipPower(w.a)>=dipPower(w.b)||w.b===dipPlayerC())&&w.a!==dipPlayerC()?w.a:w.b;const a=w.att,b=a===w.a?w.b:w.a;
     w.t4=w.l>=4?(w.t4||0)+1:0;if(w.inv)continue;
     const stress=gov(a).appr<30||gov(b).appr<30||(d.ph[a]&&d.ph[a].g<0)||(d.ph[b]&&d.ph[b].g<0);
@@ -2666,8 +2793,9 @@ function dipDay(quiet){const C=DIPCFG,d=dip();d.day++;S.wars=S.wars||[];const ws
       if(w.l===4)for(const m of [a,b])gov(m).appr=Math.min(90,gov(m).appr+5);dipSay(t,dipRel(a,b),quiet)}
     else if(r>1-de){w.l--;w.sc=d.day+C.stepCd;if(w.l<1)d.pcd[dipKey(a,b)]=d.day+10;dipSay(w.l?`${a} and ${b} de-escalate to ${WARL[w.l].toLowerCase()}`:`${a} and ${b} agree to talks: the crisis ends`,dipRel(a,b),quiet)}}
   try{allyDay(ws,d,quiet)}catch(e){console.warn("ally",e)}
+  try{wlDay(ws,d,quiet)}catch(e){console.warn("wl",e)}
   S.wars=ws.filter(w=>w.l>0);
-  dipInvDay(d,quiet);try{wmdDay(quiet)}catch(e){console.warn("wmd",e)}try{wtDay(quiet)}catch(e){console.warn("wtest",e)}}
+  dipInvDay(d,quiet);if(wwShared())try{wwMirror(quiet)}catch(e){console.warn("ww",e)}try{wmdDay(quiet)}catch(e){console.warn("wmd",e)}try{wtDay(quiet)}catch(e){console.warn("wtest",e)}}
 const dipPhase=n=>{const ph=S.dip&&S.dip.ph&&S.dip.ph[n];return ph?(ph.g>0?"BOOM":"RECESSION"):"STABLE"};
 function dipRows(n){const d=dip(),r=d.gr[n]||0,rk=COUNTRIES.slice().sort((a,b)=>dipPower(b)-dipPower(a)).indexOf(n)+1,ph=dipPhase(n);
   const subj=Object.keys(d.ruler).filter(m=>d.ruler[m]===n),by=d.ruler[n];
@@ -5185,10 +5313,10 @@ function onScript(u){return new Promise((ok,no)=>{const s=document.createElement
 async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
   try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
-    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM)wrPublish(true);else{wrMirror(true);if(WRL)WRG=true}onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{WRG=false;CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);pmListen(u);gateSync();onRefresh()});
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM){wrPublish(true);wwPublish(true)}else{wrMirror(true);try{wwMirror(true)}catch(e){}if(WRL)WRG=true}onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{WRG=false;CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);pmListen(u);gateSync();onRefresh()});
     ON.unsubB=ON.db.collection("world").doc("bot").onSnapshot(d=>{if(WRM&&ON.user&&devUid(ON.user.uid))return;const v=d.exists?botClean(d.data()):null;if(!v)return;ON.bot=v;try{localStorage.setItem(BOTKEY,JSON.stringify(v))}catch(e){}draw();onRefresh();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)))phRender()},e=>{ON.err="Couldn't load the bot company: "+(e&&e.code||e)});
     ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;ON.gotPlayers=true;lbCache(a);try{ctCalc()}catch(e){}draw();onRefresh()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
-    ON.unsubW=ON.db.collection("world").doc("rivals").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list)||v.list.length!==RIVALS.length)return;
+    try{wwListen()}catch(e){}ON.unsubW=ON.db.collection("world").doc("rivals").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list)||v.list.length!==RIVALS.length)return;
       WRS={list:v.list.map(x=>({nw:+(x&&x.nw)||0,cities:Array.isArray(x&&x.cities)?x.cities.filter(Number.isInteger):[]})),updated:v.updated&&v.updated.toMillis?v.updated.toMillis():Date.now()};
       WRL=true;try{localStorage.setItem(WRKEY,JSON.stringify(WRS))}catch(e){}if(ON.authKnown&&!WRM){wrMirror(!WRG);WRG=true;draw();onRefresh()}},e=>{ON.err="Couldn't load world rivals: "+(e&&e.code||e)});
   }catch(e){ON.err="Online unavailable: "+(e&&e.message||e)}ON.loading=false;gateSync();onRefresh()}
@@ -5208,7 +5336,7 @@ function wrPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;co
   if(!force&&(n-(ON.wrPub||0)<60000||(sig===ON.wrSig&&n-(ON.wrPub||0)<300000)))return;
   ON.wrPub=n;ON.wrSig=sig;d.updated=window.firebase.firestore.FieldValue.serverTimestamp();
   ON.db.collection("world").doc("rivals").set(d).catch(e=>{ON.err="Couldn't publish world rivals: "+(e&&e.code||e)})}
-function onSaved(){if(!ON.ready||!ON.user)return;onPublish(false);wrPublish(false)}
+function onSaved(){if(!ON.ready||!ON.user)return;onPublish(false);wrPublish(false);wwPublish(false)}
 const LBKEY="meridian-lb-players";
 function lbCache(a){try{localStorage.setItem(LBKEY,JSON.stringify(a.slice(0,200).map(p=>({uid:p.uid,name:String(p.name||"Player").slice(0,20),col:p.col,nw:+p.nw||0,nb:p.nb,nc:p.nc,biz:Array.isArray(p.biz)?p.biz:[],home:p.home,hq:p.hq,cid:p.cid,govC:p.govC,govR:p.govR,seen:onSeen(p)}))))}catch(e){}}
 function lbPlayers(){if(ON.gotPlayers)return ON.players;try{const a=JSON.parse(localStorage.getItem(LBKEY)||"[]");const me=ON.user?ON.user.uid:null;return Array.isArray(a)?a.filter(p=>p&&p.uid!==me):[]}catch(e){return[]}}
