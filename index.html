@@ -592,13 +592,16 @@ function styleLod(){try{const st=MM.getStyle();if(!st)return;
     if(/city|capital|town/i.test(id))MM.setLayerZoomRange(id,Math.max(l.minzoom||0,8.6),l.maxzoom||24)}
   ensure3dBuildings()}catch(e){console.warn("lod",e)}}
 /* the style ships building footprints; make them rise out of the ground near street level */
-function ensure3dBuildings(){const st=MM.getStyle();if(!st)return;const op=["interpolate",["linear"],["zoom"],14.2,0,15.6,.92];
-  const ex=st.layers.filter(l=>l.type==="fill-extrusion");if(ex.length){for(const l of ex)try{MM.setPaintProperty(l.id,"fill-extrusion-opacity",op)}catch(e){}return}
+/* buildings are drawn in a strong, darker shade (taller = darker) so they stand out from the streets on both map themes */
+function bldCol(){const h=["coalesce",["get","render_height"],8];return dark3d()?["interpolate",["linear"],h,0,"#141a21",60,"#0d1218",200,"#06090d"]:["interpolate",["linear"],h,0,"#6b7480",60,"#4b5563",200,"#2f3742"]}
+function ensure3dBuildings(){const st=MM.getStyle();if(!st)return;const op=["interpolate",["linear"],["zoom"],14.2,0,15.6,.95];
+  for(const l of st.layers)if(l.type==="fill"&&/building/i.test(l.id))try{MM.setPaintProperty(l.id,"fill-color",dark3d()?"#141a21":"#6b7480")}catch(e){}
+  const ex=st.layers.filter(l=>l.type==="fill-extrusion");if(ex.length){for(const l of ex)try{MM.setPaintProperty(l.id,"fill-extrusion-opacity",op);MM.setPaintProperty(l.id,"fill-extrusion-color",bldCol())}catch(e){}return}
   const src=Object.keys(st.sources).find(k=>st.sources[k].type==="vector");if(!src)return;
   const lab=st.layers.find(l=>l.type==="symbol");
   MM.addLayer({id:"meridian-3d-buildings",type:"fill-extrusion",source:src,"source-layer":"building",minzoom:14,
-    paint:{"fill-extrusion-color":dark3d()?["interpolate",["linear"],["coalesce",["get","render_height"],8],0,"#3a4350",60,"#4f5b6b",200,"#6b7a8f"]:["interpolate",["linear"],["coalesce",["get","render_height"],8],0,"#dfe3e8",60,"#aab4c2",200,"#7f8ea3"],
-      "fill-extrusion-height":["coalesce",["get","render_height"],8],"fill-extrusion-base":["coalesce",["get","render_min_height"],0],"fill-extrusion-opacity":op}},lab?lab.id:undefined)}
+    paint:{"fill-extrusion-color":bldCol(),
+      "fill-extrusion-height":["coalesce",["get","render_height"],8],"fill-extrusion-base":["coalesce",["get","render_min_height"],0],"fill-extrusion-opacity":op,"fill-extrusion-vertical-gradient":true}},lab?lab.id:undefined)}
 const st3t=$("#st3dt");
 function theme3dBtn(){st3t.textContent=dark3d()?"☀ Light":"☾ Dark"}
 st3t.onclick=()=>{try{localStorage.setItem("meridian-3d-dark",dark3d()?"0":"1")}catch(e){}theme3dBtn();loadMapStyle()};
