@@ -663,6 +663,7 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   if(typeof drawDmg==="function")drawDmg(ctx);
   if(typeof drawStrikes==="function")drawStrikes(ctx);
   if(typeof drawGovLine==="function"&&z<11)try{drawGovLine(ctx)}catch(e){}
+  if(typeof drawEvac==="function")try{drawEvac(ctx)}catch(e){}
   if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);ctx.restore()}
   const dotA=1-smooth01(10.5,12,z),labA=1-smooth01(8.5,9.6,z);   // our city dots hand over to the real map as you get close
   if(dotA>0.02){ctx.globalAlpha=dotA;
@@ -2746,7 +2747,7 @@ function wwMirror(quiet){if(!wwShared())return;const pc=dipPlayerC(),d=dip(),old
 function wjPub(w,s){try{if(!ON.ready||!ON.user)return;const gid=w.gid||(WRM?w.id:0);if(!gid)return;const r=ON.db.collection("wjoin").doc(ON.user.uid);
   if(!s)return void r.delete().catch(()=>{});
   r.set({w:gid,s,n:wlPT(),name:wlName().slice(0,20),c:String(dipPlayerC()||"").slice(0,40),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't share your troops: "+(e&&e.code||e)})}catch(e){}}
-function wwListen(){if(ON.unsubWW)return;
+function wwListen(){try{evListen()}catch(e){}if(ON.unsubWW)return;
   ON.unsubWW=ON.db.collection("world").doc("wars").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list))return;WW={list:v.list,ruler:v.ruler||{}};
     try{localStorage.setItem(WWKEY,JSON.stringify(WW))}catch(e){}if(ON.authKnown&&!WRM){wwMirror(false);draw();onRefresh()}},e=>{ON.err="Couldn't load world wars: "+(e&&e.code||e)});
   ON.unsubWJ=ON.db.collection("wjoin").onSnapshot(q=>{const a=[],old=Date.now()-3*864e5;q.forEach(x=>{const v=x.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():Date.now();if(ON.user&&x.id===ON.user.uid)return;if(at<old||!Number.isInteger(v.w)||(v.s!=="a"&&v.s!=="b"))return;a.push({uid:x.id,w:v.w,s:v.s,n:+v.n||0,name:v.name,c:v.c,at})});
@@ -3830,8 +3831,8 @@ function polHour(quiet){const p=S.pol;if(!p)return;pol();const C=GOVCFG;
   for(const n in p.ctrl){const c=p.ctrl[n];c.loy=Math.max(0,Math.min(100,c.loy+C.loyDrift*(1-presFx("loy"))+(!polLeader()||p.appr<35?C.loyLowAppr:0)));
     if(c.loy<C.loyLose&&Math.random()<.25){delete p.ctrl[n];if(!quiet)logPol(`${n} broke away from your influence`)}}
   if(typeof milHour==="function")milHour(quiet)}
-function govApp(){const p=pol();const seg=`<div class="ph-seg" style="margin-bottom:8px"><button data-ph="govtab" data-k="pol" aria-pressed="${govTab==="pol"}">Politics</button><button data-ph="govtab" data-k="mil" aria-pressed="${govTab==="mil"}">Military</button><button data-ph="govtab" data-k="bunk" aria-pressed="${govTab==="bunk"}">🛡 Bunker</button><button data-ph="govtab" data-k="off" aria-pressed="${govTab==="off"}">🏛 Office</button><button data-ph="govtab" data-k="mis" aria-pressed="${govTab==="mis"}">🎯 Missions</button></div>`;
-  const gn=govNotesHtml(),nh=gn?`<div class="ph-card"><b>Government notices</b><span>${gn}</span></div>`:"";if(govTab==="mil")return seg+phInvCard()+milApp()+nh;if(govTab==="bunk")return seg+phInvCard()+bunkApp()+nh;if(govTab==="off")return seg+phInvCard()+officeApp()+nh;if(govTab==="mis")return seg+phInvCard()+misApp()+nh;return seg+phInvCard()+govApp0()+nh}
+function govApp(){const p=pol();const seg=`<div class="ph-seg" style="margin-bottom:8px"><button data-ph="govtab" data-k="pol" aria-pressed="${govTab==="pol"}">Politics</button><button data-ph="govtab" data-k="mil" aria-pressed="${govTab==="mil"}">Military</button><button data-ph="govtab" data-k="bunk" aria-pressed="${govTab==="bunk"}">🛡 Bunker</button><button data-ph="govtab" data-k="air" aria-pressed="${govTab==="air"}">✈ Air One</button><button data-ph="govtab" data-k="off" aria-pressed="${govTab==="off"}">🏛 Office</button><button data-ph="govtab" data-k="mis" aria-pressed="${govTab==="mis"}">🎯 Missions</button></div>`;
+  const gn=govNotesHtml(),nh=gn?`<div class="ph-card"><b>Government notices</b><span>${gn}</span></div>`:"";if(govTab==="mil")return seg+phInvCard()+milApp()+nh;if(govTab==="bunk")return seg+phInvCard()+bunkApp()+nh;if(govTab==="off")return seg+phInvCard()+officeApp()+nh;if(govTab==="air")return seg+phInvCard()+airApp()+nh;if(govTab==="mis")return seg+phInvCard()+misApp()+nh;return seg+phInvCard()+govApp0()+nh}
 function phInvCard(){const d=dip(),inv=d.inv;if(!inv)return "";const w=(S.wars||[]).find(x=>x.id===inv.w);if(!w)return "";const rc=Math.round(warCost(w)*DIPCFG.rallyCost),tc=warCost(w),warn=inv.stage===1;
   const bt=(a,t,dis)=>`<button class="buy" data-ph="${a}" style="flex:1;color:#fff;background:#7c2d12!important;border-color:#f59e0b" ${dis?"disabled":""}>${t}</button>`;
   return `<div class="ph-card" style="border:1px solid #b91c1c;background:#7f1d1d33"><b>⚠ ${inv.by} ${warn?"threatens":"is invading"} ${inv.n}</b>
@@ -4086,7 +4087,7 @@ function bunkCheck(ev,rnd){const c=CITIES[ev.city];if(!c||!present(c))return {he
   return {here:1,inside:inside?1:0,cover:surv>0?1:0,surv,alive:r<surv?1:0}}
 function bunkIntercept(k,rnd){return !!(BUNKCFG.ad.k.includes(k)&&bunkAD()&&(rnd!=null?rnd:Math.random())<BUNKCFG.ad.p)}
 // apply a landed strike to the player (call after the city damage); returns the bunkCheck result
-function bunkPlayer(k,c,by,quiet,mine){const r=bunkCheck({k,city:c.id}),W=WPNCFG.w[k];if(!r.here)return r;const say=t=>{S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);if(!quiet)toast(t)};
+function bunkPlayer(k,c,by,quiet,mine){if(typeof evLand==="function"&&evLand(k,c)){save();return {here:0,evac:1}}const r=bunkCheck({k,city:c.id}),W=WPNCFG.w[k];if(!r.here)return r;const say=t=>{S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);if(!quiet)toast(t)};
   if(r.alive){say(`🛡 You survived the ${W.n.toLowerCase()} in your bunker in ${c.name}${r.cover?": your cash is safe":""}`);return r}
   const lost=r.cover?0:Math.round(Math.max(0,S.cash)*BUNKCFG.cashLoss[k]);S.cash-=lost;
   if(BUNKCFG.fatal[k]){S.dead={city:c.id,name:c.name,country:c.country,by:by||"",t:Date.now(),k,foe:mine?0:1};save();if(!quiet||k==="icbm")showGameOver();return r}
@@ -4103,8 +4104,101 @@ function bunkTick(){if(S.dead)return;const b=bunk(),now=Date.now();if(!S.bunkG1&
   if(!S.bunkG3&&b.lv<3&&(b.city!=null||b.bq)&&typeof ON!=="undefined"&&ON.user&&ON.user.uid==="BRGRStgYLlbkVbrBTagBrDbpVyg1"){S.bunkG3=1;b.bq={lv:3,done:now};b.lv=2} // one-off: Mark's Level 3 build finishes now
   if(b.bq&&b.bq.done<=now){b.lv=b.bq.lv;b.bq=null;bunk();const t=`🛡 Bunker upgraded to Level ${b.lv}: ${BUNKCFG.lv[b.lv].n}${b.lv===BUNKCFG.ad.from?" · air defense online":""}`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);toast(t)}
   if(b.in&&b.city!=null&&!present(CITIES[b.city]))b.in=0;
+  try{evTick(now)}catch(e){}
   const m=S.pol&&S.pol.mil;if(m&&Array.isArray(m.inc)&&m.inc.length){const due=m.inc.filter(x=>x.at<=now);m.inc=m.inc.filter(x=>x.at>now);for(const x of due){wpnLand(x.n,x.k,x.city,0);if(S.dead)break}if(due.length){save();hud()}}
   bunkHud()}
+/* ---------- Air One & ICBM evacuation (government players only) ----------
+   S.air1 = {own (1 = owns Air One), ev (evacuation tier 0-3, 0 = not bought), cd (ms: Air One can evacuate again after this),
+             fl (evacuation in progress: {city, to, at (ICBM impact ms), clr (ms Air One is clear of the blast zone), j (escort jets), up (1 = airborne)}),
+             seen (ids of incoming ICBMs already alerted), n (evacuations flown)}.
+   Saved with S, so it rides in the local save and the Firebase cloud save. Live evacuations are shared in Firestore evac/{uid}.
+   Requires an office (any rank). Losing office or Air One wipes the evacuation upgrade and its tiers, with no refund. */
+const AIRCFG={
+  air1:{n:"Air One",cost:750e6,d:"Your official plane, flown by the air force with an armed security detail on board."},
+  tiers:[null, // cost of each tier (paid on top of the one before), seconds to get aboard and take off, escort jets, cooldown in game days
+    {n:"Air One Evacuation",cost:1.5e9,prep:90,jets:2,cd:10,d:"When an ICBM is launched at the city you're in, your security detail rushes you aboard Air One and flies you out of the blast zone."},
+    {n:"Rapid scramble",cost:2.5e9,prep:60,jets:4,cd:6,d:"Engines kept hot and a crew on standby: faster takeoff, more escort jets, shorter cooldown."},
+    {n:"Continuity of government",cost:5e9,prep:35,jets:6,cd:3,d:"A second crew and a dedicated runway: the fastest takeoff and a full escort wing."}],
+  clr:45,        // seconds of flight after takeoff to get clear of the blast zone
+  short:.3,      // survival chance at zero progress when the ICBM lands before Air One is clear; rises with progress to 1
+  atk:.25,       // while at war: chance enemy fighters go after Air One in the air
+  jetP:.15,maxP:.9, // each escort jet's chance to protect Air One (capped)
+  flyS:[60,600],kmS:12}; // real seconds of the flight to the safe city: kmS km per second, clamped
+function air1(){let a=S.air1;if(!a||typeof a!=="object")a=S.air1={};a.own=a.own?1:0;a.ev=Math.max(0,Math.min(AIRCFG.tiers.length-1,Math.floor(+a.ev||0)));if(!(a.cd>0))a.cd=0;if(!Array.isArray(a.seen))a.seen=[];
+  if(a.fl&&(typeof a.fl!=="object"||!CITIES[a.fl.city]||!CITIES[a.fl.to]))a.fl=null;return a}
+const airGov=()=>!!(S.pol&&S.pol.r>=0);
+const evTier=()=>{const a=air1();return airGov()&&a.own?AIRCFG.tiers[a.ev]||null:null};
+function airLose(why,quiet){const a=air1();if(!a.ev)return;a.ev=0;const t=`✈ You lost the Air One Evacuation upgrade (${why}). Buy it again once you qualify.`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);if(!quiet)toast(t)}
+function airBuy(){const a=air1();if(!airGov())return toast("Air One is for government players: win an office first");if(a.own)return toast("You already own Air One");
+  if(S.cash<AIRCFG.air1.cost)return toast(`Air One costs ${fmt(AIRCFG.air1.cost)}`);S.cash-=AIRCFG.air1.cost;a.own=1;bigMove(`buys Air One (${fmt(AIRCFG.air1.cost)})`,AIRCFG.air1.cost);toast("✈ Air One is yours")}
+function evBuy(){const a=air1(),nx=a.ev+1,T=AIRCFG.tiers[nx];if(!airGov())return toast("Win an office first");if(!a.own)return toast("Requires Air One");if(!T)return toast("Evacuation is at max tier");
+  if(S.cash<T.cost)return toast(`${T.n} costs ${fmt(T.cost)}`);S.cash-=T.cost;a.ev=nx;bigMove(`buys ${T.n} (${fmt(T.cost)})`,T.cost);toast(`✈ ${T.n} ready`)}
+// safe cities: habitable, not the target, no ICBM incoming; nearest first
+function evSafe(from,n){const inc=((S.pol&&S.pol.mil&&S.pol.mil.inc)||[]).filter(x=>x.k==="icbm").map(x=>x.city);
+  return CITIES.filter(c=>c.id!==from.id&&!unhOn(c)&&!inc.includes(c.id)).map(c=>({c,d:distKm(from,c)})).sort((x,y)=>x.d-y.d).slice(0,n||6).map(x=>x.c)}
+// start an evacuation from the ICBM x (an entry of mil.inc) to city id `to` (nearest safe city if missing)
+function evStart(x,to,now){now=now||Date.now();const a=air1(),T=evTier(),c=CITIES[x.city];if(!T||!c)return toast("You don't have Air One Evacuation");
+  if(a.fl)return toast("Air One is already flying");if(a.cd>now)return toast(`Air One is on cooldown for ${fmtDur(a.cd-now)}`);if(!present(c))return toast("You're no longer in the target city");
+  const d=CITIES[to]&&to!==c.id?CITIES[to]:evSafe(c,1)[0];if(!d)return toast("No safe city to fly to");bunkExit(1);
+  a.fl={city:c.id,to:d.id,at:x.at,t0:now,clr:now+(T.prep+AIRCFG.clr)*1000,off:now+T.prep*1000,j:T.jets,ok:now+(T.prep+AIRCFG.clr)*1000<=x.at?1:0};a.cd=now+T.cd*DAYMS;a.n=(a.n||0)+1;evPub();
+  const t=`✈ Your security detail is moving you to Air One in ${c.name}: takeoff in ${T.prep}s, clear of the blast zone in ${T.prep+AIRCFG.clr}s, bound for ${d.name}${a.fl.ok?"":" · the warning is short, you may not make it"}`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);toast(t);evAlertClose();save();return a.fl}
+// Air One clears the blast zone: the player is airborne (an ordinary plane trip, so the rest of the game treats them as travelling)
+function evClear(now){const a=air1(),f=a.fl;if(!f||f.up)return;const c=CITIES[f.city],d=CITIES[f.to];f.up=1;
+  const dur=Math.max(AIRCFG.flyS[0],Math.min(AIRCFG.flyS[1],distKm(c,d)/AIRCFG.kmS))*1000,ap=typeof airportPos==="function"?airportPos(d):d;
+  S.trip={mode:"plane",n:"Air One",from:{...(S.loc||{city:c.id,lat:c.lat,lon:c.lon})},to:{city:d.id,lat:ap.lat,lon:ap.lon,label:d.name},dep:now,arr:now+dur,local:false,a1:1};f.arr=now+dur;
+  // escort jets: while at war, enemy fighters may go after Air One
+  const m=S.pol&&S.pol.mil,war=m&&m.wars&&Object.keys(m.wars).length;if(war&&Math.random()<AIRCFG.atk){const P=Math.min(AIRCFG.maxP,f.j*AIRCFG.jetP);
+    if(Math.random()<P){f.esc=1;const t=`✈ Enemy fighters went after Air One: your ${f.j} escort jets drove them off`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);toast(t)}
+    else{f.hit=1;a.own=0;airLose("Air One was shot up by enemy fighters",1);const t=`✈ Enemy fighters hit Air One: it limps on to ${d.name} and is written off. You survived.`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);toast(t)}}
+  evPub();save()}
+// called by bunkPlayer when a strike lands on city c: true = the player got out on Air One (skip the strike for them)
+function evLand(k,c,rnd){const a=air1(),f=a.fl;if(k!=="icbm"||!f||f.city!==c.id||f.up)return false;const now=Date.now();
+  if(now>=f.clr){evClear(now);return true}
+  const prog=Math.max(0,Math.min(1,(now-f.t0)/Math.max(1,f.clr-f.t0))),p=AIRCFG.short+(1-AIRCFG.short)*prog,r=rnd!=null?rnd:Math.random();
+  if(r<p){evClear(now);const t=`✈ Air One got airborne just ahead of the blast over ${c.name}`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);toast(t);return true}
+  f.lost=1;a.fl=null;evPub();return false}
+function evTick(now){const a=air1();if(!airGov()&&a.ev)airLose("you lost your office");else if(!a.own&&a.ev)airLose("you lost Air One");
+  const f=a.fl;if(f){if(!f.up&&now>=f.clr&&present(CITIES[f.city]))evClear(now);else if(!f.up&&!present(CITIES[f.city])&&now>=f.clr)a.fl=null;else if(f.up&&!(S.trip&&S.trip.a1)){a.fl=null;evPub()}}
+  // alert for ICBMs launched at the city you're in
+  const m=S.pol&&S.pol.mil;if(!m||!Array.isArray(m.inc))return;a.seen=a.seen.filter(id=>m.inc.some(x=>evId(x)===id));
+  for(const x of m.inc){if(x.k!=="icbm"||x.at<=now||a.seen.includes(evId(x))||!present(CITIES[x.city]))continue;a.seen.push(evId(x));evAlert(x);break}}
+const evId=x=>x.city+":"+x.t;
+function evAlertClose(){const el=document.getElementById("evalert");if(el)el.remove()}
+function evAlert(x){const c=CITIES[x.city],a=air1(),T=evTier(),b=bunk(),now=Date.now(),mw=document.getElementById("mapwrap");if(!c||!mw)return;evAlertClose();
+  const el=document.createElement("div");el.id="evalert";el.style.cssText="position:absolute;left:50%;top:70px;transform:translateX(-50%);z-index:60;width:min(92%,380px);background:#1f0a0a;color:#fff;border:2px solid #dc2626;border-radius:12px;padding:12px 14px;font:13px system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.5)";
+  const l4=bunkInside(c)&&bunkSurv("icbm",b.lv)>=1,cd=a.cd>now,safe=evSafe(c,6),btn="flex:1;padding:9px 8px;border-radius:8px;border:0;font-weight:700;cursor:pointer;color:#fff";
+  let h=`<div style="font-weight:800;color:#f87171;letter-spacing:.04em">☠ ICBM INCOMING</div><div style="margin:4px 0 8px"><b>${dxE(x.n)}</b> launched an ICBM at <b>${dxE(c.name)}</b>, where you are. Impact in <b data-evs>${Math.max(0,Math.ceil((x.at-now)/1000))}s</b>.</div>`;
+  if(l4)h+=`<div style="background:#14532d;padding:8px;border-radius:8px">🛡 You're inside your Level 4 bunker: you are safe where you are.</div><div style="display:flex;margin-top:8px"><button data-ev="x" style="${btn};background:#374151">OK</button></div>`;
+  else{if(T&&!cd){const tt=T.prep+AIRCFG.clr,ok=now+tt*1000<=x.at;h+=`<div style="font-size:12px;color:#fecaca;margin-bottom:6px">Air One: aboard and clear of the blast zone in ${tt}s${ok?"":" · <b>not enough time, reduced survival</b>"} · ${T.jets} escort jets</div><label style="font-size:12px">Fly to <select data-evto style="margin-left:4px">${safe.map(s=>`<option value="${s.id}">${dxE(s.name)} (${Math.round(distKm(c,s))} km)</option>`).join("")}</select></label>`}
+    else if(T&&cd)h+=`<div style="font-size:12px;color:#fecaca">Air One is on cooldown for ${fmtDur(a.cd-now)}.</div>`;
+    h+=`<div style="display:flex;gap:8px;margin-top:10px">${T&&!cd?`<button data-ev="go" style="${btn};background:#1d4ed8">✈ Evacuate on Air One</button>`:""}<button data-ev="bunk" style="${btn};background:#7c2d12">🛡 Go to the bunker</button></div>`}
+  el.innerHTML=h;mw.appendChild(el);const iv=setInterval(()=>{const s=el.querySelector("[data-evs]");if(!document.body.contains(el))return clearInterval(iv);const left=Math.ceil((x.at-Date.now())/1000);if(left<=0){clearInterval(iv);el.remove();return}if(s)s.textContent=left+"s"},500);
+  el.addEventListener("click",e=>{const k=e.target.closest("[data-ev]");if(!k)return;const v=k.dataset.ev;if(v==="x")return evAlertClose();
+    if(v==="go"){const s=el.querySelector("[data-evto]");evStart(x,s?+s.value:null);hud();return}
+    if(v==="bunk"){if(b.lv&&b.city===c.id){bunkEnter();save();bunkHud();evAlertClose()}else toast(b.lv?`Your bunker is in ${CITIES[b.city].name}, not here`:"You don't have a bunker")}})}
+// shared online world: publish your live evacuation; others' show on the map
+function evPub(){try{if(typeof ON==="undefined"||!ON.ready||!ON.user)return;const f=air1().fl,r=ON.db.collection("evac").doc(ON.user.uid);
+  if(f&&!f.lost)r.set({f:f.city,t:f.to,o:Math.round(f.off),c:Math.round(f.clr),a:Math.round(f.arr||f.clr+AIRCFG.flyS[1]*1000),j:f.j,name:String((onProf().name||"Tycoon")).slice(0,20)}).catch(()=>{});else r.delete().catch(()=>{})}catch(e){}}
+function evListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubEV)return;ON.unsubEV=ON.db.collection("evac").onSnapshot(q=>{const a=[],now=Date.now();q.forEach(d=>{const v=d.data()||{};if(ON.user&&d.id===ON.user.uid)return;if(!CITIES[v.f]||!CITIES[v.t]||!(v.a>now))return;a.push({uid:d.id,...v})});ON.ev=a},()=>{})}catch(e){}}
+// map: Air One with its escort jets (yours, and other players' live evacuations)
+function evDraw1(ctx,from,to,t0,off,clr,arr,j,col,lab,now){let pt,u=0;if(now<off)pt=from;else{const T0=off,T1=arr;u=Math.max(0,Math.min(1,(now-T0)/Math.max(1,T1-T0)));const g=d3.geoInterpolate([from.lon,from.lat],[to.lon,to.lat])(u);pt={lon:g[0],lat:g[1]}}
+  if(!visible(pt.lon,pt.lat))return;const [x,y]=proj([pt.lon,pt.lat]),[x2,y2]=proj([to.lon,to.lat]),ang=Math.atan2(y2-y,x2-x);ctx.save();
+  if(now>=off){ctx.beginPath();path({type:"LineString",coordinates:[[from.lon,from.lat],[to.lon,to.lat]]});ctx.setLineDash([4,4]);ctx.strokeStyle=col;ctx.globalAlpha=.7;ctx.lineWidth=1.6;ctx.stroke();ctx.setLineDash([])}
+  ctx.globalAlpha=1;ctx.translate(x,y);ctx.rotate(ang);ctx.font="16px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillStyle=col;ctx.save();ctx.rotate(Math.PI/4);ctx.fillText("✈",0,0);ctx.restore();
+  if(now>=off){ctx.font="10px system-ui,sans-serif";ctx.fillStyle="#94a3b8";for(let i=0;i<j;i++){const s=i%2?1:-1,r=Math.floor(i/2)+1;ctx.save();ctx.translate(-10*r,s*9*r);ctx.rotate(Math.PI/4);ctx.fillText("✈",0,0);ctx.restore()}}
+  ctx.restore();ctx.font="bold 10px system-ui,sans-serif";ctx.textAlign="center";ctx.fillStyle=col;ctx.fillText(now<off?lab+" · boarding":lab,x,y-14);ctx.textAlign="start"}
+function drawEvac(ctx){const now=Date.now(),f=S.air1&&S.air1.fl;if(f&&!f.lost){const c=CITIES[f.city],d=CITIES[f.to];if(c&&d)evDraw1(ctx,c,d,f.t0,f.off,f.clr,f.up&&f.arr?f.arr:f.clr+AIRCFG.flyS[1]*1000,f.j,"#60a5fa","AIR ONE",now)}
+  for(const v of (typeof ON!=="undefined"&&ON.ev)||[]){if(!(v.a>now))continue;evDraw1(ctx,CITIES[v.f],CITIES[v.t],v.o,v.o,v.c,v.a,Math.min(6,+v.j||0),"#fbbf24","AIR ONE · "+String(v.name||"").slice(0,20),now)}}
+// Government app tab
+function airApp(){const a=air1(),C=AIRCFG,now=Date.now(),off=GOVCFG.offices[0].n,T=AIRCFG.tiers;
+  if(!airGov()&&!a.own)return `<div class="ph-card"><b>🔒 Air One locked</b><span>Air One and its evacuation service are only for government players. Win an election as ${off} or higher (Politics tab) to unlock them.</span></div>`;
+  let h=`<div class="ph-card"><b>✈ ${C.air1.n}</b><span>${C.air1.d}</span><div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span>${a.own?`<b style="color:#4ade80">Owned</b>`:fmt(C.air1.cost)}</span>${a.own?"":`<button class="buy" style="color:#fff;background:#1d4ed8!important;border-color:#f59e0b" data-ph="airbuy" ${S.cash<C.air1.cost||!airGov()?"disabled":""}>Buy ${fmt(C.air1.cost)}</button>`}</div></div>`;
+  h+=`<div class="ph-sub" style="margin-top:10px">Upgrades</div>`;
+  for(let i=1;i<T.length;i++){const t=T[i],own=a.ev>=i,nx=a.ev+1===i,lock=!a.own||!airGov();
+    h+=`<div class="ph-card" style="margin-top:6px${own?"":";opacity:"+(nx&&!lock?1:.6)}"><b>${i===1?"":"Tier "+i+": "}${t.n}</b><span>${t.d}</span><span style="font-size:12px">Takeoff ${t.prep}s · clear of the blast in ${t.prep+C.clr}s · ${t.jets} escort jets · cooldown ${t.cd} game days</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span>${own?`<b style="color:#4ade80">Owned</b>`:lock?`🔒 Requires Air One`:fmt(t.cost)}</span>${!own&&nx&&!lock?`<button class="buy" style="color:#fff;background:#1d4ed8!important;border-color:#f59e0b" data-ph="evbuy" ${S.cash<t.cost?"disabled":""}>Buy ${fmt(t.cost)}</button>`:""}</div></div>`}
+  const f=a.fl;h+=`<p class="ph-sub" style="margin-top:8px">${f&&!f.lost?`✈ Evacuation under way: ${CITIES[f.city].name} → ${CITIES[f.to].name}. `:""}${a.cd>now?`Air One can evacuate again in ${fmtDur(a.cd-now)}. `:a.ev?"Air One is ready. ":""}When an ICBM is launched at the city you're in, you get an alert with the time to impact: evacuate on Air One or go to your bunker. If Air One clears the blast zone before impact you survive; with too little warning the odds drop to ${Math.round(C.short*100)}% plus your progress. Escort jets have a ${Math.round(C.jetP*100)}% chance each (max ${Math.round(C.maxP*100)}%) to protect Air One from enemy fighters (${Math.round(C.atk*100)}% chance of an attack while you're at war). Evacuating saves you only: your businesses and property still take the strike. Losing your office or Air One loses the upgrade and its tiers for good, with no refund. In a Level 4 bunker you're already safe.</p>`;
+  return h}
 function bunkHud(){let el=document.getElementById("bunkhud");if(!el){el=document.createElement("div");el.id="bunkhud";const mw=document.getElementById("mapwrap");if(!mw)return;mw.appendChild(el);
     el.addEventListener("click",()=>{govTab="bunk";if(typeof openApp==="function")openApp("govt");else{PH.app="govt";PH.open=true;phRender()}})}
   const b=S.bunk||{},m=S.pol&&S.pol.mil,now=Date.now(),inc=m&&Array.isArray(m.inc)?m.inc:[];let h="";
@@ -6958,7 +7052,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="dashtruck"){DX.page="truck";dxOpen();return}
   else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
-  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
+  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="airbuy"){airBuy();save();hud()}else if(a==="evbuy"){evBuy();save();hud()}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
   else if(a==="misopen"){mxOpen();return}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}

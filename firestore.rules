@@ -24,6 +24,18 @@ service cloud.firestore {
         && d.lastSeen == request.time;
     }
 
+    // Live Air One evacuations: anyone may read; each user writes only their own, with checked fields.
+    match /evac/{uid} {
+      allow read: if true;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['f', 't', 'o', 'c', 'a', 'j', 'name'])
+        && request.resource.data.f is int && request.resource.data.t is int
+        && request.resource.data.o is number && request.resource.data.c is number && request.resource.data.a is number
+        && request.resource.data.j is int && request.resource.data.j >= 0 && request.resource.data.j <= 6
+        && request.resource.data.name is string && request.resource.data.name.size() <= 20;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
     match /players/{uid} {
       // Anyone (signed in or not) may read profiles. Profiles never contain emails.
       allow read: if true;
