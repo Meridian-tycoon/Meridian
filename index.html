@@ -4294,7 +4294,8 @@ function airApp(){const a=air1(),C=AIRCFG,now=Date.now(),off=GOVCFG.offices[0].n
    S.rigs = [{id, lat, lon, lv 1-5, t (built ms), n (name)}]. Placed anywhere in the ocean (wtLand(ll)===null).
    All-in-one: crude is drilled and refined on board and sold as fuel; the rig makes its own power from its own gas (no power bill).
    A helipad flies in high-value passengers and medical charters; supply ships rotate crews and carry cargo. Income goes through totals().inc like every other business. */
-const RIGCFG={max:5,
+const RIGCFG={max:5,fuelX:2, // refinery output multiplier: each unit of value refined yields fuelX times the fuel
+
   lv:[null, // cost to build/upgrade to this level, value of oil produced per game day (crude + fuel), barrels drilled per day, share refined on board
     {n:"Exploration rig",cost:400e6,val:2e6,bbl:20000,ref:.4},
     {n:"Production platform",cost:900e6,val:6e6,bbl:60000,ref:.55},
@@ -4308,13 +4309,13 @@ let _rigPick=0;
 const rigs=()=>{if(!Array.isArray(S.rigs))S.rigs=[];return S.rigs.filter(r=>r&&isFinite(r.lat)&&isFinite(r.lon)&&r.lv>=1)};
 const rigLv=r=>RIGCFG.lv[Math.max(1,Math.min(5,Math.floor(r.lv)))];
 function rigIncome(){return 0} // rigs don't sell: oil piles up on board until you ship it to a depot
-const rigVal=r=>rigLv(r).val;
+const rigVal=r=>rigLv(r).val*RIGCFG.fuelX; // value of a day of refined fuel
 const rigPx=g=>(G[g]&&G[g][1])||(g==="oil"?25:45);
-function rigDay(r){const L=rigLv(r);return {oil:L.val*(1-L.ref)/rigPx("oil"),fuel:L.val*L.ref/rigPx("fuel")}} // units made per game day
-function rigCapU(r){const d=rigDay(r);return {oil:d.oil*RIGCFG.store,fuel:(d.fuel+d.oil*rigPx("oil")/rigPx("fuel"))*RIGCFG.store}} // fuel room also holds the crude once it is refined
+function rigDay(r){const L=rigLv(r);return {oil:L.val*(1-L.ref)/rigPx("oil"),fuel:L.val*L.ref/rigPx("fuel")*RIGCFG.fuelX}} // units made per game day
+function rigCapU(r){const d=rigDay(r);return {oil:d.oil*RIGCFG.store,fuel:(d.fuel+d.oil*rigPx("oil")/rigPx("fuel")*RIGCFG.fuelX)*RIGCFG.store}} // fuel room also holds the crude once it is refined
 function rigTick(now){for(const r of rigs()){if(!r.st)r.st={oil:0,fuel:0};if(!(r.at>0))r.at=r.t||now;const dt=Math.max(0,now-r.at)/DAYMS;r.at=now;const d=rigDay(r),cp=rigCapU(r);
     for(const g of ["oil","fuel"])r.st[g]=Math.min(cp[g],(r.st[g]||0)+d[g]*dt);
-    {const q=Math.min(r.st.oil||0,Math.max(d.oil,d.fuel*rigPx("fuel")/rigPx("oil"))*dt);if(q>0){r.st.oil-=q;r.st.fuel=(r.st.fuel||0)+q*rigPx("oil")/rigPx("fuel")}} // crude stays on board until the rig's refinery turns it into fuel
+    {const q=Math.min(r.st.oil||0,Math.max(d.oil,d.fuel/RIGCFG.fuelX*rigPx("fuel")/rigPx("oil"))*dt);if(q>0){r.st.oil-=q;r.st.fuel=(r.st.fuel||0)+q*rigPx("oil")/rigPx("fuel")*RIGCFG.fuelX}} // crude stays on board until the rig's refinery turns it into fuel
     if(Array.isArray(r.sh)&&r.sh.length){const due=r.sh.filter(x=>x.arr<=now);r.sh=r.sh.filter(x=>x.arr>now);for(const x of due){const c=CITIES[x.to];if(!c)continue;ensureWh(c);const v=S.inv[c.id];v[x.g]=(v[x.g]||0)+x.q;toast(`🚢 ${fmtN(x.q)} ${G[x.g]?G[x.g][0].toLowerCase():x.g} from ${r.n} arrived in ${c.name}`)}}}}
 const fmtN=n=>Math.round(n).toLocaleString();
 function rigShip(id,to){const r=rigs().find(x=>x.id===id),c=CITIES[to];if(!r||!c)return;if(!hasWh(c))return toast(`You have no depot in ${c.name}`);rigTick(Date.now());
