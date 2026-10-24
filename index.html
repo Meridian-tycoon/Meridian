@@ -516,7 +516,7 @@ function totals(){let inc=0,assets=0;
   const interest=typeof bankPayHr==="function"?Math.round(bankPayHr()):Math.round(S.debt*0.003);
   const upk=typeof indUpkeep==="function"?indUpkeep():0;assets+=typeof indAssets==="function"?indAssets():0;
   const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof polIncome==="function")inc+=polIncome();if(typeof luxIncome==="function"){inc+=luxIncome();assets+=luxAssets()}if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
-  if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity();if(typeof gearAssets==="function")assets+=gearAssets();if(typeof ishIncome==="function"){inc+=ishIncome();assets+=ishAssets()}
+  if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity();if(typeof gearAssets==="function")assets+=gearAssets();if(typeof ishIncome==="function"){inc+=ishIncome();assets+=ishAssets()}if(typeof rigIncome==="function"){inc+=rigIncome();assets+=rigAssets()}
   return{inc:inc-(typeof bankPayHr==="function"?0:interest)-upk-rent,interest,upk,rent,nw:S.cash+assets-S.debt}}
 
 /* ---------- map: one MapLibre camera from orbit down to the street (like Capital Rift). The game's own layers are drawn on a canvas locked to that camera. ---------- */
@@ -664,6 +664,7 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   if(typeof drawStrikes==="function")drawStrikes(ctx);
   if(typeof drawGovLine==="function"&&z<11)try{drawGovLine(ctx)}catch(e){}
   if(typeof drawEvac==="function")try{drawEvac(ctx)}catch(e){}
+  if(typeof drawRigs==="function")try{drawRigs(ctx)}catch(e){}
   if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);ctx.restore()}
   const dotA=1-smooth01(10.5,12,z),labA=1-smooth01(8.5,9.6,z);   // our city dots hand over to the real map as you get close
   if(dotA>0.02){ctx.globalAlpha=dotA;
@@ -696,6 +697,7 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
 MM.on("click",e=>{const x=e.point.x,y=e.point.y;
   if(placing){pickSpot(e.lngLat);return}
   if(offer){closeOffer();return}
+  if(typeof _rigPick!=="undefined"&&_rigPick){rigPlace([e.lngLat.lng,e.lngLat.lat]);return}
   if(typeof _wtPick!=="undefined"&&_wtPick){const g=[e.lngLat.lng,e.lngLat.lat];if(visible(g[0],g[1])){wtPlayer(_wtPick,g);save();hud()}return}
   let best=null,bd=26*26;for(const c of CITIES){const d=(c.sx-x)**2+(c.sy-y)**2;if(d<bd){bd=d;best=c}}
   if(typeof cfTap==="function"&&cfTap(x,y,best,bd))return;
@@ -4199,6 +4201,58 @@ function airApp(){const a=air1(),C=AIRCFG,now=Date.now(),off=GOVCFG.offices[0].n
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span>${own?`<b style="color:#4ade80">Owned</b>`:lock?`🔒 Requires Air One`:fmt(t.cost)}</span>${!own&&nx&&!lock?`<button class="buy" style="color:#fff;background:#1d4ed8!important;border-color:#f59e0b" data-ph="evbuy" ${S.cash<t.cost?"disabled":""}>Buy ${fmt(t.cost)}</button>`:""}</div></div>`}
   const f=a.fl;h+=`<p class="ph-sub" style="margin-top:8px">${f&&!f.lost?`✈ Evacuation under way: ${CITIES[f.city].name} → ${CITIES[f.to].name}. `:""}${a.cd>now?`Air One can evacuate again in ${fmtDur(a.cd-now)}. `:a.ev?"Air One is ready. ":""}When an ICBM is launched at the city you're in, you get an alert with the time to impact: evacuate on Air One or go to your bunker. If Air One clears the blast zone before impact you survive; with too little warning the odds drop to ${Math.round(C.short*100)}% plus your progress. Escort jets have a ${Math.round(C.jetP*100)}% chance each (max ${Math.round(C.maxP*100)}%) to protect Air One from enemy fighters (${Math.round(C.atk*100)}% chance of an attack while you're at war). Evacuating saves you only: your businesses and property still take the strike. Losing your office or Air One loses the upgrade and its tiers for good, with no refund. In a Level 4 bunker you're already safe.</p>`;
   return h}
+/* ---------- Offshore oil rigs: drill + refine at sea ----------
+   S.rigs = [{id, lat, lon, lv 1-5, t (built ms), n (name)}]. Placed anywhere in the ocean (wtLand(ll)===null).
+   All-in-one: crude is drilled and refined on board and sold as fuel; the rig makes its own power from its own gas (no power bill).
+   A helipad flies in high-value passengers and medical charters; supply ships rotate crews and carry cargo. Income goes through totals().inc like every other business. */
+const RIGCFG={max:5,
+  lv:[null, // cost to build/upgrade to this level, income per game hour, barrels of crude per day, share refined on board
+    {n:"Exploration rig",cost:400e6,inc:6e6,bbl:20000,ref:.4},
+    {n:"Production platform",cost:900e6,inc:18e6,bbl:60000,ref:.55},
+    {n:"Deepwater platform",cost:2e9,inc:48e6,bbl:150000,ref:.7},
+    {n:"Mega platform",cost:5e9,inc:120e6,bbl:350000,ref:.85},
+    {n:"Floating refinery complex",cost:12e9,inc:300e6,bbl:800000,ref:1}],
+  split:{fuel:.78,heli:.12,cargo:.10}, // where the income comes from: refined fuel and crude sales, helipad charters, cargo
+  asset:.7,heliS:40,shipS:120,
+  permit:{fee:25e6,p:.51,wait:6}}; // offshore drilling permit: application fee, approval chance, game hours before you can apply again after a refusal        // asset value share of what you paid; real seconds of one helicopter / ship round trip on the map
+let _rigPick=0;
+const rigs=()=>{if(!Array.isArray(S.rigs))S.rigs=[];return S.rigs.filter(r=>r&&isFinite(r.lat)&&isFinite(r.lon)&&r.lv>=1)};
+const rigLv=r=>RIGCFG.lv[Math.max(1,Math.min(5,Math.floor(r.lv)))];
+function rigIncome(){return rigs().reduce((a,r)=>a+rigLv(r).inc,0)}
+function rigAssets(){let a=0;for(const r of rigs())for(let l=1;l<=r.lv;l++)a+=RIGCFG.lv[l].cost*RIGCFG.asset;return a}
+function rigHub(r){let b=null,bd=1e18;for(const c of CITIES){if(typeof unhOn==="function"&&unhOn(c))continue;const d=distKm(r,c);if(d<bd){bd=d;b=c}}return b}
+function rigPermit(){const P=RIGCFG.permit,now=Date.now();if(S.rigPmt&&S.rigPmt.ok)return toast("You already hold a drilling permit");
+  if(S.rigPmt&&S.rigPmt.next>now)return toast(`You can apply again in ${fmtDur(S.rigPmt.next-now)}`);if(S.cash<P.fee)return toast(`The application fee is ${fmt(P.fee)}`);S.cash-=P.fee;
+  if(Math.random()<P.p){S.rigPmt={ok:1,t:now};toast("📜 Offshore drilling permit approved: you can build oil rigs")}else{S.rigPmt={ok:0,next:now+P.wait*DAYMS/24};toast(`📜 Drilling permit refused. Apply again in ${fmtDur(P.wait*DAYMS/24)}`)}}
+function rigStart(){if(!(S.rigPmt&&S.rigPmt.ok))return toast("You need an offshore drilling permit first");if(rigs().length>=RIGCFG.max)return toast(`At most ${RIGCFG.max} oil rigs`);if(S.cash<RIGCFG.lv[1].cost)return toast(`An oil rig costs ${fmt(RIGCFG.lv[1].cost)}`);
+  _rigPick=1;if(typeof PH!=="undefined"){PH.open=false;phRender()}rigBar();toast("🛢 Tap anywhere in the ocean to place your oil rig")}
+function rigBar(){const mw=document.getElementById("mapwrap");let el=document.getElementById("rigbar");if(!_rigPick){if(el)el.remove();return}if(!mw)return;
+  if(!el){el=document.createElement("div");el.id="rigbar";el.style.cssText="position:absolute;left:50%;top:70px;transform:translateX(-50%);z-index:55;background:#0f172a;color:#fde68a;border:1px solid #f59e0b;border-radius:18px;padding:6px 8px 6px 14px;font:600 13px system-ui,sans-serif;display:flex;gap:10px;align-items:center";mw.appendChild(el)}
+  el.innerHTML=`<span>🛢 Tap the ocean to place your oil rig</span><button id="rigcancel" style="background:#111;color:#facc15;border:0;border-radius:14px;padding:4px 10px;font:700 12px system-ui,sans-serif;cursor:pointer">Cancel</button>`;el.querySelector("#rigcancel").onclick=()=>{_rigPick=0;rigBar()}}
+function rigPlace(ll){if(!(S.rigPmt&&S.rigPmt.ok)){_rigPick=0;rigBar();return toast("You need an offshore drilling permit first")}const p={lon:ll[0],lat:ll[1]};if(wtLand(ll)!==null)return toast("That's land: oil rigs go in the ocean");if(rigs().length>=RIGCFG.max){_rigPick=0;rigBar();return toast(`At most ${RIGCFG.max} oil rigs`)}
+  const L=RIGCFG.lv[1];if(S.cash<L.cost){_rigPick=0;rigBar();return toast(`An oil rig costs ${fmt(L.cost)}`)}S.cash-=L.cost;const id=(S.rigs||[]).reduce((a,r)=>Math.max(a,r.id||0),0)+1,hub=rigHub(p);
+  S.rigs=rigs().concat([{id,lat:p.lat,lon:p.lon,lv:1,t:Date.now(),n:`Rig ${id}${hub?" · off "+hub.name:""}`}]);_rigPick=0;rigBar();
+  bigMove(`builds an offshore oil rig (${fmt(L.cost)})`,L.cost);toast(`🛢 ${L.n} built${hub?` off ${hub.name}`:""}: ${fmt(L.inc)}/hr`);save();hud();draw()}
+function rigUp(id){const r=rigs().find(x=>x.id===id);if(!r)return;const L=RIGCFG.lv[r.lv+1];if(!L)return toast("This rig is at max level");if(S.cash<L.cost)return toast(`${L.n} costs ${fmt(L.cost)}`);
+  S.cash-=L.cost;r.lv++;bigMove(`upgrades an oil rig to ${L.n} (${fmt(L.cost)})`,L.cost);toast(`🛢 ${r.n} is now a ${L.n}: ${fmt(L.inc)}/hr`)}
+function rigApp(){const C=RIGCFG,rs=rigs(),fb=n=>Math.round(n).toLocaleString();
+  let h=`<div class="ph-card"><b>🛢 Offshore oil rigs</b><span>Drill and refine at sea: crude comes up, is refined on board and shipped out as fuel. Each rig makes its own power from its own gas, so there is no power bill. A helipad flies in high-value passengers and medical charters; supply ships rotate the crew and carry cargo. Place one anywhere in the ocean (up to ${C.max}).</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span>${rs.length}/${C.max} rigs · <b style="color:#4ade80">${fmt(rigIncome())}/hr</b></span>${rs.length<C.max?`<button class="buy" style="color:#fff;background:#0f766e!important;border-color:#f59e0b" data-ph="rigbuy" ${S.cash<C.lv[1].cost||!(S.rigPmt&&S.rigPmt.ok)?"disabled":""}>Build · ${fmt(C.lv[1].cost)}</button>`:""}</div></div>`;
+  {const P=C.permit,pm=S.rigPmt||{},now=Date.now();h+=`<div class="ph-card" style="margin-top:8px"><b>📜 Offshore drilling permit</b>${pm.ok?`<span style="color:#4ade80">Approved: you can build rigs</span>`:`<span>Required to build a rig. Fee ${fmt(P.fee)} per application, ${Math.round(P.p*100)}% approval chance${pm.next>now?` · reapply in ${fmtDur(pm.next-now)}`:""}.</span><button class="buy" style="width:100%;margin-top:6px;color:#fff;background:#7c2d12!important;border-color:#f59e0b" data-ph="rigpmt" ${S.cash<P.fee||pm.next>now?"disabled":""}>Apply · ${fmt(P.fee)}</button>`}</div>`}
+  for(const r of rs){const L=rigLv(r),N=C.lv[r.lv+1],hub=rigHub(r),crude=L.bbl*(1-L.ref),fuel=L.bbl*L.ref;
+    h+=`<div class="ph-card" style="margin-top:8px"><b>${dxE(r.n)} · Level ${r.lv}</b><span>${L.n}${hub?` · crew and cargo via ${dxE(hub.name)} (${Math.round(distKm(r,hub))} km)`:""}</span>
+      <span style="font-size:12px">${fb(L.bbl)} bbl/day drilled · ${fb(fuel)} refined on board · ${fb(crude)} sold as crude · self-powered</span>
+      <span style="font-size:12px">Income <b style="color:#4ade80">${fmt(L.inc)}/hr</b>: fuel and crude ${fmt(L.inc*C.split.fuel)} · 🚁 helipad ${fmt(L.inc*C.split.heli)} · 🚢 cargo ${fmt(L.inc*C.split.cargo)}</span>
+      ${N?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span style="font-size:12px">Next: ${N.n} · ${fmt(N.inc)}/hr (+${Math.round((N.inc/L.inc-1)*100)}%)</span><button class="buy" style="color:#fff;background:#0f766e!important;border-color:#f59e0b" data-ph="rigup" data-k="${r.id}" ${S.cash<N.cost?"disabled":""}>Upgrade · ${fmt(N.cost)}</button></div>`:`<span style="font-size:12px;color:#fbbf24">Max level</span>`}</div>`}
+  return h}
+// map: the rig, a helicopter shuttling to the nearest city and a supply ship going back and forth
+function drawRigs(ctx){const rs=rigs();if(!rs.length)return;const now=Date.now();ctx.save();ctx.textAlign="center";ctx.textBaseline="middle";
+  for(const r of rs){const hub=rigHub(r);const sh=(sec,off)=>{if(!hub)return null;const u=((now/1000+off)%sec)/sec,f=u<.5?u*2:2-u*2,g=d3.geoInterpolate([r.lon,r.lat],[hub.lon,hub.lat])(f);return g};
+    if(hub){const g=sh(RIGCFG.shipS,r.id*7);if(g&&visible(g[0],g[1])){const [x,y]=proj(g);ctx.font="12px system-ui,sans-serif";ctx.fillText("🚢",x,y)}
+      const h=sh(RIGCFG.heliS,r.id*3);if(h&&visible(h[0],h[1])){const [x,y]=proj(h);ctx.font="12px system-ui,sans-serif";ctx.fillText("🚁",x,y)}}
+    if(!visible(r.lon,r.lat))continue;const [x,y]=proj([r.lon,r.lat]);ctx.beginPath();ctx.arc(x,y,11,0,7);ctx.fillStyle="rgba(15,23,42,.85)";ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#f59e0b";ctx.stroke();
+    ctx.font="13px system-ui,sans-serif";ctx.fillText("🛢",x,y+1);ctx.font="bold 10px system-ui,sans-serif";ctx.fillStyle="#fde68a";ctx.fillText(`L${r.lv}`,x,y+20)}
+  ctx.restore()}
 function bunkHud(){let el=document.getElementById("bunkhud");if(!el){el=document.createElement("div");el.id="bunkhud";const mw=document.getElementById("mapwrap");if(!mw)return;mw.appendChild(el);
     el.addEventListener("click",()=>{govTab="bunk";if(typeof openApp==="function")openApp("govt");else{PH.app="govt";PH.open=true;phRender()}})}
   const b=S.bunk||{},m=S.pol&&S.pol.mil,now=Date.now(),inc=m&&Array.isArray(m.inc)?m.inc:[];let h="";
@@ -6975,7 +7029,7 @@ const phScale=()=>Math.max(.5,Math.min(PH.sz,(innerWidth-8)/300,(innerHeight-8)/
 const phSave=()=>{try{localStorage.setItem("meridian-phone",JSON.stringify({open:PH.open,x:PH.x,y:PH.y}))}catch(e){}};
 let lastLog="";
 function trackNews(){const l=S.log[0];if(l&&l!==lastLog){lastLog=l;if(!S.news.length||S.news[0].t!==l){S.news.unshift({t:l,at:Date.now()});S.news=S.news.slice(0,40)}}}
-const ICO={hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h.01 M16 9h.01"/>`,govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M3 10l9-6 9 6z"/>`,shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
+const ICO={rig:`<path d="M4 20h16 M7 20l3-12h4l3 12 M9 14h6 M10 8V4h4v4 M12 4V2"/>`,hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h.01 M16 9h.01"/>`,govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M3 10l9-6 9 6z"/>`,shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
  wallet:'<path d="M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z M3 7l12-3v3 M16 13.5h2"/>',
  news:'<path d="M4 5h13v14H6a2 2 0 0 1-2-2z M17 9h3v8a2 2 0 0 1-2 2 M7 9h7 M7 12h7 M7 15h5"/>',
  needs:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -6988,7 +7042,7 @@ const ICO={hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h
  cartel:'<path d="M12 3l8 3v6c0 4.5-3.2 7.7-8 9-4.8-1.3-8-4.5-8-9V6z M9 11h6 M9 14h6"/>',
  freight:'<path d="M2 7h12v9H2z M14 10h4l3 3v3h-7z M6 19a1.8 1.8 0 1 0 0-.01 M17 19a1.8 1.8 0 1 0 0-.01"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["pop","Population","#0369a1"]];
+const APPS=[["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["pop","Population","#0369a1"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 function phPlace(){const el=PH.el,sc=phScale();el.style.setProperty("--phs",sc);const r=el.getBoundingClientRect(),w=r.width,h=r.height,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
@@ -7013,6 +7067,7 @@ function appHtml(k){const {inc,nw}=totals();
   if(k==="shop")return shopApp();
   if(k==="obank")return obApp();
   if(k==="govt")return govApp();
+  if(k==="rig")return rigApp();
   if(k==="hq")return hrApp();
   if(k==="pop")return popApp();
   if(k==="gig"){const g=gigState(),v=gigPay();return `<div class="ph-sub">${jailed()?"Prison labour":GIGS[g.i].n} · ${CITIES[(S.loc||{city:0}).city].name}</div>
@@ -7052,7 +7107,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="dashtruck"){DX.page="truck";dxOpen();return}
   else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
-  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="airbuy"){airBuy();save();hud()}else if(a==="evbuy"){evBuy();save();hud()}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
+  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="rigpmt"){rigPermit();save();hud()}else if(a==="rigbuy"){rigStart();return}else if(a==="rigup"){rigUp(+b.dataset.k);save();hud()}else if(a==="airbuy"){airBuy();save();hud()}else if(a==="evbuy"){evBuy();save();hud()}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){wpnBuild(b.dataset.k);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
   else if(a==="misopen"){mxOpen();return}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
