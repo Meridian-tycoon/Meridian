@@ -2433,7 +2433,7 @@ const WMDCFG={nuke:["USA","China","UK","France","India"],minDays:12,ramp:30,gasP
 function wmdMult(c){const h=S.wmd&&S.wmd.h&&S.wmd.h[c.country];if(!h||!(h.u>S.day))return 1;const f=Math.max(0,Math.min(1,(h.u-S.day)/Math.max(1,h.e||1))),b=WMDCFG.mult[h.k]||1;return 1-(1-b)*f}
 const wmdSide=w=>{const pc=dipPlayerC(),p=S.pol||{},m=p.mil||{},own=c=>c&&(c===pc||c===p.c||(p.ctrl&&p.ctrl[c])||(m.occ&&m.occ[c])||(m.wars&&m.wars[c]));return !own(w.a)&&!own(w.b)};
 function wmdStrike(w,att,def,k,quiet){const C=WMDCFG,W=S.wmd,cities=ctyCities(def).slice().sort((x,y)=>y.size-x.size).slice(0,3),ct=cities[Math.floor(Math.random()*cities.length)]||cap(def);
-  W.t.push(S.day);W.h[def]={k,d:S.day,u:S.day+C.eff[k],e:C.eff[k],c:ct?ct.id:-1,by:att};
+  W.t.push(S.day);W.h[def]={k,d:S.day,u:S.day+C.eff[k],e:C.eff[k],c:ct?ct.id:-1,by:att};if(!quiet)try{xrpBoomGo(att)}catch(e){}
   w.wc=S.day+C.wcd;w.wn=(w.wn||0)+1;w.l=4;w.pin=S.day+C.pin;
   gov(def).appr=Math.max(5,gov(def).appr-C.apprHit);gov(att).appr=Math.max(5,gov(att).appr-C.apprAtt);
   const nk=k==="nuke",t=nk?`${att} launches a nuclear strike on ${def}${ct?" ("+ct.name+")":""}!`:`${att} uses chemical weapons against ${def}${ct?" ("+ct.name+")":""}!`;
@@ -3844,14 +3844,14 @@ function mktStep(){const m=MK(),now=Date.now();const war=typeof tension==="funct
   xrpBoomStep(m,now);
   for(const a of ASSETS){const h=m.h[a.s];h.push(m.px[a.s]);if(h.length>90)h.shift()}
   const d=Math.floor(now/(24*DAYMS));if(m.day!==d){m.day=d;for(const a of ASSETS)m.open[a.s]=m.px[a.s]}}
-/* XRP boom #2: one 15-min rally per save (up to 1000x: 5 min up, 3 min hold, 7 min back down), fires once when the game loads */
-const XRPB={dur:15*60000,peak:999,id:2,hold:0}; // hold:1 = stay at the peak until Mark says stop; 0 = the boom runs its course and the price returns to normal
-function xrpBoomF(m,now){const b=m.xb2;if(!b||!b.t0)return 1;const t=(now-b.t0)/XRPB.dur;if(t<=0)return 1;if(XRPB.hold&&t>=1/3)return 1+XRPB.peak;if(t>=1)return 1;
+/* XRP boom: a 5-min rally (up to 1000x: ~100 s up, ~55 s hold, ~140 s back down) that starts whenever a government uses a WMD (xrpBoomGo, called from wmdStrike and wpnFire). A running boom is not restarted. Saves from the old always-on boom are eased back to the normal price by xrpBoomStep. */
+const XRPB={dur:5*60000,peak:999};
+function xrpBoomF(m,now){const b=m.xb2;if(!b||!b.t0)return 1;const t=(now-b.t0)/XRPB.dur;if(t<=0||t>=1)return 1;
   const ease=x=>x*x*(3-2*x);return 1+XRPB.peak*(t<1/3?ease(t*3):t<.53?1:ease((1-t)/.47))}
-function xrpBoomStep(m,now){if(!m.xb2){m.xb2={t0:now,lf:1};S.log.unshift("Markets: XRP is booming again! Traders pile in as the rally takes off");S.log=S.log.slice(0,3)}
-  const b=m.xb2;if(b.end&&XRPB.hold){b.end=0;b.t0=now;b.lf=1}if(b.end)return;const live=now-m.live<5*60000&&m.liveSet&&m.liveSet.XRP,f=xrpBoomF(m,now);
+function xrpBoomGo(by){const m=MK(),now=Date.now(),b=m.xb2;if(b&&!b.end&&now-b.t0<XRPB.dur)return;m.xb2={t0:now,lf:1};S.log.unshift(`Markets: XRP spikes as ${by||"a government"} uses weapons of mass destruction`);S.log=S.log.slice(0,3)}
+function xrpBoomStep(m,now){const b=m.xb2;if(!b||b.end)return;const live=now-m.live<5*60000&&m.liveSet&&m.liveSet.XRP,f=xrpBoomF(m,now);
   if(!live)m.px.XRP=Math.max(AK.XRP.p0*.05,m.px.XRP*f/(b.lf||1));b.lf=f;
-  if(f===1&&now-b.t0>=XRPB.dur){b.end=1;S.log.unshift("Markets: the XRP boom cools off as traders take profits");S.log=S.log.slice(0,3)}}
+  if(f===1&&now-b.t0>=XRPB.dur){b.end=1;S.log.unshift("Markets: the XRP spike cools off as traders take profits");S.log=S.log.slice(0,3)}}
 function mktNews(a,sh){S.log.unshift(`Markets: ${a.n} ${sh>0?"surges":"plunges"} ${Math.abs(sh*100).toFixed(0)}% on ${sh>0?["strong earnings","takeover rumours","a big contract"][Math.floor(Math.random()*3)]:["a profit warning","a lawsuit","a data breach"][Math.floor(Math.random()*3)]}`);S.log=S.log.slice(0,3)}
 /* real crypto prices from CoinGecko when the network allows it */
 async function mktLive(){try{const ids=ASSETS.filter(a=>a.t==="c").map(a=>a.sec).join(",");
@@ -4360,7 +4360,7 @@ function wpnFire(k,id,sure,go){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id]
   const w=m.wars[c.country];if(!w)return toast(`You're not at war with ${c.country}`);if(!m.wpn[k])return toast(`No ${W.n.toLowerCase()} in stock`);
   if(!go&&govRival(c))return lnStart(k,c.id,1);
   if(!go)lnFlyPub(k,c,1);
-  m.wpn[k]--;if(k!=="msl"){w.wmd=1;if(k==="nuke"||k==="icbm")w.nk=1;if(k==="icbm")w.ic=1;wpnSanction(k)}const kill=Math.max(0,Math.min(w.enemyMax*W.enemy,w.enemyStr-w.enemyMax*WPNCFG.strFloor)),f0=w.front;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.max(f0,Math.min(k==="nuke"||k==="icbm"?WPNCFG.nukeCap:WPNCFG.frontCap,f0+W.front));const push=Math.round((w.front-f0)*10)/10;w.weariness=Math.min(100,w.weariness+W.wear);
+  m.wpn[k]--;if(k!=="msl"){w.wmd=1;if(k==="nuke"||k==="icbm")w.nk=1;if(k==="icbm")w.ic=1;wpnSanction(k);try{xrpBoomGo(p.c)}catch(e){}}const kill=Math.max(0,Math.min(w.enemyMax*W.enemy,w.enemyStr-w.enemyMax*WPNCFG.strFloor)),f0=w.front;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.max(f0,Math.min(k==="nuke"||k==="icbm"?WPNCFG.nukeCap:WPNCFG.frontCap,f0+W.front));const push=Math.round((w.front-f0)*10)/10;w.weariness=Math.min(100,w.weariness+W.wear);
   p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const n in p.ctrl)p.ctrl[n].loy=Math.max(0,p.ctrl[n].loy+W.loy);for(const n in m.occ)m.occ[n].resist=Math.min(100,m.occ[n].resist+W.resist);
   m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*WPNCFG.ownHit,from:p.c});
   const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,dead=dmgStrike(k,c,1),dl=dmgLvl(c);
