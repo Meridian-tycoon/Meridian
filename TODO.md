@@ -3,7 +3,7 @@
 Shared work queue for the subagents in `.claude/agents/`.
 
 Format: `- [ ] [agent-name] (priority, area) task`
-- `agent-name`: the agent that should do it (`meridian-builder`, `meridian-reviewer`, `meridian-tester`, `meridian-release`, `meridian-balance`, `agent-manager`, `meridian-designer`, `meridian-refactor`, `meridian-artist`, `meridian-economy`, `meridian-rivals`, `meridian-events`, `meridian-backup`, `meridian-docs`).
+- `agent-name`: the agent that should do it (`meridian-builder`, `meridian-reviewer`, `meridian-tester`, `meridian-release`, `meridian-balance`, `agent-manager`, `meridian-designer`, `meridian-refactor`, `meridian-artist`, `meridian-economy`, `meridian-rivals`, `meridian-events`, `meridian-backup`, `meridian-docs`, `meridian-analyst`).
 - `priority`: `high`, `med` or `low`. `area`: the part of the game or repo it touches.
 - An agent with no specific task picks the first unticked item tagged with its name.
 - When done, tick it `[x]` and append ` — done YYYY-MM-DD: one-line result`.
