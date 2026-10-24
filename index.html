@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#141f21">
+<script>try{var _ui=localStorage.getItem("meridian-uitheme");if(/^(glass|ledger|command)$/.test(_ui))document.documentElement.classList.add("th-"+_ui)}catch(e){}</script>
 <script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("meridian-theme")==="light"?"light":"dark")}catch(e){document.documentElement.setAttribute("data-theme","dark")}</script>
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
@@ -2115,7 +2116,7 @@ function searchRes(){const box=$("#qres");if(!box)return;const s=query.trim().to
     :`<p class="d" style="color:var(--muted);font-size:13px">No city matches “${query}”.</p>`;
   box.querySelectorAll("[data-go]").forEach(r=>r.onclick=()=>flyTo(CITIES[r.dataset.go]))}
 function flyTo(c){mode="city";openCity(c);rotateTo(c,Math.max(V.k,3.5))}
-const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+const REDUCE_OS=matchMedia("(prefers-reduced-motion: reduce)").matches;let reduce=REDUCE_OS;
 
 /* ---------- income pops ---------- */
 let raf=0;
@@ -2173,7 +2174,7 @@ function renderResearch(){const done=TECH.filter(t=>hasTech(t.k)).length;
   sheet.querySelectorAll("[data-tech]").forEach(b=>b.onclick=()=>{const t=TK[b.dataset.tech];if(!canResearch(t)||S.rp<t.rp||S.cash<t.cash)return;
     S.rp-=t.rp;S.cash-=t.cash;S.tech[t.k]=1;applyTechs();S.log.unshift(`Researched ${t.n}`);S.log=S.log.slice(0,3);
     toast(t.k==="mars"?"Mars colony established. Humanity is multi-planetary.":`Researched ${t.n}`);save();hud();renderResearch();draw()})}
-function hud(){const nb=document.querySelectorAll('#needs i');["h","f","m"].forEach((k,i)=>{const v=S.need[k];nb[i].style.width=v+"%";nb[i].style.background=v<25?"var(--bad)":v<50?"var(--accent)":"var(--good)"});let{inc,nw}=totals();for(const st of S.sites){const o=siteOp(st);if(o&&!st.why)inc+=siteEst(st)+o.up*LAND[st.size][1]}if(typeof tweenCash==="function")tweenCash();else $("#cash").textContent=fmt(S.cash);
+function hud(){try{setApply()}catch(e){}const nb=document.querySelectorAll('#needs i');["h","f","m"].forEach((k,i)=>{const v=S.need[k];nb[i].style.width=v+"%";nb[i].style.background=v<25?"var(--bad)":v<50?"var(--accent)":"var(--good)"});let{inc,nw}=totals();for(const st of S.sites){const o=siteOp(st);if(o&&!st.why)inc+=siteEst(st)+o.up*LAND[st.size][1]}if(typeof tweenCash==="function")tweenCash();else $("#cash").textContent=fmt(S.cash);
   const ie=$("#inc");ie.textContent=(inc>=0?"+":"")+fmt(inc);ie.style.color=inc<0?"var(--bad)":"var(--good)";
   $("#nw").textContent=fmt(nw);if(typeof rankHud==="function")rankHud(nw);$("#day").textContent=new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
   const tk=$("#ticker");if(S.log.length){const html=`<button id="tkb" aria-expanded="${!!tickOpen}" title="Show recent news">${S.log[0]}</button>`+(tickOpen?S.log.slice(1).map(l=>`<div>${l}</div>`).join(""):"");if(tk.innerHTML!==html)tk.innerHTML=html}}
@@ -3660,8 +3661,8 @@ function gigTap(btn){const g=gigState(),now=Date.now();if(now-g.last<150)return;
 /* ---------- fun UI: juice, ranks, daily rewards ---------- */
 const RANKS=[["🛹","Street hustler",0],["🧺","Side hustler",2e3],["🏪","Shop owner",2e4],["💼","Entrepreneur",2e5],["🏦","Mogul",2e6],["🏙️","Tycoon",2e7],["🛳️","Magnate",2e8],["👑","Oligarch",2e9],["🌍","World emperor",2e10]];
 const rankOf=nw=>{let i=0;for(let k=0;k<RANKS.length;k++)if(nw>=RANKS[k][2])i=k;return i};
-const vib=n=>{try{navigator.vibrate&&navigator.vibrate(n)}catch(e){}};
-function confetti(n=40,x=innerWidth/2,y=innerHeight/2){if(matchMedia("(prefers-reduced-motion: reduce)").matches)return;const cols=["#f59e0b","#10b981","#3b82f6","#ef4444","#a855f7","#facc15"];
+const vib=n=>{try{if(S.set&&S.set.vib===0)return;navigator.vibrate&&navigator.vibrate(n)}catch(e){}};
+function confetti(n=40,x=innerWidth/2,y=innerHeight/2){if(matchMedia("(prefers-reduced-motion: reduce)").matches||(S.set&&S.set.rm))return;const cols=["#f59e0b","#10b981","#3b82f6","#ef4444","#a855f7","#facc15"];
   for(let i=0;i<n;i++){const d=document.createElement("div");d.className="confetti";d.style.background=cols[i%cols.length];d.style.left=x+"px";d.style.top=y+"px";document.body.appendChild(d);
     const a=Math.random()*Math.PI*2,v=120+Math.random()*260,dx=Math.cos(a)*v,dy=Math.sin(a)*v-200;
     d.animate([{transform:"translate(0,0) rotate(0)",opacity:1},{transform:`translate(${dx}px,${dy+500}px) rotate(${Math.random()*900}deg)`,opacity:0}],{duration:1100+Math.random()*700,easing:"cubic-bezier(.2,.6,.4,1)"}).onfinish=()=>d.remove()}}
@@ -7663,6 +7664,38 @@ setInterval(()=>{try{if(_cfPop){const el=document.getElementById("cfpop");if(el&
   if(PH.open&&PH.app==="govt"&&govTab==="mil"){const card=PH.el.querySelector("[data-bgsig]"),sig=bgMilKeys().map(n=>"m"+n).concat(bgInv()?["i"]:[]).join("|");
     if((card?card.dataset.bgsig:"")!==sig){if(Date.now()-(PH.touched||0)>=3000&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)))phRender()}
     else bgFill(PH.el)}}catch(e){console.warn("bgfill",e)}},2000);
+/* ---------- Settings app (device prefs in S.set; UI theme mirrored to localStorage for first paint) ---------- */
+var SET_DEF={ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1};
+var SET_UI=[["classic","Classic","The original look"],["glass","Glass","Frosted dark panels, violet glow"],["ledger","Ledger","Cream paper, ink and serif type"],["command","Command","Neon HUD, cyan and magenta"]];
+var SET_FONT="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@500;700&family=Playfair+Display:wght@700;900&family=Source+Serif+4:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Chakra+Petch:wght@500;700&display=swap";
+var _setSig="";
+function setG(){const s=(S.set&&typeof S.set==="object")?S.set:(S.set={});for(const k in SET_DEF)if(s[k]==null)s[k]=SET_DEF[k];if(!SET_UI.some(u=>u[0]===s.ui))s.ui="classic";if(![.9,1,1.15].includes(+s.fs))s.fs=1;return s}
+function setApply(force){const s=setG(),sig=JSON.stringify(s);if(!force&&sig===_setSig)return;_setSig=sig;const H=document.documentElement;
+  for(const [k] of SET_UI)H.classList.toggle("th-"+k,k!=="classic"&&s.ui===k);
+  if(s.ui!=="classic"&&!document.getElementById("th-font")){const l=document.createElement("link");l.id="th-font";l.rel="stylesheet";l.href=SET_FONT;document.head.appendChild(l)}
+  H.classList.toggle("set-rm",!!s.rm);H.classList.toggle("set-notick",!s.tick);H.style.setProperty("--setfs",s.fs);H.classList.toggle("set-fs",+s.fs!==1);
+  try{reduce=REDUCE_OS||!!s.rm}catch(e){}
+  try{localStorage.setItem("meridian-uitheme",s.ui)}catch(e){}
+  const m=document.querySelector('meta[name="theme-color"]');if(m&&s.ui!=="classic")m.content={glass:"#0b1020",ledger:"#fbf5e6",command:"#000000"}[s.ui];else if(m)m.content=themeGet()==="light"?"#fbfaf5":"#141f21";
+  try{if(typeof draw==="function")draw()}catch(e){}}
+function setPut(k,v){const s=setG();if(k==="mode"){themeSet(v);setApply(1);return}
+  s[k]=k==="ui"?v:+v;setApply();save();if(k==="ui")toast(`Settings: ${SET_UI.find(u=>u[0]===v)[1]} theme`)}
+function setReset(){S.set={};setG();themeSet("dark");setApply(1);save();toast("Settings reset to defaults")}
+function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="group">${opts.map(([v,n])=>`<button data-ph="setv" data-k="${k}" data-v="${v}" aria-pressed="${String(cur)===String(v)}">${n}</button>`).join("")}</div>`,
+  tog=(k,n,d)=>`<div class="set-row"><span>${n}<small>${d}</small></span>${seg(k,[[1,"On"],[0,"Off"]],s[k])}</div>`;
+  return `<div class="ph-sub">Display</div>
+  <div class="set-themes">${SET_UI.map(([k,n,d])=>`<button class="set-th set-th-${k}" data-ph="setv" data-k="ui" data-v="${k}" aria-pressed="${s.ui===k}"><i></i><span><b>${n}</b><small>${d}</small></span></button>`).join("")}</div>
+  ${s.ui==="classic"?`<div class="set-row"><span>Light or dark<small>Classic theme only</small></span>${seg("mode",[["light","Light"],["dark","Dark"]],themeGet())}</div>`:""}
+  <div class="set-row"><span>Text size<small>Panels, ticker and pop-ups</small></span>${seg("fs",[[.9,"Small"],[1,"Normal"],[1.15,"Large"]],s.fs)}</div>
+  <div class="ph-sub">Comfort</div>
+  ${tog("rm","Reduce motion","No confetti, fly-overs or animations")}
+  ${tog("vib","Vibration","Buzz on wins and warnings (phones)")}
+  <div class="ph-sub">Notifications</div>
+  ${tog("toast","Pop-up messages","Off keeps only wins and warnings")}
+  ${tog("tick","News ticker","Headline strip over the map")}
+  <button class="set-reset" data-ph="setreset">Reset settings</button>
+  <div class="ph-sub" style="opacity:.7">Settings are saved with your game.</div>`}
+setApply(1);
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -7697,8 +7730,9 @@ const ICO={rig:`<path d="M4 20h16 M7 20l3-12h4l3 12 M9 14h6 M10 8V4h4v4 M12 4V2"
  pop:'<path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1 M16 5.2a3 3 0 0 1 0 5.6 M18 14.2a5 5 0 0 1 3 4.8v1"/>',
  cartel:'<path d="M12 3l8 3v6c0 4.5-3.2 7.7-8 9-4.8-1.3-8-4.5-8-9V6z M9 11h6 M9 14h6"/>',
  freight:'<path d="M2 7h12v9H2z M14 10h4l3 3v3h-7z M6 19a1.8 1.8 0 1 0 0-.01 M17 19a1.8 1.8 0 1 0 0-.01"/>',
+ settings:'<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["pop","Population","#0369a1"]];
+const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["pop","Population","#0369a1"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 function phPlace(){const el=PH.el,sc=phScale();el.style.setProperty("--phs",sc);const r=el.getBoundingClientRect(),w=r.width,h=r.height,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
@@ -7718,6 +7752,7 @@ function phRender0(){const el=PH.el;el.classList.toggle("folded",!PH.open);
     ${PH.szUi?`<div class="ph-sz" role="group" aria-label="Phone size">${PHSZ.map(([n,v])=>`<button data-ph="phsetsz" data-v="${v}" aria-pressed="${PH.sz===v}">${n}</button>`).join("")}</div>`:""}
     <div class="ph-screen">${body}</div><button class="ph-homebar" data-ph="home" aria-label="Home screen"></button>`;phPlace()}
 function appHtml(k){const {inc,nw}=totals();
+  if(k==="settings")return setApp();
   if(k==="ug")return ugApp();
   if(k==="stocks")return mktApp();
   if(k==="shop")return shopApp();
@@ -7756,7 +7791,7 @@ const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);ret
 ["touchstart","touchmove","wheel","scroll","pointerdown"].forEach(t=>PH.el.addEventListener(t,()=>{PH.touched=Date.now()},{passive:true,capture:true}));
 PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon",hrfire:"Tap again to fire",hqunlink:"Tap again",xfsend:"Tap again to send",ctleave:"Tap again to leave",ctkick:"Tap again to remove",ctdisband:"Tap again to disband",ctraid:"Tap again to raid",wpnbar:"Tap again"}[a]||(a==="wpnfire"&&!/^msl\|/.test(b.dataset.k)?(/^(icbm|nuke)\|/.test(b.dataset.k)&&S.loc&&!S.trip&&S.loc.city===+b.dataset.k.split("|")[1]?"Tap = YOU DIE":"Tap again"):null);if(cfm&&!b.dataset.arm){const t0=b.textContent,w0=b.style.width,f0=b.style.flex;b.dataset.arm=1;b.textContent=cfm;if(a==="milab"||a==="wpnfire"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();
     setTimeout(()=>{if(b.isConnected&&b.dataset.arm){delete b.dataset.arm;b.textContent=t0;b.style.width=w0;b.style.flex=f0}},4000);return} // disarm after 4 s
-  if(a==="unfold"){PH.open=true;PH.app=null}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="phsz"){PH.szUi=!PH.szUi}else if(a==="phsetsz"){PH.sz=+b.dataset.v;try{localStorage.setItem("meridian-phone-size",String(PH.sz))}catch(e){}}else if(a==="app"){PH.app=b.dataset.k}
+  if(a==="unfold"){PH.open=true;PH.app=null}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="phsz"){PH.szUi=!PH.szUi}else if(a==="phsetsz"){PH.sz=+b.dataset.v;try{localStorage.setItem("meridian-phone-size",String(PH.sz))}catch(e){}}else if(a==="app"){PH.app=b.dataset.k}else if(a==="setv"){setPut(b.dataset.k,b.dataset.v)}else if(a==="setreset"){setReset()}
   else if(/^hr(sch|up|dn|fire|hire)$/.test(a)){hrAct(a,b.dataset.k);save();hud()}
   else if(a==="dash"){DX.page="fin";dxOpen();return}
   else if(a==="dashlog"){DX.page="log";dxOpen();return}
@@ -7938,6 +7973,7 @@ const atHomeNow=()=>!!(S.home&&!S.trip&&S.loc.city===S.home.city);
 let tt;function toast(m){const t=$("#toast");t.textContent=m;t.classList.remove("good","bad");t.classList.toggle("top",!!(typeof PH!=="undefined"&&PH&&PH.open));
   if(/^(Opened|Approved|You got the job|You earned|Bill passed|Bail posted|Law changed|Contract awarded|Talks worked|Arms sold|Bought|Card approved|Day \d+ streak|.*paid off)/.test(m)){t.classList.add("good");if(typeof confetti==="function"&&!/^Day/.test(m))confetti(28,innerWidth/2,innerHeight-80);if(typeof vib==="function")vib(20)}
   else if(/^(Denied|Scandal|Caught|Arrested|Application turned down|Bill failed|Talks collapsed|Need |You need|Not from prison)/.test(m)){t.classList.add("bad");if(typeof vib==="function")vib([15,30,15])}
+  if(S.set&&S.set.toast===0&&!t.classList.contains("good")&&!t.classList.contains("bad")&&!/^(Need|Not enough|Can't|Cannot|Settings)/.test(m))return;
   t.classList.add("on");clearTimeout(tt);tt=setTimeout(()=>t.classList.remove("on"),1800)}
 window.addEventListener("resize",resize);
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",draw);
@@ -7978,5 +8014,163 @@ if(!world)toast("Map outline didn't load. Cities still work.");
 })();
 </script>
 
+<style id="ui-themes">
+/* UI themes (Settings app): scoped from docs/design/ui-remake/theme-{A,B,C}.css; only active with html.th-* */
+/* th-glass */
+html.th-glass.th-glass.th-glass{--sea:#0b1020; --land:#1a2236; --border:#2b3550; --ink:#eef2ff; --muted:#9aa5c4;
+  --accent:#8b7cff; --own:#34d6c4; --space:#060912; --panel:rgba(20,26,46,.72); --line:rgba(148,163,214,.18);
+  --good:#4ade80; --bad:#fb7185; --ownbg:rgba(52,214,196,.12); --ownbg2:rgba(52,214,196,.06);
+  --display:"Manrope","Inter",system-ui,sans-serif; --body:"Manrope","Inter",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+  color-scheme:dark}
+html.th-glass body{background:radial-gradient(1200px 700px at 70% -10%,#1d2450,#0b1020 60%)}
+html.th-glass header{background:rgba(14,19,36,.6)!important;backdrop-filter:blur(18px) saturate(1.4);border-bottom:1px solid var(--line)}
+html.th-glass h1{font-weight:800;letter-spacing:-.03em}
+html.th-glass h1 span{color:var(--own)}
+html.th-glass .stat b{color:#fff}
+html.th-glass .stat small{letter-spacing:.12em;font-size:9.5px}
+html.th-glass #sheet,html.th-glass #statsw,html.th-glass #cfpop,html.th-glass #placebar,html.th-glass #ticker button,html.th-glass #ticker div,html.th-glass .chip{background:rgba(20,26,46,.72)!important;backdrop-filter:blur(20px) saturate(1.3);-webkit-backdrop-filter:blur(20px) saturate(1.3);border:1px solid rgba(255,255,255,.08)!important;box-shadow:0 20px 50px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.06)}
+html.th-glass #sheet{border-radius:22px 22px 0 0}
+@media (min-width:820px){html.th-glass #sheet{border-radius:20px!important}
+}
+html.th-glass #statsw{border-radius:18px}
+html.th-glass #sheet .shead{background:transparent!important}
+html.th-glass .grab,html.th-glass .tabs{background:transparent!important}
+html.th-glass .shead h2{font-weight:800;letter-spacing:-.03em}
+html.th-glass .sec{color:var(--muted);letter-spacing:.14em}
+html.th-glass .sec::after{background:linear-gradient(90deg,var(--line),transparent)}
+html.th-glass button.buy{border-radius:12px!important;border:0!important;box-shadow:0 6px 18px rgba(139,124,255,.35)!important;font-family:var(--body)!important;font-weight:700}
+html.th-glass button.buy:not(.up):not(:disabled){background:linear-gradient(135deg,#8b7cff,#5b8cff)!important;color:#fff!important}
+html.th-glass button.buy.up{background:rgba(255,255,255,.06)!important;color:var(--ink)!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)!important}
+html.th-glass .tabs{gap:6px}
+html.th-glass .tabs button{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:var(--muted)}
+html.th-glass .tabs button[aria-selected="true"]{background:linear-gradient(135deg,#8b7cff,#5b8cff)!important;color:#fff!important;border-color:transparent;box-shadow:0 4px 14px rgba(139,124,255,.45)}
+html.th-glass .x{background:rgba(255,255,255,.08)}
+html.th-glass #nav{background:rgba(10,14,28,.75)!important;backdrop-filter:blur(18px);border-top:1px solid var(--line)}
+html.th-glass #nav button[aria-current="true"]{color:#fff}
+html.th-glass #nav button[aria-current="true"] svg{stroke:#8b7cff;filter:drop-shadow(0 0 6px rgba(139,124,255,.8))}
+html.th-glass #ticker button::before{background:var(--own);box-shadow:0 0 8px var(--own)}
+html.th-glass .row.own{background:var(--ownbg2)}
+html.th-glass #toast{background:rgba(238,242,255,.95);color:#0b1020}
+html.th-glass #phone:not(.folded){background:linear-gradient(160deg,#1a2040,#0a0e1c)!important;box-shadow:0 30px 60px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08),inset 0 1px 0 rgba(255,255,255,.1)!important}
+html.th-glass .ph-screen{background:radial-gradient(120% 70% at 20% 0%,#3b2f8f 0%,transparent 60%),radial-gradient(90% 60% at 100% 100%,#0f5c63 0%,transparent 60%),#0b1020!important}
+html.th-glass .ph-grid i{border-radius:18px;box-shadow:0 8px 18px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.25)}
+html.th-glass .ph-tab{background:rgba(20,26,46,.8);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.1)}
+html.th-glass .ph-list>div,html.th-glass .ph-list>button,html.th-glass .ph-item,html.th-glass .ph-card{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.06)}
+/* th-ledger */
+html.th-ledger.th-ledger.th-ledger{--sea:#e9dfc9; --land:#f6efdf; --border:#bfae8a; --ink:#1f1a14; --muted:#6b5f4d;
+  --accent:#9b2c1f; --own:#1f5c4a; --space:#e3d6bb; --panel:#fbf5e6; --line:#d9cbab;
+  --good:#1f6b3a; --bad:#9b2c1f; --ownbg:#f3e3c3; --ownbg2:#f8eedb;
+  --display:"Playfair Display","DejaVu Serif",Georgia,serif; --body:"Source Serif 4","Caladea","DejaVu Serif",Georgia,serif; --mono:"IBM Plex Mono","DejaVu Sans Mono",monospace;
+  color-scheme:light}
+html.th-ledger body{background:var(--space)}
+html.th-ledger header{background:var(--panel)!important;backdrop-filter:none!important;border-bottom:3px double var(--ink)!important}
+html.th-ledger h1{font-family:var(--display);font-weight:900;font-size:24px;letter-spacing:-.01em}
+html.th-ledger h1 span{color:var(--accent)}
+html.th-ledger .brand small{color:var(--muted)}
+html.th-ledger .stat b{font-family:var(--mono);color:var(--ink)}
+html.th-ledger .stat small{font-family:var(--body);font-style:italic;text-transform:none;letter-spacing:0;font-size:11px}
+html.th-ledger .stat.cash b{color:var(--own)}
+html.th-ledger #sheet,html.th-ledger #statsw,html.th-ledger #cfpop,html.th-ledger #placebar{background:var(--panel)!important;border:1px solid var(--ink)!important;box-shadow:6px 6px 0 rgba(31,26,20,.18)!important}
+html.th-ledger #sheet{border-radius:2px 2px 0 0}
+@media (min-width:820px){html.th-ledger #sheet{border-radius:2px!important}
+}
+html.th-ledger #statsw{border-radius:2px}
+html.th-ledger .shead{border-bottom:2px solid var(--ink);padding-bottom:8px}
+html.th-ledger .shead h2{font-family:var(--display);font-weight:900;font-size:30px}
+html.th-ledger .shead p{font-style:italic}
+html.th-ledger .sec{font-family:var(--body);font-variant:small-caps;text-transform:lowercase;font-size:15px;letter-spacing:.06em;border-top:1px solid var(--ink);padding-top:6px}
+html.th-ledger .sec::after{display:none}
+html.th-ledger .row{border-radius:0!important;border-bottom:1px dotted var(--border)}
+html.th-ledger button.buy{border-radius:2px!important;font-family:var(--mono)!important;box-shadow:none!important;border:1.5px solid var(--ink)!important}
+html.th-ledger button.buy:not(.up):not(:disabled){background:var(--ink)!important;color:#fbf5e6!important}
+html.th-ledger button.buy.up{background:transparent!important;color:var(--ink)!important}
+html.th-ledger .chip,html.th-ledger #ticker button,html.th-ledger #ticker div{background:#fbf5e6!important;border:1px solid var(--ink)!important;border-radius:2px!important;color:var(--ink)!important;box-shadow:2px 2px 0 rgba(31,26,20,.2)!important;font-family:var(--mono)}
+html.th-ledger .tabs{background:var(--panel);border-bottom:1px solid var(--ink);gap:0;box-shadow:none}
+html.th-ledger .tabs button{background:transparent!important;border-radius:0!important;color:var(--muted);font-family:var(--body);font-size:14px;border-bottom:3px solid transparent!important}
+html.th-ledger .tabs button[aria-selected="true"]{color:var(--ink)!important;border-bottom-color:var(--accent)!important;box-shadow:none!important}
+html.th-ledger .x{background:transparent;border:1px solid var(--ink);border-radius:2px}
+html.th-ledger #nav{background:var(--panel)!important;border-top:3px double var(--ink)!important}
+html.th-ledger #nav button{font-family:var(--body);font-size:12px}
+html.th-ledger #nav button[aria-current="true"]{color:var(--accent)}
+html.th-ledger #ticker button::before{background:var(--accent);border-radius:0}
+html.th-ledger #ticker{z-index:2}
+html.th-ledger #toast{background:var(--ink);color:var(--panel);border-radius:2px!important}
+html.th-ledger .welcome{border-radius:2px}
+html.th-ledger #daily{background:var(--accent)!important;color:#fbf5e6!important;border-radius:2px!important;box-shadow:3px 3px 0 var(--ink)!important}
+html.th-ledger #phone:not(.folded){background:#3a2a1c!important;border-radius:22px!important;box-shadow:6px 8px 0 rgba(31,26,20,.35)!important}
+html.th-ledger .ph-screen{background:linear-gradient(#24302a,#18201c)!important;border-radius:14px!important}
+html.th-ledger .ph-time{font-family:var(--display);font-weight:900}
+html.th-ledger .ph-grid i{border-radius:6px;box-shadow:2px 2px 0 rgba(0,0,0,.45);filter:saturate(.75) sepia(.15)}
+html.th-ledger .ph-grid button{font-family:var(--body);font-size:11px}
+html.th-ledger .ph-tab{background:#3a2a1c;border-radius:4px;font-family:var(--mono)}
+html.th-ledger .ph-list>div,html.th-ledger .ph-list>button,html.th-ledger .ph-item,html.th-ledger .ph-card{border-radius:4px;background:rgba(251,245,230,.08)}
+/* th-command */
+html.th-command.th-command.th-command{--sea:#03060a; --land:#0a1420; --border:#0e3a4a; --ink:#d8fbff; --muted:#5fa3b3;
+  --accent:#ff2bd6; --own:#00f0ff; --space:#000; --panel:#050b12; --line:#0f3442;
+  --good:#39ff88; --bad:#ff3b5c; --ownbg:rgba(0,240,255,.10); --ownbg2:rgba(0,240,255,.05);
+  --display:"Chakra Petch","Inter Display",system-ui,sans-serif; --body:"Chakra Petch","Inter",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+  color-scheme:dark}
+html.th-command body{background:#000}
+html.th-command header{background:linear-gradient(180deg,#071420,#03080e)!important;border-bottom:1px solid var(--own)!important;box-shadow:0 0 18px rgba(0,240,255,.25)}
+html.th-command h1{font-family:var(--display);text-transform:uppercase;letter-spacing:.12em;font-size:18px;color:var(--own);text-shadow:0 0 10px rgba(0,240,255,.7)}
+html.th-command h1 span{color:var(--accent);text-shadow:0 0 10px var(--accent)}
+html.th-command .stat b{color:var(--good);text-shadow:0 0 8px rgba(57,255,136,.55)}
+html.th-command .stat small{color:var(--muted);letter-spacing:.18em}
+html.th-command #sheet,html.th-command #statsw,html.th-command #cfpop,html.th-command #placebar{background:rgba(3,10,16,.92)!important;border:1px solid var(--own)!important;box-shadow:0 0 0 1px rgba(0,240,255,.15),0 0 24px rgba(0,240,255,.18),inset 0 0 40px rgba(0,240,255,.05)!important;
+  clip-path:polygon(0 0,calc(100% - 18px) 0,100% 18px,100% 100%,18px 100%,0 calc(100% - 18px));border-radius:0!important}
+html.th-command #sheet .shead,html.th-command .tabs,html.th-command .grab{background:rgba(3,10,16,.96)!important}
+html.th-command .shead h2{font-family:var(--display);text-transform:uppercase;letter-spacing:.06em;color:#fff}
+html.th-command .sec{color:var(--accent);letter-spacing:.2em;text-shadow:0 0 6px rgba(255,43,214,.6)}
+html.th-command .sec::after{background:linear-gradient(90deg,var(--accent),transparent)}
+html.th-command .row{border-bottom:1px solid rgba(0,240,255,.12);border-radius:0!important}
+html.th-command button.buy{border-radius:0!important;text-transform:uppercase;letter-spacing:.08em;font-size:11.5px!important;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);box-shadow:none!important}
+html.th-command button.buy:not(.up):not(:disabled){background:var(--own)!important;color:#001218!important;border-color:var(--own)!important}
+html.th-command button.buy.up{background:rgba(0,240,255,.06)!important;color:var(--own)!important;border:1px solid var(--own)!important}
+html.th-command .chip,html.th-command #ticker button,html.th-command #ticker div{background:rgba(3,10,16,.9)!important;border:1px solid var(--own)!important;color:var(--ink)!important;border-radius:0!important;box-shadow:0 0 10px rgba(0,240,255,.25)!important;text-transform:uppercase;letter-spacing:.05em}
+html.th-command #ticker button::before{background:var(--accent);box-shadow:0 0 8px var(--accent);border-radius:0}
+html.th-command .tabs button{background:transparent!important;border:1px solid var(--line)!important;border-radius:0!important;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-size:12px}
+html.th-command .tabs button[aria-selected="true"]{color:#001218!important;background:var(--accent)!important;border-color:var(--accent)!important;box-shadow:0 0 14px rgba(255,43,214,.6)!important}
+html.th-command .x{background:transparent;border:1px solid var(--accent);color:var(--accent);border-radius:0}
+html.th-command #nav{background:#02070c!important;border-top:1px solid var(--own)!important;box-shadow:0 0 18px rgba(0,240,255,.2)}
+html.th-command #nav button{text-transform:uppercase;letter-spacing:.12em;font-size:10px}
+html.th-command #nav button[aria-current="true"]{color:var(--own);text-shadow:0 0 8px var(--own)}
+html.th-command #nav button[aria-current="true"] svg{filter:drop-shadow(0 0 6px var(--own))}
+html.th-command #toast{background:var(--accent);color:#000;border-radius:0!important}
+html.th-command #daily{background:linear-gradient(90deg,#ff2bd6,#ff7a1a)!important;border-radius:0!important;box-shadow:0 0 18px rgba(255,43,214,.6)!important}
+html.th-command .welcome{background:var(--own);color:#001218;border-radius:0}
+html.th-command #phone:not(.folded){background:#02070c!important;border:1px solid var(--own);border-radius:10px!important;box-shadow:0 0 30px rgba(0,240,255,.35)!important}
+html.th-command .ph-screen{border-radius:4px!important;background:repeating-linear-gradient(0deg,rgba(0,240,255,.04) 0 1px,transparent 1px 3px),radial-gradient(100% 60% at 50% 0%,#082a3a,#020509 70%)!important}
+html.th-command .ph-time{font-family:var(--display);color:var(--own);text-shadow:0 0 14px rgba(0,240,255,.8)}
+html.th-command .ph-grid i{border-radius:4px;background:#04121a!important;border:1px solid currentColor;box-shadow:0 0 10px rgba(0,240,255,.3)}
+html.th-command .ph-grid svg{stroke:var(--own)!important;filter:drop-shadow(0 0 4px var(--own))}
+html.th-command .ph-grid button{text-transform:uppercase;letter-spacing:.08em;font-size:9.5px;color:var(--ink)}
+html.th-command .ph-tab{background:#02070c;border:1px solid var(--own);border-radius:0;box-shadow:0 0 12px rgba(0,240,255,.4)}
+html.th-command .ph-list>div,html.th-command .ph-list>button,html.th-command .ph-item,html.th-command .ph-card{border-radius:0;background:rgba(0,240,255,.06);border:1px solid rgba(0,240,255,.2)}
+
+/* settings app */
+.set-themes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 10px}
+.set-th{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:6px;padding:8px;border-radius:12px;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.12);color:#eef1f4;min-width:0}
+.set-th[aria-pressed="true"]{border-color:#7dd3fc;background:rgba(125,211,252,.14)}
+.set-th i{display:block;height:34px;border-radius:7px}
+.set-th b{display:block;font-size:12.5px;color:#fff}.set-th small{display:block;font-size:10px;line-height:1.3;color:#b8c1cc}
+.set-th-classic i{background:linear-gradient(135deg,#0e1a1d 50%,#d97706 50% 62%,#1f2b2a 62%)}
+.set-th-glass i{background:radial-gradient(80% 90% at 20% 0%,#3b2f8f,transparent 70%),linear-gradient(135deg,#0b1020,#14305a);box-shadow:inset 0 0 0 1px rgba(139,124,255,.6)}
+.set-th-ledger i{background:repeating-linear-gradient(0deg,#d9cbab 0 1px,transparent 1px 7px),#fbf5e6;box-shadow:inset 0 0 0 1.5px #1f1a14}
+.set-th-command i{background:linear-gradient(90deg,#00f0ff 0 3px,transparent 3px),linear-gradient(135deg,#000 60%,#ff2bd6 60% 66%,#000 66%);box-shadow:inset 0 0 0 1px #00f0ff}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);color:#eef1f4;font-size:12.5px}
+.set-row>span{min-width:0}.set-row small{display:block;font-size:10px;color:#b8c1cc;margin-top:2px}
+.set-seg{display:flex;flex:none;background:rgba(255,255,255,.08);border-radius:9px;padding:2px}
+.set-seg button{all:unset;cursor:pointer;padding:5px 8px;border-radius:7px;font-size:11px;font-weight:600;color:#d5dbe2}
+.set-seg button[aria-pressed="true"]{background:#eef1f4;color:#111827}
+.set-reset{all:unset;cursor:pointer;display:block;box-sizing:border-box;width:100%;text-align:center;margin:14px 0 6px;padding:9px;border-radius:10px;border:1px solid rgba(248,113,113,.6);color:#fecaca;font-size:12.5px;font-weight:600}
+.set-th:focus-visible,.set-seg button:focus-visible,.set-reset:focus-visible{outline:2px solid #7dd3fc;outline-offset:2px}
+html.set-notick #ticker{display:none!important}
+html.set-fs #sheet>*,html.set-fs #ticker,html.set-fs #toast,html.set-fs #cfpop>*,html.set-fs #placebar>*,html.set-fs #statsw>*{zoom:var(--setfs)}
+html.set-rm *,html.set-rm *::before,html.set-rm *::after{animation-duration:0s!important;animation-iteration-count:1!important;transition-duration:0s!important;scroll-behavior:auto!important}
+html.th-ledger .set-seg button[aria-pressed="true"]{background:#fbf5e6;color:#1f1a14}
+html.th-command .set-th,html.th-command .set-seg,html.th-command .set-seg button,html.th-command .set-reset{border-radius:0}
+html.th-command .set-th[aria-pressed="true"]{border-color:#00f0ff;box-shadow:0 0 10px rgba(0,240,255,.4)}
+html.th-command .set-seg button[aria-pressed="true"]{background:#00f0ff;color:#001218}
+</style>
 </body>
 </html>
