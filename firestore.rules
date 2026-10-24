@@ -491,6 +491,100 @@ service cloud.firestore {
         && request.resource.data.byName is string && request.resource.data.byName.size() <= 20;
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
+    // Cabinet (Military dashboard > Cabinet): office holders of one country. Office comes from the player's own public profile
+    // (govC / govR, published by the game), so this keeps out non-holders, not a determined cheat.
+    function me() {
+      return get(/databases/$(database)/documents/players/$(request.auth.uid)).data;
+    }
+    function govOf(c) {
+      return request.auth != null && exists(/databases/$(database)/documents/players/$(request.auth.uid))
+        && me().get('govC', '') == c && me().get('govR', -1) >= 0;
+    }
+    function govAny() {
+      return request.auth != null && exists(/databases/$(database)/documents/players/$(request.auth.uid))
+        && me().get('govR', -1) >= 0;
+    }
+    function govLeader(c) {
+      return govOf(c) && me().get('govR', -1) == 2;
+    }
+    function validGovMsg(d, c) {
+      return d.keys().hasOnly(['uid', 'name', 'c', 'r', 'txt', 'at'])
+        && d.keys().hasAll(['uid', 'name', 'c', 'r', 'txt', 'at'])
+        && d.uid == request.auth.uid
+        && d.name is string && d.name.size() <= 20
+        && d.c == c && d.r is int && d.r >= 0 && d.r <= 2
+        && d.txt is string && d.txt.size() >= 1 && d.txt.size() <= 160
+        && d.at == request.time
+        && getAfter(/databases/$(database)/documents/gvlast/$(request.auth.uid)).data.at == request.time
+        && (!exists(/databases/$(database)/documents/gvlast/$(request.auth.uid))
+            || get(/databases/$(database)/documents/gvlast/$(request.auth.uid)).data.at.toMillis() < request.time.toMillis() - 3000);
+    }
+    match /gvlast/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['at']) && request.resource.data.at == request.time;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+    // Chat for every office holder in the world.
+    match /govmsg/{mid} {
+      allow read: if govAny();
+      allow create: if govAny() && validGovMsg(request.resource.data, me().get('govC', ''));
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow update: if false;
+    }
+    // Shared funds of one country's cabinet: members add money; spending happens in a transaction by the Leader.
+    match /cab/{c} {
+      allow read: if govOf(c);
+      allow create, update: if govOf(c)
+        && request.resource.data.keys().hasOnly(['war', 'arms', 'wto'])
+        && (!('war' in request.resource.data) || (request.resource.data.war is number && request.resource.data.war >= 0 && request.resource.data.war <= 1e12))
+        && (!('arms' in request.resource.data) || (request.resource.data.arms is number && request.resource.data.arms >= 0 && request.resource.data.arms <= 1e12))
+        && (!('wto' in request.resource.data) || (request.resource.data.wto is number && request.resource.data.wto >= 0 && request.resource.data.wto <= 1e12))
+        // only the Leader may lower a fund
+        && (govLeader(c) || resource == null
+            || (request.resource.data.get('war', 0) >= resource.data.get('war', 0)
+                && request.resource.data.get('arms', 0) >= resource.data.get('arms', 0)
+                && request.resource.data.get('wto', 0) >= resource.data.get('wto', 0)));
+      allow delete: if false;
+
+      match /msg/{mid} {
+        allow read: if govOf(c);
+        allow create: if govOf(c) && validGovMsg(request.resource.data, c);
+        allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+        allow update: if false;
+      }
+      // Bills: majority of seats passes, the Leader may veto, the Leader marks spending bills done.
+      match /bill/{bid} {
+        allow read: if govOf(c);
+        allow create: if govOf(c)
+          && request.resource.data.keys().hasOnly(['k', 'key', 'val', 'tg', 'by', 'byName', 'at', 'exp', 'seats', 'yes', 'no', 'st', 'done'])
+          && request.resource.data.k in ['law', 'war', 'arms', 'wto']
+          && request.resource.data.key is string && request.resource.data.key.size() <= 12
+          && request.resource.data.val is int && request.resource.data.val >= 0 && request.resource.data.val <= 9
+          && request.resource.data.tg is string && request.resource.data.tg.size() <= 40
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.byName is string && request.resource.data.byName.size() <= 20
+          && request.resource.data.at == request.time
+          && request.resource.data.exp is timestamp
+          && request.resource.data.seats is int && request.resource.data.seats >= 1 && request.resource.data.seats <= 10
+          && request.resource.data.yes == [request.auth.uid] && request.resource.data.no == []
+          && request.resource.data.st == 'open' && request.resource.data.done == false;
+        // a vote adds only your own uid to yes or no, while the bill is open and before its deadline
+        allow update: if govOf(c) && resource.data.st == 'open' && request.time < resource.data.exp
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['yes', 'no', 'st'])
+          && request.resource.data.yes.toSet().difference(resource.data.yes.toSet()).hasOnly([request.auth.uid])
+          && request.resource.data.no.toSet().difference(resource.data.no.toSet()).hasOnly([request.auth.uid])
+          && !(request.auth.uid in resource.data.yes) && !(request.auth.uid in resource.data.no)
+          && request.resource.data.st in ['open', 'passed', 'failed'];
+        allow update: if govLeader(c) && resource.data.st == 'open'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st'])
+          && request.resource.data.st == 'vetoed';
+        allow update: if govLeader(c) && resource.data.done == false
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['done'])
+          && request.resource.data.done == true;
+        allow delete: if false;
+      }
+    }
     match /{document=**} {
       allow read, write: if false;
     }

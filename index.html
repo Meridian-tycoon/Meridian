@@ -5172,8 +5172,98 @@ function misApp(){if(!misOn())return `<div class="ph-card"><b>🎯 Missions</b><
     <button class="buy" data-ph="misopen" style="width:100%;margin-top:8px;color:#fff;background:#1e3a8a!important;border-color:#60a5fa">Open Military dashboard</button>`}
 const MX={el:null,open:false,note:"",tg:null,page:"war"};
 /* Military dashboard pages: Missions (war room), the Government app's Military / Air One / Office tabs (their phone screens, clicks forwarded to the phone handlers) and war funding */
-const MXPAGES=[["war","🎯 Missions"],["mil","🪖 Military"],["air","✈ Air One"],["off","🏛 Office"],["wf","🕶 Anonymous War Funding"]];
+const MXPAGES=[["war","🎯 Missions"],["mil","🪖 Military"],["air","✈ Air One"],["off","🏛 Office"],["wf","🕶 Anonymous War Funding"],["cab","🏛️ Cabinet"],["gch","🌐 Gov chat"]];
 const mxSeg=()=>`<div class="mdx-seg" role="tablist" aria-label="Dashboard page" style="margin:0 0 2px;align-self:flex-start;max-width:100%;overflow-x:auto">${MXPAGES.map(([k,t])=>`<button data-mx="pg" data-v="${k}" class="${MX.page===k?"on":""}" style="flex:none">${t}</button>`).join("")}</div>`;
+/* CABINET (Military dashboard): office holders of one country share a chat, vote on bills and pool money in three funds (war, arms, world take-over).
+   Firestore: cab/{country} {war,arms,wto} funds; cab/{country}/msg chat; cab/{country}/bill bills; govmsg = chat for every office holder in the world; gvlast/{uid} rate limit.
+   Voting: a bill passes once YES votes are more than half of the seats filled when it was proposed; it fails when that is no longer possible or after 24 h.
+   The Leader may veto any open bill. Laws (tax included) apply on every member's save when passed; war, arms and take-over bills spend the shared funds
+   and are carried out by the Leader, reusing the normal war, recruit and influence mechanics. */
+const CABCFG={billHrs:24,warWin:.42,warCost:.5,say:4000,maxFund:1e12};
+const CB={c:null,sub:{},fund:{war:0,arms:0,wto:0},msg:[],bills:[],gmsg:[],f:{say:"",gsay:"",k:"law",law:"tax",val:"0",tg:"",unit:"inf",amt:""},busy:{},last:0,err:""};
+const cabUid=()=>typeof ON!=="undefined"&&ON.user?ON.user.uid:null;
+const cabMs=t=>t&&t.toMillis?t.toMillis():+t||0;
+const cabOn=()=>!!(typeof ON!=="undefined"&&ON.db&&ON.user&&window.firebase);
+function cabSeats(c){let n=0;for(let r=0;r<CAB.length;r++)n+=cabOthers(c,r).length;const p=pol();if(p.r>=0&&p.c===c)n++;return Math.max(1,n)}
+function cabUnsub(){for(const k in CB.sub){try{CB.sub[k]()}catch(_){}}CB.sub={}}
+function cabListen(){const p=S.pol,c=p&&p.r>=0&&p.c?p.c:null;if(!cabOn()||!c){if(CB.c){cabUnsub();CB.c=null;CB.msg=[];CB.bills=[];CB.gmsg=[]}return}if(CB.c===c&&CB.sub.b)return;
+  cabUnsub();CB.c=c;CB.msg=[];CB.bills=[];CB.gmsg=[];CB.fund={war:0,arms:0,wto:0};const db=ON.db,root=db.collection("cab").doc(c),er=w=>e=>{CB.err="Couldn't load "+w+": "+(e&&e.code||e)},arr=q=>{const a=[];q.forEach(d=>a.push(Object.assign({id:d.id},d.data()||{})));return a};
+  CB.sub.f=root.onSnapshot(d=>{const x=d.exists?d.data():{};CB.fund={war:Math.max(0,+x.war||0),arms:Math.max(0,+x.arms||0),wto:Math.max(0,+x.wto||0)};cabPaint()},er("funds"));
+  CB.sub.m=root.collection("msg").orderBy("at","desc").limit(40).onSnapshot(q=>{CB.msg=arr(q).reverse();cabPaint()},er("cabinet chat"));
+  CB.sub.b=root.collection("bill").orderBy("at","desc").limit(20).onSnapshot(q=>{CB.bills=arr(q);cabApply();cabPaint()},er("bills"));
+  CB.sub.g=db.collection("govmsg").orderBy("at","desc").limit(40).onSnapshot(q=>{CB.gmsg=arr(q).reverse();cabPaint()},er("government chat"))}
+function cabTick(){try{cabListen()}catch(e){}}
+function cabPaint(){if(MX.open&&(MX.page==="cab"||MX.page==="gch")&&!mxBusy())mxRender()}
+/* bill state: open bills past their deadline, or that can no longer reach a majority, count as failed */
+function cabState(b){if(b.st!=="open")return b.st;const y=(b.yes||[]).length,n=(b.no||[]).length,s=Math.max(1,+b.seats||1);if(y*2>s)return "passed";if(s-n<=s/2||Date.now()>cabMs(b.exp))return "failed";return "open"}
+function cabTitle(b){const U=MILCFG.units;return b.k==="law"&&LAWS[b.key]?`${LAWS[b.key].n}: ${LAWS[b.key].v[b.val]||"?"}`:b.k==="war"?`Resolve the war with ${b.tg} (${Math.round(CABCFG.warWin*100)}% chance)`:b.k==="arms"?`Buy ${MILCFG.batch} ${(U[b.key]||{n:"units"}).n}`:b.k==="wto"?`Take-over step: bring ${b.tg} under our influence`:"Bill"}
+/* passed laws: apply once on every member's save */
+function cabApply(){const p=pol();if(!(p.r>=0&&p.c===CB.c))return;if(!Array.isArray(p.cabA))p.cabA=[];let ch=0;
+  for(const b of CB.bills.slice().reverse()){if(b.k!=="law"||!LAWS[b.key]||p.cabA.includes(b.id)||cabState(b)!=="passed")continue;const v=Math.max(0,Math.min(LAWS[b.key].v.length-1,b.val|0));
+    gov(p.c).laws[b.key]=v;if(b.key==="tax")p.tax=v;p.cabA.unshift(b.id);ch=1;logPol(`Cabinet passed: ${cabTitle(b)}`)}
+  if(ch){p.cabA=p.cabA.slice(0,60);try{save();hud()}catch(e){}}}
+function cabSay(world){const k=world?"gsay":"say",t=String(CB.f[k]||"").trim().slice(0,160),p=pol(),uid=cabUid();if(!t||!uid||!(p.r>=0&&p.c))return;if(CB.busy[k])return;
+  if(Date.now()-CB.last<CABCFG.say)return toast("One message every few seconds");CB.last=Date.now();CB.busy[k]=1;const FV=window.firebase.firestore.FieldValue,b=ON.db.batch();
+  const doc={uid,name:(onProf().name||"Tycoon").slice(0,20),c:String(p.c).slice(0,40),r:p.r,txt:t,at:FV.serverTimestamp()};
+  b.set(world?ON.db.collection("govmsg").doc():ON.db.collection("cab").doc(p.c).collection("msg").doc(),doc);b.set(ON.db.collection("gvlast").doc(uid),{at:FV.serverTimestamp()});
+  Promise.resolve(onPublish(true)).then(()=>b.commit()).then(()=>{delete CB.busy[k];CB.f[k]="";mxRender()},e=>{delete CB.busy[k];toast("Message not sent: "+(e&&e.code||e))})}
+function cabPropose(){const p=pol(),f=CB.f,uid=cabUid();if(!uid||!(p.r>=0&&p.c))return;if(CB.busy.prop)return;const open=CB.bills.filter(b=>cabState(b)==="open").length;if(open>=8)return toast("Too many open bills: vote on those first");
+  const d={k:f.k,key:"",val:0,tg:""};if(f.k==="law"){if(!LAWS[f.law])return;d.key=f.law;d.val=Math.max(0,Math.min(LAWS[f.law].v.length-1,+f.val|0))}
+  else if(f.k==="arms"){if(!MILCFG.units[f.unit])return;d.key=f.unit}else{if(!COUNTRIES.includes(f.tg)||f.tg===p.c)return toast("Pick a country");d.tg=f.tg}
+  CB.busy.prop=1;const FV=window.firebase.firestore.FieldValue,s=cabSeats(p.c);
+  ON.db.collection("cab").doc(p.c).collection("bill").add(Object.assign(d,{by:uid,byName:(onProf().name||"Tycoon").slice(0,20),at:FV.serverTimestamp(),exp:new Date(Date.now()+CABCFG.billHrs*36e5),seats:Math.min(10,s),yes:[uid],no:[],st:"open",done:false}))
+    .then(()=>{delete CB.busy.prop;toast("Bill tabled")},e=>{delete CB.busy.prop;toast("Bill refused: "+(e&&e.code||e))})}
+function cabVote(id,yes){const b=CB.bills.find(x=>x.id===id),uid=cabUid(),p=pol();if(!b||!uid||cabState(b)!=="open")return;if((b.yes||[]).includes(uid)||(b.no||[]).includes(uid))return toast("You already voted");
+  const FV=window.firebase.firestore.FieldValue,y=(b.yes||[]).length+(yes?1:0),n=(b.no||[]).length+(yes?0:1),s=Math.max(1,+b.seats||1),st=y*2>s?"passed":s-n<=s/2?"failed":"open";
+  ON.db.collection("cab").doc(p.c).collection("bill").doc(id).update({[yes?"yes":"no"]:FV.arrayUnion(uid),st}).then(()=>toast(st==="open"?"Vote cast":`Bill ${st}`),e=>toast("Vote refused: "+(e&&e.code||e)))}
+function cabVeto(id){const b=CB.bills.find(x=>x.id===id),p=pol();if(!b||!polLeader()||cabState(b)!=="open")return;
+  ON.db.collection("cab").doc(p.c).collection("bill").doc(id).update({st:"vetoed"}).then(()=>toast("Vetoed"),e=>toast("Veto refused: "+(e&&e.code||e)))}
+function cabFund(k){const p=pol(),amt=Math.floor(+String(CB.f.amt||"").replace(/[^0-9.]/g,"")||0);if(!["war","arms","wto"].includes(k)||!(p.r>=0&&p.c))return;if(!(amt>=1000))return toast("Enter at least 1,000");if(S.cash<amt)return toast("Not enough cash");if(CB.busy.fund)return;
+  CB.busy.fund=1;S.cash-=amt;save();hud();ON.db.collection("cab").doc(p.c).set({[k]:window.firebase.firestore.FieldValue.increment(amt)},{merge:true})
+    .then(()=>{delete CB.busy.fund;CB.f.amt="";toast(`${fmt(amt)} added to the fund`);mxRender()},e=>{delete CB.busy.fund;S.cash+=amt;save();hud();toast("Funding refused: "+(e&&e.code||e))})}
+/* cost of carrying out a passed bill, paid from the matching fund */
+function cabCost(b){return b.k==="war"?Math.round(milWarCost(b.tg)*CABCFG.warCost):b.k==="arms"?milBatchCost(b.key):b.k==="wto"?annexCost(b.tg):0}
+const cabFundOf=b=>b.k==="war"?"war":b.k==="arms"?"arms":"wto";
+function cabRun(id){const b=CB.bills.find(x=>x.id===id),p=pol(),m=mil();if(!b||b.done||cabState(b)!=="passed"||!polLeader())return;if(CB.busy.run)return;
+  const k=cabFundOf(b),c=cabCost(b);if(CB.fund[k]<c)return toast(`The ${k==="wto"?"take-over":k} fund needs ${fmt(c)}`);
+  if(b.k==="war"&&!m.wars[b.tg])return toast(`You are not at war with ${b.tg}`);if(b.k==="wto"&&(p.ctrl[b.tg]||b.tg===p.c))return toast(`${b.tg} is already ours`);
+  if(b.k==="wto"&&Date.now()<p.acd)return toast("Influence cooldown: "+fmtDur(p.acd-Date.now()));if(b.k==="arms"&&polHere()!==p.c)return toast(`Recruit from ${p.c}`);
+  CB.busy.run=1;const FV=window.firebase.firestore.FieldValue,root=ON.db.collection("cab").doc(p.c);
+  // take the money from the fund first (only if it's still there), then carry the bill out with the normal mechanics
+  ON.db.runTransaction(async t=>{const d=await t.get(root),have=d.exists?+d.data()[k]||0:0;if(have<c)throw new Error("fund too small");t.set(root,{[k]:have-c},{merge:true});t.update(root.collection("bill").doc(id),{done:true})})
+    .then(()=>{delete CB.busy.run;
+      if(b.k==="war"){if(Math.random()<CABCFG.warWin)milEndWar(b.tg,"win");else{milKill(m,.15);milEndWar(b.tg,"wePay");toast(`The push on ${b.tg} failed`)}}
+      else if(b.k==="arms"){S.cash+=c;milRecruit(b.key)}
+      else{S.cash+=c;polAnnex(b.tg)}
+      save();hud();mxRender()},e=>{delete CB.busy.run;toast("Couldn't carry it out: "+(e&&e.message||e))})}
+function cabChat(list){const now=Date.now(),O=GOVCFG.offices;if(!list.length)return `<div class="mdx-empty">No messages yet.</div>`;
+  return list.map(x=>`<div style="padding:5px 0;border-bottom:1px solid rgba(127,127,127,.15)"><b>${onEsc(x.name)}</b> <small style="opacity:.65">${O[x.r]?O[x.r].n:""}${x.c?" of "+onEsc(x.c):""} · ${fmtDur(Math.max(0,now-cabMs(x.at)))} ago</small><div>${onEsc(x.txt)}</div></div>`).join("")}
+const cabIn=(id,v,ph,w)=>`<input id="cbf_${id}" value="${onEsc(v)}" placeholder="${ph}" maxlength="160" style="flex:1;min-width:${w||120}px;padding:8px;border-radius:8px;border:1px solid rgba(127,127,127,.4);background:transparent;color:inherit">`;
+const cabSel=(id,v,opts)=>`<select id="cbf_${id}" style="padding:8px;border-radius:8px;border:1px solid rgba(127,127,127,.4);background:transparent;color:inherit">${opts.map(([k,t])=>`<option value="${onEsc(k)}"${String(k)===String(v)?" selected":""}>${onEsc(t)}</option>`).join("")}</select>`;
+const cabBtn=(a,t,v,dis)=>`<button class="mdx-btn" data-mx="${a}"${v!=null?` data-v="${onEsc(v)}"`:""}${dis?" disabled":""} style="padding:7px 12px;border-radius:8px;border:1px solid rgba(127,127,127,.4);background:rgba(37,99,235,.12);color:inherit;cursor:pointer">${t}</button>`;
+function cabGate(){const p=pol();if(!(p.r>=0&&p.c))return `<div class="mdx-empty">Only office holders (Councillor, Minister or Leader) can use the cabinet. Run for office in the Government app.</div>`;
+  if(!cabOn())return `<div class="mdx-empty">Sign in to the online world (Online app) to meet the rest of your government.</div>`;return ""}
+function cabDash(){const g=cabGate();if(g)return g;cabListen();const p=pol(),f=CB.f,uid=cabUid(),lead=polLeader(),U=MILCFG.units,m=mil(),wars=Object.keys(m.wars||{});
+  const others=COUNTRIES.filter(n=>n!==p.c),tgOpts=(f.k==="war"&&lead&&wars.length?wars:others).map(n=>[n,n]);if(f.k!=="law"&&f.k!=="arms"&&!tgOpts.some(o=>o[0]===f.tg))f.tg=tgOpts[0]?tgOpts[0][0]:"";
+  const ctl=Object.keys(p.ctrl||{}).length+Object.keys(m.occ||{}).length,goal=COUNTRIES.length-1,left=others.filter(n=>!(p.ctrl||{})[n]&&!(m.occ||{})[n]),wtoNeed=left.reduce((a,n)=>a+annexCost(n),0);
+  const pct=Math.round(100*ctl/Math.max(1,goal)),fpct=Math.min(100,Math.round(100*CB.fund.wto/Math.max(1,wtoNeed)));
+  const kind=cabSel("k",f.k,[["law","Law or tax"],["war","Resolve a war"],["arms","Buy arms"],["wto","World take-over step"]]),
+    extra=f.k==="law"?cabSel("law",f.law,Object.keys(LAWS).map(k=>[k,LAWS[k].n]))+cabSel("val",f.val,(LAWS[f.law]||LAWS.tax).v.map((v,i)=>[i,v])):f.k==="arms"?cabSel("unit",f.unit,Object.keys(U).map(k=>[k,U[k].n])):cabSel("tg",f.tg,tgOpts);
+  const bills=CB.bills.map(b=>{const st=cabState(b),mine=(b.yes||[]).includes(uid)||(b.no||[]).includes(uid),c=cabCost(b),k=b.k==="law"?null:cabFundOf(b);
+    const act=st==="open"?(mine?"<small>You voted</small>":cabBtn("cbyes","Yes",b.id)+" "+cabBtn("cbno","No",b.id))+(lead?" "+cabBtn("cbveto","Veto",b.id):"")
+      :st==="passed"&&k?(b.done?"<small>Carried out</small>":lead?cabBtn("cbrun",`Carry out (${fmt(c)})`,b.id):`<small>Waiting for the Leader · needs ${fmt(c)}</small>`):"";
+    return `<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.15)"><div><b>${onEsc(cabTitle(b))}</b> <small style="opacity:.7">· ${{open:"Open",passed:"Passed",failed:"Failed",vetoed:"Vetoed"}[st]||st} · ${(b.yes||[]).length} yes / ${(b.no||[]).length} no of ${b.seats||1} seats · by ${onEsc(b.byName||"?")}</small></div><div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${act}</div></div>`}).join("")||`<div class="mdx-empty">No bills yet.</div>`;
+  const card=(t,body)=>`<div class="mdx-card" style="padding:14px;margin-bottom:12px"><div style="font-weight:600;margin-bottom:8px">${t}</div>${body}</div>`;
+  return (CB.err?`<div class="mdx-empty">${onEsc(CB.err)}</div>`:"")+
+    card("🏛️ Members",cabHtml(p.c)+`<div class="ph-sub" style="margin-top:8px">A bill passes when more than half the seats vote yes (seats counted when it is tabled). It fails after ${CABCFG.billHrs} h. The Leader can veto any open bill.</div>`)+
+    card("💬 Cabinet chat",`<div style="max-height:240px;overflow:auto">${cabChat(CB.msg)}</div><div style="display:flex;gap:6px;margin-top:8px">${cabIn("say",f.say,"Message your cabinet")}${cabBtn("cbsay","Send")}</div>`)+
+    card("📜 Bills and laws",`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${kind}${extra}${cabBtn("cbprop","Table bill")}</div>${bills}`)+
+    card("💰 Funds",`<div class="ph-rows"><div><span>War fund (resolves wars at ${Math.round(CABCFG.warWin*100)}%)</span><b>${fmt(CB.fund.war)}</b></div><div><span>Arms fund</span><b>${fmt(CB.fund.arms)}</b></div><div><span>World take-over fund</span><b>${fmt(CB.fund.wto)}</b></div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${cabIn("amt",f.amt,"Amount",100)}${cabBtn("cbfund","Fund wars","war")}${cabBtn("cbfund","Fund arms","arms")}${cabBtn("cbfund","Fund take-over","wto")}</div>`)+
+    card("🌍 World take-over",`<div class="ph-rows"><div><span>Countries under our control</span><b>${ctl} / ${goal} (${pct}%)</b></div><div><span>Influence cost for the rest</span><b>${fmt(wtoNeed)}</b></div><div><span>Take-over fund covers</span><b>${fpct}%</b></div></div><div style="height:8px;border-radius:4px;background:rgba(127,127,127,.2);margin-top:8px"><div style="height:100%;width:${fpct}%;border-radius:4px;background:#dc2626"></div></div><div class="ph-sub" style="margin-top:6px">Table "World take-over step" bills to spend the fund on influence campaigns, one country at a time.</div>`)}
+function govChatDash(){const g=cabGate();if(g)return g;cabListen();
+  return `<div class="mdx-card" style="padding:14px"><div style="font-weight:600;margin-bottom:8px">🌐 Government chat: every office holder in the world</div><div style="max-height:420px;overflow:auto">${cabChat(CB.gmsg)}</div><div style="display:flex;gap:6px;margin-top:8px">${cabIn("gsay",CB.f.gsay,"Message all governments")}${cabBtn("cbgsay","Send")}</div></div>`}
+function cabAct(a,b){const v=b.dataset.v;if(a==="cbsay")cabSay(false);else if(a==="cbgsay")cabSay(true);else if(a==="cbprop")cabPropose();else if(a==="cbyes"||a==="cbno")cabVote(v,a==="cbyes");else if(a==="cbveto")cabVeto(v);else if(a==="cbfund")cabFund(v);else if(a==="cbrun")cabRun(v)}
 function mxGov(k){try{return k==="mil"?phInvCard()+milApp():k==="air"?airApp():officeApp()}catch(e){console.warn("mx",e);return `<div class="mdx-empty">This page couldn't load.</div>`}}
 /* run a phone-app button from the dashboard: copy the page (with typed values) into the hidden phone and click the same button there */
 function mxFwd(b){const con=b.closest(".bxd-con");if(!con||!PH.el)return;const all=[...con.querySelectorAll("[data-ph]")],i=all.indexOf(b);if(i<0)return;
@@ -5186,9 +5276,10 @@ function mxOpen(){if(!misOn())return toast("Buy Military Intelligence in the off
     el.addEventListener("click",e=>{const b=e.target.closest("[data-mx]");if(!b){const f=e.target.closest(".bxd-con [data-ph]");if(f&&!f.disabled){if(mxFwd(f)!=="armed")mxRender()}return}const a=b.dataset.mx;
       if(a==="close"){mxClose();return}if(a==="theme"){themeSet(themeGet()==="dark"?"light":"dark");b.innerHTML=themeIco();return}
       if(a==="tg"){MX.tg=b.dataset.v;mxRender();return}if(a==="run"){MX.note=misRun(b.dataset.k,MX.tg);mxRender();return}
-      if(a==="pg"){MX.page=MXPAGES.some(p=>p[0]===b.dataset.v)?b.dataset.v:"war";mxRender();return}if(a==="wfk"){WF.f.k=b.dataset.k==="e"?"e":"w";mxRender();return}if(a==="wfsend"){wfSend();mxRender();return}if(a==="wfacc"||a==="wfdec"){wfOffer(b.dataset.v,a==="wfacc");mxRender();return}
+      if(a==="pg"){MX.page=MXPAGES.some(p=>p[0]===b.dataset.v)?b.dataset.v:"war";mxRender();return}if(a.slice(0,2)==="cb"){cabAct(a,b);return}if(a==="wfk"){WF.f.k=b.dataset.k==="e"?"e":"w";mxRender();return}if(a==="wfsend"){wfSend();mxRender();return}if(a==="wfacc"||a==="wfdec"){wfOffer(b.dataset.v,a==="wfacc");mxRender();return}
       if(a==="milapp"){mxClose();PH.open=true;PH.app="govt";govTab="mil";phRender();return}if(a==="wars"){mxClose();openPortfolio();return}});
-    el.addEventListener("input",e=>{const t=e.target;if(!t.id||t.id.slice(0,4)!=="wff_")return;const k=t.id.slice(4);WF.f[k]=t.value;if(k!=="amt")mxRender()})}
+    const cbIn=e=>{const t=e.target;if(t.id&&t.id.slice(0,4)==="cbf_"){CB.f[t.id.slice(4)]=t.value;if(t.tagName==="SELECT")mxRender();return 1}};el.addEventListener("change",cbIn);el.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="cbf_say")cabSay(false);if(e.key==="Enter"&&e.target.id==="cbf_gsay")cabSay(true)});
+    el.addEventListener("input",e=>{if(cbIn(e))return;const t=e.target;if(!t.id||t.id.slice(0,4)!=="wff_")return;const k=t.id.slice(4);WF.f[k]=t.value;if(k!=="amt")mxRender()})}
   const vw=innerWidth,vh=innerHeight,el=MX.el;el.classList.toggle("bxd-wide",vw>=900);if(vw<560){el.classList.add("mdx-full");Object.assign(el.style,{left:"0px",top:"0px",width:vw+"px",height:vh+"px"})}
   else{el.classList.remove("mdx-full");const w=Math.min(1100,vw-48),h=Math.min(780,vh-48);Object.assign(el.style,{left:(vw-w)/2+"px",top:(vh-h)/2+"px",width:w+"px",height:h+"px"})}
   el.style.display="flex";MX.open=true;MX.note="";mxRender();clearInterval(MX.iv);MX.iv=setInterval(()=>{if(!MX.open)return clearInterval(MX.iv);if(mxBusy()||Date.now()-(MX.armT||0)<3000)return;const sc=MX.el.querySelector(".mdx-body"),y=sc?sc.scrollTop:0;mxRender();const s2=MX.el.querySelector(".mdx-body");if(s2)s2.scrollTop=y},2000)}
@@ -5198,7 +5289,7 @@ function mxRender(){if(!MX.el)return;const m=mil(),x=misSt(),t=misTargets(),now=
   const units=Object.keys(U).map(k=>[k,m.units[k]||0]),tot=units.reduce((a,u)=>a+u[1],0),cols=["#2563eb","#16a34a","#d97706","#9333ea","#dc2626","#0891b2"];
   const front=tg&&tg.own?Math.round(tg.w.front):null;
   MX.el.innerHTML=`<div class="mdx-bar"><span class="mdx-logo" style="background:#1e3a8a;font-size:15px">🎯</span><b>${dxE(p.c||"")} Military Command</b><button class="mdx-th" data-mx="theme" aria-label="Switch light or dark theme" style="margin-left:auto">${themeIco()}</button><button class="mdx-x" data-mx="close" aria-label="Close dashboard">×</button></div>
-  <div class="mdx-body"><div class="mdx-in">${mxSeg()}${MX.page==="wf"?wfDash()+"</div></div>":MX.page!=="war"?`<div class="mdx-hd"><h2>${MXPAGES.find(x=>x[0]===MX.page)[1]}</h2><div class="mdx-date"><span class="mdx-live"></span>Same controls as the Government app</div></div><div class="bxd-con">${mxGov(MX.page)}</div></div></div>`:`<div class="mdx-hd"><h2>War room <span>🛰️</span></h2><div class="mdx-date"><span class="mdx-live"></span>Intelligence feed live</div></div>
+  <div class="mdx-body"><div class="mdx-in">${mxSeg()}${MX.page==="wf"?wfDash()+"</div></div>":MX.page==="cab"?`<div class="mdx-hd"><h2>🏛️ Cabinet</h2><div class="mdx-date"><span class="mdx-live"></span>Your government, live</div></div>${cabDash()}</div></div>`:MX.page==="gch"?`<div class="mdx-hd"><h2>🌐 Government chat</h2><div class="mdx-date"><span class="mdx-live"></span>Office holders of every country</div></div>${govChatDash()}</div></div>`:MX.page!=="war"?`<div class="mdx-hd"><h2>${MXPAGES.find(x=>x[0]===MX.page)[1]}</h2><div class="mdx-date"><span class="mdx-live"></span>Same controls as the Government app</div></div><div class="bxd-con">${mxGov(MX.page)}</div></div></div>`:`<div class="mdx-hd"><h2>War room <span>🛰️</span></h2><div class="mdx-date"><span class="mdx-live"></span>Intelligence feed live</div></div>
   <div class="mdx-kpis">${kp("Army strength",Math.round(milStr()).toLocaleString(),`${tot.toLocaleString()} units`,"#e0ecff","#2563eb","🪖")}${kp("Morale",Math.round(m.morale||0)+"%",m.morale>=60?"Ready":"Tired","#dcfce7","#16a34a","🎖️")}${kp("Targets",t.length,t.length?"in range":"no active war","#fee2e2","#dc2626","🎯")}${kp("Missions",x.n,`${x.n?Math.round(x.ok/x.n*100):0}% success`,"#fef3c7","#d97706","📋")}</div>
   <div class="mdx-grid"><div class="mdx-col mdx-c1">
     <div class="mdx-card"><div class="mdx-ch"><h3>Forces</h3></div><div class="mdx-rows">${units.map(([k,v],i)=>`<div><span><i style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${cols[i%cols.length]};margin-right:6px"></i>${U[k].n||k}</span><b>${v.toLocaleString()}</b></div>`).join("")}</div></div></div>
@@ -7840,7 +7931,7 @@ let nextAt=0;
 async function chk(){if(shown||Date.now()<nextAt||document.hidden||!/^https?:/.test(location.protocol)||!Number.isFinite(base))return;
   try{const r=await fetch(location.pathname,{method:"HEAD",cache:"no-store"});const t=Date.parse(r.headers.get("last-modified")||"");if(Number.isFinite(t)&&t-base>5000)ask()}catch(e){}}
 setInterval(chk,5*60000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)chk()});setTimeout(chk,20000)})();
-resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}try{wfTick()}catch(e){}},1000);
+resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}try{wfTick()}catch(e){}try{cabTick()}catch(e){}},1000);
 if(!S.log.length){S.log=["You start with nothing. Tap a city, open Jobs & home, rent a room and apply for work."];hud()}
 if(!world)toast("Map outline didn't load. Cities still work.");
 })();
