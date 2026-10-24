@@ -3862,12 +3862,12 @@ const mkwFresh=now=>!!MKW&&!WRM&&now-MKW.at<3*60000;
 function mkwAdopt(m,now){const t=MKW.xb;if(!t||now-t>=XRPB.dur||(m.xb2&&Math.abs(m.xb2.t0-t)<60000))return;m.xb2={t0:t,lf:xrpBoomF({xb2:{t0:t}},now)};S.log.unshift("Markets: XRP spikes as a government uses weapons of mass destruction");S.log=S.log.slice(0,3)}
 function mkwTs(t){return window.firebase.firestore.Timestamp.fromMillis(t)}
 function mkwPublish(m,now){if(typeof ON==="undefined"||!ON.ready||!ON.user||!devUid(ON.user.uid))return;const b=m.xb2,on=b&&!b.end&&now-b.t0<XRPB.dur;
-  if(now-(ON.mkPub||0)<(on?15000:30000))return;ON.mkPub=now;const px={};for(const a of ASSETS)px[a.s.replace(".","_")]=+m.px[a.s].toPrecision(8);
+  if(now-(ON.mkPub||0)<(on?15000:30000))return;ON.mkPub=now;const px={};for(const a of ASSETS)px[a.s.replace(".","_")]=+m.px[a.s].toPrecision(8);const pc=S.pand&&S.pand.cur;if(pc&&pc.k)px._pand={k:String(pc.k),left:Math.max(0,pc.left|0)};
   ON.db.collection("world").doc("mkt").set({px,xb:on?mkwTs(b.t0):null,updated:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't publish the market: "+(e&&e.code||e)})}
 function mkwBoom(now){if(typeof ON==="undefined"||!ON.ready||!ON.user||devUid(ON.user.uid))return;ON.db.collection("world").doc("mkt").update({xb:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{})}
 function mkwListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubMK)return;ON.unsubMK=ON.db.collection("world").doc("mkt").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!v.px)return;
   const px={};for(const a of ASSETS){const x=+v.px[a.s.replace(".","_")];if(x>0&&isFinite(x))px[a.s]=x}const ms=x=>x&&x.toMillis?x.toMillis():0;
-  MKW={px,xb:ms(v.xb),at:ms(v.updated)||Date.now()};if(WRM){const m=MK(),now=Date.now();if(MKW.xb&&now-MKW.xb<XRPB.dur&&!(m.xb2&&!m.xb2.end&&now-m.xb2.t0<XRPB.dur)){m.xb2={t0:MKW.xb,lf:1};S.log.unshift("Markets: XRP spikes as a government uses weapons of mass destruction");S.log=S.log.slice(0,3)}}},()=>{})}catch(e){}}
+  const pd=v.px._pand;MKW={px,xb:ms(v.xb),at:ms(v.updated)||Date.now(),pand:pd&&typeof pd==="object"&&pd.k?{k:String(pd.k),left:+pd.left||0}:null};if(!WRM)try{pandSync()}catch(e){}if(WRM){const m=MK(),now=Date.now();if(MKW.xb&&now-MKW.xb<XRPB.dur&&!(m.xb2&&!m.xb2.end&&now-m.xb2.t0<XRPB.dur)){m.xb2={t0:MKW.xb,lf:1};S.log.unshift("Markets: XRP spikes as a government uses weapons of mass destruction");S.log=S.log.slice(0,3)}}},()=>{})}catch(e){}}
 /* real crypto prices from CoinGecko when the network allows it */
 async function mktLive(){try{const ids=ASSETS.filter(a=>a.t==="c").map(a=>a.sec).join(",");
   const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);if(!r.ok)return;const j=await r.json(),m=MK();m.liveSet={};
@@ -7327,10 +7327,18 @@ function pandNews(t,quiet){try{if(!Array.isArray(S.news))S.news=[];S.news.unshif
 function pandStart(k,quiet){const P=PANDS.find(x=>x.k===k);if(!P||(S.pand&&S.pand.cur))return false;S.pand.cur={k:P.k,left:P.d};pandNews(`${P.n} declared: travel, hotels and shops slump, health firms gain (${P.d} days)`,quiet);return true}
 function pandDay(quiet){if(!S.pand)S.pand={cur:null,hist:[]};const c=S.pand.cur;
   if(c){const P=PANDS.find(x=>x.k===c.k);if(!P||!(--c.left>0)){S.pand.cur=null;S.pand.hist=(S.pand.hist||[]).concat(c.k).slice(-10);pandNews(`${P?P.n:"The pandemic"} is over: trade is recovering`,quiet)}return}
+  if(pandShared())return;   // shared world: only the master world rolls pandemics; followers mirror them in pandSync
   for(const P of PANDS)if(Math.random()<1-Math.pow(1-P.p,1/365)){pandStart(P.k,quiet);return}}
+/* Shared pandemics: the master world publishes its current pandemic inside world/mkt (px._pand = {k,left}); every other save that has
+   received market data mirrors it (S.pand.cur.sh = 1) and never rolls its own, so all players live through the same outbreak. */
+const pandShared=()=>typeof MKW!=="undefined"&&!!MKW&&!WRM;
+function pandSync(){if(!pandShared())return;if(!S.pand)S.pand={cur:null,hist:[]};const t=MKW.pand,c=S.pand.cur;
+  if(t&&PANDS.find(x=>x.k===t.k)){if(c&&c.k!==t.k){S.pand.hist=(S.pand.hist||[]).concat(c.k).slice(-10);S.pand.cur=null}
+    if(!S.pand.cur){pandStart(t.k,false)}S.pand.cur.left=Math.max(1,t.left|0);S.pand.cur.sh=1}
+  else if(!t&&c&&c.sh){const P=PANDS.find(x=>x.k===c.k);S.pand.cur=null;S.pand.hist=(S.pand.hist||[]).concat(c.k).slice(-10);pandNews(`${P?P.n:"The pandemic"} is over: trade is recovering`,false)}}
 function pandMult(b){const c=S.pand&&S.pand.cur;if(!c)return 1;const P=PANDS.find(x=>x.k===c.k);if(!P)return 1;
   return Math.max(.7,Math.min(1.2,PAND_HOS.includes(b.k)?P.hos:PAND_HL.includes(b.k)?P.hl:b.k==="shop"?1+(P.hl-1)/3:RETAIL.includes(b.k)?P.ret:1))}
-window.__story={S:()=>S,st:story,fl:flNews,hour:stHour,wf,dip,back:wfBack,cr:wfCR};window.__pand={start:k=>pandStart(k),day:()=>pandDay(false),mult:k=>pandMult({k}),st:()=>S.pand,news:()=>S.news[0]&&S.news[0].t};
+window.__story={S:()=>S,st:story,fl:flNews,hour:stHour,wf,dip,back:wfBack,cr:wfCR};window.__pand={start:k=>pandStart(k),day:()=>pandDay(false),mult:k=>pandMult({k}),st:()=>S.pand,news:()=>S.news[0]&&S.news[0].t,sync:()=>pandSync()};
 function ishBiz(b){const e=ishE();return 1+e.biz+(RETAIL.includes(b.k)?e.ret:0)}
 function ishOut(o){const e=ishE();return 1+(o.cat==="Farm"||o.cat==="Ranch"?e.farm:o.cat==="Mine"?e.mine:o.cat==="Factory"&&!o.rp?e.fac:0)}
 function ishUp(o){return 1-ishE().upk}
