@@ -147,6 +147,7 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
 .tabs button{flex:1 0 auto;font:inherit;font-size:13px;font-weight:600;padding:8px 10px;border:0;background:var(--line);color:var(--muted);border-radius:999px;cursor:pointer;white-space:nowrap}
 .tabs button[aria-selected="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
 .row label{white-space:nowrap}
+.row.cfrow{display:block}.row.cfrow .d{margin-top:3px}.cfbt{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.cfbt .buy{flex:1 1 140px;min-width:0}
 #nav{display:flex;background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);
   padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px));position:relative;z-index:6}
 #nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 7px;background:none;border:0;color:var(--muted);font:600 11px var(--body);cursor:pointer}
@@ -2394,9 +2395,10 @@ function wsupDay(quiet){const L=S.wsup;if(!L||!L.length)return;const ws=S.wars||
       if(w.l>=4&&Math.random()<WSUP.risk*lawRisk()){const f=Math.round(c.amt*WSUP.fine);S.cash-=f;logGov(`War profiteering probe: fined ${fmt(f)} over your ${c.n} contract`);if(!quiet)toast(`Fined ${fmt(f)} for war profiteering`)}}
     if(v>0){S.cash+=v;S.earned=(S.earned||0)+v;c.got+=v;S.wsupT+=v}
     if(end){S.wsup=S.wsup.filter(x=>x!==c);logGov(end+` (total earned ${fmt(c.got)} on ${fmt(c.amt)})`);if(!quiet)toast(end)}}}
+const wsupLine=w=>wsupOf(w.id)?wsupHtml(w):"",wsupBtns=w=>wsupOf(w.id)?"":wsupHtml(w);
 function wsupHtml(w){const c=wsupOf(w.id);if(c)return `<div class="d">📦 Your supply contract with ${c.n}: ${fmt(Math.round(c.amt*(w.l>=4?WSUP.r4:w.l>=3?WSUP.r3:0)))}/day · earned ${fmt(c.got)} of ${fmt(c.amt)} staked</div>`;
   if(w.l<3)return "";const amt=Math.round(warCost(w)*WSUP.stake),full=(S.wsup||[]).length>=WSUP.max;
-  return `<div style="display:flex;gap:6px;flex-wrap:wrap">${["a","b"].map(s=>`<button class="buy" data-gov="wsup" data-s="${s}" data-w="${w.id}" data-fixed="1" ${S.cash<amt||full?"disabled":""}>Supply ${w[s]} ${fmt(amt)}</button>`).join("")}</div>`}
+  return ["a","b"].map(s=>`<button class="buy" data-gov="wsup" data-s="${s}" data-w="${w.id}" data-fixed="1" ${S.cash<amt||full?"disabled":""}>Supply ${w[s]} ${fmt(amt)}</button>`).join("")}
 function warAct(id,a){const w=(S.wars||[]).find(x=>x.id===id);if(!w)return;const cst=warCost(w);if(S.cash<cst){toast(`Need ${fmt(cst)}`);return}S.cash-=cst;
   if(a==="peace"){if(Math.random()<.55){w.l--;logGov(`Talks you funded ease ${w.a}–${w.b} to ${WARL[w.l].toLowerCase()}`);toast("Talks worked")}else toast("Talks collapsed")}
   else{if(Math.random()<.12*lawRisk()){const f=cst*3;S.cash-=f;logGov(`Arms dealing exposed: fined ${fmt(f)}`);toast(`Caught! Fined ${fmt(f)}`);arrest("arms trafficking",36,cap(w.a),0,1);return}
@@ -2405,9 +2407,9 @@ function warAct(id,a){const w=(S.wars||[]).find(x=>x.id===id);if(!w)return;const
 function conflictHtml(n){const wsT=S.wsupT?`<p class="d" style="font-size:12px">War profits so far: ${fmt(S.wsupT)} from supply contracts${(S.wsup||[]).length?` · ${S.wsup.length} active`:""}</p>`:"";const ws=(S.wars||[]).filter(w=>!n||w.a===n||w.b===n).sort((a,b)=>b.l-a.l);
   if(!ws.length)return n?"":`<div class="sec">World conflicts</div><p class="d" style="color:var(--muted);font-size:13px">The world is calm. For now.</p>`;
   let h=`<div class="sec">${n?"Conflicts":"World conflicts · global tension "+tension()+"%"}</div>${n?"":wsT}<div class="list">`;
-  for(const w of ws){const c=warCost(w);h+=`<div class="row"><div class="n">${w.a} – ${w.b} <span class="tag" style="background:${WARC[w.l]};color:#fff">${WARL[w.l].toUpperCase()}</span></div>
-    <div class="d">${CF_EFF[w.l]}</div>${allyLine(w)}${wsupHtml(w)}
-    <div style="display:flex;gap:6px;flex-wrap:wrap">${allyBtns(w,["buy","data-gov"])}<button class="buy" data-gov="peace" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="buy" data-gov="stoke" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Sell arms ${fmt(c)}</button></div></div>`}
+  for(const w of ws){const c=warCost(w);h+=`<div class="row cfrow"><div class="n">${w.a} – ${w.b} <span class="tag" style="background:${WARC[w.l]};color:#fff">${WARL[w.l].toUpperCase()}</span></div>
+    <div class="d">${CF_EFF[w.l]}</div>${allyLine(w)}${wsupLine(w)}
+    <div class="cfbt">${allyBtns(w,["buy","data-gov"])}${wsupBtns(w)}<button class="buy" data-gov="peace" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="buy" data-gov="stoke" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Sell arms ${fmt(c)}</button></div></div>`}
   return h+`</div>`}
 /* ---------- AI governments using WMD on each other ----------
    A world conflict (S.wars, AI vs AI: never the player's country, never an invasion of it) that stays at WAR counts days in w.es (reset when it drops below war).
