@@ -2832,7 +2832,7 @@ WFCFG.back={p:.12,max:3,exp:6,lo:85e6,hi:1e11}; // offers $85M to $100B, small o
 WFCFG.cr={p:.03,max:3,you:.35,days:[5,12],hit:.92};
 const wfHQ=i=>(CITIES[(RIVAL_START[i]||[0])[0]]||{}).country;
 const wfMe=()=>(CITIES[(S.home||{city:0}).city]||CITIES[0]).country;
-function wfCR(){const d=wf();if(!Array.isArray(d.cr))d.cr=[];d.cr=d.cr.filter(x=>x&&RIVALS[x.a]&&(x.b===-1||RIVALS[x.b])&&x.end>(S.day||0));return d.cr}
+function wfCR(){const d=wf();if(!Array.isArray(d.cr))d.cr=[];for(const x of d.cr)if(x&&x.end<=(S.day||0)&&RIVALS[x.a]&&(x.b===-1||RIVALS[x.b]))STF.push(x);d.cr=d.cr.filter(x=>x&&RIVALS[x.a]&&(x.b===-1||RIVALS[x.b])&&x.end>(S.day||0));return d.cr}
 function wfOff(){const d=wf();if(!Array.isArray(d.off))d.off=[];const n=Date.now(),p=pol();d.off=p.r>=0&&p.c?d.off.filter(x=>x&&x.exp>n&&x.to===p.c):[];return d.off}
 /* rival company in a feud with the player: cities they share earn a little less */
 function wfFeudHit(c){try{const cr=(S.wf&&S.wf.cr)||[];let m=1;for(const x of cr)if(x.b===-1&&x.end>(S.day||0)&&S.rivals[x.a]&&S.rivals[x.a].cities.includes(c.id))m*=WFCFG.cr.hit;return m}catch(e){return 1}}
@@ -2853,20 +2853,89 @@ function wfBack(quiet){const p=pol(),off=wfOff(),B=WFCFG.back;if(!(p.r>=0&&p.c)|
   else{if(!vs){const near=COUNTRIES.filter(x=>x!==c&&("Government of "+x)!==fr&&kmBetween(cap(c),cap(x))<5000&&!wfAtWar(c,x));if(!near.length)return null;vs=pick(near)}o={k:"e",to:c,vs}}
   amt=Math.min(B.hi,Math.round(B.lo*Math.pow(B.hi/B.lo,Math.pow(Math.random(),2))/1e6)*1e6);
   const x=Object.assign(o,{id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),fr,ty,amt,exp:Date.now()+B.exp*DAYMS});off.push(x);
-  if(!quiet){S.log.unshift(`${fr} offers ${fmt(amt)} to ${c} to ${o.k==="w"?"fight on against "+o.vs:"stir tension with "+o.vs}`);S.log=S.log.slice(0,3)}return x}
+  if(!quiet){S.log.unshift(`${fr} offers ${fmt(amt)} to ${c} to ${o.k==="w"?"fight on against "+o.vs:"stir tension with "+o.vs}`);S.log=S.log.slice(0,3);stOffer(x)}return x}
 /* deliver backer money as anonymous funding (local authority, or the online queue like a player donation) */
 function wfPush(o){const w=o.k==="w"?wfActive().find(x=>wlGid(x)===o.w):null,remote=wfRemote()&&(o.k==="e"?wwShared():!!(w&&w.gid));
   if(!remote){if(wfApply(o))wfPublish(true);return}
   const doc={k:o.k,amt:Math.min(1e13,Math.round(o.amt)),to:String(o.to).slice(0,40),vs:String(o.vs).slice(0,40),at:window.firebase.firestore.FieldValue.serverTimestamp()};if(o.k==="w"){doc.w=o.w;doc.s=o.s}
   ON.db.collection("wfund").add(doc).catch(e=>console.warn("wf",e))}
 function wfOffer(id,yes){const off=wfOff(),i=off.findIndex(x=>x.id===id);if(i<0)return toast("That offer has expired");const o=off.splice(i,1)[0];
-  if(!yes){toast(`Declined ${o.fr}'s money`);save();return}
+  if(!yes){toast(`Declined ${o.fr}'s money`);stNews("A pity. The offer was sincere.","Mr Gray");save();return}
   if(o.k==="w"&&!wfActive().some(w=>wlGid(w)===o.w))return toast("That war is over");if(o.k==="e"&&wfAtWar(o.to,o.vs))return toast(`${o.to} is already at war with ${o.vs}`);
   S.cash+=o.amt;S.earned=(S.earned||0)+o.amt;wfPush(o);
   try{logGov(`Took ${fmt(o.amt)} from ${o.fr} against ${o.vs}`)}catch(e){}
   toast(`${fmt(o.amt)} received from ${o.fr}`);save();hud()}
 /* every save, hourly: feuds and backer offers */
-function wfLocalHour(quiet){try{wfFeud(quiet)}catch(e){console.warn("wf",e)}try{wfBack(quiet)}catch(e){console.warn("wf",e)}}
+function wfLocalHour(quiet){try{wfFeud(quiet)}catch(e){console.warn("wf",e)}try{wfBack(quiet)}catch(e){console.warn("wf",e)}try{stHour(quiet)}catch(e){console.warn("story",e)}}
+/* Story layer (S.story): fault-line flavour for tension and war news, the Yellow Sea arc, feud endings, backer-offer messages.
+   It only narrates state the Meridian World already produced: it never raises tension, starts a war or moves money. Text: docs/story/. */
+const STFIG=["Dale Pruett","Sasha Kovalenko","Kenji Hasegawa","Sir Alistair Penrose","Mina Castell","Lars Vinding","Evelyn Marsh","Claudine Vautrin"],
+  STCEO=["Cal Brannigan","Imogen Trask","Takeshi Aoyagi","Dame Philippa Wren","Oliver Ostrander","Mette Haraldsen","Walter Kessler","Henri Vautier"],
+  STMIN={USA:"Marcus Whitlock",China:"Zhao Yilan",India:"Kavita Menon",Japan:"Shingo Kurata",UK:"Hugh Marlowe",France:"Camille Duvernay","Türkiye":"Berna Karaca",Brazil:"Tiago Valadares",Canada:"Mark Dev","South Korea":"Park Ji-hwan","Saudi Arabia":"Faisal al-Qadri",UAE:"Noor bint Rashed",Iraq:"Hassan Kirkuki",Argentina:"Mariela Quiroga","DR Congo":"Joseph-Désiré Mbala",Australia:"Kieran Walsh","New Zealand":"Hana Te Rangi",Germany:"Matthias Brandl",Poland:"Ewa Kowalczyk"};
+/* [countries (A is the earlier one), 1 = any member (Bosporus), {t:Tense,h:Hostile,b:Brink,w:War start}]; "@X,Y:" limits a line to pairs holding those countries */
+const FL=[
+[["Japan","South Korea","China"],0,{t:[`@Japan:Hideaki Morosawa: "We do not forget eleven names"`,`@South Korea:Park Ji-hwan urges calm as {A} and {B} swap ambassadors' protests`],h:[`Boat rammed off Kestrel Shoal; {A} and {B} blame each other`,`@China:Lin Shoumei: "Our waters, our laws"; Seoul closes its airspace`],b:[`@China:{A} mobilises reservists, {B} carrier group leaves Qingdao`,`@South Korea:Talia Okonjo, Busan: "Streets are empty, ports are not"`],w:[`War in the Yellow Sea: {fav} and {oth} exchange fire after anonymous money surges`,`@Japan:War in the Yellow Sea: {fav} and {oth} exchange fire after anonymous money surges. Toyota halts Tokyo lines`]}],
+[["USA","Canada"],0,{t:[`{B} taxes cloud traffic; Ruth Calloway calls Amazon "a company with a country attached"`,`@Canada:Mark Dev recalls trade envoy from {capA}`],h:[`{A}-{B} talks collapse in {capB}; truckers block the border at {city}`,`Dale Pruett: Walmart shelves "at risk" if the Data Act stays`],b:[`Reservists called up on both sides of the 49th parallel`,`Doug Tremblay: "Not one more tariff" as {capA} masses on the border`],w:[`Unthinkable: {fav} and {oth} at war after a surge of anonymous funding`]}],
+[["Saudi Arabia","UAE","Iraq","India"],0,{t:[`{A} undercuts {B} on crude again`,`@Saudi Arabia,UAE:{A} undercuts {B} on crude again; Hassan Kirkuki "listens to both"`],h:[`OPEC-style talks fail in Istanbul; Kerem Aydınlı offers a new round`,`Pipeline row: India quietly funds a bypass`],b:[`{A} moves armour toward the {B} border; tankers wait off Fujairah`,`Sir Alistair Penrose denies Shell money is behind the build-up`],w:[`Gulf war: {fav} and {oth} clash; Brent jumps, Lars Vinding reroutes the fleet`]}],
+[["UK","France","Germany","Poland"],0,{t:[`@UK,France:Clare Ashdown recalls envoy; Étienne Marchais: "Paris will not be lectured"`,`@Germany,Poland:Ewa Kowalczyk accuses Matthias Brandl of pipeline "games"`],h:[`{A}-{B} fishing and port talks collapse; Claudine Vautrin: "Nestlé has no comment"`,`@UK:Dominic Faulke demands a Channel blockade`],b:[`Nuclear powers {A} and {B} on alert; Solène Darrieux calls for a general strike`,`{A} and {B} on alert; Solène Darrieux calls for a general strike`],w:[`Europe at war: {fav} and {oth} exchange fire. Kerem Aydınlı calls for talks`]}],
+[["Brazil","Argentina","Chile"],0,{t:[`@Brazil,Argentina:Rodrigo Bastião: "The Cone is ours"; Mariela Quiroga closes another port to {B} steel`],h:[`Grain dispute turns to ban: {A} and {B} expel ambassadors; Chile sells copper to both`],b:[`{A} troops mass on the River Plate; Walmart warns of empty shelves in {capB}`],w:[`South America at war: {fav} advances on {oth}'s grain belt`]}],
+[["DR Congo","Kenya","South Africa","Nigeria"],0,{t:[`{A} accuses {B} of smuggling cobalt through Lubumbashi`],h:[`Mine seized at Kolwezi; Dr Amara Nwosu counts new arrivals at Nairobi camps`],b:[`Mercenaries cross the {A}-{B} border; every battery maker watches the price`],w:[`War over the Copper Belt: {fav} moves on {oth}. Apple's Mina Castell flies to {capA}`]}],
+[["Singapore","Indonesia","Thailand"],0,{t:[`Toll hike on the lane; Maersk "reviewing routes"`],h:[`{A} detains a tanker; Lars Vinding raises rates`],b:[],w:[`Straits closed: {fav} and {oth} at war, ships detour via Lombok`]}],
+[["Australia","New Zealand"],0,{t:[`Sheep tariff: Kieran Walsh vs Hana Te Rangi`],h:[`Both ambassadors recalled; "this is not a joke anymore"`],b:[],w:[`Tasman war: {fav} and {oth} exchange fire, farmers fume`]}],
+[["Türkiye"],1,{t:[`Drone sales to {B} anger {A}; Selin Oztürkmen demands an inquiry`],h:[`{A} suspends talks hosted in Istanbul; Yusuf Demirel flies shuttle to {capB}`],b:[`Turkish drones spotted on both sides of the {A}-{B} line`],w:[`{fav} and {oth} at war; Istanbul offers to host the ceasefire talks "the moment anyone asks"`]}],
+[null,0,{t:[`Old wounds: {A} recalls its ambassador from {capB}`],h:[`{A}-{B} talks collapse; markets slide`],b:[`Brink: {A} mobilises reservists, {B} closes its border`],w:[]}]];
+const stR=a=>a[Math.floor(Math.random()*a.length)];
+function flNews(a,b,lv,x){try{x=x||{};const f=FL.find(e=>!e[0]||(e[1]?e[0][0]===a||e[0][0]===b:e[0].includes(a)&&e[0].includes(b)));let A=a,B=b;
+  if(lv<4&&f[0]&&!f[1]&&f[0].indexOf(a)>f[0].indexOf(b))[A,B]=[B,A];const fav=x.fav===B?B:A,oth=fav===A?B:A,
+    cx={A,B,fav,oth,capA:cap(A).name,capB:cap(B).name,city:stR(ctyCities(B)).name,co:stR(RIVALS).n};
+  const rows=(f[2]["thbw"[lv-1]]||[]).filter(s=>{const m=/^@([^:]+):/.exec(s);return !m||m[1].split(",").every(c=>c===A||c===B)});
+  return rows.length?stR(rows).replace(/^@[^:]+:/,"").replace(/\{(\w+)\}/g,(m,k)=>cx[k]):""}catch(e){return ""}}
+function story(){const s=S.story=S.story&&typeof S.story==="object"?S.story:{};if(!s.seen||typeof s.seen!=="object")s.seen={};
+  const y=s.ys=s.ys&&typeof s.ys==="object"?s.ys:{};if(!(y.st>=0&&y.st<=5))y.st=0;for(const k of ["d0","cd","z","d5"])if(!(y[k]>=0))y[k]=0;if(!YSK.includes(y.pair)){y.pair=null;if(y.st)y.st=0}
+  if(typeof y.fav!=="string")y.fav=null;if(!y.ch||typeof y.ch!=="object")y.ch={};if(!Array.isArray(y.sk))y.sk=[];return s}
+/* one story line: the News app (S.news) and the World news list; `from` makes it a phone message from a character */
+function stNews(t,from){try{if(!Array.isArray(S.news))S.news=[];S.news.unshift(from?{t,at:Date.now(),f:from}:{t,at:Date.now()});S.news=S.news.slice(0,40);if(!from)dipSay(t,0,1)}catch(e){}}
+const YSC=["Japan","South Korea","China"],YSK=["China|Japan","China|South Korea","Japan|South Korea"],YSN=["","The Shoal","The Incident","Mobilisation","War","Aftermath"];
+function ysLv(k){const T=wf().tens[k],v=T?T.v:0,w=(S.wars||[]).find(x=>x&&x.l>0&&wfPair(x.a,x.b)===k);return{T,w,lv:Math.max(v>=80?3:v>=50?2:v>=25?1:0,w?w.l:0)}}
+function ysBeat(n,T){const ys=story().ys,[a,b]=ys.pair.split("|"),fav=ys.fav||a,oth=fav===a?b:a,jp=ys.pair.includes("Japan"),f=flNews(a,b,n,{fav,oth});
+  if(f)stNews(f+(n===4&&ys.ch.f?". Funds cleared by the Notary.":""));
+  if(n===1&&jp)stNews("Benedikt Sauer: yen and won wobble, Toyota shares dip");
+  if(n===2)stNews("Two facts: a boat was rammed off the Kestrel Shoal and Seoul has closed its airspace. One rumour, unconfirmed: the crew was not fishing. — MW","Talia Okonjo, Busan");
+  if(n===3&&T){const t=Object.values(T.f||{}).reduce((s,v)=>s+v,0);if(t>0)stNews(`The Counting House: ${fmt(t)} in anonymous money has cleared the Notary on the ${a}–${b} line`)}
+  if(n===4)stNews(jp?"Kenji Hasegawa: Toyota's Tokyo lines stay shut \"until the water is calm\"":"Evelyn Marsh: JPMorgan \"lends to everyone\", and says it will keep lending")}
+function ysEpi(i){const ys=story().ys,[a,b]=ys.pair.split("|"),fav=ys.fav||a,oth=fav===a?b:a,e=ys.ch.e;
+  if(e==="c"){const r=YSC.find(c=>dip().ruler[c]);return i?"Meridian Wire: \"the map has changed\"":`${dip().ruler[r]} takes control of ${r}; ${ys.pair.includes("Japan")?"Aiko Tanabe":"Wen Kaixuan"} condemns it`}
+  if(i){const m=(wf().mine||[]).filter(r=>r.t>=(ys.t||0)&&r.k==="e"&&r.to===fav&&YSC.includes(r.vs)).reduce((s,r)=>s+(+r.amt||0),0);if(m>0)return `The Counting House: ${fmt(m)} reached ${fav} through the Notary before the war`;
+    return e==="a"?"Dr Amara Nwosu's relief agency opens its first reconstruction camp":"Talia Okonjo, Busan: \"Nobody here calls it peace\""}
+  return e==="a"?`Ambassador Yusuf Demirel hosts the Seoul Accord in Istanbul: ${fav} and ${oth} agree to stop fighting`:`A shaky ceasefire holds between ${fav} and ${oth}; sanctions stay`}
+/* the Yellow Sea arc: S.story.ys={st,d0,pair,fav,ch,cd}; st 0 dormant, 1-4 beats, 5 aftermath. Offline (quiet): beats only advance, then one S.log line */
+function ysStep(quiet){if(!wfAuth())return;const ys=story().ys,d=dip();
+  if(!quiet&&ys.sk.length){const n=[...new Set(ys.sk)].map(i=>YSN[i]);ys.sk=[];S.log.unshift("World: while you were away the Yellow Sea went through "+n.join(", "));S.log=S.log.slice(0,3)}
+  if(ys.st===5){if(S.day>=ys.d5+4&&!ys.ch.l){ys.ch.l=1;quiet?ys.sk.push(5):stNews(ysEpi(1))}
+    if(S.day>=ys.d5+8){ys.st=0;ys.pair=null;ys.fav=null;ys.ch={};ys.cd=S.day+40}return}
+  if(!ys.st){if(S.day<ys.cd||YSC.some(c=>d.ruler[c]))return;
+    const c=YSK.map(k=>Object.assign({k},ysLv(k))).filter(x=>x.lv>0&&(!x.w||x.w.l<=1)).sort((x,y)=>y.lv-x.lv)[0];if(!c)return;
+    ys.pair=c.k;ys.d0=S.day;ys.t=Date.now();ys.fav=c.k.split("|")[0];ys.ch={};ys.z=0}
+  const{T,w,lv}=ysLv(ys.pair),[a,b]=ys.pair.split("|");
+  if(T&&T.f){ys.ch.f=1;ys.fav=(T.f[a]||0)>=(T.f[b]||0)?a:b}if(w&&w.att)ys.fav=w.att;
+  const beat=n=>quiet?ys.sk.push(n):ysBeat(n,T);
+  if(ys.st<4&&lv>ys.st){while(ys.st<Math.min(lv,4)){ys.st++;beat(ys.st)}ys.z=0}
+  else if(ys.st<4&&lv===0){if(++ys.z>=6){quiet||stNews("Meridian Wire: the Yellow Sea cools, Kestrel Shoal ferries run normally");ys.st=0;ys.pair=null;ys.cd=S.day+15;ys.z=0}}
+  else if(ys.st===4){const r=YSC.find(c=>d.ruler[c]);if(r||!w||w.l<=2){ys.ch.e=r?"c":!w?"a":"f";ys.st=5;ys.d5=S.day;ys.ch.l=0;quiet?ys.sk.push(5):stNews(ysEpi(0))}}}
+/* fault-line flavour whenever a pair's tension stage or war level rises (also tracked silently offline) */
+function stSeen(quiet){const s=story().seen,ys=story().ys,now={},fv={};
+  for(const k in wf().tens){const v=wf().tens[k].v;if(v>=25)now[k]=v>=80?3:v>=50?2:1}
+  for(const w of S.wars||[])if(w&&w.l>0&&w.a&&w.b){const k=wfPair(w.a,w.b);if(w.l>=(now[k]||0)){now[k]=w.l;fv[k]=w.att||w.a}}
+  let n=0;for(const k in now)if(now[k]!==s[k]){const up=now[k]>(s[k]||0);s[k]=now[k];
+    if(up&&!quiet&&n<2&&!(ys.st&&ys.pair===k)){const[a,b]=k.split("|"),f=flNews(a,b,now[k],{fav:fv[k]});if(f){n++;stNews(f)}}}
+  for(const k in s)if(!now[k])delete s[k]}
+const STF=[];
+function wfFeudEnd(x){try{const a=x.a,b=x.b;if(b===-1)stNews("No hard feelings. Profit in shared cities is back to normal.",STCEO[a]);
+  else stNews(`${STCEO[a]} and ${STCEO[b]} shake hands at ${cap(wfHQ(a)).name}; the ${RIVALS[a].n}-${RIVALS[b].n} rivalry is over`)}catch(e){}}
+function stHour(quiet){const q=STF.splice(0);if(!quiet)q.forEach(wfFeudEnd);try{ysStep(quiet)}catch(e){console.warn("story",e)}try{stSeen(quiet)}catch(e){console.warn("story",e)}}
+/* backer offer as a phone message from Mr Gray */
+function stOffer(o){try{const p=pol(),i=RIVALS.findIndex(r=>r.n===o.fr),g=o.fr.slice(14),who=o.ty==="co"&&i>=0?`${STFIG[i]} of ${o.fr}`:STMIN[g]?`The office of ${STMIN[g]}`:`A friend of the ${o.fr}`;
+  stNews(`Good afternoon, ${GOVCFG.offices[p.r].n}. ${who} has ${fmt(o.amt)} available, should ${o.to} ${o.k==="w"?"press on against":"take a firmer line with"} ${o.vs}. No names. Six days.`,"Mr Gray")}catch(e){}}
 /* player: send from the form. Cash leaves at once; a failed online send is refunded */
 function wfSend(){const f=WF.f,C=WFCFG,amt=Math.floor(+String(f.amt||"").replace(/[^0-9.]/g,"")||0);
   if(!(amt>=C.min))return toast(`Minimum donation is ${fmt(C.min)}`);if(S.cash<amt)return toast("Not enough cash");
@@ -7236,7 +7305,7 @@ function pandDay(quiet){if(!S.pand)S.pand={cur:null,hist:[]};const c=S.pand.cur;
   for(const P of PANDS)if(Math.random()<1-Math.pow(1-P.p,1/365)){pandStart(P.k,quiet);return}}
 function pandMult(b){const c=S.pand&&S.pand.cur;if(!c)return 1;const P=PANDS.find(x=>x.k===c.k);if(!P)return 1;
   return Math.max(.7,Math.min(1.2,PAND_HOS.includes(b.k)?P.hos:PAND_HL.includes(b.k)?P.hl:b.k==="shop"?1+(P.hl-1)/3:RETAIL.includes(b.k)?P.ret:1))}
-window.__pand={start:k=>pandStart(k),day:()=>pandDay(false),mult:k=>pandMult({k}),st:()=>S.pand,news:()=>S.news[0]&&S.news[0].t};
+window.__story={S:()=>S,st:story,fl:flNews,hour:stHour,wf,dip,back:wfBack,cr:wfCR};window.__pand={start:k=>pandStart(k),day:()=>pandDay(false),mult:k=>pandMult({k}),st:()=>S.pand,news:()=>S.news[0]&&S.news[0].t};
 function ishBiz(b){const e=ishE();return 1+e.biz+(RETAIL.includes(b.k)?e.ret:0)}
 function ishOut(o){const e=ishE();return 1+(o.cat==="Farm"||o.cat==="Ranch"?e.farm:o.cat==="Mine"?e.mine:o.cat==="Factory"&&!o.rp?e.fac:0)}
 function ishUp(o){return 1-ishE().upk}
@@ -7472,7 +7541,7 @@ function appHtml(k){const {inc,nw}=totals();
   if(k==="wallet")return `<div class="ph-big">${fmt(S.cash)}</div><div class="ph-sub">cash on hand</div>
     <div class="ph-rows"><div><span>Income</span><b style="color:${inc<0?"var(--bad)":"var(--good)"}">${fmt(inc)}/hr</b></div><div><span>Net worth</span><b>${fmt(nw)}</b></div><div><span>Loan</span><b>${fmt(S.debt)}</b></div><div><span>Taxes owed</span><b>${fmt(taxOwed())}</b></div><div><span>Wages</span><b>${S.job?fmt(wage(JK[S.job.k],CITIES[S.job.city])*wageMult()*rankMult())+"/hr":"—"}</b></div></div>
     ${S.debt&&S.cash>0?`<button class="buy" data-ph="repay" style="width:100%;margin-top:8px">Repay ${fmt(Math.min(S.debt,S.cash))}</button>`:""}`;
-  if(k==="news")return S.news.length?`<div class="ph-list">${S.news.filter(n=>n&&typeof n==="object").slice(0,25).map(n=>`<div><small>${fmtDur(Date.now()-n.at)} ago</small>${onEsc(n.t)}</div>`).join("")}</div>`:`<p class="ph-sub">No news yet.</p>`;
+  if(k==="news")return S.news.length?`<div class="ph-list">${S.news.filter(n=>n&&typeof n==="object").slice(0,25).map(n=>`<div><small>${fmtDur(Date.now()-n.at)} ago</small>${n.f?`<b>${onEsc(n.f)}</b> `:""}${onEsc(n.t)}</div>`).join("")}</div>`:`<p class="ph-sub">No news yet.</p>`;
   if(k==="needs")return `<div class="ph-rows">${NEEDS.map(([q,n])=>`<div><span>${n}</span><b>${Math.round(S.need[q])}%</b></div><div class="bar" style="height:6px;grid-column:auto;margin:-4px 0 6px"><i style="width:${S.need[q]}%;background:${S.need[q]<25?"var(--bad)":S.need[q]<50?"var(--accent)":"var(--good)"}"></i></div>`).join("")}</div>
     <p class="ph-sub">${S.home?"Home keeps you at 85%.":"No home: needs keep draining."}</p>${ITEMS.filter(i=>i.cat!=="Food").map(itemBtn).join("")}`;
   if(k==="food")return ITEMS.filter(i=>i.cat==="Food").map(itemBtn).join("")+`<p class="ph-sub">Delivered wherever you are. Prices from your home city.</p>`;
