@@ -2828,7 +2828,7 @@ function wfAI(quiet){const A=WFCFG.ai;if(Math.random()>A.p||!Array.isArray(S.riv
 /* Backer offers and company rivalries (local to each save). Only a player holding a government office gets offers:
    an AI company or a foreign AI government pays cash to stir tension (or fund the war) of the country they govern.
    S.wf.off=[{id,fr,ty,k,w,s,to,vs,amt,exp}] ; S.wf.cr=[{a,b,end}] company feuds, b=-1 is the player's company */
-WFCFG.back={p:.12,max:3,exp:6,co:[.00002,.00012],gov:[3,12],rank:[.25,.5,1]};
+WFCFG.back={p:.12,max:3,exp:6,lo:85e6,hi:1e11}; // offers $85M to $100B, small ones likelier
 WFCFG.cr={p:.03,max:3,you:.35,days:[5,12],hit:.92};
 const wfHQ=i=>(CITIES[(RIVAL_START[i]||[0])[0]]||{}).country;
 const wfMe=()=>(CITIES[(S.home||{city:0}).city]||CITIES[0]).country;
@@ -2845,14 +2845,13 @@ function wfFeud(quiet){const C=WFCFG.cr,cr=wfCR(),pick=x=>x[Math.floor(Math.rand
 /* AI money pick for a rival: a feuding company pushes its own HQ country against its enemy's */
 function wfFeudPair(i){const x=wfCR().find(y=>y.a===i||y.b===i);if(!x)return null;const e=x.a===i?x.b:x.a,a=wfHQ(i),b=e===-1?wfMe():wfHQ(e);return a&&b&&a!==b&&!wfAtWar(a,b)?[a,b]:null}
 function wfBack(quiet){const p=pol(),off=wfOff(),B=WFCFG.back;if(!(p.r>=0&&p.c)||off.length>=B.max||Math.random()>B.p)return null;
-  const c=p.c,pick=x=>x[Math.floor(Math.random()*x.length)],rk=B.rank[p.r]||1,co=Math.random()<.6;let fr,ty,amt,vs=null;
+  const c=p.c,pick=x=>x[Math.floor(Math.random()*x.length)],co=Math.random()<.6;let fr,ty,amt,vs=null;
   const war=wfActive().filter(w=>w.a===c||w.b===c);
-  if(co){const i=Math.floor(Math.random()*RIVALS.length),r=S.rivals[i];if(!r||!(r.nw>0))return null;fr=RIVALS[i].n;ty="co";amt=r.nw*(B.co[0]+Math.random()*(B.co[1]-B.co[0]));const fp=wfFeudPair(i);if(fp&&fp[0]!==c&&fp[1]!==c&&!wfAtWar(c,fp[1]))vs=fp[1]}
-  else{const g=pick(COUNTRIES.filter(x=>x!==c));fr="Government of "+g;ty="gov";amt=null}
+  if(co){const i=Math.floor(Math.random()*RIVALS.length),r=S.rivals[i];if(!r||!(r.nw>0))return null;fr=RIVALS[i].n;ty="co";const fp=wfFeudPair(i);if(fp&&fp[0]!==c&&fp[1]!==c&&!wfAtWar(c,fp[1]))vs=fp[1]}
+  else{const g=pick(COUNTRIES.filter(x=>x!==c));fr="Government of "+g;ty="gov"}
   let o;if(war.length&&Math.random()<.5){const w=pick(war),s=w.a===c?"a":"b";o={k:"w",w:wlGid(w),s,to:c,vs:w[s==="a"?"b":"a"]}}
   else{if(!vs){const near=COUNTRIES.filter(x=>x!==c&&("Government of "+x)!==fr&&kmBetween(cap(c),cap(x))<5000&&!wfAtWar(c,x));if(!near.length)return null;vs=pick(near)}o={k:"e",to:c,vs}}
-  if(amt==null)amt=wfPt(c,o.vs)*(B.gov[0]+Math.random()*(B.gov[1]-B.gov[0]));
-  amt=Math.max(WFCFG.min,Math.round(amt*rk/1e5)*1e5);
+  amt=Math.min(B.hi,Math.round(B.lo*Math.pow(B.hi/B.lo,Math.pow(Math.random(),2))/1e6)*1e6);
   const x=Object.assign(o,{id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),fr,ty,amt,exp:Date.now()+B.exp*DAYMS});off.push(x);
   if(!quiet){S.log.unshift(`${fr} offers ${fmt(amt)} to ${c} to ${o.k==="w"?"fight on against "+o.vs:"stir tension with "+o.vs}`);S.log=S.log.slice(0,3)}return x}
 /* deliver backer money as anonymous funding (local authority, or the online queue like a player donation) */
