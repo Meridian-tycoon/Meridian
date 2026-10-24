@@ -3028,10 +3028,16 @@ function obDefault(src,x){const o=S.ob,C=BANKCFG;x.st="defaulted";o.wo=(o.wo||0)
 /* founder borrows from the bank's reserves at any time and repays it later */
 function obPull(v){const o=S.ob;if(!o||!(v>0))return;if(o.reserves<v)return toast(`Reserves only hold ${fmt(o.reserves)}`);o.reserves-=v;S.cash+=v;o.owed=(o.owed||0)+v;toast(`Withdrew ${fmt(v)} from ${o.name}'s reserves · you owe ${fmt(o.owed)}`);try{logBank(`Founder withdrew ${fmt(v)} from reserves`)}catch(e){}}
 function obRepay(){const o=S.ob;if(!o||!(o.owed>0))return;const v=Math.min(o.owed,S.cash);if(v<1)return toast("No cash to repay with");S.cash-=v;o.reserves+=v;o.owed=Math.max(0,o.owed-v);if(o.owed<.01)o.owed=0;toast(`Repaid ${fmt(v)} to ${o.name}${o.owed?` · ${fmt(o.owed)} still owed`:" · all paid back"}`);try{logBank(`Founder repaid ${fmt(v)} to reserves`)}catch(e){}}
+/* close a customer's deposit account (their "debit card"): their deposit is paid out of reserves, they leave, and their credit is set to 300 */
+function obCloseDep(cu){const o=S.ob;if(!cu||cu.rev)return 0;const d=Math.max(0,Math.min(cu.dep||0,o.deposits));o.deposits-=d;o.reserves-=d;o.nc=Math.max(0,o.nc-1);cu.dep=0;cu.cr=300;cu.risk=1;cu.rev=1;return d}
+function obRevokeCust(cid){const o=S.ob;if(!o)return 0;const cu=o.customers.find(c=>c.id===+cid);if(!cu||cu.rev)return 0;const d0=cu.dep||0;let n=0;
+  for(const y of o.loans.filter(y=>y.cid===cu.id)){obDefault("loan",y);n++}for(const y of o.cards.filter(y=>y.cid===cu.id)){obDefault("card",y);n++}
+  o.apps=o.apps.filter(a=>a.cid!==cu.id);o.capps=o.capps.filter(a=>a.cid!==cu.id);const d=obCloseDep(cu);
+  const t=`Closed ${cu.n}'s deposit account (${fmt(d)} paid out of reserves) · account revoked, credit set to 300${n?` · ${n} loans/cards sent to Collect`:""}`;try{logBank(t)}catch(e){}toast(t);return 1}
 function obRevoke(src,id,auto){const o=S.ob;if(!o)return 0;const L=src==="l"?o.loans:o.cards,x=L.find(y=>y.id===+id);if(!x)return 0;const cid=x.cid,cu=o.customers.find(c=>c.id===cid);
   obDefault(src==="l"?"loan":"card",x);let n=1;if(cid){for(const y of o.loans.filter(y=>y.cid===cid)){obDefault("loan",y);n++}for(const y of o.cards.filter(y=>y.cid===cid)){obDefault("card",y);n++}
     o.apps=o.apps.filter(a=>a.cid!==cid);o.capps=o.capps.filter(a=>a.cid!==cid)}
-  if(cu){cu.cr=300;cu.risk=1;cu.rev=1}x.cr=300;
+  if(cu)obCloseDep(cu);x.cr=300;
   const t=`${auto?"Manager auto-cancelled":"Cancelled"} ${x.n}'s ${src==="l"?"loan":"card"} · account revoked, credit set to 300 (bad)${n>1?` · ${n} products closed`:""}`;try{logBank(t)}catch(e){}if(!auto)toast(t);return n}
 const obCFee=k=>Math.max(BANKCFG.collFeeMin,k.owed*BANKCFG.collFee);
 const obCER=k=>k.owed*k.p*BANKCFG.collShare;
@@ -3178,6 +3184,9 @@ function obTabs2(h){const C=BANKCFG,o=S.ob,b=S.econ.base,lb=o.loans.reduce((a,x)
     <p class="ph-sub" style="margin-top:12px">Cancel accounts · closing one revokes the customer's whole account and gives them bad credit (300); the balance goes to Collect</p>
     <div class="ph-rows"><div><span>Manager auto-cancels after ${C.missDef} missed payments</span><b style="color:${o.autoCut!==0?G:B}">${o.autoCut!==0?"ON":"OFF"}</b></div></div>
     <div style="display:flex;gap:5px">${obBtn("obauto",o.autoCut!==0?0:1,o.autoCut!==0?"Turn auto-cancel OFF":"Turn auto-cancel ON",0,o.autoCut!==0?"#7f1d1d":"#14532d")}</div>
+    <p class="ph-sub" style="margin-top:8px">Deposit accounts (debit cards)</p><div class="ph-list">${o.customers.filter(c=>!c.rev).sort((a,b)=>b.dep-a.dep).slice(0,40).map(c=>`<div><b>🏧 ${c.n} · ${fmt(c.dep)} deposited</b>Credit ${c.cr} · ${obRisk(c.risk)} risk${o.loans.some(x=>x.cid===c.id)||o.cards.some(x=>x.cid===c.id)?" · also has loans/cards":""}
+    <div style="display:flex;gap:5px">${obBtn("obrevd",c.id,"Close & revoke",o.reserves<c.dep,"#7f1d1d")}</div></div>`).join("")||"<div>No deposit accounts</div>"}</div>
+    <p class="ph-sub" style="margin-top:8px">Loans & credit cards</p>
     <div class="ph-list">${[...o.loans.map(x=>({x,s:"📄",k:"l"})),...o.cards.map(c=>({x:c,s:"💳",k:"c"}))].sort((a,b)=>b.x.miss-a.x.miss||b.x.bal-a.x.bal).slice(0,40).map(({x,s,k})=>`<div><b>${s} ${x.n} · ${fmt(x.bal)}${x.miss>=3?` <span style="color:${B}">${x.miss} MISSED</span>`:x.miss?` <span style="color:${Y}">${x.miss} missed</span>`:""}</b>Credit ${x.cr} · ${obRisk(x.risk)} risk${k==="c"?` · limit ${fmt(x.lim)}`:` · ${fmtc(x.pay)}/mo`}
     <div style="display:flex;gap:5px">${obBtn("obrev",k+"|"+x.id,"Cancel & revoke",0,"#7f1d1d")}</div></div>`).join("")||"<div>No loans or cards to cancel</div>"}</div>`}
   if(obTab==="an"){const hi=o.hist,EH=S.econ.h.slice(-hi.length||-36),pc=["#22c55e","#e5e7eb","#fbbf24","#ef4444","#93c5fd"];
@@ -7260,7 +7269,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="misopen"){mxOpen();return}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
-  else if(a==="obpull"){obPull(+b.dataset.x);save();hud()}else if(a==="obrepay"){obRepay();save();hud()}else if(a==="obauto"){if(S.ob)S.ob.autoCut=+b.dataset.x;save()}else if(a==="obrev"){if(S.ob){const [k,id]=String(b.dataset.x).split("|");obRevoke(k,id)}save();hud()}else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
+  else if(a==="obpull"){obPull(+b.dataset.x);save();hud()}else if(a==="obrepay"){obRepay();save();hud()}else if(a==="obrevd"){if(S.ob)obRevokeCust(b.dataset.x);save();hud()}else if(a==="obauto"){if(S.ob)S.ob.autoCut=+b.dataset.x;save()}else if(a==="obrev"){if(S.ob){const [k,id]=String(b.dataset.x).split("|");obRevoke(k,id)}save();hud()}else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
   else if(a==="obat"){if(S.ob){S.ob.at=+b.dataset.x;if(S.ob.at)S.ob.depRate=Math.round(S.econ.base*S.ob.at*1e4)/1e4}save()}
   else if(a==="obem"){obEmerg(+b.dataset.x);save()}
   else if(a==="obmgr"){obMgrSet(+b.dataset.x);save();hud()}
