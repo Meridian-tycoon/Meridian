@@ -2826,7 +2826,7 @@ function wfAI(quiet){const A=WFCFG.ai;if(Math.random()>A.p||!Array.isArray(S.riv
     const fp=wfFeudPair(i);if(fp&&Math.random()<.7)[a,b]=fp;else if(ks.length&&Math.random()<.7)[a,b]=pick(ks).split("|");else if(lo.length&&Math.random()<.6){const w=pick(lo);a=w.a;b=w.b}
     else{a=pick(COUNTRIES);const near=COUNTRIES.filter(x=>x!==a&&kmBetween(cap(a),cap(x))<5000&&!wfAtWar(a,x));if(!near.length)return null;b=pick(near)}
     if(!fp&&Math.random()<.5)[a,b]=[b,a];o={k:"e",to:a,vs:b,amt}}
-  if(!wfApply(o,quiet))return null;if(!wrShared())r.nw=Math.max(rivalSeed(i)*.35,r.nw-amt);return o}
+  if(!wfApply(o,quiet))return null;if(fp&&o.k==="e"&&o.to===fp[0]&&o.vs===fp[1])stNeedle(i);if(!wrShared())r.nw=Math.max(rivalSeed(i)*.35,r.nw-amt);return o}
 /* Backer offers and company rivalries (local to each save). Only a player holding a government office gets offers:
    an AI company or a foreign AI government pays cash to stir tension (or fund the war) of the country they govern.
    S.wf.off=[{id,fr,ty,k,w,s,to,vs,amt,exp}] ; S.wf.cr=[{a,b,end}] company feuds, b=-1 is the player's company */
@@ -2862,9 +2862,9 @@ function wfPush(o){const w=o.k==="w"?wfActive().find(x=>wlGid(x)===o.w):null,rem
   const doc={k:o.k,amt:Math.min(1e13,Math.round(o.amt)),to:String(o.to).slice(0,40),vs:String(o.vs).slice(0,40),at:window.firebase.firestore.FieldValue.serverTimestamp()};if(o.k==="w"){doc.w=o.w;doc.s=o.s}
   ON.db.collection("wfund").add(doc).catch(e=>console.warn("wf",e))}
 function wfOffer(id,yes){const off=wfOff(),i=off.findIndex(x=>x.id===id);if(i<0)return toast("That offer has expired");const o=off.splice(i,1)[0];
-  if(!yes){toast(`Declined ${o.fr}'s money`);stNews("A pity. The offer was sincere.","Mr Gray");save();return}
+  if(!yes){toast(`Declined ${o.fr}'s money`);stNews("A pity. The offer was sincere.","Mr Gray");stOfferDone(o,0);save();return}
   if(o.k==="w"&&!wfActive().some(w=>wlGid(w)===o.w))return toast("That war is over");if(o.k==="e"&&wfAtWar(o.to,o.vs))return toast(`${o.to} is already at war with ${o.vs}`);
-  S.cash+=o.amt;S.earned=(S.earned||0)+o.amt;wfPush(o);
+  S.cash+=o.amt;S.earned=(S.earned||0)+o.amt;wfPush(o);stOfferDone(o,1);
   try{logGov(`Took ${fmt(o.amt)} from ${o.fr} against ${o.vs}`)}catch(e){}
   toast(`${fmt(o.amt)} received from ${o.fr}`);save();hud()}
 /* every save, hourly: feuds and backer offers */
@@ -2934,10 +2934,51 @@ function stSeen(quiet){const s=story().seen,ys=story().ys,now={},fv={};
 const STF=[];
 function wfFeudEnd(x){try{const a=x.a,b=x.b;if(b===-1)stNews("No hard feelings. Profit in shared cities is back to normal.",STCEO[a]);
   else stNews(`${STCEO[a]} and ${STCEO[b]} shake hands at ${cap(wfHQ(a)).name}; the ${RIVALS[a].n}-${RIVALS[b].n} rivalry is over`)}catch(e){}}
-function stHour(quiet){const q=STF.splice(0);if(!quiet)q.forEach(wfFeudEnd);try{ysStep(quiet)}catch(e){console.warn("story",e)}try{stSeen(quiet)}catch(e){console.warn("story",e)}}
+function stHour(quiet){const q=STF.splice(0);if(!quiet)q.forEach(wfFeudEnd);try{stRvHour(quiet,q)}catch(e){console.warn("story",e)}try{ysStep(quiet)}catch(e){console.warn("story",e)}try{stSeen(quiet)}catch(e){console.warn("story",e)}}
 /* backer offer as a phone message from Mr Gray */
 function stOffer(o){try{const p=pol(),i=RIVALS.findIndex(r=>r.n===o.fr),g=o.fr.slice(14),who=o.ty==="co"&&i>=0?`${STFIG[i]} of ${o.fr}`:STMIN[g]?`The office of ${STMIN[g]}`:`A friend of the ${o.fr}`;
   stNews(`Good afternoon, ${GOVCFG.offices[p.r].n}. ${who} has ${fmt(o.amt)} available, should ${o.to} ${o.k==="w"?"press on against":"take a firmer line with"} ${o.vs}. No names. Six days.`,"Mr Gray")}catch(e){}}
+/* Arc 2 (docs/story/arc-rivalries.md): feud beats F1-F4 and backer-offer echoes B3-B4. Local only, narrates existing state.
+   S.story.rv={feud:{<a>_<b>_<end>:{d0,b}},cd:{<a>_<b>:day},nd:{<i>:day},off:{taken,declined,last,by,pr,nw},ech:[{id,amt,to,vs,d,st,b}],sk:{f,b}} ; b = bitmask of fired beats */
+function stRv(){const s=story(),r=s.rv=s.rv&&typeof s.rv==="object"?s.rv:{};for(const k of ["feud","cd","nd","sk"])if(!r[k]||typeof r[k]!=="object")r[k]={};
+  const o=r.off=r.off&&typeof r.off==="object"?r.off:{};for(const k of ["taken","declined","last","pr"])if(!(o[k]>=0))o[k]=0;if(!Array.isArray(r.ech))r.ech=[];return r}
+const stTS=(a,b)=>{const T=a&&b?wf().tens[wfPair(a,b)]:null;return T?WFCFG.stages.indexOf(wfStage(T.v)):0},
+  stWar=(a,b)=>!!(a&&b&&(S.wars||[]).some(w=>w&&w.l>=4&&((w.a===a&&w.b===b)||(w.a===b&&w.b===a))));
+const stFP=x=>{const a=wfHQ(x.a),b=x.b===-1?wfMe():wfHQ(x.b);return a&&b&&a!==b?[a,b]:null};
+function stNeedle(i){try{stRv().nd[i]=S.day||0}catch(e){}}
+function stFeudBeat(n,x){const A=RIVALS[x.a].n,B=x.b===-1?"your company":RIVALS[x.b].n,cA=STCEO[x.a],hp=stFP(x),
+    rc=(S.rivals[x.a]||{}).cities||[],sh=x.b===-1?rc.filter(c=>S.own&&S.own[c]):rc.filter(c=>((S.rivals[x.b]||{}).cities||[]).includes(c)),ct=CITIES[sh.length?stR(sh):(RIVAL_START[x.a]||[0])[0]]||CITIES[0];
+  if(n===1){stNews(`${A} snubs ${B} at the ${ct.name} trade fair; ${cA} calls it "a misunderstanding"`);if(x.b===-1)stNews(`You took ${ct.name}. We noticed.`,`${STFIG[x.a]}, ${A}`)}
+  if(n===2)stNews("Counting House: money flows from the boardroom, not the ministry");
+  if(n===3&&hp){const f=flNews(hp[0],hp[1],1);stNews(`${A}-${x.b===-1?"rival":B} tension rising; both CEOs accused of lobbying`+(f&&!f.startsWith("Old wounds")?`. ${f}`:""))}
+  if(n===4){if(hp&&stWar(hp[0],hp[1]))stNews(`${cA} says the war "is nobody's fault". Shares of ${A} up ${3+Math.floor(Math.random()*10)}%`);
+    else stNews(x.b===-1?`${cA} of ${A} is "open to a conversation" in ${ct.name}`:`${A} and ${B} CEOs shake hands at ${ct.name}`)}}
+function stRvHour(quiet,ended){const r=stRv(),day=S.day||0,sk=r.sk;
+  if(!quiet&&(sk.f||sk.b)){const p=[];if(sk.f)p.push(`boardroom rivalries went through ${sk.f} story beat${sk.f>1?"s":""}`);if(sk.b)p.push(`${sk.b} backer transfer${sk.b>1?"s":""} echoed in the news`);
+    S.log.unshift("World: while you were away "+p.join(" and "));S.log=S.log.slice(0,3);r.sk={}}
+  const fire=(f,n,x)=>{if(f.b&1<<n)return;f.b|=1<<n;if(f.q)return;if(quiet)sk.f=(sk.f||0)+1;else stFeudBeat(n,x)};
+  for(const x of (ended||[])){const f=r.feud[`${x.a}_${x.b}_${x.end}`];if(f&&!(f.b&32)){f.b|=32;if(quiet&&!f.q)sk.f=(sk.f||0)+1}}
+  const live=new Set();for(const x of wfCR()){const k=`${x.a}_${x.b}_${x.end}`,pk=`${x.a}_${x.b}`;live.add(k);let f=r.feud[k];
+    if(!f){f=r.feud[k]={d0:day,b:0,st:0};if((r.cd[pk]||0)>day)f.q=1;else r.cd[pk]=day+30}
+    const hp=stFP(x),st=hp?stTS(hp[0],hp[1]):0;
+    fire(f,1,x);
+    if((r.nd[x.a]||-1)>=f.d0||day>=f.d0+2)fire(f,2,x);
+    if(st>Math.max(f.st,0)&&st>=1&&st<=2)fire(f,3,x);f.st=Math.max(f.st,st);
+    if((hp&&stWar(hp[0],hp[1]))||x.end-day<=1)fire(f,4,x)}
+  for(const k in r.feud)if(!live.has(k)&&(r.feud[k].b&32||r.feud[k].d0<day-20))delete r.feud[k];
+  for(const k in r.cd)if(r.cd[k]<=day)delete r.cd[k];
+  for(const i in r.nd)if(r.nd[i]<day-15)delete r.nd[i];
+  /* B3/B4 echoes of taken offers (3-day window). Text never says "you" */
+  const d=dip(),o=r.off;for(const e of r.ech){if(e.b&8)continue;const war=stWar(e.to,e.vs),st=stTS(e.to,e.vs),cq=!!(d.ruler&&(d.ruler[e.vs]===e.to||d.ruler[e.to]===e.vs));
+    if(!(e.b&1)&&(st>e.st||war)){e.b|=1;if(quiet)sk.b=(sk.b||0)+1;else{stNews(`Tensions rising between ${e.to} and ${e.vs}: ${war?"War":wfStage(wf().tens[wfPair(e.to,e.vs)].v)[1]}`);stNews(`The Counting House: a transfer of exactly ${fmt(e.amt)} cleared the Notary this week`)}}
+    if(!(e.b&2)&&(war||cq)&&!quiet){e.b|=2;if(day>=o.pr){o.pr=day+10;stNews(`I am writing about the Ledger. A transfer tied to ${e.to} and ${e.vs} keeps coming up. Do you want to comment?`,"Priya Lindqvist")}}
+    if(day>e.d+3)e.b|=8}
+  r.ech=r.ech.filter(e=>!(e.b&8)).slice(-10)}
+/* B2 bookkeeping from wfOffer: count, queue the echo, and the B4 closers that hang on a pattern */
+function stOfferDone(o,yes){try{const r=stRv(),f=r.off,day=S.day||0;f.last=day;f.by=o.fr;
+  if(!yes){f.declined++;if(f.declined>=3&&!f.taken&&!f.nw){f.nw=1;stNews("Thank you to whoever turned down money to start a fight. Our camps noticed the quiet.","Dr Amara Nwosu")}return}
+  f.taken++;r.ech.push({id:o.id,amt:o.amt,to:o.to,vs:o.vs,d:day,st:stTS(o.to,o.vs),b:0});
+  if(f.taken===3&&day>=f.pr){f.pr=day+10;stNews("I am writing about the Ledger. The same Notary keeps clearing the same kind of transfer. Do you want to comment?","Priya Lindqvist")}}catch(e){}}
 /* player: send from the form. Cash leaves at once; a failed online send is refunded */
 function wfSend(){const f=WF.f,C=WFCFG,amt=Math.floor(+String(f.amt||"").replace(/[^0-9.]/g,"")||0);
   if(!(amt>=C.min))return toast(`Minimum donation is ${fmt(C.min)}`);if(S.cash<amt)return toast("Not enough cash");
