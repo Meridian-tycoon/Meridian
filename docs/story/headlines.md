@@ -15,7 +15,7 @@ the stage. Rows with `|` give 2-3 variants; choose at random. Every war-start ro
 | Stage | Headlines |
 |---|---|
 | Calm | Cross-border trade steady as {A} and {B} extend the lumber truce \| Sasha Kovalenko: "Vancouver is open for business" |
-| Tense | {B} taxes cloud traffic; Ruth Calloway calls Amazon "a company with a country attached" \| Nathalie Brosseau recalls trade envoy from {capA} |
+| Tense | {B} taxes cloud traffic; Ruth Calloway calls Amazon "a company with a country attached" \| Mark Dev recalls trade envoy from {capA} |
 | Hostile | {A}-{B} talks collapse in {capB}; truckers block the border at {city} \| Dale Pruett: Walmart shelves "at risk" if the Data Act stays |
 | Brink | Reservists called up on both sides of the 49th parallel \| Doug Tremblay: "Not one more tariff" as {capA} masses on the border |
 | War start | Unthinkable: {fav} and {oth} at war after a surge of anonymous funding |
