@@ -4166,7 +4166,7 @@ function drawStrikes(ctx){const now=Date.now(),zs=Math.min(2.5,.7+V.k*.3),m=S.po
     if(!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]);
     // lingering scorch: dark core and coloured halo, fading over the strike's days
     const a=.25+.6*fade,gr=ctx.createRadialGradient(x,y,0,x,y,R);gr.addColorStop(0,`rgba(20,10,5,${a})`);gr.addColorStop(.55,`rgba(120,30,10,${a*.7})`);gr.addColorStop(1,"rgba(120,30,10,0)");
-    ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fillStyle=gr;ctx.fill();ctx.beginPath();ctx.arc(x,y,R*.9,0,7);ctx.strokeStyle=W.col;ctx.globalAlpha=.35+.5*fade;ctx.lineWidth=1.4;ctx.setLineDash([2,3]);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+    ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fillStyle=gr;ctx.fill();const oa=Math.max(0,Math.min(1,(fe+WMDOUT-now)/10000));if(oa>0){wmdTick();ctx.beginPath();ctx.arc(x,y,R*.9,0,7);ctx.strokeStyle=W.col;ctx.globalAlpha=(.35+.5*fade)*oa;ctx.lineWidth=1.4;ctx.setLineDash([2,3]);ctx.stroke();ctx.setLineDash([])}ctx.globalAlpha=1;
     ctx.font="11px system-ui, sans-serif";ctx.textAlign="center";ctx.fillStyle=W.col;ctx.fillText(W.ico,x,y-R-6);if(s.k==="icbm"&&unhOn(c)){ctx.font="bold 10px system-ui, sans-serif";ctx.fillText("UNINHABITABLE · "+unhLeft(c),x,y+R+12)}ctx.textAlign="start";
     // impact flash + expanding shock ring
     const ia=age-fl,il=WPNCFG.animMs*.55;if(ia>=0&&ia<il){const u=ia/il;ctx.beginPath();ctx.arc(x,y,R*(.3+2.2*u),0,7);ctx.strokeStyle=W.col;ctx.globalAlpha=1-u;ctx.lineWidth=3*(1-u)+1;ctx.stroke();
@@ -4247,9 +4247,10 @@ function wtDay(quiet){const W=wt(),C=WTCFG;if(!quiet)_wtQ=0;if(!W.nx){W.nx=S.day
     const pc=dipPlayerC();if(v!==pc&&!(p.ctrl&&p.ctrl[v])){S.wars=S.wars||[];const w=dipWarOf(v,by);if(w){w.l=4;w.att=by}else S.wars.push({id:(S.wid=(S.wid||0)+1),a:by,b:v,l:4,att:by,sc:dip().day+3,d0:S.day})}
     t+=` · ${v} and ${by} are now at war`}
   dipSay(t,1,quiet);if(!quiet)toast((r.fail?"⚠ ":"☢ ")+t);return x}
-function wtDraw(ctx,now,zs){const W=S.wtest;if(!W||!Array.isArray(W.l)||!W.l.length)return;const fade=WTCFG.fadeH*DAYMS/24,fly=WPNCFG.animMs;
-  for(const x of W.l){if(now>=x.until+fade||now<x.t-1000)continue;const Wp=WPNCFG.w[x.k];if(!Wp||!visible(x.lon,x.lat))continue;const [px,py]=proj([x.lon,x.lat]),R=Wp.r*zs*WTCFG.rScale,age=now-x.t,
-    a=now>x.until?Math.max(0,1-(now-x.until)/fade):1;ctx.save();ctx.strokeStyle="#facc15";
+let _wmdT=0;const wmdTick=()=>{if(!_wmdT)_wmdT=setTimeout(()=>{_wmdT=0;draw()},500)};const WMDOUT=60000; // test and strike outlines stay on the map for 1 minute after impact, fading over the last 10 s
+function wtDraw(ctx,now,zs){const W=S.wtest;if(!W||!Array.isArray(W.l)||!W.l.length)return;const fly=WPNCFG.animMs;
+  for(const x of W.l){const end=x.t+fly+WMDOUT;if(now>=end||now<x.t-1000)continue;const Wp=WPNCFG.w[x.k];if(!Wp||!visible(x.lon,x.lat))continue;const [px,py]=proj([x.lon,x.lat]),R=Wp.r*zs*WTCFG.rScale,age=now-x.t,
+    a=Math.max(0,Math.min(1,(end-now)/10000));wmdTick();ctx.save();ctx.strokeStyle="#facc15";
     if(age<fly){const u=age/fly,pu=.5+.5*Math.sin(now/120);ctx.globalAlpha=.55+.4*pu;ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(px,py,R*(.8+.35*pu),0,7);ctx.stroke();ctx.globalAlpha=.3;ctx.setLineDash([4,4]);ctx.beginPath();ctx.arc(px,py,R*1.6*(1-u)+R,0,7);ctx.stroke();ctx.setLineDash([])}
     else{const ia=age-fly;if(ia<1800&&x.fail!==1){const u=ia/1800;ctx.globalAlpha=1-u;ctx.fillStyle="#fff7d6";ctx.beginPath();ctx.arc(px,py,R*(.3+.9*u),0,7);ctx.fill();ctx.lineWidth=3*(1-u)+1;ctx.beginPath();ctx.arc(px,py,R*(.4+2*u),0,7);ctx.stroke()}
       ctx.globalAlpha=.85*a;ctx.fillStyle="rgba(250,204,21,.12)";ctx.beginPath();ctx.arc(px,py,R,0,7);ctx.fill();ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.lineDashOffset=-now/80%10;ctx.stroke();ctx.setLineDash([])}
