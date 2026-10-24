@@ -662,6 +662,7 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   if(typeof drawStorms==="function"&&z<11)drawStorms(ctx,C);
   if(typeof drawDmg==="function")drawDmg(ctx);
   if(typeof drawStrikes==="function")drawStrikes(ctx);
+  if(typeof drawGovLine==="function"&&z<11)try{drawGovLine(ctx)}catch(e){}
   if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);ctx.restore()}
   const dotA=1-smooth01(10.5,12,z),labA=1-smooth01(8.5,9.6,z);   // our city dots hand over to the real map as you get close
   if(dotA>0.02){ctx.globalAlpha=dotA;
@@ -2466,6 +2467,13 @@ function cfChip(){const el=document.getElementById("cfbox");if(!el)return;const 
   const ch=document.getElementById("cfchip");ch.setAttribute("aria-pressed",cfOn());ch.title=cfOn()?"Hide conflicts on the map":"Show conflicts on the map";
   ch.innerHTML=`⚔ Conflicts${cfOn()?"":" (hidden)"} <i>${ws.length+pw.length}</i>`;if(!hot&&!pw.length)ch.querySelector("i").style.background=WARC[1];
   const lg=document.getElementById("cfleg");lg.hidden=!cfOn();lg.innerHTML=[1,2,3,4].map(l=>`<span><b style="background:${WARC[l]}"></b>${WARL[l]}</span>`).join("")}
+/* Governing country outline: only on this player's own map, while they hold an office. Light tint of the flag's main colour. */
+const _govCol={};function govFlagCol(n){if(_govCol[n])return _govCol[n];let col="#93c5fd";try{const c=presFlagCv(n),g=c.getContext("2d"),d=g.getImageData(0,0,c.width,c.height).data,cnt={};
+  for(let i=0;i<d.length;i+=16){const k=(d[i]>>4)+","+(d[i+1]>>4)+","+(d[i+2]>>4);cnt[k]=(cnt[k]||0)+1}
+  const top=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]),pick=top.find(k=>{const [r,g2,b]=k.split(",").map(Number);return !(r>13&&g2>13&&b>13)})||top[0];
+  const [r,g2,b]=pick.split(",").map(v=>Number(v)*16+8),L=x=>Math.round(x+(255-x)*.45);col=`rgb(${L(r)},${L(g2)},${L(b)})`}catch(e){}return _govCol[n]=col}
+function drawGovLine(ctx){const p=S.pol;if(!p||!(p.r>=0)||!p.c)return;const f=cfFeat(p.c);if(!f)return;const col=govFlagCol(p.c);
+  ctx.save();ctx.beginPath();path(f);ctx.globalAlpha=.9;ctx.lineWidth=2.4;ctx.strokeStyle=col;ctx.setLineDash([]);ctx.stroke();ctx.globalAlpha=.08;ctx.fillStyle=col;ctx.fill();ctx.restore()}
 function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filter(w=>w.l>0),pw=bgMilKeys();if((!ws.length&&!pw.length)||!cfOn())return;
   const mk=S.wmd&&S.wmd.h?Object.keys(S.wmd.h).filter(n=>S.wmd.h[n].u>S.day):[];
   const t=performance.now()/1000,lv=cfLevels(),zs=Math.min(1.6,.85+V.k*.08),anim=typeof reduce==="undefined"||!reduce;ctx.save();
