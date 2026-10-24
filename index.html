@@ -4311,14 +4311,15 @@ function rigIncome(){return 0} // rigs don't sell: oil piles up on board until y
 const rigVal=r=>rigLv(r).val;
 const rigPx=g=>(G[g]&&G[g][1])||(g==="oil"?25:45);
 function rigDay(r){const L=rigLv(r);return {oil:L.val*(1-L.ref)/rigPx("oil"),fuel:L.val*L.ref/rigPx("fuel")}} // units made per game day
-function rigCapU(r){const d=rigDay(r);return {oil:d.oil*RIGCFG.store,fuel:d.fuel*RIGCFG.store}}
+function rigCapU(r){const d=rigDay(r);return {oil:d.oil*RIGCFG.store,fuel:(d.fuel+d.oil*rigPx("oil")/rigPx("fuel"))*RIGCFG.store}} // fuel room also holds the crude once it is refined
 function rigTick(now){for(const r of rigs()){if(!r.st)r.st={oil:0,fuel:0};if(!(r.at>0))r.at=r.t||now;const dt=Math.max(0,now-r.at)/DAYMS;r.at=now;const d=rigDay(r),cp=rigCapU(r);
     for(const g of ["oil","fuel"])r.st[g]=Math.min(cp[g],(r.st[g]||0)+d[g]*dt);
+    {const q=Math.min(r.st.oil||0,Math.max(d.oil,d.fuel*rigPx("fuel")/rigPx("oil"))*dt);if(q>0){r.st.oil-=q;r.st.fuel=(r.st.fuel||0)+q*rigPx("oil")/rigPx("fuel")}} // crude stays on board until the rig's refinery turns it into fuel
     if(Array.isArray(r.sh)&&r.sh.length){const due=r.sh.filter(x=>x.arr<=now);r.sh=r.sh.filter(x=>x.arr>now);for(const x of due){const c=CITIES[x.to];if(!c)continue;ensureWh(c);const v=S.inv[c.id];v[x.g]=(v[x.g]||0)+x.q;toast(`🚢 ${fmtN(x.q)} ${G[x.g]?G[x.g][0].toLowerCase():x.g} from ${r.n} arrived in ${c.name}`)}}}}
 const fmtN=n=>Math.round(n).toLocaleString();
 function rigShip(id,to){const r=rigs().find(x=>x.id===id),c=CITIES[to];if(!r||!c)return;if(!hasWh(c))return toast(`You have no depot in ${c.name}`);rigTick(Date.now());
-  let room=whRoom(c);const sent=[];for(const g of ["fuel","oil"]){const q=Math.floor(Math.min(r.st[g]||0,room/tpu(g)));if(q<1)continue;r.st[g]-=q;room-=q*tpu(g);sent.push({g,q})}
-  if(!sent.length)return toast(Object.values(r.st).some(v=>v>=1)?`The depot in ${c.name} is full`:"Nothing on the rig to ship yet");
+  let room=whRoom(c);const sent=[];for(const g of ["fuel"]){const q=Math.floor(Math.min(r.st[g]||0,room/tpu(g)));if(q<1)continue;r.st[g]-=q;room-=q*tpu(g);sent.push({g,q})}
+  if(!sent.length)return toast((r.st.fuel||0)>=1?`The depot in ${c.name} is full`:(r.st.oil||0)>=1?"No refined fuel yet: crude stays on the rig until it is refined":"Nothing on the rig to ship yet");
   const sec=Math.max(30,Math.min(600,distKm(r,c)/25)),now=Date.now();r.sh=(r.sh||[]).concat(sent.map(x=>({...x,to:c.id,t:now,arr:now+sec*1000})));
   toast(`🚢 Shipping ${sent.map(x=>fmtN(x.q)+" "+G[x.g][0].toLowerCase()).join(" + ")} to ${c.name} · arrives in ${fmtDur(sec*1000)}`)}
 function rigAssets(){let a=0;for(const r of rigs())for(let l=1;l<=r.lv;l++)a+=RIGCFG.lv[l].cost*RIGCFG.asset;return a}
