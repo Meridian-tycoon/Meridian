@@ -2287,7 +2287,7 @@ function uranApply(n){const g=gov(n),fee=uranFee();if(g.uReq){toast("Your applic
 function uranCancel(n){const g=gov(n);if(!g.uReq)return;S.cash+=uranFee();delete g.uReq;if(ON.db&&ON.user)ON.db.collection("permits").doc(ON.user.uid+"_"+pmKey(n)).delete().catch(()=>{});toast("Application withdrawn, fee refunded")}
 function uranRule(id,ok){const x=PM.inbox.find(d=>d.id===id);if(!x||!ON.db)return;const me=onProf();
   ON.db.collection("permits").doc(id).update({st:ok?"approved":"denied",byName:(me.name||"Tycoon").slice(0,20)}).then(()=>{logGov(`You ${ok?"approved":"refused"} ${x.name}'s nuclear mining permit`);toast(ok?"Permit approved":"Permit refused");onRefresh()},e=>toast("Couldn't record the decision: "+(e&&e.code||e)))}
-function govHour(quiet){const now=Date.now();
+function govHour(quiet){const now=Date.now();if(!quiet)cabCheck();
   for(const n of COUNTRIES){const g=gov(n),pl=PARTIES[g.party].pl;
     g.appr=Math.max(5,Math.min(95,g.appr+(Math.random()-.52)*4));
     if(Math.random()<.06){const diff=Object.keys(LAWS).filter(k=>g.laws[k]!==pl[k]);
@@ -4114,6 +4114,24 @@ function govNotesHtml(){const p=S.pol;if(!p||!(p.r>=0)||!Array.isArray(p.notes)|
 const polHere=()=>CITIES[(S.loc||{city:0}).city].country;
 const polCost=(r,n)=>Math.round(GOVCFG.offices[r].cost*ctyScale(n));
 const polLeader=()=>{const p=pol();return p.r===GOVCFG.offices.length-1};
+/* CABINET: each country has 6 Councillors, 3 Ministers and 1 Leader shared by all online players (seen in the last 3 days).
+   When an office is full, running means challenging the holder with the lowest net worth; on a win you take the seat and
+   every save drops the weakest older holder when it sees a seat count above the cap (immune players are never dropped). */
+const CAB=[6,3,1];
+function cabOthers(n,r){if(typeof ON==="undefined"||!Array.isArray(ON.players))return[];const old=Date.now()-3*864e5;
+  return ON.players.filter(q=>q&&q.govC===n&&q.govR===r&&onSeen(q)>=old&&!(ON.user&&q.uid===ON.user.uid))}
+function cabFull(n,r){return cabOthers(n,r).length>=CAB[r]}
+function cabWeak(n,r){const a=cabOthers(n,r).filter(q=>!GOV_IMMUNE.includes(q.uid)&&GOV_IMMUNE_C[q.uid]!==n);a.sort((x,y)=>(+x.nw||0)-(+y.nw||0));return a[0]||null}
+function cabCheck(){try{const p=pol();if(p.r<0||!p.c||polImmune())return;const o=cabOthers(p.c,p.r);if(o.length<CAB[p.r])return;
+  const {nw}=totals(),me={nw:Math.round(nw),s:p.since||0,me:1};
+  // the newest holder (the challenger who just won) keeps the seat; of the rest, the lowest net worth loses it
+  const all=[me,...o.map(q=>({nw:+q.nw||0,s:+q.govS||0,imm:GOV_IMMUNE.includes(q.uid)||GOV_IMMUNE_C[q.uid]===p.c}))];
+  const newest=all.reduce((a,b)=>b.s>a.s?b:a);let pool=all.filter(x=>x!==newest&&!x.imm).sort((a,b)=>a.nw-b.nw);
+  const drop=pool.slice(0,all.length-CAB[p.r]);if(!drop.includes(me))return;
+  const n=GOVCFG.offices[p.r].n;logPol(`You lost your seat as ${n} of ${p.c}: a challenger beat you for it`);polFall();try{onPublish(true)}catch(e){}save();hud()}catch(e){}}
+function cabHtml(n){const O=GOVCFG.offices,rows=[];for(let r=O.length-1;r>=0;r--){const a=cabOthers(n,r).map(q=>String(q.name||"Player").slice(0,20));const p=pol();if(p.r===r&&p.c===n)a.unshift("You");
+  rows.push(`<div><span>${O[r].n}s ${a.length}/${CAB[r]}</span><b style="font-weight:500;text-align:right">${a.length?a.map(x=>x.replace(/[<>&"]/g,"")).join(", "):"open"}</b></div>`)}
+  return `<div class="ph-sub" style="margin-top:10px">Cabinet of ${n}</div><div class="ph-rows">${rows.join("")}</div>`}
 const annexCost0=n=>Math.round(GOVCFG.annexCost*ctyScale(n)*(1+GOVCFG.annexStep*Object.keys(pol().ctrl).length));
 const annexCost=n=>Math.round(annexCost0(n)*(1-presFx("cost")));
 const annexChance=()=>{const p=pol(),C=GOVCFG;return Math.max(.1,Math.min(.85,C.annexWin+C.annexStepWin*Object.keys(p.ctrl).length+(p.appr-50)/200))};
@@ -4130,8 +4148,9 @@ function polRun(){const p=pol(),C=GOVCFG,now=Date.now(),r=p.r+1,O=C.offices[r];i
   if(urqCdOn()&&now<p.cd)return toast("Campaign cooldown: "+fmtDur(p.cd-now));
   if(p.r>=0&&now-p.since<C.minHold*DAYMS)return toast("Serve a little longer first: "+fmtDur(p.since+C.minHold*DAYMS-now));
   const {nw}=totals(),cost=polCost(r,n);if(nw<O.nw)return toast(`Need net worth ${fmt(O.nw)}`);if(S.cash<cost)return toast(`Campaign costs ${fmt(cost)}`);
+  const full=cabFull(n,r),foe=full?cabWeak(n,r):null;if(full&&!foe)return toast(`Every ${O.n} seat in ${n} is held by immune players`);
   const ch=polChance(r);S.cash-=cost;
-  if(Math.random()<ch){p.r=r;p.c=n;p.since=now;p.appr=Math.max(p.r>0?p.appr:0,C.apprStart);logPol(`You won! You are now ${O.n} of ${n}`);if(typeof confetti==="function")confetti(60,innerWidth/2,innerHeight/3)}
+  if(Math.random()<ch){p.r=r;p.c=n;p.since=now;if(foe)logPol(`You beat ${String(foe.name||"a player").slice(0,20)} for a ${O.n} seat`);try{onPublish(true)}catch(e){}p.appr=Math.max(p.r>0?p.appr:0,C.apprStart);logPol(`You won! You are now ${O.n} of ${n}`);if(typeof confetti==="function")confetti(60,innerWidth/2,innerHeight/3)}
   else{p.cd=now+C.loseCd*DAYMS;if(p.r>=0)p.appr=Math.max(0,p.appr-5);logPol(`You lost the race for ${O.n} of ${n} (${Math.round(ch*100)}% chance)`)}}
 const polPRq=p=>{const gb=Math.max(0,Math.min(GOVCFG.prGain,95-p.appr)),g=Math.max(0,Math.min(95-p.appr,gb*(1+presFx("pr"))));return {g,c:Math.round(polCost(p.r,p.c)*GOVCFG.prCost*gb/GOVCFG.prGain*(1-presFx("cost")))}}; // cost scales with approval actually gained (capped at 95)
 function polPR(){const p=pol();if(p.r<0)return;if(p.appr>=95)return toast("Approval is already maxed");const {g,c}=polPRq(p);if(S.cash<c)return toast(`PR campaign costs ${fmt(c)}`);S.cash-=c;p.appr=Math.min(95,p.appr+g);toast(`Approval +${Math.round(g*10)/10}`)}
@@ -4170,8 +4189,9 @@ function govApp0(){const p=pol(),C=GOVCFG,now=Date.now(),{nw}=totals(),here=polH
     :`<div class="ph-big" style="font-size:20px">Private citizen</div><div class="ph-sub">Run for office in ${here}</div>`;
   const r=p.r+1,n=p.r>=0?p.c:here;
   if(O[r]){const cost=polCost(r,n),cd=urqCdOn()?Math.max(0,p.cd-now):0,hold=p.r>=0?Math.max(0,p.since+C.minHold*DAYMS-now):0;
-    h+=`<div class="ph-rows" style="margin-top:10px"><div><span>Next office</span><b>${O[r].n} of ${n}</b></div><div><span>Net worth needed</span><b style="color:${nw>=O[r].nw?"#4ade80":"#f87171"}">${fmt(O[r].nw)}</b></div><div><span>Campaign</span><b>${fmt(cost)}</b></div><div><span>Win chance</span><b>${Math.round(polChance(r)*100)}%</b></div>${polDonCtrl(n)?`<div><span>Party you fund rules ${n}</span><b style="color:#4ade80">+${Math.round(C.ctrlWin*100)}%</b></div>`:""}${cd?`<div><span>Cooldown</span><b>${fmtDur(cd)}</b></div>`:""}${hold?`<div><span>Eligible in</span><b>${fmtDur(hold)}</b></div>`:""}</div>
+    h+=`<div class="ph-rows" style="margin-top:10px"><div><span>Next office</span><b>${O[r].n} of ${n}</b></div><div><span>Net worth needed</span><b style="color:${nw>=O[r].nw?"#4ade80":"#f87171"}">${fmt(O[r].nw)}</b></div><div><span>Campaign</span><b>${fmt(cost)}</b></div><div><span>Win chance</span><b>${Math.round(polChance(r)*100)}%</b></div>${cabFull(n,r)?`<div><span>Seats full · you must beat</span><b style="color:#fbbf24">${(cabWeak(n,r)||{name:"immune holders"}).name}</b></div>`:`<div><span>Seats taken</span><b>${cabOthers(n,r).length}/${CAB[r]}</b></div>`}${polDonCtrl(n)?`<div><span>Party you fund rules ${n}</span><b style="color:#4ade80">+${Math.round(C.ctrlWin*100)}%</b></div>`:""}${cd?`<div><span>Cooldown</span><b>${fmtDur(cd)}</b></div>`:""}${hold?`<div><span>Eligible in</span><b>${fmtDur(hold)}</b></div>`:""}</div>
     ${btn("polrun",`Run for ${O[r].n}`,cd||hold||nw<O[r].nw||S.cash<cost||here!==n)}${here!==n?`<p class="ph-sub">Travel to ${n} to campaign.</p>`:""}`}
+  h+=cabHtml(n);
   if(lead){const g=gov(p.c),tc=Math.max(0,p.taxCd-now),xc=Math.max(0,(p.exCd||0)-now);
     if(xc&&!g.ctrl)h+=`<div class="ph-rows" style="margin-top:10px"><div><span>Exposed by the press · government control returns in</span><b style="color:#f87171">${fmtDur(xc)}</b></div></div>`;
     h+=`<div class="ph-sub" style="margin-top:12px">Corporate tax in ${p.c}${tc?" · change in "+fmtDur(tc):""}</div><div class="ph-seg">${LAWS.tax.v.map((v,i)=>`<button data-ph="poltax" data-k="${i}" aria-pressed="${g.laws.tax===i}" ${tc?"disabled":""}>${v}</button>`).join("")}</div>`;
@@ -5976,7 +5996,7 @@ async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
     ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM){wrPublish(true);wwPublish(true)}else{wrMirror(true);try{wwMirror(true)}catch(e){}if(WRL)WRG=true}onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{WRG=false;CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);pmListen(u);gateSync();onRefresh()});
     ON.unsubB=ON.db.collection("world").doc("bot").onSnapshot(d=>{if(WRM&&ON.user&&devUid(ON.user.uid))return;const v=d.exists?botClean(d.data()):null;if(!v)return;ON.bot=v;try{localStorage.setItem(BOTKEY,JSON.stringify(v))}catch(e){}draw();onRefresh();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)))phRender()},e=>{ON.err="Couldn't load the bot company: "+(e&&e.code||e)});
-    ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;ON.gotPlayers=true;lbCache(a);try{ctCalc()}catch(e){}draw();onRefresh()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
+    ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;ON.gotPlayers=true;lbCache(a);try{ctCalc()}catch(e){}try{cabCheck()}catch(e){}draw();onRefresh()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
     try{wwListen()}catch(e){}ON.unsubW=ON.db.collection("world").doc("rivals").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list)||v.list.length!==RIVALS.length)return;
       WRS={list:v.list.map(x=>({nw:+(x&&x.nw)||0,cities:Array.isArray(x&&x.cities)?x.cities.filter(Number.isInteger):[]})),updated:v.updated&&v.updated.toMillis?v.updated.toMillis():Date.now()};
       WRL=true;try{localStorage.setItem(WRKEY,JSON.stringify(WRS))}catch(e){}if(ON.authKnown&&!WRM){wrMirror(!WRG);WRG=true;draw();onRefresh()}},e=>{ON.err="Couldn't load world rivals: "+(e&&e.code||e)});
@@ -5984,7 +6004,7 @@ async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=
 function onRefresh(){if((mode==="pf"||mode==="sv")&&sheet.classList.contains("open")&&!(document.activeElement&&/^(INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;reSheet();sheet.scrollTop=y}}
 function onPubData(){const p=onProf(),{nw}=totals(),ids=o=>Object.keys(o||{}).filter(k=>o[k]&&CITIES[k]&&(typeof o[k]!=="object"||Object.keys(o[k]).length)).map(Number).slice(0,100);
   const v=Math.round(isFinite(nw)?nw:0),rank=Math.min(1000,1+S.rivals.filter(r=>r.nw>v).length+ON.players.filter(q=>(+q.nw||0)>v).length);
-  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null,...(typeof CT!=="undefined"&&CT&&CT.mine?{cid:CT.mine.id}:{}),...(S.pol&&S.pol.r>=0?{gov:true,...(S.pol.c?{govC:String(S.pol.c).slice(0,40),govR:S.pol.r}:{})}:{})}}
+  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null,...(typeof CT!=="undefined"&&CT&&CT.mine?{cid:CT.mine.id}:{}),...(S.pol&&S.pol.r>=0?{gov:true,...(S.pol.c?{govC:String(S.pol.c).slice(0,40),govR:S.pol.r,govS:Math.max(0,Math.round(S.pol.since||0))}:{})}:{})}}
 function onLocPub(){try{if(!ON.ready||!ON.user)return;const l=S.loc&&S.loc.city;if(l!==ON.lastLoc){ON.lastLoc=l;onPublish(true)}}catch(e){}}
 function onPublish(force){if(!ON.ready||!ON.user||ON.deleting)return;const d=onPubData(),sig=JSON.stringify(d),n=Date.now();
   if(!force&&!(n-ON.lastPub>=60000||(sig!==ON.lastSig&&n-ON.lastPub>=60000)))return;
@@ -5999,7 +6019,7 @@ function wrPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;co
   ON.db.collection("world").doc("rivals").set(d).catch(e=>{ON.err="Couldn't publish world rivals: "+(e&&e.code||e)})}
 function onSaved(){if(!ON.ready||!ON.user)return;onPublish(false);wrPublish(false);wwPublish(false)}
 const LBKEY="meridian-lb-players";
-function lbCache(a){try{localStorage.setItem(LBKEY,JSON.stringify(a.slice(0,200).map(p=>({uid:p.uid,name:String(p.name||"Player").slice(0,20),col:p.col,nw:+p.nw||0,nb:p.nb,nc:p.nc,biz:Array.isArray(p.biz)?p.biz:[],home:p.home,hq:p.hq,cid:p.cid,govC:p.govC,govR:p.govR,seen:onSeen(p)}))))}catch(e){}}
+function lbCache(a){try{localStorage.setItem(LBKEY,JSON.stringify(a.slice(0,200).map(p=>({uid:p.uid,name:String(p.name||"Player").slice(0,20),col:p.col,nw:+p.nw||0,nb:p.nb,nc:p.nc,biz:Array.isArray(p.biz)?p.biz:[],home:p.home,hq:p.hq,cid:p.cid,govC:p.govC,govR:p.govR,govS:p.govS,seen:onSeen(p)}))))}catch(e){}}
 function lbPlayers(){if(ON.gotPlayers)return ON.players;try{const a=JSON.parse(localStorage.getItem(LBKEY)||"[]");const me=ON.user?ON.user.uid:null;return Array.isArray(a)?a.filter(p=>p&&p.uid!==me):[]}catch(e){return[]}}
 const lbPol=(c,r)=>{const o=GOVCFG.offices[r];return o&&c?` <span class="tag" title="Political office">${devEsc(o.n)} of ${devEsc(String(c).slice(0,40))}</span>`:""};
 function lbCities(p){if(Number.isInteger(p.nc))return p.nc;const s=new Set(onCities(p));for(const i of Array.isArray(p.biz)?p.biz:[])if(CITIES[i])s.add(i);return s.size}
