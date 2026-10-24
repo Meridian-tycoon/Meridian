@@ -545,14 +545,14 @@ function camUpdate({zoom,pitch}){const w=smooth01(ZST-.5,ZST+.5,zoom),auto=pitch
   if(w<=0)pOff=0;else if(_lz!==null&&Math.abs(zoom-_lz)<1e-6&&Math.abs(pitch-_cp)>1e-3)pOff=Math.max(-auto,Math.min(FREEPITCH-auto,pitch-auto)); // the player tilted
   const p=Math.max(0,Math.min(FREEPITCH,auto+pOff*w));_cp=p;_lz=zoom;return{pitch:p}}
 const MM=new maplibregl.Map({container:glEl,style:localStyle(),center:[-V.lam,-V.phi],zoom:1.4,minZoom:0,maxZoom:19.4,maxPitch:FREEPITCH,
-  renderWorldCopies:false,attributionControl:{compact:true},pitchWithRotate:true,touchPitch:true,dragRotate:true,fadeDuration:250,
+  renderWorldCopies:false,attributionControl:{compact:true},pitchWithRotate:true,touchPitch:true,dragRotate:false,fadeDuration:250,
   transformCameraUpdate:camUpdate});
 MM.scrollZoom.setWheelZoomRate(1/72);              // one notch (deltaY 100) ≈ ×1.6, the same at every height
-MM.touchZoomRotate.disableRotation();
+MM.touchZoomRotate.disableRotation();MM.keyboard.disableRotation();
 const compass=new maplibregl.NavigationControl({showZoom:false,visualizePitch:true});let _free=false;
 /* turning is unlocked on touch screens and a compass appears once you are in a city; tap the compass to face north again */
-function freeCam(on){if(on===_free)return;_free=on;if(on){MM.touchZoomRotate.enableRotation();MM.addControl(compass,"bottom-right")}
-  else{MM.touchZoomRotate.disableRotation();try{MM.removeControl(compass)}catch(e){}if(Math.abs(MM.getBearing())>.5&&!MM.isMoving())MM.easeTo({bearing:0,duration:reduce?0:600})}}
+function freeCam(on){if(on===_free)return;_free=on;if(on){MM.touchZoomRotate.enableRotation();MM.dragRotate.enable();MM.keyboard.enableRotation();MM.addControl(compass,"bottom-right")}
+  else{MM.touchZoomRotate.disableRotation();MM.dragRotate.disable();MM.keyboard.disableRotation();try{MM.removeControl(compass)}catch(e){}if(Math.abs(MM.getBearing())>.5&&!MM.isMoving())MM.easeTo({bearing:0,duration:reduce?0:600})}}
 MM.on("moveend",()=>freeCam(MM.getZoom()>=ZST-.5));
 window.__MM=MM;
 /* a built-in fallback style (land outlines bundled with the game) so the globe shows at once and still works if the tile server can't be reached */
@@ -2337,7 +2337,7 @@ function govHtml(c){const n=c.country,g=gov(n),P=PARTIES[g.party];let h=cityHead
 function govSummary(){const ns=COUNTRIES.filter(ownsIn);if(!ns.length)return conflictHtml(null)+dipHtml(null);
   return conflictHtml(null)+dipHtml(null)+`<div class="sec">Governments</div><div class="list">`+ns.map(n=>{const g=gov(n),p=PARTIES[g.party],c=ctyCities(n)[0];
     return `<div class="row link" data-go="${c.id}"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${p.col};margin-right:6px"></span>${n}</div><div class="d">${p.n} · tax ${LAWS.tax.v[g.laws.tax]} · min wage ${LAWS.wage.v[g.laws.wage].toLowerCase()}${g.laws.casino?" · casinos banned":""}${g.laws.rent?" · rent control":""}</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`}
-sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)return;if(!sel&&/peace|stoke|rally/.test(b.dataset.gov)){if(b.dataset.gov=="rally")dipRally();else warAct(+b.dataset.w,b.dataset.gov);hud();renderSheet();return}if(!sel)return;const c=sel;
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)return;if(!sel&&/peace|stoke|rally|join|leave/.test(b.dataset.gov)){if(b.dataset.gov=="rally")dipRally();else if(b.dataset.gov=="join")warJoin(+b.dataset.w,b.dataset.s);else if(b.dataset.gov=="leave")warJoin(+b.dataset.w,"leave");else warAct(+b.dataset.w,b.dataset.gov);hud();renderSheet();return}if(!sel)return;const c=sel;
   const g=gov(c.country),a=b.dataset.gov;
   if(a==="lobby")lobby(c,b.dataset.k,+b.dataset.dir);
   else if(a==="set"){const u=donUnit(c.country);if(S.cash<u||!g.ctrl)return;S.cash-=u;g.laws[b.dataset.k]+=+b.dataset.dir;logGov(`${c.country} decrees ${LAWS[b.dataset.k].n.toLowerCase()}: ${LAWS[b.dataset.k].v[g.laws[b.dataset.k]]}`);toast("Law changed")}
@@ -2345,6 +2345,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)
   else if(a==="uok"||a==="uno")uranRule(b.dataset.id,a==="uok")
   else if(a==="contract"){g.contract=g.contract?0:1;toast(g.contract?"Contract awarded":"Contract cancelled")}
   else if(a==="peace"||a==="stoke")warAct(+b.dataset.w,a);
+  else if(a==="join"||a==="leave")warJoin(+b.dataset.w,a==="leave"?"leave":b.dataset.s);
   else if(a==="rally")dipRally();
   else{const u=donUnit(c.country)*(+b.dataset.m||1);if(S.cash<u)return;S.cash-=u;g.don[b.dataset.p]=(g.don[b.dataset.p]||0)+u;toast(`Donated ${fmt(u)} to ${PARTIES[b.dataset.p].n}`)}
   hud();renderSheet()});
@@ -2356,7 +2357,7 @@ function exposed(n,quiet){const g=gov(n),fine=donUnit(n)*30;if(S.pol&&S.pol.c===
 const WARL=["Calm","Tension","Sanctions","Border clashes","War"],WARC=["#3a9","#b9961c","#e07a2a","#d84a4a","#9b1111"];
 const CF_EFF=["","Markets jittery: −3% profit","Sanctions: −10% profit, land output +5%","Clashes: −20% profit, land output +10%","War: −40% profit, land output +20%, businesses can be damaged, no travel in"];
 const cap=n=>ctyCities(n).sort((a,b)=>b.size-a.size)[0];
-function warLvl(n){let m=0;for(const w of S.wars||[])if(w.a===n||w.b===n)m=Math.max(m,w.l);return m}
+function warLvl(n){let m=0;for(const w of S.wars||[])if(w.a===n||w.b===n)m=Math.max(m,w.l);else if(w.al&&w.al[n]&&w.l>=4)m=Math.max(m,3);return m} // allies fight at clash level
 const warMult=c=>[1,.97,.9,.8,.6][warLvl(c.country)];
 const warCost=w=>Math.round(4000*(ctyScale(w.a)+ctyScale(w.b))*(1+w.l));
 const tension=()=>Math.min(100,Math.round((S.wars||[]).reduce((a,w)=>a+w.l*w.l,0)/Math.max(1,COUNTRIES.length)*25));
@@ -2382,8 +2383,8 @@ function conflictHtml(n){const ws=(S.wars||[]).filter(w=>!n||w.a===n||w.b===n).s
   if(!ws.length)return n?"":`<div class="sec">World conflicts</div><p class="d" style="color:var(--muted);font-size:13px">The world is calm. For now.</p>`;
   let h=`<div class="sec">${n?"Conflicts":"World conflicts · global tension "+tension()+"%"}</div><div class="list">`;
   for(const w of ws){const c=warCost(w);h+=`<div class="row"><div class="n">${w.a} – ${w.b} <span class="tag" style="background:${WARC[w.l]};color:#fff">${WARL[w.l].toUpperCase()}</span></div>
-    <div class="d">${CF_EFF[w.l]}</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="buy" data-gov="peace" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="buy" data-gov="stoke" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Sell arms ${fmt(c)}</button></div></div>`}
+    <div class="d">${CF_EFF[w.l]}</div>${allyLine(w)}
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${allyBtns(w,["buy","data-gov"])}<button class="buy" data-gov="peace" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="buy" data-gov="stoke" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Sell arms ${fmt(c)}</button></div></div>`}
   return h+`</div>`}
 /* ---------- AI governments using WMD on each other ----------
    A world conflict (S.wars, AI vs AI: never the player's country, never an invasion of it) that stays at WAR counts days in w.es (reset when it drops below war).
@@ -2479,10 +2480,10 @@ function cfHtml(w){if(w.pm)return bgPopMil(w);const bg=w.l>=3?bgFor(w):null,days
   return `<button class="x" data-cf="x" aria-label="Close">×</button><h4>${w.a} – ${w.b}</h4>
   <span class="tag" style="background:${WARC[w.l]};color:#fff">${WARL[w.l].toUpperCase()}</span>${ag?` <span class="m">started by ${ag}</span>`:""}
   <div class="stg">${[1,2,3,4].map(l=>`<i style="${l<=w.l?"background:"+WARC[l]:""}"></i>`).join("")}</div><div class="stl"><span>Tension</span><span>Sanctions</span><span>Clashes</span><span>War</span></div>
-  ${bg?bgBlock(bg):""}<p><b>Effect in ${w.a} and ${w.b}:</b> ${CF_EFF[w.l]}.</p>${wmdNote(w)}
+  ${bg?bgBlock(bg):""}<p><b>Effect in ${w.a} and ${w.b}:</b> ${CF_EFF[w.l]}.</p>${allyLine(w)}${wmdNote(w)}
   <p class="m">${days!=null?`Running ${days} day${days===1?"":"s"}. `:"Ongoing. "}No fixed end: each day it can escalate or ease until a peace deal.</p>
   <p class="m">${ex.n?`Your ${ex.n} business${ex.n===1?"":"es"} there lose about ${fmt(ex.loss)}/hr to conflicts.`:"You have no businesses in either country."}</p>
-  <div class="bt"><button class="chip" data-cf="peace" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="chip" data-cf="gov">Gov tab</button></div>`}
+  <div class="bt">${allyBtns(w,["chip","data-cf"])}<button class="chip" data-cf="peace" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="chip" data-cf="gov">Gov tab</button></div>`}
 function cfOpen(w,x,y){const el=document.getElementById("cfpop");_cfPop={id:w.id,x,y};el.innerHTML=cfHtml(w);el.hidden=false;
   const pw=el.parentElement.clientWidth,ph=el.parentElement.clientHeight,bw=el.offsetWidth,bh=el.offsetHeight;
   el.style.left=Math.max(12,Math.min(pw-bw-12,x-bw/2))+"px";el.style.top=Math.max(52,Math.min(ph-bh-12,y+18>ph-bh-12?y-bh-18:y+18))+"px";draw()}
@@ -2492,6 +2493,7 @@ document.getElementById("cfpop").addEventListener("click",e=>{const b=e.target.c
   if(b.dataset.cf==="mil"){cfClose();PH.open=true;PH.app="govt";govTab="mil";phRender();return}
   if(b.dataset.cf==="x"||(!w&&!bgPseudoOpen())){cfClose();return}
   if(b.dataset.cf==="gov"){const c=cfCap(w.a);cfClose();tab="gov";openCity(c);return}
+  if(b.dataset.cf==="join"||b.dataset.cf==="leave"){warJoin(w.id,b.dataset.cf==="leave"?"leave":b.dataset.s);hud();if(sel)renderSheet();save();const w2=(S.wars||[]).find(x=>x.id===w.id);if(w2)cfOpen(w2,_cfPop.x,_cfPop.y);_cfKey="";return}
   if(b.dataset.cf==="peace"){warAct(w.id,"peace");hud();if(sel)renderSheet();const w2=(S.wars||[]).find(x=>x.id===w.id);if(w2)cfOpen(w2,_cfPop.x,_cfPop.y);else cfClose();_cfKey="";cfChip()}});
 /* gentle pulse for clashes/wars (about 12 fps, only while one is drawn on the globe view); also keeps the chip in sync */
 let cfLast=0,cfChipT=0;function cfLoop(t){const st=typeof inStreet!=="undefined"&&inStreet;
@@ -2544,6 +2546,35 @@ const dipPlayerC=()=>{const p=S.pol;return p&&p.r>=0&&p.c?p.c:null};
 function dipSay(t,imp,quiet){const d=dip();d.news.unshift(`Day ${S.day}: ${t}`);d.news=d.news.slice(0,8);
   if(!imp)return;if(quiet){S.log.unshift("World: "+t);S.log=S.log.slice(0,3)}else logGov(t)}
 const dipRel=(a,b)=>{const pc=dipPlayerC();return pc===a||pc===b||ownsIn(a)||ownsIn(b)};
+/* ---------- allies: countries joining an ongoing war ----------
+   Once a war reaches border clashes, an outside country near either side may send troops (4%/war/day, at most 3 allies per war).
+   It backs the side it is not already fighting, otherwise its nearer neighbour. w.al={country:"a"|"b"} (optional, old saves have none).
+   A Leader can send the player's country and army to either side (Gov tab or map popup). Side strength = main power + 60% of each ally's power,
+   and the player's army adds up to +60% for its side. Allies count as clashes (level 3) at home while the war is at war level. */
+const ALLYCFG={p:.04,max:3,share:.6,armyMax:.6,cost:.5,win:6,lose:6,loss:.006};
+const warSide=(w,n)=>n===w.a?"a":n===w.b?"b":w.al&&w.al[n]||null;
+function sidePower(w,s){const pc=dipPlayerC(),o=s==="a"?w.b:w.a;let v=dipPower(w[s]);for(const n in w.al||{})if(w.al[n]===s&&!dipRuler(n))v+=ALLYCFG.share*dipPower(n);
+  if(pc&&w.al&&w.al[pc]===s&&S.pol&&S.pol.mil)v*=1+Math.min(ALLYCFG.armyMax,milStr(milTerrain(o))/Math.max(1,milEnemy(o))*.5);return v}
+function allyDay(ws,d,quiet){const C=ALLYCFG,pc=dipPlayerC();
+  for(const w of ws){if(!w.al)continue;for(const n in w.al)if(n===w.a||n===w.b||d.ruler[n]||!COUNTRIES.includes(n)||(w.al[n]!=="a"&&w.al[n]!=="b"))delete w.al[n]}
+  for(const w of ws){if(w.l<3||d.ruler[w.a]||d.ruler[w.b])continue;const al=w.al||{};
+    if(pc&&al[pc]&&w.l>=4&&S.pol.mil&&milStr()>0&&!quiet)milKill(S.pol.mil,C.loss); // your troops at the front take losses
+    if(Object.keys(al).length>=C.max||Math.random()>C.p)continue;
+    const cand=COUNTRIES.filter(n=>n!==w.a&&n!==w.b&&n!==pc&&!al[n]&&!d.ruler[n]&&!(dipWarOf(n,w.a)&&dipWarOf(n,w.b))&&Math.min(dipDist(n,w.a),dipDist(n,w.b))<DIPCFG.nearKm);
+    if(!cand.length)continue;const n=cand[Math.floor(Math.random()*cand.length)];
+    const s=dipWarOf(n,w.a)?"b":dipWarOf(n,w.b)?"a":dipDist(n,w.a)<=dipDist(n,w.b)?"a":"b",fr=w[s],en=s==="a"?w.b:w.a;
+    w.al=al;al[n]=s;dipSay(`${n} sends troops to back ${fr} against ${en}`,dipRel(w.a,w.b)||dipRel(n,n),quiet)}}
+function warJoin(id,s){const w=(S.wars||[]).find(x=>x.id===id),pc=dipPlayerC();if(!w)return;
+  if(!pc||!polLeader())return toast("Only a Leader can send troops");if(w.a===pc||w.b===pc)return;
+  if(s==="leave"){if(w.al&&w.al[pc]){delete w.al[pc];logGov(`${pc} pulls its troops out of the ${w.a}–${w.b} war`);toast("Troops brought home")}return}
+  if(w.l<3)return toast("Only once it reaches border clashes");if(s!=="a"&&s!=="b")return;
+  const c=Math.round(warCost(w)*ALLYCFG.cost);if(S.cash<c)return toast(`Need ${fmt(c)}`);if(milStr()<=0)return toast("Raise an army first (Gov › Military)");
+  S.cash-=c;w.al=w.al||{};w.al[pc]=s;const fr=w[s],en=s==="a"?w.b:w.a;logGov(`${pc} sends troops to fight for ${fr} against ${en}`);toast(`Your troops join ${fr}'s side`)}
+function allyBtns(w,attr){const pc=dipPlayerC();if(!pc||!polLeader()||w.l<3||w.a===pc||w.b===pc||w.inv)return "";const c=Math.round(warCost(w)*ALLYCFG.cost),mine=w.al&&w.al[pc],dis=S.cash<c||milStr()<=0?"disabled":"";
+  return mine?`<button class="${attr[0]}" ${attr[1]}="leave" data-w="${w.id}" data-fixed="1">Bring troops home</button>`:
+    ["a","b"].map(s=>`<button class="${attr[0]}" ${attr[1]}="join" data-s="${s}" data-w="${w.id}" data-fixed="1" ${dis}>Fight for ${w[s]} ${fmt(c)}</button>`).join("")}
+function allyLine(w){const al=w.al||{},pc=dipPlayerC(),f=s=>Object.keys(al).filter(n=>al[n]===s).map(n=>n===pc?`<b>${n} (you)</b>`:n).join(", ");const A=f("a"),B=f("b");
+  return A||B?`<div class="d">Allies: ${A?`${A} with ${w.a}`:""}${A&&B?" · ":""}${B?`${B} with ${w.b}`:""}</div>`:""}
 const dipWarOf=(n,by)=>(S.wars||[]).find(w=>(w.a===n&&w.b===by)||(w.a===by&&w.b===n));
 function dipGrow(n,d,C){const g=gov(n),base=dipBase(n);let ph=d.ph[n];
   let r=C.g0+(g.appr-50)/50*C.apprG+(2-g.laws.tax)*C.taxG+C.warG*warLvl(n)-Math.log(d.gdp[n]/base)*C.revert+(d.ruler[n]?C.ruledG:0);
@@ -2551,7 +2582,8 @@ function dipGrow(n,d,C){const g=gov(n),base=dipBase(n);let ph=d.ph[n];
   else if(d.day>=(d.phc[n]||0)&&Math.random()<C.phP*(g.appr>60?1.3:g.appr<35?.8:1)){const rec=Math.random()<(warLvl(n)>=3||g.appr<35?.7:g.appr>60?.3:.5);
     d.ph[n]={g:rec?C.rec:C.boom,left:C.phMin+Math.floor(Math.random()*C.phVar)};if(dipRel(n,n))dipSay(rec?`${n} slides into recession`:`${n} economy booms`,0,0)}
   d.gr[n]=r;d.gdp[n]=Math.max(base*.4,Math.min(base*6,d.gdp[n]*(1+r)))}
-function dipConquer(a,b,quiet){const d=dip(),p=S.pol;d.ruler[b]=a;d.rsince[b]=d.day;d.ccd=d.day+DIPCFG.conqCd;
+function dipConquer(a,b,quiet){const d=dip(),p=S.pol,pc=dipPlayerC(),pw=pc&&(S.wars||[]).find(w=>((w.a===a&&w.b===b)||(w.a===b&&w.b===a))&&w.al&&w.al[pc]);
+  if(pw&&p){const won=pw[pw.al[pc]]===a;p.appr=Math.max(0,Math.min(95,p.appr+(won?ALLYCFG.win:-ALLYCFG.lose)));const t=won?`Victory: ${a}, backed by your troops, conquers ${b}. Approval +${ALLYCFG.win}`:`Defeat: ${b}, the side you backed, falls to ${a}. Approval −${ALLYCFG.lose}`;logGov(t);if(!quiet)toast(t)}d.ruler[b]=a;d.rsince[b]=d.day;d.ccd=d.day+DIPCFG.conqCd;
   S.wars=(S.wars||[]).filter(w=>w.a!==b&&w.b!==b);d.gdp[b]*=.8;d.ph[b]={g:-.001,left:10};delete d.phc[b];
   const g=gov(b);g.appr=35;if(g.ctrl&&!g.polCtrl)g.ctrl=false;g.contract=0;g.polCtrl=0;g.strike=0;
   let mine="";if(p){if(p.ctrl&&p.ctrl[b]){delete p.ctrl[b];mine=" · it left your sphere of influence"}
@@ -2571,7 +2603,7 @@ function dipInvDay(d,quiet){const C=DIPCFG,inv=d.inv,p=S.pol,w=inv&&(S.wars||[])
   if(quiet){inv.day++;if(inv.sd!=null)inv.sd++;return} // offline days freeze the warning countdown and the stalemate clock
   w.l=Math.max(w.l,3);
   if(inv.stage===1){if(d.day-inv.day>=C.warn){inv.stage=2;inv.sd=d.day;inv.prog=Math.max(5,C.start-(inv.fort||0));w.l=4;const t=`${inv.by} invades ${inv.n}! Hold the front`;dipSay(t,1,0);toast(t)}return}
-  const ratio=Math.max(1,Math.min(2.5,dipPower(inv.by)/Math.max(1,dipPower(inv.n)))),atk=milEnemy(inv.by)*ratio,m=p.mil;let army=0,det=1;
+  const ratio=Math.max(1,Math.min(2.5,sidePower(w,warSide(w,inv.by))/Math.max(1,sidePower(w,warSide(w,inv.n))))),atk=milEnemy(inv.by)*ratio,m=p.mil;let army=0,det=1;
   if(m){army=milStr(milTerrain(inv.n))*(.4+.6*m.morale/100)*(S.cash<0?.5:1);const wp=m.wpn||{};det=1+.15*((wp.nuke||0)+(wp.icbm||0))}
   const def=(army*det*MILCFG.defBonus)+milEnemy(inv.n)*C.home,mv=Math.max(-1,Math.min(1,(atk-def)/Math.max(atk,def,1)))*C.swing+C.mom;
   inv.prog=Math.max(0,Math.min(100,inv.prog+mv));inv.atk=Math.round(atk);inv.def=Math.round(def);
@@ -2601,13 +2633,14 @@ function dipDay(quiet){const C=DIPCFG,d=dip();d.day++;S.wars=S.wars||[];const ws
     w.t4=w.l>=4?(w.t4||0)+1:0;if(w.inv)continue;
     const stress=gov(a).appr<30||gov(b).appr<30||(d.ph[a]&&d.ph[a].g<0)||(d.ph[b]&&d.ph[b].g<0);
     if(w.l>=4&&w.t4>=C.t4&&d.day>=d.ccd&&Object.keys(d.ruler).length<Math.max(2,Math.floor(COUNTRIES.length*C.ruledFrac))&&(d.pcd[dipKey(a,b)]||0)<=d.day){
-      const ratio=dipPower(a)/dipPower(b);
+      const ratio=sidePower(w,warSide(w,a))/sidePower(w,warSide(w,b));
       if(ratio>=C.ratio&&Math.random()<Math.min(C.conqMax,C.conqP*(ratio-.5))){
         if(b===dipPlayerC()){if(!quiet&&!d.inv){dipInvade(w,a,quiet);d.ccd=d.day+C.conqCd}}else dipConquer(a,b,quiet);continue}}
     if(d.day<(w.sc||0))continue;const r=Math.random(),e=C.escP*dipAggr(a)*(stress?.6:1)*(w.l<3?1:.7),de=w.pin>S.day?0:C.deP*(stress?1.8:.6);
     if(r<e&&w.l<4){w.l++;w.sc=d.day+C.stepCd;const t=[,,`${a} imposes sanctions on ${b}`,`Border clashes between ${a} and ${b}`,`${a} declares war on ${b}`][w.l];
       if(w.l===4)for(const m of [a,b])gov(m).appr=Math.min(90,gov(m).appr+5);dipSay(t,dipRel(a,b),quiet)}
     else if(r>1-de){w.l--;w.sc=d.day+C.stepCd;if(w.l<1)d.pcd[dipKey(a,b)]=d.day+10;dipSay(w.l?`${a} and ${b} de-escalate to ${WARL[w.l].toLowerCase()}`:`${a} and ${b} agree to talks: the crisis ends`,dipRel(a,b),quiet)}}
+  try{allyDay(ws,d,quiet)}catch(e){console.warn("ally",e)}
   S.wars=ws.filter(w=>w.l>0);
   dipInvDay(d,quiet);try{wmdDay(quiet)}catch(e){console.warn("wmd",e)}try{wtDay(quiet)}catch(e){console.warn("wtest",e)}}
 const dipPhase=n=>{const ph=S.dip&&S.dip.ph&&S.dip.ph[n];return ph?(ph.g>0?"BOOM":"RECESSION"):"STABLE"};
