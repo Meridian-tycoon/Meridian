@@ -2637,12 +2637,17 @@ const peaceBtn=(w,attr)=>peaceCan(w)?`<button class="${attr[0]}" ${attr[1]}="pde
    w.tr/w.t0 {a,b} troops now/peak, w.at {country: troops} allies (incl. your country), w.fp front 0..100 (0 = a's capital, 100 = b's),
    w.pu pushing side, w.bt {c,s,ha,hb} the battle under way (health 0..1), w.cc {cityId:"a"|"b"} captured cities, w.ev last captures.
    Online players fighting in a shared war come from wjoin (ON.wj). All optional: old saves start them on the next day. */
-const WLCFG={k:2500,reg:.05,cap:.08,loss:.03,dmg:.22,fp:7,ev:8,pT:100,ally:.35};
+const WLCFG={k:2500,cap:.08,loss:.03,dmg:.22,fp:7,ev:8,pT:100,ally:.35};
 const WLCOL={a:"#4aa3ff",b:"#ff7a59"};
 const wlTroops=n=>Math.round(Math.sqrt(Math.max(1,dipPower(n)))*WLCFG.k);
 const wlPT=()=>{try{return Math.round(milStr()*WLCFG.pT)}catch(e){return 0}};
 const wlK=n=>{n=Math.max(0,Math.round(+n||0));return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e4?Math.round(n/1e3)+"k":n>=1e3?(n/1e3).toFixed(1)+"k":String(n)};
 const wlGid=w=>w.gid||w.id;
+/* units killed per side: w.ls[s] {inf,veh,air,stk}. Ground fighting splits by WLMIX; strikes on a side's cities add to stk. The flag number is w.tr (units left). */
+const WLMIX={inf:.7,veh:.2,air:.1},WLSTK={msl:.01,gas:.04,nuke:.15,icbm:.3}; // share of a side's units killed by one strike on its city
+function wlLs(w,s){w.ls=w.ls&&typeof w.ls==="object"?w.ls:{};const o=w.ls[s]=w.ls[s]&&typeof w.ls[s]==="object"?w.ls[s]:{};for(const k of ["inf","veh","air","stk"])if(!(o[k]>=0))o[k]=0;return o}
+function wlLoss(w,s,n){n=Math.max(0,Math.round(n||0));if(!n)return;const o=wlLs(w,s);let left=n;for(const k of ["veh","air"]){const v=Math.round(n*WLMIX[k]);o[k]+=v;left-=v}o.inf+=Math.max(0,left)}
+function wlStrike(k,c){try{const f=WLSTK[k];if(!f||!c)return;let hit=0;for(const w of S.wars||[]){if(w.l<3||!w.tr)continue;for(const s of ["a","b"])if(w[s]===c.country){const n=Math.round(w.tr[s]*f);if(n>0){w.tr[s]-=n;wlLs(w,s).stk+=n;hit=1}}}if(hit)draw()}catch(e){}}
 const wlName=()=>(S.online&&S.online.name)||"You";
 function wlRemote(w,s){const j=typeof ON!=="undefined"&&Array.isArray(ON.wj)?ON.wj:[];return j.filter(x=>x.w===wlGid(w)&&(!s||x.s===s))}
 function wlInit(w){if(w.tr&&w.tr.a>=0&&w.tr.b>=0)return;w.tr={a:wlTroops(w.a),b:wlTroops(w.b)};w.t0={a:w.tr.a,b:w.tr.b};w.fp=50;w.pu=w.att===w.b?"b":"a";w.cc={};w.ev=[];w.at={}}
@@ -2657,8 +2662,8 @@ function wlDay(ws,d,quiet){const C=WLCFG,pc=dipPlayerC();
     const inten=w.l>=4?1:.35,A=wlSide(w,"a"),B=wlSide(w,"b"),qa=sidePower(w,"a")/Math.max(1e-9,dipPower(w.a)),qb=sidePower(w,"b")/Math.max(1e-9,dipPower(w.b));
     const ea=A*Math.min(2,qa)*(.6+.8*Math.random()),eb=B*Math.min(2,qb)*(.6+.8*Math.random()),tot=Math.max(1,ea+eb);
     const la=Math.min(A*C.cap,eb*C.loss*inten),lb=Math.min(B*C.cap,ea*C.loss*inten);
-    for(const [s,l,T] of [["a",la,A],["b",lb,B]]){const f=T>0?1-l/T:1;w.tr[s]=Math.round(w.tr[s]*f);for(const n in w.at)if(w.al[n]===s&&n!==pc)w.at[n]=Math.round(w.at[n]*f);
-      w.tr[s]=Math.round(w.tr[s]+(w.t0[s]-w.tr[s])*C.reg)}
+    for(const [s,l,T] of [["a",la,A],["b",lb,B]]){const f=T>0?1-l/T:1,b0=w.tr[s];w.tr[s]=Math.round(w.tr[s]*f);for(const n in w.at)if(w.al[n]===s&&n!==pc)w.at[n]=Math.round(w.at[n]*f);
+      wlLoss(w,s,b0-w.tr[s])}
     const mv=(ea-eb)/tot*C.fp*inten*2;w.fp=Math.max(5,Math.min(95,(w.fp||50)+mv));w.pu=mv>=0?"a":"b";
     const s=w.pu,o=s==="a"?"b":"a";if(!w.bt||w.bt.s!==s||!CITIES[w.bt.c]){const c=wlTarget(w,s);w.bt=c?{c:c.id,s,ha:1,hb:1}:null}if(!w.bt)continue;
     const bt=w.bt,r=(s==="a"?ea:eb)/tot;bt["h"+o]=Math.max(0,bt["h"+o]-C.dmg*r*inten*2);bt["h"+s]=Math.max(0,bt["h"+s]-C.dmg*(1-r)*inten*1.4);
@@ -2719,8 +2724,10 @@ function wlDrawFx(ctx,zs,t,anim){const now=Date.now();let live=false;
     ctx.globalAlpha=1-f;ctx.beginPath();ctx.arc(x,y,(8+f*40)*zs,0,7);ctx.strokeStyle="#fbbf24";ctx.lineWidth=3;ctx.stroke();ctx.beginPath();ctx.arc(x,y,(6+f*16)*zs,0,7);ctx.fillStyle="#f97316";ctx.fill()}
   return live}
 let _wlT=0;function wlTick(){if(_wlT||document.hidden)return;_wlT=setTimeout(()=>{_wlT=0;draw()},innerWidth<700?80:40)}
+function wlLost(w,s){const o=w.ls&&w.ls[s];if(!o)return "";const t=(o.inf||0)+(o.veh||0)+(o.air||0)+(o.stk||0);if(!t)return "";
+  return ` <span style="color:#fca5a5" title="Units killed: infantry ${wlK(o.inf)}, vehicles ${wlK(o.veh)}, planes ${wlK(o.air)}, strikes ${wlK(o.stk)}">−${wlK(t)} (🪖${wlK(o.inf)} 🚙${wlK(o.veh)} ✈${wlK(o.air)} 💥${wlK(o.stk)})</span>`}
 function wlHtml(w){if(!w.tr||w.l<3)return "";const pc=dipPlayerC(),A=wlSide(w,"a"),B=wlSide(w,"b"),T=Math.max(1,A+B),fp=Math.round(w.fp||50),lead=fp>=52?"a":fp<=48?"b":null,cc=w.cc||{};
-  const row=(s,v)=>`<div class="d" style="display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:2px;background:${WLCOL[s]}"></span><b>${w[s]}</b> side · ${wlK(v)} troops<span style="flex:1"></span>${Math.round(v/T*100)}%</div>`;
+  const row=(s,v)=>`<div class="d" style="display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:2px;background:${WLCOL[s]}"></span><b>${w[s]}</b> side · ${wlK(v)} troops${wlLost(w,s)}<span style="flex:1"></span>${Math.round(v/T*100)}%</div>`;
   const held=s=>Object.keys(cc).filter(id=>cc[id]===s&&CITIES[id]).map(id=>CITIES[id].name);
   const join=s=>[...Object.keys(w.al||{}).filter(n=>w.al[n]===s).map(n=>n===pc?`<b>★ ${wlName()} (${n}, you) ${wlK((w.at||{})[n])}</b>`:`${n} ${wlK((w.at||{})[n])}`),...wlRemote(w,s).map(j=>`★ ${String(j.name||"Player").replace(/[&<>]/g,"")} (${String(j.c||"").replace(/[&<>]/g,"")}) ${wlK(j.n)}`)].join(", ");
   const bt=w.bt&&CITIES[w.bt.c],ha=bt?Math.round(w.bt.ha*100):0,hb=bt?Math.round(w.bt.hb*100):0;
@@ -2735,7 +2742,7 @@ function wlHtml(w){if(!w.tr||w.l<3)return "";const pc=dipPlayerC(),A=wlSide(w,"a
    keep their own invasion war and their own troops (w.al/w.at for their country). Players who join a shared war write wjoin/{uid} {w,s,n,name,c,at}. */
 const WWKEY="meridian-world-wars";let WW=null;try{const c=JSON.parse(localStorage.getItem(WWKEY)||"null");if(c&&Array.isArray(c.list))WW=c}catch(e){}
 const wwShared=()=>!!WW&&!WRM;
-function wwPubData(){const d=dip(),keep=["id","a","b","l","att","d0","tr","t0","fp","pu","bt","cc","ev","al","at","inv"];
+function wwPubData(){const d=dip(),keep=["id","a","b","l","att","d0","tr","t0","fp","pu","bt","cc","ev","al","at","inv","ls"];
   return JSON.parse(JSON.stringify({list:(S.wars||[]).filter(w=>w.l>0&&!w.gid).slice(0,30).map(w=>{const o={};for(const k of keep)if(w[k]!=null)o[k]=w[k];return o}),ruler:d.ruler||{}}))}
 function wwPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;const d=wwPubData(),sig=JSON.stringify(d),n=Date.now();
   if(!force&&(n-(ON.wwPub||0)<(sig!==ON.wwSig?15000:300000)))return;if(sig===ON.wwSig&&!force)return;
@@ -6369,7 +6376,7 @@ function dmgLeft(c){const e=(S.dmg||{})[c.id],l=dmgLvl(c);if(!e||!l)return 0;con
 // a strike lands: add its damage (stacking 1−(1−a)(1−b)), restart repairs, kill people; mine = fired by the player. Returns deaths.
 function dmgStrike(k,c,mine){const W=WPNCFG.w[k];if(!W||!c)return 0;S.dmg=S.dmg&&typeof S.dmg==="object"?S.dmg:{};const cur=dmgLvl(c),o=S.dmg[c.id],add=dmgHit(W,c)*W.struct,
   l=k==="icbm"?1:Math.min(1,1-(1-cur)*(1-add)),R=["msl","gas","nuke","icbm"],pk=o&&cur>0&&R.indexOf(o.k)>R.indexOf(k)?o.k:k;
-  S.dmg[c.id]={l0:Math.round(l*1e4)/1e4,t:Date.now(),own:mine&&(!o||cur<=0||o.own)?1:0,k:pk};return popStrike(k,c,mine?((S.pol&&S.pol.c)||"you"):"")}
+  S.dmg[c.id]={l0:Math.round(l*1e4)/1e4,t:Date.now(),own:mine&&(!o||cur<=0||o.own)?1:0,k:pk};wlStrike(k,c);return popStrike(k,c,mine?((S.pol&&S.pol.c)||"you"):"")}
 function dmgLine(c){const l=dmgLvl(c);if(l<.005)return "";const e=S.dmg[c.id];
   return `<div class="welcome" style="background:var(--bad)">${l>=DMG.dead?"☠":"💥"} ${c.name} is ${dmgWord(l)}: ${dmgPct(l)} damage · demand, output and rents −${Math.round((1-dmgMult(c))*100)}%${e.own?" for you":""} · rebuilt in ${fmtDur(dmgLeft(c))}</div>`}
 // map: rubble/ash patch scaled to damage, green haze for gas, ruin ring + label for destroyed cities; persists until rebuilt
