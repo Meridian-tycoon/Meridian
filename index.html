@@ -6515,7 +6515,7 @@ function botList(x){let h="";if(x.pend.length)h+=`<p class="ph-sub" style="margi
    and, in ONE batch, creates transfers/f<id> (the existing player transfer, paying the carrier) and deletes the haul; rules refuse that delete unless the matching transfer is created in the same batch.
    Cancel (shipper deletes) is only possible before acceptance; an accepted haul that is not done by dl is deleted by the shipper (rules: only after dl) and refunded.
    Local ledgers make every step idempotent: S.frt.my (open escrow), S.frt.owe (goods credited, payment batch to retry), S.frt.run (carrier's accepted jobs). */
-const FR_MINPAY=100,FR_MAXPAY=1e6,FR_MAXOPEN=5,FR_MAXT=120,FR_TRK=30,FR_MAXQ=5000,FR_GRACE=120000,FR_SPD=300;
+const FR_MINPAY=100,FR_MAXPAY=1e6,FR_MAXOPEN=5,FR_MAXT=120,FR_TRK=30,FR_MAXQ=5000,FR_GRACE=120000,FR_SPD=300,FR_CLAIM=86400000;
 const FR={tab:"open",c:"",d:"",g:"",q:"",p:"",h:"12",busy:false,unsub:null,docs:[],got:false,infl:{}};
 function FS(){const x=S.frt=S.frt&&typeof S.frt==="object"&&!Array.isArray(S.frt)?S.frt:{};for(const k of["my","run","owe"])if(!x[k]||typeof x[k]!=="object"||Array.isArray(x[k]))x[k]={};if(!Array.isArray(x.hist))x.hist=[];return x}
 function frLog(e){const x=FS();e.t=Date.now();x.hist.unshift(e);x.hist=x.hist.slice(0,12)}
@@ -6562,17 +6562,27 @@ function frAccept(id){const d=FR.docs.find(z=>z.id===id);if(!d||FR.infl[id])retu
   ON.db.collection("freight").doc(id).update({carrier:ON.user.uid,carrierName:(me.name||"Tycoon").slice(0,20),acc:FV.serverTimestamp(),eta}).then(()=>{delete FR.infl[id];
     FS().run[id]={g:v.g,q:v.q,from:v.from,to:v.to,pay:v.pay,eta,dl:v.dl,tr,sh:String(v.shipperName||"Shipper").slice(0,20),done:0};FR.tab="mine";toast(`Haul accepted: deliver by ${fmtDur(eta-Date.now())} from now`);save();phRender()},
     e=>{delete FR.infl[id];toast(e&&e.code==="permission-denied"?"Too late: another carrier got it first":"Couldn't accept: "+(e&&e.code||e));phRender()})}
+const frDoneMs=v=>v&&v.done?(typeof v.done.toMillis==="function"?v.done.toMillis():+v.done||0):0;
+function frDrop(id){if(FR.infl[id])return;FR.infl[id]=1;ON.db.collection("freight").doc(id).delete().then(()=>{delete FR.infl[id]},()=>{delete FR.infl[id]})}
+/* shipper back after the carrier claimed the escrowed pay: goods arrive, no second payment, the post is cleared */
+function frClaimed(id,v){const x=FS(),m=x.my[id];if(m){delete x.my[id];ensureWh(CITIES[m.to]);const inv=S.inv[m.to]=S.inv[m.to]||{};inv[m.g]=(inv[m.g]||0)+m.q;
+  frLog({r:"paid",g:m.g,q:m.q,a:m.pay,n:String(v.carrierName||"Carrier").slice(0,20)+" (from escrow)"});toast(`While you were away ${String(v.carrierName||"the carrier").slice(0,20)} delivered ${m.q} ${G[m.g]?G[m.g][0].toLowerCase():""} and took the ${fmt(m.pay)} you escrowed`);save();hud()}
+  frDrop(id);frPaint()}
 function frSweep(){if(!ON.user||!ON.db||!FR.got)return;const now=Date.now(),x=FS(),uid=ON.user.uid,by={};for(const d of FR.docs)by[d.id]=d.data;
   for(const id in x.my){if(FR.infl[id])continue;const m=x.my[id],v=by[id];
     if(!v){FR.infl[id]=1;ON.db.collection("freight").doc(id).get().then(s=>{delete FR.infl[id];if(!s.exists)frRefund(id,false)},()=>{delete FR.infl[id]});continue}
-    if(v.done)frSettle(id,v);else if(!v.carrier?now>m.dl:now>m.dl+FR_GRACE)frDelete(id,false)}
-  for(const id in x.owe){if(FR.infl[id])continue;if(by[id])frPay(id);else delete x.owe[id]}
-  for(const d of FR.docs){const v=d.data,id=d.id;if(v.shipper===uid&&!x.my[id]&&!x.owe[id]&&!FR.infl[id]&&!v.done&&(!v.carrier?now>v.dl:now>v.dl+FR_GRACE)){FR.infl[id]=1;ON.db.collection("freight").doc(id).delete().then(()=>{delete FR.infl[id]},()=>{delete FR.infl[id]})}}
+    if(v.claim)frClaimed(id,v);else if(v.done)frSettle(id,v);else if(!v.carrier?now>m.dl:now>m.dl+FR_GRACE)frDelete(id,false)}
+  for(const id in x.owe){if(FR.infl[id])continue;const v=by[id];if(v&&v.claim){const o=x.owe[id];delete x.owe[id];frLog({r:"paid",g:o.g,q:o.q,a:o.pay,n:o.nm+" (from escrow)"});save();frDrop(id)}else if(v)frPay(id);else delete x.owe[id]}
+  for(const d of FR.docs){const v=d.data,id=d.id;if(v.shipper===uid&&!x.my[id]&&!x.owe[id]&&!FR.infl[id]&&(v.claim||!v.done&&(!v.carrier?now>v.dl:now>v.dl+FR_GRACE)))frDrop(id);
+    /* stale posts nobody took, a day past their deadline: anyone may clear them (the shipper is refunded on return) */
+    else if(v.shipper!==uid&&!v.carrier&&now>(+v.dl||0)+FR_CLAIM+60000&&!FR.infl[id]&&Math.random()<.2)frDrop(id)}
   for(const d of FR.docs){const v=d.data,id=d.id;if(v.carrier===uid&&!x.run[id]&&!v.done&&CITIES[v.from]&&G[v.g]&&Number.isFinite(+v.eta)&&v.shipper!==uid)x.run[id]={g:v.g,q:v.q,from:v.from,to:v.to,pay:v.pay,eta:+v.eta,dl:+v.dl,tr:frTr(v.g,v.q),sh:String(v.shipperName||"Shipper").slice(0,20),done:0}}
   for(const id in x.run){const r=x.run[id],v=by[id];if(FR.infl["r"+id])continue;
     if(!v){FR.infl["r"+id]=1;ON.db.collection("freight").doc(id).get().then(s=>{delete FR.infl["r"+id];if(!s.exists){frLog({r:r.done?"earned":"lost",g:r.g,q:r.q,a:r.pay});delete x.run[id];save();frPaint()}},()=>{delete FR.infl["r"+id]});continue}
     if(v.carrier!==uid){delete x.run[id];continue}
+    if(v.claim){S.cash+=r.pay;frLog({r:"earned",g:r.g,q:r.q,a:r.pay,n:"from escrow"});delete x.run[id];save();hud();frPaint();continue}
     if(v.done&&!r.done){r.done=1;save()}
+    else if(v.done&&frDoneMs(v)&&now>frDoneMs(v)+FR_CLAIM+60000){FR.infl["r"+id]=1;ON.db.collection("freight").doc(id).update({claim:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete FR.infl["r"+id];if(x.run[id]){S.cash+=r.pay;frLog({r:"earned",g:r.g,q:r.q,a:r.pay,n:"from escrow"});delete x.run[id];toast(`${r.sh} never settled: you claimed the ${fmt(r.pay)} they escrowed`);save();hud();frPaint()}},()=>{delete FR.infl["r"+id]})}
     else if(!r.done&&now>r.dl+FR_GRACE){frLog({r:"lost",g:r.g,q:r.q,a:r.pay});delete x.run[id];save();frPaint()}
     else if(!r.done&&now>=r.eta){FR.infl["r"+id]=1;ON.db.collection("freight").doc(id).update({done:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete FR.infl["r"+id];r.done=1;toast(`Haul delivered, payment of ${fmt(r.pay)} is coming from ${r.sh}`);save();frPaint()},e=>{delete FR.infl["r"+id]})}}}
 if(onEnabled())setInterval(()=>{try{frSweep()}catch(e){console.warn("fr",e)}},15000);
@@ -6599,9 +6609,9 @@ function frHtml(){if(!onEnabled()||!ON.user)return`<div class="ph-sub" style="ma
      <select id="frh" style="${ip}">${[6,12,24,48].map(n=>opt(n,"Deliver within "+n+" hours",+FR.h===n)).join("")}</select><div id="frquote" class="ph-sub" style="margin-top:6px">${frQuoteHtml()}</div>
      <button class="buy" data-ph="frpost" style="width:100%;margin-top:8px;background:#92400e!important;color:#fff;border-color:#f59e0b" ${FR.busy?"disabled":""}>${FR.busy?"Posting…":"Post haul (goods and pay held in escrow)"}</button>`}
   else{const my=Object.keys(x.my),run=Object.keys(x.run);
-    h+=`<p class="ph-sub" style="margin-top:10px">Hauls I posted</p><div class="ph-list">${my.map(id=>{const m=x.my[id],v=(FR.docs.find(d=>d.id===id)||{}).data||{},st=v.done?"delivered, paying":v.carrier?"in transit with "+onEsc(String(v.carrierName||"a carrier")):"waiting for a carrier";
+    h+=`<p class="ph-sub" style="margin-top:10px">Hauls I posted</p><div class="ph-list">${my.map(id=>{const m=x.my[id],v=(FR.docs.find(d=>d.id===id)||{}).data||{},st=v.claim?"claimed by the carrier":v.done?"delivered, paying":v.carrier?"in transit with "+onEsc(String(v.carrierName||"a carrier")):"waiting for a carrier";
       return`<div><b style="display:block">${m.q} ${gn(m.g)} · ${CITIES[m.from]?CITIES[m.from].name:"?"} → ${CITIES[m.to]?CITIES[m.to].name:"?"}</b>${fmt(m.pay)} escrowed · ${st} · ${fmtDur(Math.abs(m.dl-now))} ${m.dl>now?"left":"overdue"}${!v.carrier&&!FR.infl[id]?`<button class="buy" data-ph="frcan" data-k="${onEsc(id)}" style="width:100%;margin-top:4px;color:#fff">Cancel and refund</button>`:""}</div>`}).join("")||"<div>None</div>"}</div>
-     <p class="ph-sub" style="margin-top:10px">Hauls I carry</p><div class="ph-list">${run.map(id=>{const r=x.run[id];return`<div><b style="display:block">${r.q} ${gn(r.g)} · ${CITIES[r.from]?CITIES[r.from].name:"?"} → ${CITIES[r.to]?CITIES[r.to].name:"?"}</b>for ${onEsc(r.sh)} · ${fmt(r.pay)} · ${r.done?"delivered, awaiting payment":r.eta>now?"arrives in "+fmtDur(r.eta-now):"arriving"} · ${r.tr} truck${r.tr>1?"s":""}</div>`}).join("")||"<div>None</div>"}</div>`;
+     <p class="ph-sub" style="margin-top:10px">Hauls I carry</p><div class="ph-list">${run.map(id=>{const r=x.run[id];return`<div><b style="display:block">${r.q} ${gn(r.g)} · ${CITIES[r.from]?CITIES[r.from].name:"?"} → ${CITIES[r.to]?CITIES[r.to].name:"?"}</b>for ${onEsc(r.sh)} · ${fmt(r.pay)} · ${r.done?"delivered, awaiting payment"+(()=>{const v=(FR.docs.find(d=>d.id===id)||{}).data,t=frDoneMs(v);return t?` (claim from escrow in ${fmtDur(Math.max(0,t+FR_CLAIM-now))} if unpaid)`:""})():r.eta>now?"arrives in "+fmtDur(r.eta-now):"arriving"} · ${r.tr} truck${r.tr>1?"s":""}</div>`}).join("")||"<div>None</div>"}</div>`;
     if(x.hist.length)h+=`<p class="ph-sub" style="margin-top:10px">History</p><div class="ph-list">${x.hist.slice(0,6).map(e=>`<div><b style="display:block;color:${e.r==="lost"?"#f87171":e.r==="refund"?"#fbbf24":"#4ade80"}">${{paid:"Delivered, paid ",earned:"Earned ",refund:"Refunded ",lost:"Not delivered "}[e.r]||""}${fmt(e.a)}</b>${e.q} ${gn(e.g)}${e.n?" · "+onEsc(e.n):""} · ${fmtDur(Date.now()-e.t)} ago</div>`).join("")}</div>`}
   return h}
 function frQuoteHtml(){const r=frPostChk();return r.err?`<span style="opacity:.7">${onEsc(r.err)}</span>`:onEsc(r.line)}
@@ -6725,7 +6735,7 @@ function ctHtml(){if(!onEnabled()||!ON.user)return`<div class="ph-sub" style="ma
       <p class="ph-sub" style="margin-top:6px">Members pool a treasury, fix one market's price together, hold turf and chat. It also draws tax heat and government raids.</p>`;return h}
   const boss=m.boss===uid,P=CT.perk,fx=P.fix,heat=Math.round(evS().heat),tabs=[["home","Home"],["mem","Crew"],["tre","Funds"],["mkt","Market"],["chat","Chat"]];
   let h=`<div class="ph-rows"><div><span>Cartel</span><b>${ctTagHtml(uid,m.id)} ${onEsc(m.name)}</b></div><div><span>Members</span><b>${m.members.length}/${CT_MAX}</b></div><div><span>Treasury</span><b>${fmt(m.tre)}</b></div></div>
-   <div style="display:flex;gap:3px;margin-top:8px">${tabs.map(([k,t])=>`<button class="buy" data-ph="cttab" data-k="${k}" style="flex:1;min-width:0;padding:6px 1px;font-size:11px;color:#fff${CT.tab===k?";outline:2px solid #ef4444":""}">${t}</button>`).join("")}</div>`;
+   <div class="ph-seg" style="margin-top:8px">${tabs.map(([k,t])=>`<button data-ph="cttab" data-k="${k}" aria-pressed="${CT.tab===k}" style="min-width:0;padding:6px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t}</button>`).join("")}</div>`;
   if(CT.tab==="home"){h+=`<div class="ph-rows" style="margin-top:8px"><div><span>Your role</span><b>${boss?"Boss":"Member"}</b></div><div><span>Boss</span><b>${onEsc(m.bossName)}</b></div><div><span>Tax heat</span><b style="color:${heat>60?"#f87171":"#fff"}">${heat}%</b></div></div>
     <div class="ph-list" style="margin-top:8px"><div><b style="display:block">Price fixing</b>${m.fix?`${gn(m.fix.g)} in ${CITIES[m.fix.c].name}: ${fx&&fx.on?`<b style="display:inline;color:#4ade80">+${Math.round(fx.bonus*100)}% on your sales</b>`:fx&&fx.paused?"suspended after a raid":"needs 2+ members with a business there"}`:"None set. The boss sets it in Market."}</div>
      <div><b style="display:block">Turf</b>${Object.keys(P.turf).length?`${Object.keys(P.turf).map(i=>CITIES[i].name).slice(0,5).join(", ")}: <b style="display:inline;color:#4ade80">+${Math.round((CT_TURF-1)*100)}% profit</b>`:"None yet: 2+ members owning in a city, more than any other cartel."}</div>
@@ -7541,9 +7551,9 @@ const ISH_PB=50;let ishScC=null;
 function ishScale(i){if(!(i.eff.biz||i.eff.ret))return 1;const key=(S.day||1)+"|"+ISHV+"|"+Object.keys(S.own).length,c=ishScC&&ishScC.key===key?ishScC:(ishScC={key});if(c[i.k]==null)c[i.k]=Math.max(.1,ishWorth(i,1)*ISH_PB/i.cost);return c[i.k]}
 function ishQuote(i,q){const s=ishS(),n=s.own[i.k]||0,mk=ishMk(i.cat),sc=ishScale(i);let t=0;for(let j=0;j<q;j++)t+=i.cost*sc*mk*Math.pow(1.05,n+j);return Math.round(t*(1-ishDisc(q)))}
 function ishReq(i){const m=[];if(i.sz>ishSize())m.push(`city size ${i.sz}+`);if(i.tech&&!hasTech(i.tech))m.push(`research: ${TK[i.tech]?TK[i.tech].n:i.tech}`);if(i.prev&&!ishN(i.prev))m.push(`own ${/^[aeiou]|^ERP/i.test(ISHC[i.prev].n)?"an":"a"} ${/^[A-Z]{2}/.test(ISHC[i.prev].n)?ISHC[i.prev].n:ISHC[i.prev].n.toLowerCase()}`);return m}
-function ishTick(){try{const s=ishS(),now=Date.now(),dt=Math.max(0,Math.min(now-(s.t||now),48*DAYMS));s.t=now;if(!dt)return;const h=dt/DAYMS;
-  for(const f of s.fin){let p=Math.min(f.left,f.pay*h);if(f.left-p<=.5)p=f.left;f.left-=p;S.cash-=p}s.fin=s.fin.filter(f=>f.left>.5); // the only place loan payments are billed (capped at the balance); saleTick leaves them out of totals().inc
-  const e=ishE();if(e.rp>0)S.rpP=(S.rpP||0)+e.rp*h}catch(err){console.warn("ishTick",err)}}
+function ishTick(){try{const s=ishS(),now=Date.now(),dt=Math.max(0,Math.min(now-(s.t||now),48*DAYMS));s.t=now;if(!dt)return{paid:0,done:0,open:s.fin.length};const h=dt/DAYMS;let paid=0;
+  for(const f of s.fin){let p=Math.min(f.left,f.pay*h);if(f.left-p<=.5)p=f.left;f.left-=p;S.cash-=p;paid+=p}const n0=s.fin.length;s.fin=s.fin.filter(f=>f.left>.5);const done=n0-s.fin.length; // the only place loan payments are billed (capped at the balance); saleTick leaves them out of totals().inc
+  const e=ishE();if(e.rp>0)S.rpP=(S.rpP||0)+e.rp*h;return{paid,done,open:s.fin.length}}catch(err){console.warn("ishTick",err);return null}}
 setInterval(ishTick,4000);
 /* ---- buying and selling ---- */
 function ishBuy(k,q,fin){const i=ishC(k);if(!i)return"Unknown item";const s=ishWk(),n=s.own[k]||0;q=Math.max(1,Math.floor(q));
@@ -7888,16 +7898,16 @@ function mkDrag(el,handle,key,get,set){let st=null;
   new MutationObserver(()=>{if(sheet.classList.contains("open"))fit()}).observe(sheet,{attributes:true,attributeFilter:["class"]});
   mkDrag(sheet,".shead","mer_sheetpos",()=>{if(!wide())return{off:1};const r=sheet.getBoundingClientRect(),pr=(sheet.offsetParent||document.body).getBoundingClientRect();return{x:r.left-pr.left,y:r.top-pr.top}},setS)})();
 const SW={el:document.createElement("div"),open:true,x:innerWidth<820?innerWidth-124:innerWidth-252,y:innerWidth<820?Math.round(innerHeight*.17):innerHeight-330};
-try{Object.assign(SW,JSON.parse(localStorage.getItem("mer_statspos"))||{})}catch(_){}
+try{const sp=JSON.parse(localStorage.getItem("mer_statspos"));if(sp){Object.assign(SW,sp);SW.user=1}}catch(_){}
 try{const f=localStorage.getItem("mer_statsfold");if(f!==null)SW.open=f!=="1";else if(innerWidth<820)SW.open=false}catch(_){}
 SW.el.id="statsw";document.getElementById("app").appendChild(SW.el);
-function swPlace(){const w=SW.el.offsetWidth||240;SW.x=Math.max(4,Math.min(innerWidth-w-4,SW.x));SW.y=Math.max(4,Math.min(innerHeight-40,SW.y));SW.el.style.transform=`translate(${SW.x}px,${SW.y}px)`}
+function swPlace(){const w=SW.el.offsetWidth||240;if(!SW.user){/* default spot only: keep clear of the news ticker (it drops lower under the View streets pill) */const tk=document.getElementById("ticker");if(tk&&tk.offsetParent){const r=tk.getBoundingClientRect(),ar=SW.el.parentNode.getBoundingClientRect();if(r.height&&r.right>SW.x+ar.left&&r.left<SW.x+ar.left+w&&SW.y+ar.top<r.bottom+6&&SW.y+ar.top+40>r.top)SW.y=Math.round(r.bottom-ar.top+6)}}SW.x=Math.max(4,Math.min(innerWidth-w-4,SW.x));SW.y=Math.max(4,Math.min(innerHeight-40,SW.y));SW.el.style.transform=`translate(${SW.x}px,${SW.y}px)`}
 function swRender(){SW.el.classList.toggle("folded",!SW.open);const h=S.hist||[],d=h.slice(-15).map((v,i,a)=>i?v-a[i-1]:0).slice(1),mx=Math.max(1,...d.map(Math.abs));
   SW.el.innerHTML=`<div class="sw-top"><span class="ph-grip"></span><b>📊 Stats</b><button data-sw aria-label="${SW.open?"Fold":"Open"} stats">${SW.open?"–":"+"}</button></div>`+(SW.open?`<div class="sw-body"><small style="color:var(--muted)">Net worth${h.length>1?`, last ${h.length} days`:""}</small>${spark()}
   <div class="sw-row"><span>💰 Cash</span><b>${fmt(S.cash)}</b></div><div class="sw-row"><span>🏦 Debt</span><b>${fmt(S.debt||0)}</b></div><div class="sw-row"><span>🏙 Cities</span><b>${Object.keys(S.own).filter(k=>Object.keys(S.own[k]||{}).length).length}</b></div>
   <small style="color:var(--muted)">Daily change</small><div class="sw-bars">${d.length?d.map(v=>`<i class="${v<0?"neg":""}" style="height:${Math.abs(v)/mx*100}%" title="${fmt(v)}"></i>`).join(""):'<small style="color:var(--muted)">Fills in as days pass</small>'}</div></div>`:"");swPlace()}
 SW.el.addEventListener("click",e=>{if(!e.target.closest("[data-sw]"))return;SW.open=!SW.open;try{localStorage.setItem("mer_statsfold",SW.open?"0":"1")}catch(_){}swRender()});
-mkDrag(SW.el,".sw-top","mer_statspos",()=>({x:SW.x,y:SW.y}),(x,y)=>{SW.x=x;SW.y=y;swPlace()});
+mkDrag(SW.el,".sw-top","mer_statspos",()=>({x:SW.x,y:SW.y}),(x,y)=>{SW.x=x;SW.y=y;SW.user=1;swPlace()});
 window.addEventListener("resize",swPlace);setInterval(swRender,2000);swRender();
 
 /* ---------- travel: you are somewhere. Fly, take the train or bus, drive, or grab a taxi ---------- */
@@ -7997,17 +8007,17 @@ new MutationObserver(draw).observe(document.documentElement,{attributes:true,att
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeSheet()});
 /* offline: full pay for the time away, up to 48 hours, then a welcome-back summary */
 function catchUp(){const now0=Date.now(),away=now0-(S.acc||now0),cash0=S.cash,debt0=S.debt||0,hadStock=Object.keys(S.stock||{}).filter(k=>S.stock[k]>0);
-  const got=accrue();const offPeace=S._offPeace||[];delete S._offPeace;if(offPeace.length)setTimeout(()=>toast(`War weariness forced white peace with ${offPeace.join(", ")} while you were away`),600);
+  const shop=ishTick()||{paid:0,done:0,open:0};const got=accrue();const offPeace=S._offPeace||[];delete S._offPeace;if(offPeace.length)setTimeout(()=>toast(`War weariness forced white peace with ${offPeace.join(", ")} while you were away`),600);
   S.last=Date.now();checkGoals();save();hud();draw();
   if(away>5*60000){const hrs=away/DAYMS,t=hrs>=1?hrs.toFixed(1)+" h":Math.round(away/60000)+" min";
     if(got>1){S.log.unshift(`While you were away (${t}): ${fmt(got)} earned`);S.log=S.log.slice(0,3);hud()}
-    const ran=hadStock.filter(k=>!(S.stock[k]>0));awaySummary({away,got,net:S.cash-cash0,debt:(S.debt||0)-debt0,ran,capped:away>48*DAYMS,peace:offPeace})}}
+    const ran=hadStock.filter(k=>!(S.stock[k]>0));awaySummary({away,got,net:S.cash-cash0,debt:(S.debt||0)-debt0,ran,capped:away>48*DAYMS,peace:offPeace,shop})}}
 function awaySummary(r){let el=$("#away");if(!el){el=document.createElement("div");el.id="away";document.body.appendChild(el)}
   const nm=k=>{const [id,b]=k.split(":");const c=CITIES[id],bz=BIZ.find(x=>x.k===b);return (bz?bz.n:b)+(c?" in "+c.name:"")};
   const row=(a,b,col)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)"><span>${a}</span><b${col?` style="color:${col}"`:""}>${b}</b></div>`;
   el.innerHTML=`<div style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px" data-away="x"><div style="background:var(--panel);color:var(--ink);border-radius:14px;max-width:360px;width:100%;padding:18px;box-shadow:0 18px 40px rgba(0,0,0,.35)">
     <h3 style="margin:0 0 4px">While you were away</h3><p class="d" style="margin:0 0 10px;color:var(--muted)">Your empire kept running for ${fmtDur(r.away)}.</p>
-    ${r.got>1?row("Earned",fmt(r.got),"var(--good)"):""}${row("Cash change",(r.net>=0?"+":"")+fmt(r.net),r.net>=0?"var(--good)":"var(--bad)")}${Math.abs(r.debt)>1?row("Debt change",(r.debt>0?"+":"")+fmt(r.debt),r.debt>0?"var(--bad)":"var(--good)"):""}
+    ${r.got>1?row("Earned",fmt(r.got),"var(--good)"):""}${row("Cash change",(r.net>=0?"+":"")+fmt(r.net),r.net>=0?"var(--good)":"var(--bad)")}${r.shop&&r.shop.paid>=.01?row(`Shop loan payments${r.shop.done?` · ${r.shop.done} paid off`:""}`,"−"+(r.shop.paid<100?fmtc(r.shop.paid):fmt(r.shop.paid)),"var(--bad)"):""}${Math.abs(r.debt)>1?row("Debt change",(r.debt>0?"+":"")+fmt(r.debt),r.debt>0?"var(--bad)":"var(--good)"):""}
     ${r.ran.length?`<p style="margin:10px 0 4px;color:var(--bad)"><b>Ran out of stock:</b></p><div class="d">${r.ran.slice(0,5).map(nm).join("<br>")}${r.ran.length>5?`<br>and ${r.ran.length-5} more`:""}</div>`:""}
     ${(r.peace||[]).length?`<p class="d" style="margin:10px 0 0"><b>White peace</b> (war weariness hit 100) with ${r.peace.join(", ")}.</p>`:""}
     ${r.capped?`<p class="d" style="margin:10px 0 0;color:var(--muted)">Offline earnings stop after 48 hours. Check in at least every two days to keep everything paid.</p>`:""}
@@ -8188,6 +8198,12 @@ html.th-ledger .set-seg button[aria-pressed="true"]{background:#fbf5e6;color:#1f
 html.th-command .set-th,html.th-command .set-seg,html.th-command .set-seg button,html.th-command .set-reset{border-radius:0}
 html.th-command .set-th[aria-pressed="true"]{border-color:#00f0ff;box-shadow:0 0 10px rgba(0,240,255,.4)}
 html.th-command .set-seg button[aria-pressed="true"]{background:#00f0ff;color:#001218}
+/* Disabled buttons: muted but legible in every theme (no low opacity grey-on-grey) */
+html button.buy:disabled{opacity:1!important;background:color-mix(in srgb,var(--muted) 16%,var(--panel))!important;color:color-mix(in srgb,var(--ink) 68%,var(--panel))!important;border:1.5px dashed color-mix(in srgb,var(--muted) 70%,transparent)!important;box-shadow:none!important;cursor:not-allowed;transform:none!important}
+html body .mdx-win button.buy:disabled,html body .mdx-qa button:disabled,html body .lx-btn:disabled,html body .mdx-btn:disabled{opacity:1!important;background:var(--dxsoft,#f1f5f9)!important;color:var(--dxmut,#64748b)!important;border:1.5px dashed var(--dxmut2,#94a3b8)!important;box-shadow:none!important;cursor:not-allowed}
+html.th-glass button.buy:disabled{background:rgba(255,255,255,.07)!important;color:#c3cbe4!important;border:1px dashed rgba(195,203,228,.45)!important}
+html.th-ledger button.buy:disabled{background:#efe6cf!important;color:#5b4f3a!important;border:1.5px dashed #8a7a5c!important}
+html.th-command button.buy:disabled{background:rgba(120,140,155,.12)!important;color:#9fb3c2!important;border:1px dashed #5d7385!important}
 </style>
 </body>
 </html>

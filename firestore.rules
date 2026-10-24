@@ -249,6 +249,7 @@ service cloud.firestore {
     // Accept = an update that adds {carrier, carrierName, acc, eta} and is only allowed while no carrier is set, so of two racing carriers exactly one commits.
     // Done = the carrier adds {done} with server time between eta and dl. Cancel = shipper deletes before acceptance. Delete after done must come in the same batch as
     // transfers/f<id> paying the carrier the full pay (existsAfter/getAfter), so a haul cannot be settled without paying. An accepted haul that is not done by dl may be deleted by the shipper (refund).
+    // If the shipper never settles, the carrier may claim 24 h after done (see Claim); a claimed haul can no longer be paid by transfer, so it is never paid twice.
     match /freight/{id} {
       allow read: if request.auth != null;
       allow create: if request.auth != null
@@ -284,15 +285,25 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['done'])
           && request.resource.data.done == request.time
           && request.time.toMillis() >= resource.data.eta
-          && request.time.toMillis() <= resource.data.dl));
-      allow delete: if request.auth != null && resource.data.shipper == request.auth.uid && (
+          && request.time.toMillis() <= resource.data.dl)
+        ||
+        // Claim = the shipper never settled: 24 h after done, the carrier of that haul may stamp {claim} once and takes the pay the shipper escrowed at posting.
+        ('done' in resource.data && !('claim' in resource.data)
+          && resource.data.carrier == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claim'])
+          && request.resource.data.claim == request.time
+          && request.time > resource.data.done + duration.value(24, 'h')));
+      allow delete: if request.auth != null && ((resource.data.shipper == request.auth.uid && (
         !('carrier' in resource.data)
-        || ('done' in resource.data
+        || ('claim' in resource.data)
+        || ('done' in resource.data && !('claim' in resource.data)
             && existsAfter(/databases/$(database)/documents/transfers/$('f' + id))
             && getAfter(/databases/$(database)/documents/transfers/$('f' + id)).data.to == resource.data.carrier
             && getAfter(/databases/$(database)/documents/transfers/$('f' + id)).data.from == request.auth.uid
             && getAfter(/databases/$(database)/documents/transfers/$('f' + id)).data.amt == resource.data.pay)
-        || (!('done' in resource.data) && request.time.toMillis() > resource.data.dl));
+        || (!('done' in resource.data) && request.time.toMillis() > resource.data.dl)))
+        // Stale cleanup: anyone signed in may delete a post nobody accepted once it is a day past its deadline (the shipper's save refunds it on return).
+        || (!('carrier' in resource.data) && request.time.toMillis() > resource.data.dl + 86400000));
     }
     // ---- Cartels (online syndicates). Doc id of cartels/{id} is the boss's uid, so a boss founds at most one. ----
     function validCartel(d) {
