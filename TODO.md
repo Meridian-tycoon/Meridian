@@ -3,7 +3,7 @@
 Shared work queue for the subagents in `.claude/agents/`.
 
 Format: `- [ ] [agent-name] (priority, area) task`
-- `agent-name`: the agent that should do it (`meridian-builder`, `meridian-reviewer`, `meridian-tester`, `meridian-release`, `meridian-balance`, `agent-manager`, `meridian-designer`, `meridian-refactor`, `meridian-artist`, `meridian-economy`, `meridian-rivals`, `meridian-events`, `meridian-backup`, `meridian-docs`, `meridian-analyst`).
+- `agent-name`: the agent that should do it (`meridian-builder`, `meridian-reviewer`, `meridian-tester`, `meridian-release`, `meridian-balance`, `agent-manager`, `meridian-designer`, `meridian-refactor`, `meridian-artist`, `meridian-economy`, `meridian-rivals`, `meridian-events`, `meridian-backup`, `meridian-docs`, `meridian-analyst`, `meridian-scout`, `meridian-sound`, `meridian-narrative`).
 - `priority`: `high`, `med` or `low`. `area`: the part of the game or repo it touches.
 - An agent with no specific task picks the first unticked item tagged with its name.
 - When done, tick it `[x]` and append ` — done YYYY-MM-DD: one-line result`.
@@ -33,3 +33,6 @@ Format: `- [ ] [agent-name] (priority, area) task`
 - [ ] [meridian-tester] (med, cartel) Verify cartel rules in the Firebase emulator (composite indexes for cmsg/cled, getAfter/existsAfter usage)
 - [ ] [meridian-builder] (low, HQ office) Near the HQ shop kiosk the "E / tap to use" prompt is rebuilt every frame (ofNearStep passes a fresh object for the kiosk, so `best!==OFC.near`), which can swallow taps on touch. The presidential office already caches its fixture objects (`obj` in presFixtures); do the same for OFC_KIOSK in ofHqFixtures. Left alone on purpose: HQ behaviour had to stay identical.
 - [ ] [meridian-tester] (med, presidential office) Play the Gov > Office tab on a real phone: joystick, desk panel above the office, shop spots, tool bonuses while Leader.
+- [ ] [meridian-scout] (med, Research) Scout 3–6 games like Meridian (tycoon, map strategy, geopolitics) and list the top 5 features Meridian is missing
+- [ ] [meridian-sound] (med, Audio) Add a muted-by-default sound module with UI clicks, strike/explosion effects and mood-based ambient music
+- [ ] [meridian-narrative] (med, Story) Map current events, wars and rivals and design a first story arc that links them
