@@ -248,6 +248,7 @@ body.md-open #tutbox,body.md-open #tutring,body.md-open #tipbox,body.md-open #da
 body.ph-open #toast{position:fixed;z-index:30}
 @media (max-width:819px){body.sh-open #toast,body.ph-open #toast{position:fixed;z-index:30;bottom:auto;top:calc(env(safe-area-inset-top,0px) + 12px)}
   body.sh-open #tutbox,body.ph-open #tutbox,body.sh-open #tipbox,body.ph-open #tipbox{top:auto!important;bottom:calc(64px + env(safe-area-inset-bottom,0px));padding:8px 12px;font-size:12px;z-index:9000}
+  body.ph-open #tipbox{top:calc(env(safe-area-inset-top,0px) + 52px)!important;bottom:auto!important}
   body.sh-open #tutbox .tb,body.ph-open #tutbox .tb{margin-top:6px}body.sh-open #tutbox h4,body.ph-open #tutbox h4{font-size:13px}
   html.th-command #sheet button.buy,html.th-command #phone button.buy{letter-spacing:.03em}}
 @media (min-width:820px){body.sh-open #toast{max-width:calc(100% - 480px);left:calc(50% - 214px)}}
@@ -256,6 +257,11 @@ body:has(#rankup) .confetti{z-index:9997}
 .confetti{position:fixed;width:8px;height:12px;z-index:9999;pointer-events:none;border-radius:2px;will-change:transform,opacity}
 #daily{all:unset;position:absolute;z-index:3;left:max(12px,env(safe-area-inset-left,0px));bottom:44px;cursor:pointer;background:linear-gradient(135deg,#f59e0b,#ea580c);color:#fff;font-weight:700;font-size:13px;padding:9px 14px;border-radius:999px;box-shadow:0 4px 14px rgba(234,88,12,.45);animation:bob 1.6s ease-in-out infinite}
 @keyframes bob{50%{transform:translateY(-4px) rotate(-2deg)}}
+#dcard{position:fixed;inset:0;z-index:9998;display:grid;place-items:center;background:rgba(0,0,0,.45);padding:16px;animation:fade .25s both}
+#dcard>div{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:22px;padding:22px 24px;text-align:center;max-width:300px;width:100%;box-sizing:border-box;animation:pop .45s cubic-bezier(.2,.9,.3,1.4) both;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+#dcard .em{font-size:44px;line-height:1}#dcard h3{font-family:var(--display);font-size:22px;margin:6px 0 2px}#dcard .dc-amt{font:800 28px var(--mono,ui-monospace);color:var(--good);margin:4px 0 6px}#dcard p{color:var(--muted);margin:0 0 8px;font-size:14px}#dcard p b{color:var(--ink)}#dcard .dc-nx{font-size:13px;margin-bottom:14px}
+html.set-rm #dcard,html.set-rm #dcard>div{animation:none}@media (prefers-reduced-motion:reduce){#dcard,#dcard>div{animation:none}}
+html.th-ledger #dcard>div{border-radius:2px;box-shadow:6px 6px 0 rgba(31,26,20,.25)}html.th-command #dcard>div{border-radius:0}
 #rankup{position:fixed;inset:0;z-index:9998;display:grid;place-items:center;background:rgba(0,0,0,.45);animation:fade .25s both}
 #rankup>div{background:var(--panel);border-radius:22px;padding:26px 28px;text-align:center;max-width:300px;animation:pop .45s cubic-bezier(.2,.9,.3,1.4) both;box-shadow:0 20px 60px rgba(0,0,0,.35)}
 #rankup .em{font-size:54px;line-height:1}#rankup h3{font-family:var(--display);font-size:26px;margin:8px 0 4px}#rankup p{color:var(--muted);margin:0 0 14px;font-size:14px}
@@ -3737,7 +3743,10 @@ const dayN=()=>Math.floor((Date.now()-new Date().getTimezoneOffset()*60000)/864e
 function dailyCheck(){const D=S.daily=S.daily||{last:0,streak:0};const btn=$("#daily");const ok=D.last<dayN();btn.hidden=!ok;if(ok)btn.textContent=`🎁 Daily reward · day ${D.last===dayN()-1?D.streak+1:1}`}
 $("#daily").onclick=e=>{const D=S.daily;if(D.last>=dayN())return;D.streak=D.last===dayN()-1?D.streak+1:1;D.last=dayN();
   const{inc}=totals(),v=Math.min(10000,Math.round(Math.min(1500,Math.max(100,inc*.05))*Math.min(7,D.streak)));S.cash+=v;const r=e.currentTarget.getBoundingClientRect();confetti(60,r.left+r.width/2,r.top);vib(40);
-  toast(`Day ${D.streak} streak: +${fmt(v)}!`);dailyCheck();save();hud()};
+  const base=Math.min(1500,Math.max(100,inc*.05)),nx=Math.min(10000,Math.round(base*Math.min(7,D.streak+1)));dailyCheck();save();hud();dailyCard(v,D.streak,nx)};
+function dailyCard(v,n,nx){const d=document.createElement("div");d.id="dcard";d.setAttribute("role","dialog");d.setAttribute("aria-label","Daily reward");
+  d.innerHTML=`<div><div class="em" aria-hidden="true">🎁</div><h3>Daily reward</h3><div class="dc-amt">+${fmt(v)}</div><p>Streak: <b>day ${n}</b>${n>=7?" (max bonus)":""}</p><p class="dc-nx">Come back tomorrow for <b>+${fmt(nx)}</b>. Miss a day and the streak resets.</p><button class="buy" style="width:100%;min-height:42px">Collect</button></div>`;
+  d.onclick=e=>{if(e.target===d||e.target.tagName==="BUTTON"){d.remove();setTimeout(mqPump,0)}};mqRun(()=>{document.body.appendChild(d);const b=d.querySelector("button");if(b)b.focus({preventScroll:true})})}
 /* ripple + haptic on every button */
 document.addEventListener("pointerdown",e=>{const b=e.target.closest("button.buy,.tabs button,nav button");if(!b||b.disabled)return;vib(8);
   if(!b.classList.contains("buy"))return;const r=b.getBoundingClientRect(),s=Math.max(r.width,r.height),sp=document.createElement("span");sp.className="rip";
@@ -4279,8 +4288,8 @@ function polHour(quiet){const p=S.pol;if(!p)return;pol();const C=GOVCFG;
   for(const n in p.ctrl){const c=p.ctrl[n];c.loy=Math.max(0,Math.min(100,c.loy+C.loyDrift*(1-presFx("loy"))+(!polLeader()||p.appr<35?C.loyLowAppr:0)));
     if(c.loy<C.loyLose&&Math.random()<.25){delete p.ctrl[n];if(!quiet)logPol(`${n} broke away from your influence`)}}
   if(typeof milHour==="function")milHour(quiet)}
-function govApp(){const p=pol();const seg=`<div class="ph-seg gov-seg" style="margin-bottom:8px"><button data-ph="govtab" data-k="mis" aria-pressed="${govTab==="mis"}">🎯 Missions</button><button data-ph="govtab" data-k="pol" aria-pressed="${govTab==="pol"}">Politics</button><button data-ph="govtab" data-k="mil" aria-pressed="${govTab==="mil"}">Military</button><button data-ph="govtab" data-k="bunk" aria-pressed="${govTab==="bunk"}">🛡 Bunker</button><button data-ph="govtab" data-k="air" aria-pressed="${govTab==="air"}">✈ Air One</button><button data-ph="govtab" data-k="g1" aria-pressed="${govTab==="g1"}">🚙 Ground One</button><button data-ph="govtab" data-k="off" aria-pressed="${govTab==="off"}">🏛 Office</button></div>`;
-  const gn=govNotesHtml(),nh=gn?`<div class="ph-card"><b>Government notices</b><span>${gn}</span></div>`:"";if(govTab==="mil")return seg+phInvCard()+milApp()+nh;if(govTab==="bunk")return seg+phInvCard()+bunkApp()+nh;if(govTab==="off")return seg+phInvCard()+officeApp()+nh;if(govTab==="air")return seg+phInvCard()+airApp()+nh;if(govTab==="g1")return seg+phInvCard()+g1App()+nh;if(govTab==="mis")return seg+phInvCard()+misApp()+nh;return seg+phInvCard()+govApp0()+nh}
+function govApp(){const p=pol();const seg=`<div class="ph-seg gov-seg" style="margin-bottom:8px"><button data-ph="govtab" data-k="mis" aria-pressed="${govTab==="mis"}">🎯 Missions</button><button data-ph="govtab" data-k="pol" aria-pressed="${govTab==="pol"}">Politics</button><button data-ph="govtab" data-k="mil" aria-pressed="${govTab==="mil"}">Military</button><button data-ph="govtab" data-k="bunk" aria-pressed="${govTab==="bunk"}">🛡 Bunker</button><button data-ph="govtab" data-k="air" aria-pressed="${govTab==="air"}">✈ Air One</button><button data-ph="govtab" data-k="g1" aria-pressed="${govTab==="g1"}">🚙 Ground One</button><button data-ph="govtab" data-k="s1" aria-pressed="${govTab==="s1"}">🛳 Sea One</button><button data-ph="govtab" data-k="off" aria-pressed="${govTab==="off"}">🏛 Office</button></div>`;
+  const gn=govNotesHtml(),nh=gn?`<div class="ph-card"><b>Government notices</b><span>${gn}</span></div>`:"";if(govTab==="mil")return seg+phInvCard()+milApp()+nh;if(govTab==="bunk")return seg+phInvCard()+bunkApp()+nh;if(govTab==="off")return seg+phInvCard()+officeApp()+nh;if(govTab==="air")return seg+phInvCard()+airApp()+nh;if(govTab==="g1")return seg+phInvCard()+g1App()+nh;if(govTab==="s1")return seg+phInvCard()+s1App()+nh;if(govTab==="mis")return seg+phInvCard()+misApp()+nh;return seg+phInvCard()+govApp0()+nh}
 function phInvCard(){const d=dip(),inv=d.inv;if(!inv)return "";const w=(S.wars||[]).find(x=>x.id===inv.w);if(!w)return "";const rc=Math.round(warCost(w)*DIPCFG.rallyCost),tc=warCost(w),warn=inv.stage===1;
   const bt=(a,t,dis)=>`<button class="buy" data-ph="${a}" style="flex:1;color:#fff;background:#7c2d12!important;border-color:#f59e0b" ${dis?"disabled":""}>${t}</button>`;
   return `<div class="ph-card" style="border:1px solid #b91c1c;background:#7f1d1d33"><b>⚠ ${inv.by} ${warn?"threatens":"is invading"} ${inv.n}</b>
@@ -4601,6 +4610,7 @@ function bunkTick(){if(S.dead)return;const b=bunk(),now=Date.now();if(!S.bunkG1&
   if(b.in&&b.city!=null&&!present(CITIES[b.city]))b.in=0;
   try{evTick(now)}catch(e){}
   try{g1Tick(now)}catch(e){}
+  try{s1Tick(now)}catch(e){}
   const m=S.pol&&S.pol.mil;if(m&&Array.isArray(m.inc)&&m.inc.length){const due=m.inc.filter(x=>x.at<=now);m.inc=m.inc.filter(x=>x.at>now);for(const x of due){wpnLand(x.n,x.k,x.city,0);if(S.dead)break}if(due.length){save();hud()}}
   bunkHud()}
 /* ---------- Air One & ICBM evacuation (government players only) ----------
@@ -4683,7 +4693,7 @@ function evDraw1(ctx,from,to,t0,off,clr,arr,j,col,lab,now){let pt,u=0;if(now<off
   ctx.globalAlpha=1;ctx.translate(x,y);ctx.rotate(ang);ctx.font="16px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillStyle=col;ctx.save();ctx.rotate(Math.PI/4);ctx.fillText("✈",0,0);ctx.restore();
   if(now>=off){ctx.font="10px system-ui,sans-serif";ctx.fillStyle="#94a3b8";for(let i=0;i<j;i++){const s=i%2?1:-1,r=Math.floor(i/2)+1;ctx.save();ctx.translate(-10*r,s*9*r);ctx.rotate(Math.PI/4);ctx.fillText("✈",0,0);ctx.restore()}}
   ctx.restore();ctx.font="bold 10px system-ui,sans-serif";ctx.textAlign="center";ctx.fillStyle=col;ctx.fillText(now<off?lab+" · boarding":lab,x,y-14);ctx.textAlign="start"}
-function drawEvac(ctx){const now=Date.now();try{g1Draw(ctx,now)}catch(e){}const f=S.air1&&S.air1.fl;if(f&&!f.lost){const c=CITIES[f.city],d=CITIES[f.to];if(c&&d)evDraw1(ctx,c,d,f.t0,f.off,f.clr,f.up&&f.arr?f.arr:f.clr+AIRCFG.flyS[1]*1000,f.j,"#60a5fa","AIR ONE",now)}
+function drawEvac(ctx){const now=Date.now();try{g1Draw(ctx,now)}catch(e){}try{s1Draw(ctx,now)}catch(e){}const f=S.air1&&S.air1.fl;if(f&&!f.lost){const c=CITIES[f.city],d=CITIES[f.to];if(c&&d)evDraw1(ctx,c,d,f.t0,f.off,f.clr,f.up&&f.arr?f.arr:f.clr+AIRCFG.flyS[1]*1000,f.j,"#60a5fa","AIR ONE",now)}
   for(const v of (typeof ON!=="undefined"&&ON.ev)||[]){if(!(v.a>now))continue;evDraw1(ctx,CITIES[v.f],CITIES[v.t],v.o,v.o,v.c,v.a,Math.min(6,+v.j||0),"#fbbf24","AIR ONE · "+String(v.name||"").slice(0,20),now)}}
 // Government app tab
 function airApp(){const a=air1(),C=AIRCFG,now=Date.now(),off=GOVCFG.offices[0].n,T=AIRCFG.tiers;
@@ -4746,6 +4756,67 @@ function g1App(){const a=g1(),C=G1CFG,off=GOVCFG.offices[0].n,T=C.lv,cur=g1L(),b
   return h}
 function g1Go(id){const d=CITIES[id],c=S.loc&&CITIES[S.loc.city];if(!d||!c)return;if(!g1Ok())return toast("You need Ground One and an office");if(S.trip)return toast("You're already travelling");
   const o=g1Opt(c,d,kmBetween(c,d));if(o)startTrip(d,o,false)}
+/* ---------- Sea One: the government flagship yacht and its naval escort (government players only) ----------
+   S.s1 = {lv (0 = not owned, 1-5 level), pt (ms upkeep last charged), n (voyages sailed)}. A voyage in progress is an ordinary S.trip with mode "s1", s1 (level) and esc (escort ships).
+   Same eligibility and office rules as Ground One. Sails between coastal cities (sampled against the world map, cached); an inland end adds a short drive to the coast. No ferry penalty across oceans. */
+const S1CFG={lv:[null, // cost of this level (paid on top of the one before), upkeep $/game day, escort ships, sea speed km per real minute
+    {n:"Patrol yacht",cost:400e6,up:1.5e6,esc:1,kpm:240,d:"A fast armoured government yacht crewed by the navy, with 1 patrol boat as escort."},
+    {n:"Presidential yacht",cost:800e6,up:3e6,esc:2,kpm:290,d:"A full state yacht with a helipad and secure comms: 2 escort ships and faster crossings."},
+    {n:"Escorted flagship",cost:1.6e9,up:6e6,esc:3,kpm:340,d:"A navy flagship refitted as your floating office: 3 escort frigates."},
+    {n:"Carrier group",cost:3.2e9,up:10e6,esc:5,kpm:400,war:1,d:"Sail with a carrier strike group: 5 escort ships, and Sea One can enter countries at war where normal transport is suspended."},
+    {n:"Ocean fortress",cost:6e9,up:18e6,esc:8,kpm:460,war:1,d:"A sea-going fortress with its own air wing and missile defence: 8 escort ships and the fastest crossings."}],
+  base:800,perKm:8, // voyage price: $ fixed + $ per km (fuel, port fees)
+  drive:[0,4,3.5,3,2.5,2], // minutes added per inland end (drive to/from the coast), by level
+  atk:.25,escP:.12,maxP:.95}; // sailing into a country you're at war with: chance of a naval interception; each escort ship's chance to drive it off (capped)
+function s1(){let a=S.s1;if(!a||typeof a!=="object")a=S.s1={};a.lv=Math.max(0,Math.min(S1CFG.lv.length-1,Math.floor(+a.lv||0)));if(!(a.pt>0))a.pt=0;a.n=Math.max(0,Math.floor(+a.n||0));return a}
+const s1L=()=>{const a=s1();return a.lv?S1CFG.lv[a.lv]:null};
+const s1Ok=()=>airGov()&&!!s1L();
+// coastal city: any of 16 points 50/100 km around it is open ocean on the world map (cached; unknown until the map loads)
+const _s1C=new Map();let _s1F=null; // features (winding-fixed) + bounds
+function s1Coast(c){if(!c)return false;if(_s1C.has(c.id))return _s1C.get(c.id);if(!world||!world.features||typeof d3==="undefined")return true;let r=false;
+  if(!_s1F)_s1F=world.features.map(f=>cfFeat(f.properties.name)).filter(Boolean).map(g=>[g,d3.geoBounds(g)]);
+  try{for(const km of [50,100]){for(let i=0;i<8&&!r;i++){const b=i*Math.PI/4,la=c.lat+km/111*Math.cos(b),lo=c.lon+km/(111*Math.max(.2,Math.cos(c.lat*Math.PI/180)))*Math.sin(b);if(!_s1F.some(([g,B])=>(B[0][0]>B[1][0]||(lo>=B[0][0]-1&&lo<=B[1][0]+1))&&la>=B[0][1]-1&&la<=B[1][1]+1&&d3.geoContains(g,[lo,la])))r=true}if(r)break}}catch(e){r=true}
+  _s1C.set(c.id,r);return r}
+function s1Buy(){const a=s1(),nx=a.lv+1,T=S1CFG.lv[nx];if(!airGov())return toast("Sea One is for government players: win an office first");if(!T)return toast("Sea One is at max level");
+  if(S.cash<T.cost)return toast(`${T.n} costs ${fmt(T.cost)}`);S.cash-=T.cost;a.lv=nx;if(!a.pt)a.pt=Date.now();bigMove(`${nx===1?"buys Sea One":"upgrades Sea One to "+T.n} (${fmt(T.cost)})`,T.cost);toast(`🛳 Sea One ${nx===1?"is yours":"upgraded"}: ${T.n} · ${T.esc} escort ship${T.esc>1?"s":""}`)}
+// trip option for cityOptions: sails anywhere by sea, plus a short drive for an inland end
+function s1Opt(from,to,km){const T=s1L(),a=s1();if(!T||!airGov())return null;const inl=(s1Coast(from)?0:1)+(s1Coast(to)?0:1),dr=S1CFG.drive[a.lv]||4;
+  return{m:"s1",n:"🛳 Sea One",price:Math.round(S1CFG.base+S1CFG.perKm*km),min:1+km/T.kpm+inl*dr,note:`Government flagship · ${T.esc} escort ship${T.esc>1?"s":""}${inl?" · incl. "+inl*dr+" min drive to the coast":""}`,s1:1}}
+// after a Sea One voyage starts: tag it and, if you're sailing into a country you're at war with, roll for a naval interception
+function s1Trip(dest){const a=s1(),T=s1L(),t=S.trip;if(!T||!t)return;t.s1=a.lv;t.esc=T.esc;a.n++;const m=S.pol&&S.pol.mil,c=CITIES[dest.city!=null?dest.city:dest.id];
+  if(!c||!m||!m.wars||!m.wars[c.country]||Math.random()>=S1CFG.atk)return;const P=Math.min(S1CFG.maxP,T.esc*S1CFG.escP);
+  if(Math.random()<P){const x=`🛳 Enemy warships tried to intercept Sea One off ${c.country}: your ${T.esc} escort ship${T.esc>1?"s":""} drove them off`;S.log.unshift("Government: "+x);S.log=S.log.slice(0,3);setTimeout(()=>toast(x),1200)}
+  else{a.lv--;t.esc=a.lv?S1CFG.lv[a.lv].esc:0;const x=a.lv?`🛳 Sea One was intercepted off ${c.country}: you're unhurt but the flotilla is damaged and drops to Level ${a.lv} (${S1CFG.lv[a.lv].n})`:`🛳 Sea One was intercepted off ${c.country}: you're unhurt but the yacht is sunk`;S.log.unshift("Government: "+x);S.log=S.log.slice(0,3);setTimeout(()=>toast(x),1200)}}
+// every tick: upkeep while in office, upgrades lost out of office
+function s1Tick(now){const a=s1();if(!a.lv){a.pt=0;return}
+  if(!airGov()){a.pt=now;if(a.lv>1){a.lv=1;const x="🛳 You lost Sea One's upgrades (you lost your office). The yacht is moored until you win office again.";S.log.unshift("Government: "+x);S.log=S.log.slice(0,3);toast(x)}return}
+  if(!a.pt)a.pt=now;const dt=Math.min(now-a.pt,2*DAYMS);if(dt>=10000){S.cash-=S1CFG.lv[a.lv].up*dt/DAYMS;a.pt=now}}
+// map: the course ahead, the flagship and its escort ships
+function s1Draw(ctx,now){const t=S.trip;if(!t||!t.s1||typeof tripPos!=="function")return;const p=tripPos(now);if(!p)return;
+  ctx.save();try{const gi=d3.geoInterpolate([t.from.lon,t.from.lat],[t.to.lon,t.to.lat]);ctx.strokeStyle="rgba(56,189,248,.55)";ctx.lineWidth=1.5;ctx.setLineDash([4,4]);ctx.beginPath();let on=false;
+    for(let i=0;i<=32;i++){const u=p.u+(1-p.u)*i/32,g=gi(u);if(!visible(g[0],g[1])){on=false;continue}const [px,py]=proj(g);if(on)ctx.lineTo(px,py);else{ctx.moveTo(px,py);on=true}}ctx.stroke();ctx.setLineDash([])}catch(e){}
+  if(!visible(p.lon,p.lat)){ctx.restore();return}const [x,y]=proj([p.lon,p.lat]);
+  ctx.font="16px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("🛳",x,y);ctx.fillStyle="#7dd3fc";
+  for(let i=0;i<Math.min(8,t.esc||0);i++){const r=13+Math.floor(i/4)*6,an=i*Math.PI/2+Math.PI/4+Math.floor(i/4)*.6;ctx.beginPath();ctx.arc(x+Math.cos(an)*r,y+Math.sin(an)*r,2.4,0,Math.PI*2);ctx.fill()}
+  ctx.font="bold 10px system-ui,sans-serif";ctx.fillStyle="#38bdf8";ctx.fillText("SEA ONE",x,y-17);ctx.restore()}
+// Government app tab
+function s1App(){const a=s1(),C=S1CFG,off=GOVCFG.offices[0].n,T=C.lv,cur=s1L(),bs="color:#fff;background:#0369a1!important;border-color:#f59e0b";
+  if(!airGov()&&!a.lv)return `<div class="ph-card"><b>🔒 Sea One locked</b><span>Sea One, the government flagship yacht, is only for government players. Win an election as ${off} or higher (Politics tab) to unlock it.</span></div>`;
+  let h="";
+  if(cur){const here0=S.loc&&CITIES[S.loc.city],dests=CITIES.filter(c=>!here0||c.id!==here0.id),tr=S.trip&&S.trip.s1;
+    h+=`<div class="ph-card"><b>🛳 Sea One · Level ${a.lv}: ${cur.n}</b><span>${cur.esc} escort ship${cur.esc>1?"s":""} · ${cur.kpm} km per minute · upkeep ${fmt(cur.up)}/game day${cur.war?" · can enter war zones":""}${airGov()?"":" · <b style='color:#fbbf24'>moored: out of office</b>"}</span>`;
+    if(tr)h+=`<span>At sea, bound for ${dxE(S.trip.to.label||"")} · arrives in ${fmtDur(Math.max(0,S.trip.arr-Date.now()))}</span>`;
+    else if(airGov()&&here0&&!S.trip){h+=`<label style="font-size:12px;display:block;margin-top:8px">Sail to <select data-s1to style="margin-left:4px;max-width:100%">${dests.map(c=>{const o=s1Opt(here0,c,kmBetween(here0,c));return `<option value="${c.id}">${dxE(c.name)}${s1Coast(c)?"":" (inland)"} · ${fmtDur(o.min*60000)} · ${fmt(o.price)}</option>`}).join("")}</select></label>
+      <button class="buy" style="${bs};width:100%;margin-top:8px" data-ph="s1go">🛳 Sail</button>`}
+    else if(S.trip)h+=`<span>You're already travelling.</span>`;h+=`</div>`}
+  h+=`<div class="ph-sub" style="margin-top:10px">Levels</div>`;
+  for(let i=1;i<T.length;i++){const t=T[i],own=a.lv>=i,nx=a.lv+1===i,lock=!airGov();
+    h+=`<div class="ph-card" style="margin-top:6px${own?"":";opacity:"+(nx&&!lock?1:.6)}"><b>Level ${i}: ${t.n}</b><span>${t.d}</span><span style="font-size:12px">${t.esc} escort ship${t.esc>1?"s":""} · ${t.kpm} km/min · inland drive ${C.drive[i]} min · upkeep ${fmt(t.up)}/game day</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:6px"><span>${own?`<b style="color:#4ade80">Owned</b>`:lock?"🔒 Win an office":fmt(t.cost)}</span>${!own&&nx&&!lock?`<button class="buy" style="${bs}" data-ph="s1buy" ${S.cash<t.cost?"disabled":""}>Buy ${fmt(t.cost)}</button>`:""}</div></div>`}
+  h+=`<p class="ph-sub" style="margin-top:8px">Sea One sails you between coastal cities and straight across oceans with no ferry wait. It's slower than Ground One on land and much slower than Air One; an inland start or destination adds a short drive to the coast. It also shows up as a travel option in the Travel app. Sailing into a country you're at war with risks a naval interception (${Math.round(C.atk*100)}%): each escort ship has a ${Math.round(C.escP*100)}% chance (max ${Math.round(C.maxP*100)}%) to drive it off, otherwise the flotilla drops a level (Level 1 is sunk). You're never hurt. Upkeep is charged only while you hold office; losing office moors the yacht and loses its upgrades above Level 1, with no refund.${a.n?` Voyages sailed: ${a.n}.`:""}</p>`;
+  return h}
+function s1Go(id){const d=CITIES[id],c=S.loc&&CITIES[S.loc.city];if(!d||!c)return;if(!s1Ok())return toast("You need Sea One and an office");if(S.trip)return toast("You're already travelling");
+  const o=s1Opt(c,d,kmBetween(c,d));if(o)startTrip(d,o,false)}
 /* ---------- Offshore oil rigs: drill + refine at sea ----------
    S.rigs = [{id, lat, lon, lv 1-5, t (built ms), n (name)}]. Placed anywhere in the ocean (wtLand(ll)===null).
    All-in-one: crude is drilled and refined on board and sold as fuel; the rig makes its own power from its own gas (no power bill).
@@ -5318,7 +5389,7 @@ function misApp(){if(!misOn())return `<div class="ph-card"><b>🎯 Missions</b><
     <button class="buy" data-ph="misopen" style="width:100%;margin-top:8px;color:#fff;background:#1e3a8a!important;border-color:#60a5fa">Open Military dashboard</button>`}
 const MX={el:null,open:false,note:"",tg:null,page:"war"};
 /* Military dashboard pages: Missions (war room), the Government app's Military / Air One / Office tabs (their phone screens, clicks forwarded to the phone handlers) and war funding */
-const MXPAGES=[["war","🎯 Missions"],["mil","🪖 Military"],["air","✈ Air One"],["g1","🚙 Ground One"],["off","🏛 Office"],["wf","🕶 Anonymous War Funding"],["cab","🏛️ Cabinet"],["gch","🌐 Gov chat"]];
+const MXPAGES=[["war","🎯 Missions"],["mil","🪖 Military"],["air","✈ Air One"],["g1","🚙 Ground One"],["s1","🛳 Sea One"],["off","🏛 Office"],["wf","🕶 Anonymous War Funding"],["cab","🏛️ Cabinet"],["gch","🌐 Gov chat"]];
 const mxSeg=()=>`<div class="mdx-seg" role="tablist" aria-label="Dashboard page" style="margin:0 0 2px;align-self:flex-start;max-width:100%;overflow-x:auto">${MXPAGES.map(([k,t])=>`<button data-mx="pg" data-v="${k}" class="${MX.page===k?"on":""}" style="flex:none">${t}</button>`).join("")}</div>`;
 /* CABINET (Military dashboard): office holders of one country share a chat, vote on bills and pool money in three funds (war, arms, world take-over).
    Firestore: cab/{country} {war,arms,wto} funds; cab/{country}/msg chat; cab/{country}/bill bills; govmsg = chat for every office holder in the world; gvlast/{uid} rate limit.
@@ -5410,7 +5481,7 @@ function cabDash(){const g=cabGate();if(g)return g;cabListen();const p=pol(),f=C
 function govChatDash(){const g=cabGate();if(g)return g;cabListen();
   return `<div class="mdx-card" style="padding:14px"><div style="font-weight:600;margin-bottom:8px">🌐 Government chat: every office holder in the world</div><div style="max-height:420px;overflow:auto">${cabChat(CB.gmsg)}</div><div style="display:flex;gap:6px;margin-top:8px">${cabIn("gsay",CB.f.gsay,"Message all governments")}${cabBtn("cbgsay","Send")}</div></div>`}
 function cabAct(a,b){const v=b.dataset.v;if(a==="cbsay")cabSay(false);else if(a==="cbgsay")cabSay(true);else if(a==="cbprop")cabPropose();else if(a==="cbyes"||a==="cbno")cabVote(v,a==="cbyes");else if(a==="cbveto")cabVeto(v);else if(a==="cbfund")cabFund(v);else if(a==="cbrun")cabRun(v)}
-function mxGov(k){try{return k==="mil"?phInvCard()+milApp():k==="air"?airApp():k==="g1"?g1App():officeApp()}catch(e){console.warn("mx",e);return `<div class="mdx-empty">This page couldn't load.</div>`}}
+function mxGov(k){try{return k==="mil"?phInvCard()+milApp():k==="air"?airApp():k==="g1"?g1App():k==="s1"?s1App():officeApp()}catch(e){console.warn("mx",e);return `<div class="mdx-empty">This page couldn't load.</div>`}}
 /* run a phone-app button from the dashboard: copy the page (with typed values) into the hidden phone and click the same button there */
 function mxFwd(b){const con=b.closest(".bxd-con");if(!con||!PH.el)return;const all=[...con.querySelectorAll("[data-ph]")],i=all.indexOf(b);if(i<0)return;
   const c=con.cloneNode(true),si=con.querySelectorAll("input,select,textarea"),di=c.querySelectorAll("input,select,textarea");si.forEach((x,n)=>{if(di[n])di[n].value=x.value});
@@ -6293,7 +6364,7 @@ function onPlayersHere(c){if(!botAll().length)return"";const a=playersAt(c);if(!
   return `<div class="sec">Players here</div><div class="list">`+a.slice(0,12).map(p=>{const roles=[p.home===c.id?"home":"",(p.hq||[]).includes(c.id)?"HQ":"",(p.biz||[]).includes(c.id)?"business":"",p.loc===c.id?"here now":""].filter(Boolean).join(" · "),age=(Date.now()-onSeen(p))/36e5;
     return `<div class="row"><div class="n" style="${onAlpha(p)<1?"opacity:.55":""}"><span style="display:inline-block;width:9px;height:9px;transform:rotate(45deg);background:${/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#2563eb"};margin:0 6px 0 2px"></span>${ctTagHtml(p.uid,p.cid)}${gnHtml(String(p.name||"Player").slice(0,20),devUid(p.uid))}${p.bot?'<span class="tag">BOT</span>':""}</div><div class="d">${roles} · seen ${age<1?"just now":age<48?Math.round(age)+"h ago":Math.round(age/24)+"d ago"}</div><span style="font-family:var(--mono);font-weight:600">${fmt(+p.nw||0)}</span></div>`}).join("")+`</div>`}
 function onlineHtml(){if(!onEnabled())return"";const p=onProf(),u=ON.user,inp="width:100%;box-sizing:border-box;font:inherit;padding:8px;margin-top:6px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink)";
-  let h=`<div class="sec">Online</div><div class="list"><div class="row" style="display:block">`;
+  let h=`<div class="sec" id="onsec">Online</div><div class="list"><div class="row" style="display:block">`;
   if(!ON.ready)h+=`<div class="d">${ON.err?onEsc(ON.err):"Connecting…"}</div>`;
   else if(u){h+=`<div class="n">Signed in${devSelf(p.name,S.name)?` as <span class="devname">${devEsc(p.name||S.name)}</span>`:""} · ${ON.players.length} other player${ON.players.length===1?"":"s"} on the map</div><div class="d">Others see your name, colour, home, HQ and business cities, the city you are in right now, net worth and rank. Never your email.</div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="onname" maxlength="20" value="${onEsc(p.name)}" placeholder="Display name" style="${inp};margin-top:0;flex:1;min-width:0"><input id="oncol" type="color" value="${p.col}" style="width:40px;height:36px;padding:0;border:1px solid var(--line);border-radius:4px;background:none"></div>
@@ -6676,7 +6747,8 @@ function frSweep(){if(!ON.user||!ON.db||!FR.got)return;const now=Date.now(),x=FS
     else if(!r.done&&now>=r.eta){FR.infl["r"+id]=1;ON.db.collection("freight").doc(id).update({done:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete FR.infl["r"+id];r.done=1;toast(`Haul delivered, payment of ${fmt(r.pay)} is coming from ${r.sh}`);save();frPaint()},e=>{delete FR.infl["r"+id]})}}}
 if(onEnabled())setInterval(()=>{try{frSweep()}catch(e){console.warn("fr",e)}},15000);
 /* phone: Freight app */
-function frHtml(){if(!onEnabled()||!ON.user)return`<div class="ph-sub" style="margin-top:12px">Sign in (Online tab) to use the freight board: post hauls and hire other players' trucking companies.</div>`;
+function onGate(ic,t,pts){return `<div class="on-gate"><div class="on-gate-h"><span aria-hidden="true">${ic}</span><b>${t}</b></div><ul>${pts.map(x=>`<li>${x}</li>`).join("")}</ul>${onEnabled()?`<button class="buy" data-ph="ongo" style="width:100%;min-height:42px">Sign in to play online</button><div class="ph-sub" style="margin-top:6px">Opens Saves, where the Online section has sign-in.</div>`:`<div class="ph-sub">Online play isn't available in this build.</div>`}</div>`}
+function frHtml(){if(!onEnabled()||!ON.user)return onGate("🚚","Freight board · online",["Post hauls on a shared board that other players can see.","Hire other players' trucking companies to move your goods.","Works between real players, so you need to be signed in."]);
   const x=FS(),now=Date.now(),ip="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border-radius:10px;border:1px solid #ffffff44;background:#0003;color:#fff;font:inherit;font-size:16px",uid=ON.user.uid;
   const opt=(v,t,sel)=>`<option value="${v}" style="color:#000"${sel?" selected":""}>${onEsc(t)}</option>`,gn=k=>G[k]?G[k][0].toLowerCase():onEsc(k);
   let h=`<div class="ph-rows"><div><span>Free trucks</span><b>${frFree().toLocaleString()} / ${LG().trucks.toLocaleString()}</b></div><div><span>Trucking hubs</span><b>${hubs().length}</b></div><div><span>Board</span><b>${FR.got?FR.docs.filter(d=>!d.data.carrier&&d.data.dl>now).length+" open":"loading…"}</b></div></div>
@@ -6811,7 +6883,7 @@ function ctSweep(){if(!ON.user||!ON.db||!CT.got)return;const x=CTS(),uid=ctUid()
   if(x.dep||x.pay)ctTre()}
 if(onEnabled())setInterval(()=>{try{ctCalc();ctSweep()}catch(e){console.warn("ct",e)}},15000);
 /* phone: Cartel app */
-function ctHtml(){if(!onEnabled()||!ON.user)return`<div class="ph-sub" style="margin-top:12px">Sign in (Online tab) to found or join a cartel: shared treasury, price fixing, turf and a private chat.</div>`;
+function ctHtml(){if(!onEnabled()||!ON.user)return onGate("🕴","Cartel · online",["Found or join a cartel with other players.","Share a treasury, fix prices and hold turf together.","Plan in a private cartel chat."]);
   const x=CTS(),m=CT.mine,uid=ctUid(),f=CT.f,ip="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border-radius:10px;border:1px solid #ffffff44;background:#0003;color:#fff;font:inherit;font-size:16px",bt=(a,t,k,st)=>`<button class="buy" data-ph="${a}"${k!=null?` data-k="${onEsc(k)}"`:""} style="width:100%;margin-top:6px;color:#fff;${st||"background:#7f1d1d!important;border-color:#ef4444"}">${t}</button>`;
   const opt=(v,t,sel)=>`<option value="${onEsc(v)}" style="color:#000"${sel?" selected":""}>${onEsc(t)}</option>`,gn=k=>G[k]?G[k][0]:onEsc(k),when=t=>fmtDur(Date.now()-t)+" ago";
   if(!m){let h="";if(x.mk)h+=`<div class="ph-sub" style="margin-top:8px">Founding your cartel…</div>`;
@@ -7949,7 +8021,10 @@ function phRender(){const el=PH.el;const _sc=[...el.querySelectorAll(".ph-screen
   if(_fk){const n=el.querySelector("#mkcq");if(n){n.focus();try{n.setSelectionRange(_ss,_se)}catch(e){}}}
   /* keep scroll only when re-rendering the same app; a newly opened app (or home) starts at the top */
   const _same=PH.app===_app&&PH.open;PH._ra=PH.open?PH.app:undefined;el.querySelectorAll(".ph-screen,.ph-app").forEach((x,i)=>{x.scrollTop=_same&&_sc[i]?_sc[i]:0})
-  const _gs=el.querySelector(".gov-seg"),_gb=_gs&&_gs.querySelector("[aria-pressed=true]");if(_gb)_gs.scrollLeft=Math.max(0,_gb.offsetLeft-_gs.offsetLeft-(_gs.clientWidth-_gb.offsetWidth)/2)}
+  const _gs=el.querySelector(".gov-seg"),_gb=_gs&&_gs.querySelector("[aria-pressed=true]");if(_gb)_gs.scrollLeft=Math.max(0,_gb.offsetLeft-_gs.offsetLeft-(_gs.clientWidth-_gb.offsetWidth)/2);if(_gs)govSegFade(_gs)}
+function govSegFade(g){const m=g.scrollWidth-g.clientWidth;g.classList.toggle("fl",g.scrollLeft>2);g.classList.toggle("fr",g.scrollLeft<m-2)}
+document.addEventListener("scroll",e=>{const t=e.target;if(t&&t.classList&&t.classList.contains("gov-seg"))govSegFade(t)},true);
+addEventListener("resize",()=>document.querySelectorAll(".gov-seg").forEach(govSegFade));
 function phRender0(){const el=PH.el;el.classList.toggle("folded",!PH.open);
   if(!PH.open){el.innerHTML=`<button class="ph-tab" data-ph="unfold" aria-label="Open your phone"><span class="ph-grip"></span>${svgI("wallet")}<b>${fmt(S.cash)}</b></button>`;phPlace();return}
   const now=new Date();
@@ -8008,7 +8083,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="dashtruck"){DX.page="truck";dxOpen();return}
   else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
-  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="rigpmt"){rigPermit();save();hud()}else if(a==="rigbuy"){rigStart();return}else if(a==="rigdash"){rxOpen();return}else if(a==="obdash"){bxOpen();return}else if(a==="rigship"){const sel=PH.el.querySelector(`[data-rigto="${b.dataset.k}"]`);if(sel)rigShip(+b.dataset.k,+sel.value);save();hud()}else if(a==="rigup"){rigUp(+b.dataset.k);save();hud()}else if(a==="rigsell"){rigSell(+b.dataset.k);save();hud()}else if(a==="airbuy"){airBuy();save();hud()}else if(a==="evbuy"){evBuy();save();hud()}else if(a==="g1buy"){g1Buy();save();hud()}else if(a==="g1go"){const sl=PH.el.querySelector("[data-g1to]");if(sl)g1Go(+sl.value);phRender();return}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrf"){milReinforce(b.dataset.k);save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){const qi=PH.el.querySelector(`[data-wq="${b.dataset.k}"]`);wpnBuildN(b.dataset.k,qi?qi.value:1);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnbar"){wpnBarrage(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
+  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="rigpmt"){rigPermit();save();hud()}else if(a==="rigbuy"){rigStart();return}else if(a==="rigdash"){rxOpen();return}else if(a==="obdash"){bxOpen();return}else if(a==="rigship"){const sel=PH.el.querySelector(`[data-rigto="${b.dataset.k}"]`);if(sel)rigShip(+b.dataset.k,+sel.value);save();hud()}else if(a==="rigup"){rigUp(+b.dataset.k);save();hud()}else if(a==="rigsell"){rigSell(+b.dataset.k);save();hud()}else if(a==="airbuy"){airBuy();save();hud()}else if(a==="evbuy"){evBuy();save();hud()}else if(a==="g1buy"){g1Buy();save();hud()}else if(a==="s1buy"){s1Buy();save();hud()}else if(a==="s1go"){const sl=(b.closest(".bxd-con")||PH.el).querySelector("[data-s1to]");if(sl)s1Go(+sl.value);phRender();return}else if(a==="g1go"){const sl=PH.el.querySelector("[data-g1to]");if(sl)g1Go(+sl.value);phRender();return}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrf"){milReinforce(b.dataset.k);save();hud()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){const qi=PH.el.querySelector(`[data-wq="${b.dataset.k}"]`);wpnBuildN(b.dataset.k,qi?qi.value:1);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnbar"){wpnBarrage(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
   else if(a==="misopen"){mxOpen();return}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
@@ -8038,7 +8113,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="buyitem"){const it=ITEMS.find(x=>x.k===b.dataset.k),p=itemPrice(it,CITIES[(S.home||{city:0}).city]);if(S.cash<p)return;S.cash-=p;for(const [q] of NEEDS)if(it[q])S.need[q]=Math.max(0,Math.min(100,S.need[q]+it[q]));toast(`${it.n} delivered`);save();hud()}
   else if(a==="repay"){if(B().card&&B().card.bal)payCard(true);else if(B().loans[0])repayLoan(B().loans[0].id,true);S.debt=bankDebt();save();hud()}
   else if(/^ct[a-z]+$/.test(a)){ctAct(a,b)}
-  else if(a==="xfto"){XF.to=b.dataset.k}else if(a==="xfsend"){xfSend()}else if(a==="bxk"){BX.kind=b.dataset.k;phRender()}else if(a==="bxgo"){botSend()}else if(a==="frtab"){FR.tab=b.dataset.k}else if(a==="prya"){stPriyaAns(b.dataset.k==="1")}else if(a==="frpost"){frPost()}else if(a==="frbot"){BX.kind="haul";PH.app="bank";phSave();phRender();return}else if(a==="fracc"){frAccept(b.dataset.k)}else if(a==="frcan"){frCancel(b.dataset.k)}
+  else if(a==="xfto"){XF.to=b.dataset.k}else if(a==="xfsend"){xfSend()}else if(a==="bxk"){BX.kind=b.dataset.k;phRender()}else if(a==="bxgo"){botSend()}else if(a==="frtab"){FR.tab=b.dataset.k}else if(a==="ongo"){if(innerWidth<820)PH.open=false;openSaves();setTimeout(()=>{const o=document.getElementById("onsec");if(o)o.scrollIntoView({block:"start",behavior:document.documentElement.classList.contains("set-rm")?"auto":"smooth"})},60)}else if(a==="prya"){stPriyaAns(b.dataset.k==="1")}else if(a==="frpost"){frPost()}else if(a==="frbot"){BX.kind="haul";PH.app="bank";phSave();phRender();return}else if(a==="fracc"){frAccept(b.dataset.k)}else if(a==="frcan"){frCancel(b.dataset.k)}
   else if(a==="gobank"){openPortfolio();setTimeout(()=>{const x=[...sheet.querySelectorAll(".sec")].find(e=>/credit score/.test(e.textContent));if(x)x.scrollIntoView()},50);PH.open=false}
   else if(a==="gigtap"){gigTap(b);return}
   else if(a==="ridego"){rideStart();return}
@@ -8111,6 +8186,7 @@ function cityOptions(from,to){const km=kmBetween(from,to),same=landmass(from)===
   if(same&&km<=2500)o.push({m:"train",n:"Train",price:Math.round(15+.09*km),min:1+km/300,note:"City centre to city centre"});
   if(same&&km<=4000)o.push({m:"bus",n:"Coach bus",price:Math.round(8+.05*km),min:1+km/180,note:"Cheapest way overland"});
   {const g=typeof g1Opt==="function"?g1Opt(from,to,km):null;if(g)o.unshift(g)}
+  {const g=typeof s1Opt==="function"?s1Opt(from,to,km):null;if(g)o.splice(o[0]&&o[0].m==="g1"?1:0,0,g)}
   if(same&&S.car)o.push({m:"car",n:"Drive your "+CK[S.car.k].n.toLowerCase(),price:Math.round(km*CK[S.car.k].fuel),min:km/(200*CK[S.car.k].f),note:"Fuel only"});
   return{km,o}}
 /* within a city: walk, bus, taxi, your car */
@@ -8120,7 +8196,7 @@ function rideOptions(from,to){const km=Math.hypot((to.lat-from.lat)*111,(to.lon-
   o.push({m:"taxi",n:"Taxi",price:+(4+1.9*km).toFixed(2),sec:15+km*8});
   if(S.car)o.push({m:"drive",n:"Your car",price:+(km*CK[S.car.k].fuel).toFixed(2),sec:10+km*7/CK[S.car.k].f});
   return{km,o}}
-function startTrip(dest,opt,local){if(jailed()){toast("You can't travel from prison");return false}const dc=!local&&dest?CITIES[dest.city!=null?dest.city:dest.id]:null;if(dc&&unhOn(dc)){toast(`${dc.name} is uninhabitable for ${unhLeft(dc)}: nobody can travel there`);return false}if(dc&&warLvl(dc.country)>=4&&!(opt.m==="g1"&&g1L()&&g1L().war)){toast(`${dc.country} is at war: transport there is suspended`);return false}
+function startTrip(dest,opt,local){if(jailed()){toast("You can't travel from prison");return false}const dc=!local&&dest?CITIES[dest.city!=null?dest.city:dest.id]:null;if(dc&&unhOn(dc)){toast(`${dc.name} is uninhabitable for ${unhLeft(dc)}: nobody can travel there`);return false}if(dc&&warLvl(dc.country)>=4&&!(opt.m==="g1"&&g1L()&&g1L().war)&&!(opt.m==="s1"&&s1L()&&s1L().war)){toast(`${dc.country} is at war: transport there is suspended`);return false}
   {const here=S.loc?S.own[S.loc.city]||{}:{},there=dest&&dest.city!=null&&!local?S.own[dest.city]||{}:{},anyAir=Object.values(S.own).some(o=>o.airline);let f=1,why="";
     if(opt.m==="plane"&&typeof luxJet==="function"&&luxJet()){f=0;why="your private jet";opt={...opt,min:opt.min*.7}}
     else if(opt.m==="plane"){if(anyAir){f*=.5;why="your airline"}if(here.airport||there.airport){f*=.75;why=why?why+" + your airport":"your airport"}}
@@ -8130,8 +8206,8 @@ function startTrip(dest,opt,local){if(jailed()){toast("You can't travel from pri
     if(f<1){opt={...opt,price:Math.round(opt.price*f*100)/100};setTimeout(()=>toast(`${Math.round((1-f)*100)}% off with ${why}`),900)}}
   if(S.cash<opt.price){toast(`You need ${fmt(opt.price)} for that`);return false}
   S.cash-=opt.price;const dur=(local?opt.sec*1000:opt.min*60000);
-  const toPt=local?dest:(opt.m==="plane"?airportPos(dest):opt.m==="car"||opt.m==="g1"?dest:stationPos(dest));
-  if(typeof bunkExit==="function")bunkExit(1);S.trip={mode:opt.m,n:opt.n,from:{...S.loc},to:{city:dest.city!=null?dest.city:dest.id,lat:toPt.lat,lon:toPt.lon,label:dest.label||dest.name},dep:Date.now(),arr:Date.now()+dur,local:!!local};if(opt.m==="g1")try{g1Trip(dest)}catch(e){}
+  const toPt=local?dest:(opt.m==="plane"?airportPos(dest):opt.m==="car"||opt.m==="g1"||opt.m==="s1"?dest:stationPos(dest));
+  if(typeof bunkExit==="function")bunkExit(1);S.trip={mode:opt.m,n:opt.n,from:{...S.loc},to:{city:dest.city!=null?dest.city:dest.id,lat:toPt.lat,lon:toPt.lon,label:dest.label||dest.name},dep:Date.now(),arr:Date.now()+dur,local:!!local};if(opt.m==="g1")try{g1Trip(dest)}catch(e){}if(opt.m==="s1")try{s1Trip(dest)}catch(e){}
   S.log.unshift(local?`${opt.n} to ${S.trip.to.label}`:`${opt.n} to ${dest.name} · ${fmtDur(dur).replace(" min","m")} · ${fmt(opt.price)}`);S.log=S.log.slice(0,3);save();hud();draw();return true}
 function runTrip(now){const t=S.trip;if(!t||now<t.arr)return;S.loc={city:t.to.city,lat:t.to.lat,lon:t.to.lon};S.trip=null;onLocPub();
   S.log.unshift(t.local?`Arrived at ${t.to.label}`:`Landed in ${CITIES[t.to.city].name}`.replace("Landed",t.mode==="plane"?"Landed":"Arrived"));S.log=S.log.slice(0,3);
@@ -8198,7 +8274,7 @@ function catchUp(){const now0=Date.now(),away=now0-(S.acc||now0),cash0=S.cash,de
   if(away>5*60000){const hrs=away/DAYMS,t=hrs>=1?hrs.toFixed(1)+" h":Math.round(away/60000)+" min";
     if(got>1){S.log.unshift(`While you were away (${t}): ${fmt(got)} earned`);S.log=S.log.slice(0,3);hud()}
     const ran=hadStock.filter(k=>!(S.stock[k]>0));awaySummary({away,got,net:S.cash-cash0,debt:(S.debt||0)-debt0,ran,capped:away>48*DAYMS,peace:offPeace,shop})}}
-function awaySummary(r){if(mqBusy("away")){mqQ().unshift(()=>awaySummary(r));return}let el=$("#away");if(!el){el=document.createElement("div");el.id="away";document.body.appendChild(el)}
+function awaySummary(r){if(mqBusy("away")){mqQ().unshift(()=>awaySummary(r));return}r=Object.assign({away:0,got:0,net:0,debt:0,ran:[],peace:[],shop:{paid:0,done:0,open:0}},r||{});if(!Array.isArray(r.ran))r.ran=[];if(!r.shop)r.shop={paid:0,done:0,open:0};let el=$("#away");if(!el){el=document.createElement("div");el.id="away";document.body.appendChild(el)}
   const nm=k=>{const [id,b]=k.split(":");const c=CITIES[id],bz=BIZ.find(x=>x.k===b);return (bz?bz.n:b)+(c?" in "+c.name:"")};
   const row=(a,b,col)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)"><span>${a}</span><b${col?` style="color:${col}"`:""}>${b}</b></div>`;
   el.innerHTML=`<div style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px" data-away="x"><div style="background:var(--panel);color:var(--ink);border-radius:14px;max-width:360px;width:100%;padding:18px;box-shadow:0 18px 40px rgba(0,0,0,.35)">
@@ -8211,7 +8287,7 @@ function awaySummary(r){if(mqBusy("away")){mqQ().unshift(()=>awaySummary(r));ret
   el.onclick=e=>{if(e.target.dataset.away)el.innerHTML=""}}
 /* one pop-up at a time: away -> rank-up -> share prompt; guide, tips and daily pill hide while one is open. Body classes drive layout fixes. */
 function mqQ(){return mqQ.q||(mqQ.q=[])}
-function mqBusy(x){const a=document.getElementById("away");return !!(document.querySelector("#rankup,#ptask,#newver")||(x!=="away"&&a&&a.innerHTML))}
+function mqBusy(x){const a=document.getElementById("away");return !!(document.querySelector("#rankup,#ptask,#newver,#dcard")||(x!=="away"&&a&&a.innerHTML))}
 function mqRun(fn){mqQ().push(fn);mqPump()}
 function mqPump(){const q=mqQ();if(q.length&&!mqBusy())q.shift()()}
 function uiSync(){mqPump();const B=document.body.classList,so=sheet.classList.contains("open");B.toggle("md-open",mqBusy());B.toggle("sh-open",so);B.toggle("ph-open",!!(PH&&PH.open));
@@ -8409,6 +8485,42 @@ html.th-command button.buy:disabled{background:rgba(120,140,155,.12)!important;c
 /* ui batch 2: gov tabs scroll row, wrap military build, ledger paper phone, tap targets, tiny-text floor, HR 2x2 */
 .gov-seg{display:flex!important;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;gap:6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;padding-bottom:2px;overscroll-behavior-x:contain;touch-action:pan-x}
 .gov-seg::-webkit-scrollbar{display:none}
+.gov-seg.fr{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 32px),transparent)}
+.gov-seg.fl{-webkit-mask-image:linear-gradient(90deg,transparent,#000 32px);mask-image:linear-gradient(90deg,transparent,#000 32px)}
+.gov-seg.fl.fr{-webkit-mask-image:linear-gradient(90deg,transparent,#000 32px,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(90deg,transparent,#000 32px,#000 calc(100% - 32px),transparent)}
+.on-gate{margin-top:12px;padding:12px;border:1px solid rgba(148,163,184,.25);border-radius:12px;background:rgba(255,255,255,.04)}
+.on-gate-h{display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:6px}.on-gate-h span{font-size:20px}
+.on-gate ul{margin:0 0 10px;padding-left:18px;font-size:12.5px;line-height:1.45;opacity:.9}
+html.th-ledger .on-gate{border-color:var(--line);background:rgba(31,26,20,.03);border-radius:2px}html.th-command .on-gate{border-radius:0}
+/* mx dashboards follow the opt-in themes (dark mode only; the light toggle keeps the default light palette) */
+html.th-ledger[data-theme="dark"] .mx-win.mx-win{--dxbg:#ece2cb;--dxcard:#fbf5e6;--dxink:#1f1a14;--dxink2:#3a3226;--dxink3:#4d4334;--dxmut:#6b5f4d;--dxmut2:#7d705a;--dxline:#d4c49f;--dxsoft:#f3ead6;--dxtint:#f3e3c3;--dxhov:#ead6ae;color-scheme:light;border-radius:2px;box-shadow:8px 8px 0 rgba(31,26,20,.22),0 0 0 1px #1f1a14;font-family:var(--body)}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win.mdx-full{border-radius:0}
+html.th-ledger[data-theme="dark"] .mx-win .mdx-card{border:1px solid var(--dxline)!important;border-radius:2px}
+html.th-ledger[data-theme="dark"] .mx-win .mdx-hd h2{font-family:var(--display)}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="color:#2563eb"],html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="color:#1d4ed8"]{color:#1e3a6b!important}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="color:#dc2626"],html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="color:#b91c1c"]{color:#9b2c1f!important}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="color:#16a34a"],html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="color:#15803d"]{color:#1f6b3a!important}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="color:#9333ea"]{color:#6b2a8a!important}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="color:#d97706"],html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="color:#b45309"]{color:#7a4a00!important}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="background:#e0ecff"],html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="background:#eff4ff"]{background:#e1e6ee!important}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="background:#fee2e2"]{background:#f3d9d2!important}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="background:#dcfce7"]{background:#dbe9d3!important}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="background:#f3e8ff"]{background:#e9dcec!important}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win [style*="background:#fef3c7"]{background:#f3e3bf!important}
+html.th-ledger[data-theme="dark"] .mx-win .mdx-up,html.th-ledger[data-theme="dark"] .mx-win .mdx-tp.inc,html.th-ledger[data-theme="dark"] .mx-win .lx-tag.g{background:#dbe9d3;color:#1f6b3a}
+html.th-ledger[data-theme="dark"] .mx-win .mdx-dn,html.th-ledger[data-theme="dark"] .mx-win .mdx-tp.exp,html.th-ledger[data-theme="dark"] .mx-win .lx-tag.r{background:#f3d9d2;color:#9b2c1f}
+html.th-ledger[data-theme="dark"] .mx-win .mdx-tp.tax,html.th-ledger[data-theme="dark"] .mx-win .lx-tag.y{background:#f3e3bf;color:#7a4a00}
+html.th-ledger[data-theme="dark"] .mx-win .lx-tag.b{background:#e1e6ee;color:#1e3a6b}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win .mdx-note,html.th-ledger[data-theme="dark"] .mx-win.mx-win .lx-note,html.th-ledger[data-theme="dark"] .mx-win.mx-win .mdx-g{color:#1f6b3a!important}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win .mdx-r,html.th-ledger[data-theme="dark"] .mx-win.mx-win .lx-pv .w{color:#9b2c1f!important}
+html.th-ledger[data-theme="dark"] .mx-win .lx-btn.red{color:#9b2c1f;border-color:#d9a79c}
+html.th-ledger[data-theme="dark"] .mx-win .bxd-con{background:#2a241b;color:#fbf5e6}
+html.th-ledger[data-theme="dark"] .mx-win .bxd-con{--muted:#cbbd9f;--dxink:#fbf5e6;--dxink2:#efe5cf;--dxink3:#e3d7bd;--dxmut:#cbbd9f;--dxmut2:#bfb193;--good:#86d6a0;--bad:#f0a196}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win .bxd-con [style*="color:#16a34a"],html.th-ledger[data-theme="dark"] .mx-win.mx-win .bxd-con [style*="color:#15803d"],html.th-ledger[data-theme="dark"] .mx-win.mx-win .bxd-con .mdx-g,html.th-ledger[data-theme="dark"] .mx-win.mx-win .bxd-con .mdx-note{color:#86d6a0!important}
+html.th-ledger[data-theme="dark"] .mx-win.mx-win .bxd-con [style*="color:#dc2626"],html.th-ledger[data-theme="dark"] .mx-win.mx-win .bxd-con [style*="color:#b91c1c"],html.th-ledger[data-theme="dark"] .mx-win.mx-win .bxd-con .mdx-r{color:#f0a196!important}
+html.th-glass[data-theme="dark"] .mx-win.mx-win{--dxbg:#0b1020;--dxcard:rgba(26,34,62,.78);--dxink:#eef2ff;--dxink2:#d3daf3;--dxink3:#b9c2e0;--dxmut:#9aa5c4;--dxmut2:#8792b4;--dxline:rgba(148,163,214,.22);--dxsoft:rgba(148,163,214,.10);--dxtint:rgba(139,124,255,.16);--dxhov:rgba(139,124,255,.26);background:radial-gradient(900px 600px at 80% -10%,#1d2450,#0b1020 65%);box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(148,163,214,.22)}
+html.th-glass[data-theme="dark"] .mx-win .mdx-card{backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);border:1px solid var(--dxline)}
+html.th-glass[data-theme="dark"] .mx-win .bxd-con{background:rgba(11,16,32,.7);border:1px solid var(--dxline)}
 .gov-seg button{flex:0 0 auto!important;min-height:40px;padding:8px 12px!important;overflow:visible;white-space:nowrap;scroll-snap-align:start}
 .ph-wrapbtn{white-space:normal!important;line-height:1.15;min-height:36px;overflow-wrap:anywhere}
 .hr-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}.hr-grid button.buy{width:100%;min-width:0;margin:0;min-height:40px}
