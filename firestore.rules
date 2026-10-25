@@ -80,6 +80,25 @@ service cloud.firestore {
         && request.resource.data.updated == request.time;
     }
 
+    // Weekly auction house: one doc per lot, id "<week>_<lot>" (week 0 = Mon 5 Jan 1970 UTC). Signed-in players read; a bid
+    // replaces the doc with the bidder as high, must beat the old high by more than 5%, and only lands inside its own week.
+    function validBid(id, d) {
+      return d.keys().hasOnly(['hi', 'uid', 'name', 'at']) && d.keys().hasAll(['hi', 'uid', 'name', 'at'])
+        && d.uid == request.auth.uid
+        && d.hi is int && d.hi > 0 && d.hi <= 9000000000000000
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 20
+        && d.at == request.time
+        && id.matches('^[0-9]{1,7}_[0-2]$')
+        && request.time.toMillis() >= (int(id.split('_')[0]) * 7 + 4) * 86400000
+        && request.time.toMillis() < (int(id.split('_')[0]) * 7 + 11) * 86400000;
+    }
+    match /auc/{id} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && validBid(id, request.resource.data);
+      allow update: if request.auth != null && validBid(id, request.resource.data)
+        && request.resource.data.hi * 100 > resource.data.hi * 105;
+    }
+
     match /players/{uid} {
       // Anyone (signed in or not) may read profiles. Profiles never contain emails.
       allow read: if true;
