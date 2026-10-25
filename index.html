@@ -4653,6 +4653,7 @@ function bunkTick(){if(S.dead)return;const b=bunk(),now=Date.now();if(!S.bunkG1&
   try{g1Tick(now)}catch(e){}
   try{s1Tick(now)}catch(e){}
   const m=S.pol&&S.pol.mil;if(m&&Array.isArray(m.inc)&&m.inc.length){const due=m.inc.filter(x=>x.at<=now);m.inc=m.inc.filter(x=>x.at>now);for(const x of due){wpnLand(x.n,x.k,x.city,0);if(S.dead)break}if(due.length){save();hud()}}
+  try{if(!S.dead)aimTick(now)}catch(e){console.warn("aim",e)}
   bunkHud()}
 /* ---------- Air One & ICBM evacuation (government players only) ----------
    S.air1 = {own (1 = owns Air One), ev (evacuation tier 0-3, 0 = not bought), cd (ms: Air One can evacuate again after this),
@@ -5026,6 +5027,8 @@ function bunkHud(){let el=document.getElementById("bunkhud");if(!el){el=document
   const b=S.bunk||{},m=S.pol&&S.pol.mil,now=Date.now(),inc=m&&Array.isArray(m.inc)?m.inc:[];let h="";
   for(const x of inc.slice(0,3)){const W=WPNCFG.w[x.k],c=CITIES[x.city];if(!W||!c)continue;const you=S.loc&&!S.trip&&S.loc.city===c.id;
     h+=`<button class="bk-warn">⚠ Incoming ${W.n.toLowerCase()} from ${onEsc(x.n)} → ${c.name} · ${Math.max(0,Math.ceil((x.at-now)/1000))}s${you?(bunkInside(c)?" · you're sheltered":" · YOU ARE HERE"):""}</button>`}
+  for(const x of (S.aim&&Array.isArray(S.aim.inc)?S.aim.inc:[]).filter(x=>x.me).slice(0,3)){const c=CITIES[x.city];if(!c)continue;const you=present(c);
+    h+=`<button class="bk-warn">⚠ Incoming ${aimKind(x).replace(" strike","")} from ${x.att} → ${c.name} · ${Math.max(0,Math.ceil((x.at-now)/1000))}s${you?(bunkInside(c)?" · you're sheltered":" · YOU ARE HERE"):""}</button>`}
   if(b.in&&b.lv)h+=`<button class="bk-in">🛡 In bunker · L${b.lv}${b.ad?" · air defense on":""}</button>`;
   if(el.innerHTML!==h)el.innerHTML=h}
 function bunkApp(){const p=pol(),b=bunk(),C=BUNKCFG,now=Date.now(),off=GOVCFG.offices[0].n;
@@ -8319,7 +8322,7 @@ window.__auc={S:()=>aucS(),lots:w=>aucLots(w),wk:t=>aucWk(t),end:w=>aucEnd(w),mu
    Offline catch-up (quiet) runs the same rolls without visuals/news and is summarised once on return.
    Optional save field: S.aim {h:[{city,t,until,dmg}], q:{s,p}} — missing on old saves = no effect. */
 const AIMCFG={p:{3:.06,4:.18},prov:.012,tens:12,gdp:.002,fp:1.5,hit:.06,hitDays:1,cap:.2,arcs:3,news:4};
-function aim(){const a=S.aim=S.aim&&typeof S.aim==="object"?S.aim:{};if(!Array.isArray(a.h))a.h=[];if(!a.q||typeof a.q!=="object")a.q={s:0,p:0};return a}
+function aim(){const a=S.aim=S.aim&&typeof S.aim==="object"?S.aim:{};if(!Array.isArray(a.h))a.h=[];if(!a.q||typeof a.q!=="object")a.q={s:0,p:0};if(!Array.isArray(a.inc))a.inc=[];return a}
 function aimMult(c){const a=S.aim;if(!a||!Array.isArray(a.h)||!a.h.length)return 1;const now=Date.now();let f=0;
   for(const x of a.h)if(x.city===c.id&&now<x.until)f+=x.dmg*Math.max(0,(x.until-now)/(x.until-x.t));return 1-Math.min(AIMCFG.cap,f)}
 const aimHuman=n=>{const pc=dipPlayerC();if(n===pc||(S.pol&&S.pol.c===n&&S.pol.r>=0))return true;try{const d=dip();if(d.ruler&&d.ruler[n]&&d.ruler[n]===pc)return true}catch(e){}return false};
@@ -8329,14 +8332,43 @@ function aimHit(att,c,quiet){const a=aim(),C=AIMCFG,now=Date.now(),o=S.own&&S.ow
   a.h=a.h.filter(x=>now<x.until);a.h.push({city:c.id,t:now,until:now+C.hitDays*DAYMS,dmg:C.hit});if(!quiet)toast(`🚀 ${att}'s missile hit ${c.name}: your businesses there lose ${Math.round(C.hit*100)}% demand for a day`);return 1}
 function aimFire(att,def,w,quiet,prov){const cs=ctyCities(def);if(!cs.length)return;const C=AIMCFG,o=cap(att);
   let c;if(prov){const s=cs.slice().sort((x,y)=>kmBetween(o,x)-kmBetween(o,y));c=s[0]}else c=cs[Math.floor(Math.random()*cs.length)];if(!c)return;
-  if(!quiet)aimArc(att,c);
-  if(prov){const d=wf(),k=wfPair(att,def),T=d.tens[k]=d.tens[k]||{v:0,f:{}},was=wfStage(T.v)[1],sea=Math.random()<.5;T.v=Math.min(95,(+T.v||0)+C.tens);T.t=Date.now();d.dirty=1;
+  const sea=prov?Math.random()<.5:0;
+  if(prov){const d=wf(),k=wfPair(att,def),T=d.tens[k]=d.tens[k]||{v:0,f:{}},was=wfStage(T.v)[1];T.v=Math.min(95,(+T.v||0)+C.tens);T.t=Date.now();d.dirty=1;
     const t=sea?`${att} test-fires a missile into waters off ${def}; tensions rise`:`${att} fires a missile at ${c.name} near the ${def} border; tensions rise`;
-    if(quiet)aim().q.p++;else{stNews(t);const now=wfStage(T.v)[1];if(now!==was)wfSay(`Tensions rising between ${att} and ${def}: ${now}`)}
-    if(sea)return}
-  else{try{const d=dip();if(d.gdp[def]>0)d.gdp[def]*=1-C.gdp}catch(e){}if(w&&w.fp!=null)w.fp=Math.max(0,Math.min(100,w.fp+(w.a===att?1:-1)*C.fp));
-    if(quiet)aim().q.s++;else{const a=aim();if(a.ncH!==S.hour){a.ncH=S.hour;a.nc=0}if(a.nc++<C.news)stNews(`🚀 ${att} strikes ${c.name}, ${def}, with cruise missiles`)}}
-  aimHit(att,c,quiet)}
+    if(quiet)aim().q.p++;else{stNews(t);const now=wfStage(T.v)[1];if(now!==was)wfSay(`Tensions rising between ${att} and ${def}: ${now}`)}}
+  else if(quiet)aim().q.s++;
+  if(quiet){if(!sea)aimLand({att,def,city:c.id,prov,wa:w&&w.a,wb:w&&w.b},1);return}
+  // live play: the missile flies for the arc's flight time and lands in aimTick
+  aimArc(att,c);const now=Date.now(),x={att,def,city:c.id,prov:prov?1:0,sea:sea?1:0,wa:w?w.a:null,wb:w?w.b:null,t:now,at:now+trjMs("msl")};
+  x.me=!sea&&(present(c)||!!(S.own&&S.own[c.id]&&Object.keys(S.own[c.id]).length))?1:0;aim().inc.push(x);
+  if(x.me)toast(`⚠ ${att} launched a missile at ${c.name}: impact in ${Math.ceil((x.at-now)/1000)}s${present(c)?(bunkInside(c)?" · you're sheltered":" · you are there, get to your bunker"):" · your businesses are there"}`);
+  aimBanner()}
+const aimKind=x=>x.prov?(x.sea?"missile test":"missile strike"):"cruise missile strike";
+// a missile lands (x from aim().inc, or built directly for offline catch-up)
+function aimLand(x,quiet){const C=AIMCFG,c=CITIES[x.city];if(!c)return;
+  if(!quiet&&x.me&&bunkIntercept("msl")){x.icpt=1;const m=S.pol&&S.pol.mil;if(m){if(!Array.isArray(m.icpt))m.icpt=[];m.icpt=m.icpt.filter(y=>Date.now()-y.t<WPNCFG.animMs).concat([{city:c.id,t:Date.now()}])}
+    const t=`🛡 ${x.att}'s missile intercepted over ${c.name} by your air defense`;stNews(t);toast(t);if(typeof wpnAnim==="function")wpnAnim();return}
+  if(x.sea)return;
+  if(!x.prov){const w=(S.wars||[]).find(v=>v&&v.a===x.wa&&v.b===x.wb);try{const d=dip();if(d.gdp[x.def]>0)d.gdp[x.def]*=1-C.gdp}catch(e){}if(w&&w.fp!=null)w.fp=Math.max(0,Math.min(100,w.fp+(w.a===x.att?1:-1)*C.fp));
+    if(!quiet){const a=aim();if(a.ncH!==S.hour){a.ncH=S.hour;a.nc=0}if(a.nc++<C.news)stNews(`🚀 ${x.att} strikes ${c.name}, ${x.def}, with cruise missiles`)}}
+  aimHit(x.att,c,quiet);
+  if(!quiet&&present(c)){try{sfx("boom",6)}catch(e){}try{bunkPlayer("msl",c,x.att,0,0)}catch(e){console.warn("aim bunk",e)}}}
+function aimTick(now){const a=S.aim;if(!a||!Array.isArray(a.inc))return;
+  if(a.inc.length){const due=a.inc.filter(x=>x.at<=now);a.inc=a.inc.filter(x=>x.at>now&&x.at-now<36e5);
+    for(const x of due){aimLand(x,0);if(!x.me)_aimDone={x,t:now};if(S.dead)break}if(due.length){save();hud()}}
+  aimBanner()}
+// world alert: one red banner line for AI strikes on cities the player isn't involved in; latest + "+N more"
+let _aimDone=null;
+function aimBanner(){const mw=document.getElementById("mapwrap");if(!mw)return;const a=S.aim,now=Date.now(),q=a&&Array.isArray(a.inc)?a.inc.filter(x=>!x.me&&x.at>now):[];
+  let el=document.getElementById("aimwb");
+  if(!q.length&&!(_aimDone&&now-_aimDone.t<3000)){if(el)el.remove();return}
+  let box=document.getElementById("wmdbanner");if(!box){box=document.createElement("div");box.id="wmdbanner";mw.appendChild(box)}
+  if(!el){el=document.createElement("div");el.id="aimwb";el.onclick=()=>{el.remove();if(S.aim)for(const x of S.aim.inc)if(!x.me)x.hid=1;_aimDone=null};box.prepend(el)}
+  const vis=q.filter(x=>!x.hid);if(!vis.length&&!(_aimDone&&now-_aimDone.t<3000)){el.remove();return}
+  const nm=x=>{const c=CITIES[x.city];return x.sea?`waters off ${x.def}`:`${c?c.name:"?"}, ${x.def}`};let t;
+  if(vis.length){const x=vis[vis.length-1];t=`🚨 WORLD ALERT: ${x.att} ${aimKind(x)} inbound on ${nm(x)} · ${Math.max(0,Math.ceil((x.at-now)/1000))}s${vis.length>1?` · +${vis.length-1} more`:""}`}
+  else{const x=_aimDone.x;t=`🚨 WORLD ALERT: ${x.att} ${aimKind(x)} · ${nm(x)} · IMPACT`}
+  if(el.textContent!==t)el.textContent=t}
 function aimHour(quiet){const C=AIMCFG,a=aim();
   for(const w of (S.wars||[]).slice()){if(!w||w.inv||!(w.l>=3)||!w.a||!w.b)continue;const p=C.p[Math.min(4,w.l)]||0;
     for(const [x,y] of [[w.a,w.b],[w.b,w.a]])if(!aimHuman(x)&&Math.random()<p)aimFire(x,y,w,quiet,0)}
