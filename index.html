@@ -8447,17 +8447,21 @@ function alLoad(v,a,w,N,spare,now){const g=a.g,cap=capU(v.type,g),fuel=q=>vFuel(
 const alWorth=(fuel,q,N,g)=>fuel<=q*px(N,g);
 const alLocal=(N,g,q)=>buyGood(N,g,q).v/q;               // unit price of buying in the needy city itself (what the Buy button / manager pay)
 function alFetch(n,spare,now){const N=n.c,g=n.g,mkt=G[g][2]!=="gov"&&g!=="uranium";
+  const KM={},km=(a,b)=>{const k=a.id<b.id?a.id+"-"+b.id:b.id+"-"+a.id;return KM[k]!=null?KM[k]:(KM[k]=distKm(a,b))};
   const idle=S.fleet.filter(v=>v.city!=null&&!v.arr&&!v.route&&!v.job&&!v.cargo&&!v.al&&CITIES[v.city]&&!unhOn(CITIES[v.city]));
   const src=[];for(const id in S.wh){const w=CITIES[id];if(!w||w===N||S.wh[id]==null||lxBlock(w,N))continue;const own=spare(w,g)>=1;
-    if(own||mkt)src.push({w,own,km:distKm(w,N)})}
+    if(own||mkt)src.push({w,own,km:km(w,N)})}
   if(!src.length)return "src";if(!idle.length)return "veh";
-  let poor=0,dear=0,local=0;
+  let poor=0,dear=0,local=0;const by={};
+  for(const v of idle)(by[v.city]=by[v.city]||[]).push(v);
   const plan=(s,v)=>{const w=s.w,H=CITIES[v.city];let q=Math.min(capU(v.type,g),n.want);if(s.own)q=Math.min(q,spare(w,g));q=Math.max(1,Math.floor(q));
-    const fuel=vFuel(v.type,distKm(H,w),0,H,w)+vFuel(v.type,distKm(w,N),q*tpu(g),w,N)+(H!==N?vFuel(v.type,distKm(N,H),0,N,H):0),buy=s.own?0:buyGood(w,g,q).v;
+    const fuel=vFuel(v.type,km(H,w),0,H,w)+vFuel(v.type,km(w,N),q*tpu(g),w,N)+(H!==N?vFuel(v.type,km(N,H),0,N,H):0),buy=s.own?0:buyGood(w,g,q).v;
     return {s,v,H,q,fuel,buy,u:(fuel+buy)/q}};
   const pick=(s,vs)=>{const ps=vs.map(v=>plan(s,v)),ok=ps.filter(x=>alWorth(x.fuel,x.q,N,g));if(ps.length&&!ok.length)dear=1;return ok.sort((a,b)=>a.u-b.u)[0]};
-  const best=s=>{const w=s.w;return pick(s,idle.filter(v=>v.city===N.id&&lxVehOK(v,N,w)))||pick(s,idle.filter(v=>{const H=CITIES[v.city];return v.city!==N.id&&lxVehOK(v,H,w)&&lxVehOK(v,w,N)&&(H===w||!lxBlock(H,w))})
-    .map(v=>[v,distKm(CITIES[v.city],w)]).sort((a,b)=>a[1]-b[1]).slice(0,8).map(x=>x[0]))};    // the 8 idle vehicles nearest the source
+  const best=s=>{const w=s.w,P=pick(s,(by[N.id]||[]).filter(v=>lxVehOK(v,N,w)));if(P)return P;const vs=[];   // a vehicle parked in the needy city first
+    for(const [id] of Object.entries(by).map(([id])=>[id,km(CITIES[id],w)]).sort((a,b)=>a[1]-b[1])){const H=CITIES[id];if(H===N||(H!==w&&lxBlock(H,w)))continue;  // else the idle vehicles nearest the source
+      for(const v of by[id])if(lxVehOK(v,H,w)&&lxVehOK(v,w,N))vs.push(v);if(vs.length>=8)break}
+    return pick(s,vs)};
   const go=P=>{if(S.cash<P.fuel+(P.s.own?0:buyGood(P.s.w,g,1).v)){poor=1;return false}   // cannot afford even one unit plus the fuel
     if(!depart(P.v,P.H,P.s.w,"",now)){poor=1;return false}const {v,H,q,s}=P,w=s.w;
     v.al={home:H.id,to:N.id,g,fx:1,src:w.id,buy:s.own?0:1,q,st:"go"};
@@ -8490,7 +8494,9 @@ function alTick(now){S.alMiss=S.alMiss||{};
       const km=distKm(w,n.c),pq=v=>Math.max(1,Math.min(capU(v.type,n.g),spare(w,n.g),n.want)),pf=v=>vFuel(v.type,km,pq(v)*tpu(n.g),w,n.c)+vFuel(v.type,km,0,n.c,w);
       const vs=lxIdle(w).filter(v=>!v.al&&lxVehOK(v,w,n.c)&&alWorth(pf(v),pq(v),n.c,n.g)).sort((a,b)=>pf(a)/pq(a)-pf(b)/pq(b));if(!vs.length)continue;if(!best||km<best.km)best={w,v:vs[0],km}}
     const mk=n.c.id+":"+n.g,gn=G[n.g][0].toLowerCase();
-    if(!best){const r=alFetch(n,spare,now);
+    if(!best){const sk=alTick.sk||(alTick.sk={}),nw=Object.keys(S.wh).length,nv=S.fleet.filter(v=>v.city!=null&&!v.arr&&!v.al&&!v.route&&!v.job&&!v.cargo).length,o=sk[mk];
+      if(o&&o.t>now&&o.w===nw&&(o.v==null||o.v===nv))continue;   // a fetch that just failed is re-planned after 1 game hour (3 if prices/fuel were the problem), or sooner if a depot opens / (when vehicles were the problem) one frees up
+      const r=alFetch(n,spare,now);if(r){const vv=r==="veh"||r==="cash";sk[mk]={t:now+(vv?1:3)*DAYMS,w:nw,v:vv?nv:null}}else delete sk[mk];
       if(r==="src"||r==="veh"||r==="dear"||r==="local"){alOnce(mk,r==="src"?`no city with a depot of yours holds or sells ${gn} for ${n.c.name}`:r==="dear"?`fetching ${gn} for ${n.c.name} would cost more in fuel than it is worth`:r==="local"?`${gn} is cheapest to buy in ${n.c.name} itself; no trip sent`:`no free vehicle can fetch ${gn} for ${n.c.name}`);continue}
       delete S.alMiss[mk];if(r==="cash"){alOnce(mk+"$",`not enough cash to fetch ${gn} for ${n.c.name}`);continue}delete S.alMiss[mk+"$"];continue}
     delete S.alMiss[mk];const {w,v}=best,q=Math.max(1,Math.min(capU(v.type,n.g),spare(w,n.g),n.want)),inv=S.inv[w.id];
@@ -8517,7 +8523,7 @@ function alRun(now,dt,shH){let g=0,sold=0;
     return {g,sold}}
   if(shH!=null)runShops(shH);runFleet(now);try{alTick(now)}catch(e){console.warn("alTick",e)}g=saleTick(now,now-dt);sold=runIndustry(dt/DAYMS);return {g,sold}}
 function alHtml(){const A=S.fleet.filter(v=>v.al),run=A.filter(v=>!v.al.fx&&v.arr&&v.cargo).length,fx=A.filter(v=>v.al.fx&&v.al.st!=="back").length,back=A.filter(v=>v.arr&&!v.cargo&&(!v.al.fx||v.al.st==="back")).length;
-  return `<div class="sec">Auto-line</div><div class="list"><div class="row"><div class="n">Auto-line ${S.aline?'<span class="tag boom">ON</span>':'<span class="tag">OFF</span>'}</div><div class="d">${S.aline||A.length?`${run} deliver${run===1?"y":"ies"} running · ${fx} fetch trip${fx===1?"":"s"}${back?` · ${back} returning`:""}. `:""}Keeps businesses that draw from a warehouse, and gas stations, above ${AL_LOW} h of supply. A depot with the goods and a free vehicle sends a load; otherwise a free vehicle (one in the city first) fetches them from the nearest city with your stock, or buys them at the nearest city with your depot. Normal fuel costs apply.</div><button class="buy${S.aline?" up":""}" data-act="aline">${S.aline?"Turn off":"Turn on"}</button></div></div>`}
+  return `<div class="sec">Auto-line</div><div class="list"><div class="row"><div class="n">Auto-line ${S.aline?'<span class="tag boom">ON</span>':'<span class="tag">OFF</span>'}</div><div class="d">${S.aline||A.length?`${run} deliver${run===1?"y":"ies"} running · ${fx} fetch trip${fx===1?"":"s"}${back?` · ${back} returning`:""}. `:""}Keeps warehouse-supplied businesses and gas stations above ${AL_LOW} h of supply. A depot with spare goods and a free vehicle sends a load; otherwise a free vehicle (one in the city first) fetches them from your nearest stock, or buys them in another city with your depot when that is cheaper than buying here. Normal fuel costs apply.</div><button class="buy${S.aline?" up":""}" data-act="aline">${S.aline?"Turn off":"Turn on"}</button></div></div>`}
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
