@@ -2300,7 +2300,7 @@ const hourOf=t=>Math.floor(t/DAYMS);
 function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=(totals().inc+(typeof ishFinHr==="function"?ishFinHr():0))*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
 function accrue(){if(S.dead)return 0;const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);if(typeof popTick==="function")popTick(dt/DAYMS);if(typeof careerTick==="function")careerTick(dt/DAYMS);
-  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runFleet(now);try{alTick(now)}catch(e){console.warn("alTick",e)}const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}try{lxTick(now)}catch(e){console.warn("lxTick",e)}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
+  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);const{g,sold}=alRun(now,dt);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}try{lxTick(now)}catch(e){console.warn("lxTick",e)}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
@@ -8432,6 +8432,20 @@ function alTick(now){S.alMiss=S.alMiss||{};
     const ok=depart(v,w,n.c,n.g,now);inv[n.g]=(inv[n.g]||0)+keep;if(inv[n.g]<1e-6)delete inv[n.g];
     if(!ok){if(!S.alMiss[mk+"$"]){S.alMiss[mk+"$"]=1;S.log.unshift(`Auto-line: not enough cash for fuel to restock ${G[n.g][0].toLowerCase()} in ${n.c.name}`);S.log=S.log.slice(0,3)}continue}delete S.alMiss[mk+"$"];
     if(ok){v.al={home:w.id,to:n.c.id,g:n.g};S.log.unshift(`Auto-line: ${VEH[v.type].n} #${v.id} taking ${Math.round(q)} ${G[n.g][0].toLowerCase()} ${w.name} → ${n.c.name}`);S.log=S.log.slice(0,3)}}}
+/* Offline catch-up: when a long gap is being accrued and Auto-line is on (or its vehicles are still out), step the gap in
+   AL_STEP slices of game time so deliveries arrive, unload, drive home and get re-dispatched, interleaved with income,
+   fuel spending and the businesses' stock draw. Short (online) gaps take the single-step path. Tally goes to alTick.off. */
+const AL_STEP=DAYMS/4,AL_MAXN=200;
+function alRun(now,dt){let g=0,sold=0;
+  if(dt>AL_STEP*1.5&&(S.aline||S.fleet.some(v=>v.al))){const n=Math.min(AL_MAXN,Math.ceil(dt/AL_STEP)),t0=now-dt,off=alTick.off||(alTick.off={n:0,q:0});
+    if(!S.saleT||S.saleT<t0)S.saleT=t0;
+    for(let i=1;i<=n;i++){const t=i===n?now:t0+dt*i/n;
+      const due=S.fleet.filter(v=>v.al&&v.cargo&&v.arr&&v.arr<=t).map(v=>[v,v.cargo.q]);
+      runFleet(t);for(const [v,q] of due)if(!v.cargo){off.n++;off.q+=q}
+      try{alTick(t)}catch(e){console.warn("alTick",e)}
+      if(t>S.saleT)g+=saleTick(t,t0);sold+=runIndustry(dt/n/DAYMS)}
+    return {g,sold}}
+  runFleet(now);try{alTick(now)}catch(e){console.warn("alTick",e)}g=saleTick(now,now-dt);sold=runIndustry(dt/DAYMS);return {g,sold}}
 function alHtml(){const run=S.fleet.filter(v=>v.al&&v.arr&&v.cargo).length,back=S.fleet.filter(v=>v.al&&v.arr&&!v.cargo).length;
   return `<div class="sec">Auto-line</div><div class="list"><div class="row"><div class="n">Auto-line ${S.aline?'<span class="tag boom">ON</span>':'<span class="tag">OFF</span>'}</div><div class="d">${S.aline?`${run} deliver${run===1?"y":"ies"} running${back?` · ${back} returning`:""}. `:""}Idle vehicles at your nearest depot that holds the goods restock businesses that draw supplies from a warehouse (under ${AL_LOW} h left). Normal fuel costs apply.</div><button class="buy${S.aline?" up":""}" data-act="aline">${S.aline?"Turn off":"Turn on"}</button></div></div>`}
 let saveT=0;
@@ -8737,17 +8751,17 @@ new MutationObserver(draw).observe(document.documentElement,{attributes:true,att
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeSheet()});
 /* offline: full pay for the time away, up to 48 hours, then a welcome-back summary */
 function catchUp(){const now0=Date.now(),away=now0-(S.acc||now0),cash0=S.cash,debt0=S.debt||0,hadStock=Object.keys(S.stock||{}).filter(k=>S.stock[k]>0);
-  const shop=ishTick()||{paid:0,done:0,open:0};const got=accrue();const offPeace=S._offPeace||[];delete S._offPeace;if(offPeace.length)setTimeout(()=>toast(`War weariness forced white peace with ${offPeace.join(", ")} while you were away`),600);
+  const shop=ishTick()||{paid:0,done:0,open:0};alTick.off={n:0,q:0};const got=accrue();const al=alTick.off;alTick.off=null;const offPeace=S._offPeace||[];delete S._offPeace;if(offPeace.length)setTimeout(()=>toast(`War weariness forced white peace with ${offPeace.join(", ")} while you were away`),600);
   S.last=Date.now();checkGoals();save();hud();draw();
   if(away>5*60000){const hrs=away/DAYMS,t=hrs>=1?hrs.toFixed(1)+" h":Math.round(away/60000)+" min";
     if(got>1){S.log.unshift(`While you were away (${t}): ${fmt(got)} earned`);S.log=S.log.slice(0,3);hud()}
-    const ran=hadStock.filter(k=>!(S.stock[k]>0));awaySummary({away,got,net:S.cash-cash0,debt:(S.debt||0)-debt0,ran,capped:away>48*DAYMS,peace:offPeace,shop})}}
+    const ran=hadStock.filter(k=>!(S.stock[k]>0));awaySummary({away,got,net:S.cash-cash0,debt:(S.debt||0)-debt0,ran,capped:away>48*DAYMS,peace:offPeace,shop,al})}}
 function awaySummary(r){if(mqBusy("away")){mqQ().unshift(()=>awaySummary(r));return}r=Object.assign({away:0,got:0,net:0,debt:0,ran:[],peace:[],shop:{paid:0,done:0,open:0}},r||{});if(!Array.isArray(r.ran))r.ran=[];if(!r.shop)r.shop={paid:0,done:0,open:0};let el=$("#away");if(!el){el=document.createElement("div");el.id="away";document.body.appendChild(el)}
   const nm=k=>{const [id,b]=k.split(":");const c=CITIES[id],bz=BIZ.find(x=>x.k===b);return (bz?bz.n:b)+(c?" in "+c.name:"")};
   const row=(a,b,col)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)"><span>${a}</span><b${col?` style="color:${col}"`:""}>${b}</b></div>`;
   el.innerHTML=`<div style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px" data-away="x"><div style="background:var(--panel);color:var(--ink);border-radius:14px;max-width:360px;width:100%;padding:18px;box-shadow:0 18px 40px rgba(0,0,0,.35)">
     <h3 style="margin:0 0 4px">While you were away</h3><p class="d" style="margin:0 0 10px;color:var(--muted)">Your empire kept running for ${fmtDur(r.away)}.</p>
-    ${r.got>1?row("Earned",fmt(r.got),"var(--good)"):""}${row("Cash change",(r.net>=0?"+":"")+fmt(r.net),r.net>=0?"var(--good)":"var(--bad)")}${r.shop&&r.shop.paid>=.01?row(`Shop loan payments${r.shop.done?` · ${r.shop.done} paid off`:""}`,"−"+(r.shop.paid<100?fmtc(r.shop.paid):fmt(r.shop.paid)),"var(--bad)"):""}${Math.abs(r.debt)>1?row("Debt change",(r.debt>0?"+":"")+fmt(r.debt),r.debt>0?"var(--bad)":"var(--good)"):""}
+    ${r.got>1?row("Earned",fmt(r.got),"var(--good)"):""}${row("Cash change",(r.net>=0?"+":"")+fmt(r.net),r.net>=0?"var(--good)":"var(--bad)")}${r.shop&&r.shop.paid>=.01?row(`Shop loan payments${r.shop.done?` · ${r.shop.done} paid off`:""}`,"−"+(r.shop.paid<100?fmtc(r.shop.paid):fmt(r.shop.paid)),"var(--bad)"):""}${r.al&&r.al.n?row("Auto-line",`${r.al.n} deliver${r.al.n===1?"y":"ies"}, ${gq(r.al.q)} goods moved`):""}${Math.abs(r.debt)>1?row("Debt change",(r.debt>0?"+":"")+fmt(r.debt),r.debt>0?"var(--bad)":"var(--good)"):""}
     ${r.ran.length?`<p style="margin:10px 0 4px;color:var(--bad)"><b>Ran out of stock:</b></p><div class="d">${r.ran.slice(0,5).map(nm).join("<br>")}${r.ran.length>5?`<br>and ${r.ran.length-5} more`:""}</div>`:""}
     ${(r.peace||[]).length?`<p class="d" style="margin:10px 0 0"><b>White peace</b> (war weariness hit 100) with ${r.peace.join(", ")}.</p>`:""}
     ${r.capped?`<p class="d" style="margin:10px 0 0;color:var(--muted)">Offline earnings stop after 48 hours. Check in at least every two days to keep everything paid.</p>`:""}
