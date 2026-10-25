@@ -471,7 +471,7 @@ const upCost=(b,c,lv)=>Math.round(cost(b,c)*0.8*Math.pow(isCart(b.k)?1.7:1.4,lv-
 const UNH_DAYS=6*30;
 function unhOn(c){const u=S.unh;return !!(c&&u&&typeof u==="object"&&u[c.id]>Date.now())}
 const unhLeft=c=>{const d=Math.max(0,Math.ceil(((S.unh||{})[c.id]-Date.now())/DAYMS));return d>=30?`${Math.floor(d/30)} mo ${d%30} d`:`${d} d`};
-function evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="function"?stormMult(c):1)*(typeof strikeMult==="function"?strikeMult(c):1)*(typeof dmgMult==="function"?dmgMult(c):1)*popDem(c)*sancMult()}
+function evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="function"?stormMult(c):1)*(typeof strikeMult==="function"?strikeMult(c):1)*(typeof dmgMult==="function"?dmgMult(c):1)*(typeof aimMult==="function"?aimMult(c):1)*popDem(c)*sancMult()}
 /* rival companies */
 /* Rivals are real companies. Real figures (market cap in US$ bn, staff, founding year) are about 2025 and shown as facts only.
    Net worth is the real market cap in US dollars (rivalSeed = cap x 1e9, Apple US$3.5T). Anything that used to scale with the old squeezed net worth
@@ -2455,7 +2455,7 @@ function warHour(quiet){S.wars=S.wars||[];const ws=S.wars;
     if(w.l>=4)for(const n of [w.a,w.b])for(const c of ctyCities(n)){const o=S.own[c.id];if(!o||Math.random()>.03)continue;
       const ks=Object.keys(o),k=ks[Math.floor(Math.random()*ks.length)];if(--o[k]<=0)dropUnit(c,k);
       if(!quiet)logGov(`Fighting in ${c.name} damaged your ${BIZ.find(x=>x.k===k).n.toLowerCase()}`)}}
-  S.wars=ws.filter(w=>w.l>0);try{wfHour(quiet)}catch(e){console.warn("wf",e)}try{wfLocalHour(quiet)}catch(e){console.warn("wf",e)}}
+  S.wars=ws.filter(w=>w.l>0);try{aimHour(quiet)}catch(e){console.warn("aim",e)}try{wfHour(quiet)}catch(e){console.warn("wf",e)}try{wfLocalHour(quiet)}catch(e){console.warn("wf",e)}}
 /* ---------- war profits: supply contracts ----------
    In a war at border clashes or worse you can sign a supply contract with one side (S.wsup: [{w,s,amt,got,d0}], at most 3, optional for old saves).
    Stake = 2x the war's talks cost, paid up front. Each game day it pays 6% of the stake at war, 3% at clashes, nothing below.
@@ -8310,6 +8310,39 @@ setInterval(()=>{try{if(S.dead)return;aucListen();const n=Date.now();if(n-AU.las
 window.__auc={S:()=>aucS(),lots:w=>aucLots(w),wk:t=>aucWk(t),end:w=>aucEnd(w),mult:id=>aucMult(CITIES[id]),income:()=>aucIncome(),bid:i=>aucBid(i),sweep:()=>{AU.last=0;aucSweep()},check:(id,v)=>aucCheck(id,v),
   mock:be=>{AU.unsub.forEach(f=>{try{f()}catch(e){}});AU.unsub=[];AU.wkL=-1;AU.lots={};AU.be=be;aucListen()},AU};
 
+/* ---------- AI government missiles ----------
+   Each game hour, every AI-vs-AI conflict at clashes (l3) or war (l4) may fire cruise missiles at the enemy's cities (both sides roll):
+   AIMCFG.p[l] per side per hour. A hit dents the target country's GDP (dip().gdp) and nudges the war front (w.fp, if the war has one).
+   Rarely, outside war, an AI government fires a provocation (test over a rival's waters or a strike on a border city): +tens on the
+   wf() tension meter for that pair (never past 95, so it can't break a war on its own).
+   Player's businesses in a hit city: demand −hit, fading over hitDays, total from AI strikes capped at cap. Local only, no Firestore.
+   Offline catch-up (quiet) runs the same rolls without visuals/news and is summarised once on return.
+   Optional save field: S.aim {h:[{city,t,until,dmg}], q:{s,p}} — missing on old saves = no effect. */
+const AIMCFG={p:{3:.06,4:.18},prov:.012,tens:12,gdp:.002,fp:1.5,hit:.06,hitDays:1,cap:.2,arcs:3,news:4};
+function aim(){const a=S.aim=S.aim&&typeof S.aim==="object"?S.aim:{};if(!Array.isArray(a.h))a.h=[];if(!a.q||typeof a.q!=="object")a.q={s:0,p:0};return a}
+function aimMult(c){const a=S.aim;if(!a||!Array.isArray(a.h)||!a.h.length)return 1;const now=Date.now();let f=0;
+  for(const x of a.h)if(x.city===c.id&&now<x.until)f+=x.dmg*Math.max(0,(x.until-now)/(x.until-x.t));return 1-Math.min(AIMCFG.cap,f)}
+const aimHuman=n=>{const pc=dipPlayerC();if(n===pc||(S.pol&&S.pol.c===n&&S.pol.r>=0))return true;try{const d=dip();if(d.ruler&&d.ruler[n]&&d.ruler[n]===pc)return true}catch(e){}return false};
+function aimArc(from,c){if(typeof trjAdd!=="function"||document.visibilityState!=="visible")return;const now=Date.now();
+  if(_trj.filter(f=>f.ai&&now<f.t0+f.dur+f.fade).length>=AIMCFG.arcs)return;const f=trjAdd(from,c,"msl",now,trjMs("msl"),"ai"+from+c.id+now);if(f){f.ai=1;f.sp=1;if(typeof wpnAnim==="function")wpnAnim()}}
+function aimHit(att,c,quiet){const a=aim(),C=AIMCFG,now=Date.now(),o=S.own&&S.own[c.id];if(!o||!Object.keys(o).length)return 0;
+  a.h=a.h.filter(x=>now<x.until);a.h.push({city:c.id,t:now,until:now+C.hitDays*DAYMS,dmg:C.hit});if(!quiet)toast(`🚀 ${att}'s missile hit ${c.name}: your businesses there lose ${Math.round(C.hit*100)}% demand for a day`);return 1}
+function aimFire(att,def,w,quiet,prov){const cs=ctyCities(def);if(!cs.length)return;const C=AIMCFG,o=cap(att);
+  let c;if(prov){const s=cs.slice().sort((x,y)=>kmBetween(o,x)-kmBetween(o,y));c=s[0]}else c=cs[Math.floor(Math.random()*cs.length)];if(!c)return;
+  if(!quiet)aimArc(att,c);
+  if(prov){const d=wf(),k=wfPair(att,def),T=d.tens[k]=d.tens[k]||{v:0,f:{}},was=wfStage(T.v)[1],sea=Math.random()<.5;T.v=Math.min(95,(+T.v||0)+C.tens);T.t=Date.now();d.dirty=1;
+    const t=sea?`${att} test-fires a missile into waters off ${def}; tensions rise`:`${att} fires a missile at ${c.name} near the ${def} border; tensions rise`;
+    if(quiet)aim().q.p++;else{stNews(t);const now=wfStage(T.v)[1];if(now!==was)wfSay(`Tensions rising between ${att} and ${def}: ${now}`)}
+    if(sea)return}
+  else{try{const d=dip();if(d.gdp[def]>0)d.gdp[def]*=1-C.gdp}catch(e){}if(w&&w.fp!=null)w.fp=Math.max(0,Math.min(100,w.fp+(w.a===att?1:-1)*C.fp));
+    if(quiet)aim().q.s++;else{const a=aim();if(a.ncH!==S.hour){a.ncH=S.hour;a.nc=0}if(a.nc++<C.news)stNews(`🚀 ${att} strikes ${c.name}, ${def}, with cruise missiles`)}}
+  aimHit(att,c,quiet)}
+function aimHour(quiet){const C=AIMCFG,a=aim();
+  for(const w of (S.wars||[]).slice()){if(!w||w.inv||!(w.l>=3)||!w.a||!w.b)continue;const p=C.p[Math.min(4,w.l)]||0;
+    for(const [x,y] of [[w.a,w.b],[w.b,w.a]])if(!aimHuman(x)&&Math.random()<p)aimFire(x,y,w,quiet,0)}
+  if(Math.random()<C.prov){const pick=z=>z[Math.floor(Math.random()*z.length)],x=pick(COUNTRIES);
+    if(x&&!aimHuman(x)){const ys=COUNTRIES.filter(y=>y!==x&&!aimHuman(y)&&!wfAtWar(x,y)&&kmBetween(cap(x),cap(y))<5000);if(ys.length)aimFire(x,pick(ys),null,quiet,1)}}
+  if(!quiet&&(a.q.s||a.q.p)){const t=`While you were away: ${a.q.s} AI missile strike${a.q.s===1?"":"s"} in world wars${a.q.p?`, ${a.q.p} provocation launch${a.q.p===1?"":"es"} raised tensions`:""}`;stNews(t);a.q={s:0,p:0}}}
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
