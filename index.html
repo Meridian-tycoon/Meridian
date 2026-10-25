@@ -1953,7 +1953,7 @@ function selfOp(c,b,lv){const k=bkey(c,b.k),st=S.staff[k],o=S.opf[k];S.staff[k]=
 const SHOPCAP=48; // offline catch-up cap in game hours, same as earnings in accrue(): managers don't restock beyond it
 function runShops(h){const now=Date.now();S.shopT=now;S.mgrShort=S.mgrShort||{};h=Math.min(Math.max(0,h||0),SHOPCAP);
   const n=h>1?Math.min(SHOPCAP,Math.ceil(h)):1,sh=h/n;
-  for(let i=1;i<=n;i++)shopStep(sh,now-(n-i)*sh*DAYMS,now)}
+  for(let i=1;i<=n;i++)shopStep(sh,now-(n-i)*sh*DAYMS,now);try{stockAlerts(now,h>1)}catch(e){console.warn("stockAlerts",e)}}
 function shopStep(h,t,now){const short=[];
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv)continue;const key=bkey(c,b.k);
     const op=isStaffed(c,b.k)?1:(tenantRun(b.k)?1:present(c)?selfOp(c,b,lv):0);
@@ -1971,6 +1971,35 @@ function shopStep(h,t,now){const short=[];
       continue}
     delete S.mgrShort[key];S.cash-=cost;if(gp){gasTake(c,key,gp);if(gp.buy>0)S.orders.push({key,q:gp.buy,arr:t+ORDER_MIN*60000,auto:1})}else S.orders.push({key,q,arr:t+ORDER_MIN*60000,auto:1})}}
   if(short.length)toast(short.length>1?`Manager couldn't restock ${short.length} businesses — not enough cash`:short[0])}
+/* ---------- stock alerts: tiered low / critical / empty notices ----------
+   Every stocked business (SUP types) gets a tier from the hours of stock left at its current selling speed:
+   ok > 6 h · low ≤ 6 h · critical ≤ 2 h · empty = 0. A notice fires only when a business drops INTO a worse tier,
+   so each business warns at most once per tier until it is restocked back above 6 h (that resets it).
+   Quiet rules, so players aren't spammed: low/critical stay quiet while an order is already on its way or a manager
+   with auto-restock (and the cash for it) is covering it; nothing drains while a business is closed, so only "empty"
+   can fire for those; the same tier never repeats within STAL_CD; and several alerts in one tick merge into one toast.
+   Empty always notifies (red toast + log) since it means lost sales. Offline catch-up gives one summary. */
+const STAL_T=[[0,"empty"],[2,"critical"],[6,"low"]],STAL_R={ok:0,low:1,critical:2,empty:3},STAL_CD=2*DAYMS; // thresholds in game hours
+function stockTier(c,b){const key=bkey(c,b.k),have=S.stock[key]||0;if(have<1e-6)return["empty",0];
+  const lv=(S.own[c.id]||{})[b.k],op=isStaffed(c,b.k)?1:present(c)?selfOp(c,b,lv):0,r=uSum(c.id,b.k,l=>useRate(b,l,c))*op;
+  if(r<=0)return["ok",Infinity];const hrs=have/r;for(const [t,n] of STAL_T.slice(1))if(hrs<=t)return[n,hrs];return["ok",hrs]}
+function stockAlerts(now,away){S.stAl=S.stAl||{};const hits=[];
+  for(const key in S.stAl){const [id,k]=key.split(":");if(!(S.own[id]||{})[k])delete S.stAl[key]}
+  for(const id in S.own){const c=CITIES[id];for(const b of BIZ){if(!S.own[id][b.k]||!SUP[b.k])continue;const key=bkey(c,b.k),[tier,hrs]=stockTier(c,b),a=S.stAl[key]||(S.stAl[key]={t:"ok",n:{}});a.n=a.n||{};
+    if((S.stock[key]||0)>0)a.had=1;if(!a.had)continue;                     // brand-new, never stocked: the buy hint covers it
+    if(tier==="ok"){a.t="ok";continue}
+    if(STAL_R[tier]<=STAL_R[a.t])continue;                                   // only warn when it gets worse
+    const covered=S.orders.some(o=>o.key===key)||(S.mgr[c.id]&&S.auto2[key]&&!(S.mgrShort||{})[key]);
+    if(tier!=="empty"&&covered)continue;                                     // restock already handled
+    a.t=tier;if(tier!=="empty"&&now-(a.n[tier]||0)<STAL_CD)continue;a.n[tier]=now;   // same tier not repeated within STAL_CD
+    hits.push({tier,c,b,hrs})}}
+  if(!hits.length)return;hits.sort((x,y)=>STAL_R[y.tier]-STAL_R[x.tier]);
+  const dur=h=>h<1?Math.round(h*60)+" min":h.toFixed(1)+" h",one=x=>x.tier==="empty"?`Out of stock: ${x.b.n} in ${x.c.name} has stopped selling`:x.tier==="critical"?`Stock critical: ${x.b.n} in ${x.c.name} runs out in ~${dur(x.hrs)}`:`Low stock: ${x.b.n} in ${x.c.name} has ~${dur(x.hrs)} left`;
+  for(const x of hits.slice(0,3))S.log.unshift(one(x));S.log=S.log.slice(0,3);
+  const e=hits.filter(x=>x.tier==="empty").length;let m;
+  if(hits.length===1)m=one(hits[0]);else if(e)m=`Out of stock: ${e} business${e>1?"es":""} stopped selling${hits.length>e?`, ${hits.length-e} more running low`:""}`;
+  else{const k=hits.filter(x=>x.tier==="critical").length;m=k?`Stock critical: ${k} business${k>1?"es":""} about to run out${hits.length>k?`, ${hits.length-k} more running low`:""}`:`Low stock: ${hits.length} businesses need restocking`}
+  if(away)m="While you were away · "+m;if(typeof toast==="function")toast(m)}
 function orderStock(c,b,q){const own=supMode()==="own"&&(S.own[c.id]||{}).trucking,gp=b.fuel?gasPlan(c,q,own?1:1.06):null,cost=gp?gp.cost:q*unitCost(b,c)*(own?1:1.06);if(S.cash<cost){toast(`That order costs ${fmt(cost)}`);return}
   if(gp){S.cash-=cost;const key=bkey(c,b.k);gasTake(c,key,gp);if(gp.buy>0)S.orders.push({key,q:gp.buy,arr:Date.now()+ORDER_MIN*60000*(own?.5:1)});
     toast(`Restocked ${Math.round(q)} kL: ${gasTxt(S.gasLast[key])}${gp.buy>0?`. ${own?"Your trucks deliver":"Carrier delivers"} the rest in ${own?ORDER_MIN/2:ORDER_MIN} min`:""}.`);return}
@@ -1993,7 +2022,7 @@ function opsHtml(c,b,lv){const key=bkey(c,b.k),st=isStaffed(c,b.k),staff=uSum(c.
   const runs=st?"Run by your staff":tenantRun(b.k)?"Tenants pay rent":present(c)?`You're running it yourself (${Math.round(sf*100)}% speed)`:"Closed: no staff and you're not here";
   let h=`<div class="ops"><div class="ops-l"><b style="color:${opf>.01?"var(--good)":"var(--bad)"}">${opf>.01?"Open":"Not selling"}</b> · ${runs}`;
   if(sup){const have=stockOf(c,b.k),hrs=r?have/(r*(st?1:Math.max(.01,sf))):0;
-    h+=`<br>Stock: <b>${Math.floor(have).toLocaleString()}</b> ${sup.u}${have>0?` · lasts ~${hrs<1?Math.round(hrs*60)+" min":hrs.toFixed(1)+" h"}`:` · <span style="color:var(--bad)">empty, nothing to sell</span>`}${pend.length?` · ${pend.reduce((a,o)=>a+o.q,0).toLocaleString()} arriving in ${fmtDur(Math.max(0,Math.min(...pend.map(o=>o.arr))-Date.now()))}`:""}
+    const tr=stockTier(c,b)[0];h+=`<br>Stock: <b>${Math.floor(have).toLocaleString()}</b> ${sup.u}${tr!=="ok"?` <span class="tag ${tr==="low"?"":"bust"}" style="border:1px solid var(--line)">${{low:"Low",critical:"Critical",empty:"Empty"}[tr]}</span>`:""}${have>0?` · lasts ~${hrs<1?Math.round(hrs*60)+" min":hrs.toFixed(1)+" h"}`:` · <span style="color:var(--bad)">empty, nothing to sell</span>`}${pend.length?` · ${pend.reduce((a,o)=>a+o.q,0).toLocaleString()} arriving in ${fmtDur(Math.max(0,Math.min(...pend.map(o=>o.arr))-Date.now()))}`:""}
       <br><span style="color:var(--muted)">${b.fuel?`Market fuel here: ${fmtC(unitCost(b,c))} per kL`:`${sup.n}: $${unitCost(b,c).toFixed(2)} per ${sup.u.replace(/s$/,"")}`}</span>`;
     if(b.fuel){const dp=((S.inv[c.id]||{}).fuel||0),gl=S.gasLast[key];h+=`<br><span style="color:var(--muted)">Your depot here has <b>${Math.floor(dp)}</b> kL of fuel, used first (free). The rest is bought at the market price.${gl?` Last restock: ${gasTxt(gl)}.`:""}</span>`}}
   h+=`</div><div class="ops-b">`;
@@ -8637,7 +8666,7 @@ const atHomeNow=()=>!!(S.home&&!S.trip&&S.loc.city===S.home.city);
 /* ---------- misc ---------- */
 let tt;function toast(m){const t=$("#toast");t.textContent=m;t.classList.remove("good","bad");t.classList.toggle("top",!!(typeof PH!=="undefined"&&PH&&PH.open));
   if(/^(Opened|Approved|You got the job|You earned|Bill passed|Bail posted|Law changed|Contract awarded|Talks worked|Arms sold|Bought|Card approved|Day \d+ streak|.*paid off)/.test(m)){t.classList.add("good");if(typeof confetti==="function"&&!/^Day/.test(m))confetti(28,innerWidth/2,innerHeight-80);if(typeof vib==="function")vib(20)}
-  else if(/^(Denied|Scandal|Caught|Arrested|Application turned down|Bill failed|Talks collapsed|Need |You need|Not from prison)/.test(m)){t.classList.add("bad");if(typeof vib==="function")vib([15,30,15])}
+  else if(/^(Denied|Scandal|Caught|Arrested|Application turned down|Bill failed|Talks collapsed|Need |You need|Not from prison|Out of stock|Stock critical|While you were away · Out of stock)/.test(m)){t.classList.add("bad");if(typeof vib==="function")vib([15,30,15])}
   if(S.set&&S.set.toast===0&&!t.classList.contains("good")&&!t.classList.contains("bad")&&!/^(Need|Not enough|Can't|Cannot|Settings)/.test(m))return;
   t.classList.add("on");clearTimeout(tt);tt=setTimeout(()=>t.classList.remove("on"),1800)}
 window.addEventListener("resize",resize);
