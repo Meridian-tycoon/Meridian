@@ -51,7 +51,7 @@ h1 span{color:var(--accent)}
 canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 /* one map: MapLibre draws the planet, the streets and the buildings; the game draws its cities, routes and storms on a see-through canvas locked to the same camera */
 #gl{position:absolute;inset:0;background:var(--space)}
-#gl .maplibregl-canvas{cursor:grab}#gl .maplibregl-canvas:active{cursor:grabbing}#gl .maplibregl-ctrl-attrib{font-size:10px}
+#gl .maplibregl-ctrl-bottom-right{right:env(safe-area-inset-right,0px);bottom:env(safe-area-inset-bottom,0px)}#gl .maplibregl-ctrl-bottom-left{left:env(safe-area-inset-left,0px)}#gl .maplibregl-canvas{cursor:grab}#gl .maplibregl-canvas:active{cursor:grabbing}#gl .maplibregl-ctrl-attrib{font-size:10px}
 canvas#map{position:absolute;inset:0;z-index:1;pointer-events:none}
 #ticker{position:absolute;left:max(12px,env(safe-area-inset-left,0px));top:10px;right:max(12px,env(safe-area-inset-right,0px));
   font-size:12px;font-family:var(--mono);color:var(--ink);display:flex;flex-direction:column;align-items:flex-start;gap:4px}
@@ -698,8 +698,8 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   if(S.pol&&S.pol.mil){const M=S.pol.mil;for(const c of CITIES){const w=M.wars&&M.wars[c.country],o=M.occ&&M.occ[c.country];if(!w&&!o||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]);
     ctx.beginPath();ctx.arc(x,y,w?11:10,0,7);ctx.strokeStyle="#dc2626";ctx.globalAlpha=.9*dotA;ctx.lineWidth=w?2.4:1.8;ctx.setLineDash(w?[]:[4,3]);ctx.stroke();ctx.setLineDash([])}}
   ctx.globalAlpha=1}
-  {const tp=typeof tripPos==="function"?tripPos(Date.now()):null,pl=tp||S.loc;if(pl&&visible(pl.lon,pl.lat)&&(z<ZST||tp&&!S.trip.local)){const [px,py]=proj([pl.lon,pl.lat]);
-    if(tp&&!S.trip.local){ctx.beginPath();path({type:"LineString",coordinates:[[S.trip.from.lon,S.trip.from.lat],[S.trip.to.lon,S.trip.to.lat]]});ctx.setLineDash([2,5]);ctx.strokeStyle=C.ink;ctx.globalAlpha=.6;ctx.lineWidth=1.5;ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}
+  {let tp=typeof tripPos==="function"?tripPos(Date.now()):null;if(tp&&S.trip.s1&&typeof s1Pos==="function")try{tp=s1Pos(Date.now())||tp}catch(e){}const pl=tp||S.loc;if(pl&&visible(pl.lon,pl.lat)&&(z<ZST||tp&&!S.trip.local)){const [px,py]=proj([pl.lon,pl.lat]);
+    if(tp&&!S.trip.local&&!S.trip.s1){ctx.beginPath();path({type:"LineString",coordinates:[[S.trip.from.lon,S.trip.from.lat],[S.trip.to.lon,S.trip.to.lat]]});ctx.setLineDash([2,5]);ctx.strokeStyle=C.ink;ctx.globalAlpha=.6;ctx.lineWidth=1.5;ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}
     ctx.beginPath();ctx.arc(px,py,7,0,7);ctx.fillStyle="#be185d";ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#fff";ctx.stroke();
     ctx.fillStyle="#fff";ctx.font="700 8px sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(tp&&S.trip.mode==="plane"?"✈":"YOU".slice(0,1),px,py+.5);ctx.textAlign="start"}}
   // cities on the near side only
@@ -3720,7 +3720,7 @@ function gigTap(btn){const g=gigState(),now=Date.now();if(now-g.last<150)return;
 const RANKS=[["🛹","Street hustler",0],["🧺","Side hustler",2e3],["🏪","Shop owner",2e4],["💼","Entrepreneur",2e5],["🏦","Mogul",2e6],["🏙️","Tycoon",2e7],["🛳️","Magnate",2e8],["👑","Oligarch",2e9],["🌍","World emperor",2e10]];
 const rankOf=nw=>{let i=0;for(let k=0;k<RANKS.length;k++)if(nw>=RANKS[k][2])i=k;return i};
 const vib=n=>{try{if(S.set&&S.set.vib===0)return;navigator.vibrate&&navigator.vibrate(n)}catch(e){}};
-function confetti(n=40,x=innerWidth/2,y=innerHeight/2){if(matchMedia("(prefers-reduced-motion: reduce)").matches||(S.set&&S.set.rm))return;const cols=["#f59e0b","#10b981","#3b82f6","#ef4444","#a855f7","#facc15"];
+function confetti(n=40,x=innerWidth/2,y=innerHeight/2){try{if(n>=40)sndWin()}catch(e){}if(matchMedia("(prefers-reduced-motion: reduce)").matches||(S.set&&S.set.rm))return;const cols=["#f59e0b","#10b981","#3b82f6","#ef4444","#a855f7","#facc15"];
   for(let i=0;i<n;i++){const d=document.createElement("div");d.className="confetti";d.style.background=cols[i%cols.length];d.style.left=x+"px";d.style.top=y+"px";document.body.appendChild(d);
     const a=Math.random()*Math.PI*2,v=120+Math.random()*260,dx=Math.cos(a)*v,dy=Math.sin(a)*v-200;
     d.animate([{transform:"translate(0,0) rotate(0)",opacity:1},{transform:`translate(${dx}px,${dy+500}px) rotate(${Math.random()*900}deg)`,opacity:0}],{duration:1100+Math.random()*700,easing:"cubic-bezier(.2,.6,.4,1)"}).onfinish=()=>d.remove()}}
@@ -4791,11 +4791,36 @@ function s1Trip(dest){const a=s1(),T=s1L(),t=S.trip;if(!T||!t)return;t.s1=a.lv;t
 function s1Tick(now){const a=s1();if(!a.lv){a.pt=0;return}
   if(!airGov()){a.pt=now;if(a.lv>1){a.lv=1;const x="🛳 You lost Sea One's upgrades (you lost your office). The yacht is moored until you win office again.";S.log.unshift("Government: "+x);S.log=S.log.slice(0,3);toast(x)}return}
   if(!a.pt)a.pt=now;const dt=Math.min(now-a.pt,2*DAYMS);if(dt>=10000){S.cash-=S1CFG.lv[a.lv].up*dt/DAYMS;a.pt=now}}
+// drawn course only (trip time/cost still use the great-circle distance): a sea lane found once per voyage on a 0.5° land mask of the world map
+// (A* over water cells, then string-pulled and densified), cached by departure time, so a frame only walks the cached points.
+let _s1M=null,_s1R=null;const S1W=720,S1H=360,S1CAN=[[[32.3,31.4],[32.6,29.8]],[[-80,9.5],[-79.4,8.8]],[[26.2,40],[29.2,41.3]],[[-6.8,35.9],[-4.4,36.1]],[[103,1.5],[104.5,1.1]]]; // Suez, Panama, Turkish straits, Gibraltar, Singapore
+function s1Mask(){if(_s1M)return _s1M;if(!world||!world.features||typeof d3==="undefined")return null;try{const cv=document.createElement("canvas");cv.width=S1W;cv.height=S1H;const c=cv.getContext("2d"),pr=d3.geoEquirectangular().scale(S1W/(2*Math.PI)).translate([S1W/2,S1H/2]),pa=d3.geoPath(pr,c);
+  c.fillStyle="#000";c.beginPath();for(const f of world.features){const g=cfFeat(f.properties.name);if(g)pa(g)}c.fill();
+  c.globalCompositeOperation="destination-out";c.lineWidth=2.5;c.beginPath();for(const [a,b] of S1CAN){c.moveTo(...pr(a));c.lineTo(...pr(b))}c.stroke();
+  const D=c.getImageData(0,0,S1W,S1H).data,m=new Uint8Array(S1W*S1H);for(let i=0;i<m.length;i++)m[i]=D[i*4+3]>110?1:0;_s1M=m}catch(e){_s1M=null}return _s1M}
+const s1Cx=lo=>((Math.floor((lo+180)*2)%S1W)+S1W)%S1W,s1Cy=la=>Math.max(0,Math.min(S1H-1,Math.floor((90-la)*2))),s1Ll=i=>[(i%S1W)/2-180+.25,90-Math.floor(i/S1W)/2-.25];
+function s1Near(m,lo,la){const x0=s1Cx(lo),y0=s1Cy(la);for(let r=0;r<=24;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;const y=y0+dy;if(y<0||y>=S1H)continue;const i=y*S1W+((x0+dx)%S1W+S1W)%S1W;if(!m[i])return i}return -1}
+function s1Clear(m,a,b){let dl=b[0]-a[0];if(dl>180)dl-=360;if(dl<-180)dl+=360;const n=Math.ceil(Math.max(Math.abs(dl),Math.abs(b[1]-a[1]))*4)+1;for(let k=1;k<n;k++){const u=k/n;if(m[s1Cy(a[1]+(b[1]-a[1])*u)*S1W+s1Cx(a[0]+dl*u)])return false}return true}
+function s1Path(m,s,g){const N=S1W*S1H,G=new Float32Array(N).fill(Infinity),P=new Int32Array(N).fill(-1),C=new Uint8Array(N),hp=[],hf=[],gl=s1Ll(g),cw=new Float32Array(S1H);for(let y=0;y<S1H;y++)cw[y]=Math.max(.05,Math.cos((90-y/2-.25)*Math.PI/180));
+  const h=i=>d3.geoDistance(s1Ll(i),gl)*360/Math.PI,push=(i,f)=>{let k=hp.length;hp.push(i);hf.push(f);while(k){const q=(k-1)>>1;if(hf[q]<=f)break;hp[k]=hp[q];hf[k]=hf[q];k=q}hp[k]=i;hf[k]=f},
+    pop=()=>{const top=hp[0],li=hp.pop(),lf=hf.pop();if(hp.length){let k=0;for(;;){let c=2*k+1;if(c>=hp.length)break;if(c+1<hp.length&&hf[c+1]<hf[c])c++;if(hf[c]>=lf)break;hp[k]=hp[c];hf[k]=hf[c];k=c}hp[k]=li;hf[k]=lf}return top};
+  G[s]=0;push(s,h(s));let n=0;while(hp.length){const i=pop();if(i===g)break;if(C[i])continue;C[i]=1;if(++n>200000)return null;const x=i%S1W,y=(i-x)/S1W;
+    for(let dy=-1;dy<=1;dy++){const yy=y+dy;if(yy<0||yy>=S1H)continue;for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const j=yy*S1W+(x+dx+S1W)%S1W;if(m[j]||C[j])continue;const c=G[i]+Math.hypot(dx*cw[yy],dy);if(c<G[j]){G[j]=c;P[j]=i;push(j,c+h(j))}}}}
+  if(P[g]<0&&g!==s)return null;const out=[];for(let i=g;i>=0;i=P[i])out.push(i);return out.reverse()}
+function s1Route(t){const k=t.dep+":"+t.from.lon+":"+t.to.lon;if(_s1R&&_s1R.k===k)return _s1R;const A=[t.from.lon,t.from.lat],B=[t.to.lon,t.to.lat],m=s1Mask();let pts=[A,B];
+  if(m){try{const s=s1Near(m,A[0],A[1]),g=s1Near(m,B[0],B[1]),cp=s>=0&&g>=0?s1Path(m,s,g):null;
+    if(cp){const raw=cp.map(s1Ll),sm=[raw[0]];let i=0;while(i<raw.length-1){let j=raw.length-1;while(j>i+1&&!s1Clear(m,raw[i],raw[j]))j--;sm.push(raw[j]);i=j}
+      const all=[A,...sm,B];pts=[A];for(let q=1;q<all.length;q++){const a=all[q-1],b=all[q],gi=d3.geoInterpolate(a,b),n=Math.max(1,Math.ceil(d3.geoDistance(a,b)*180/Math.PI/3));for(let r=1;r<=n;r++)pts.push(gi(r/n))}}}catch(e){pts=[A,B]}}
+  const cum=[0];for(let q=1;q<pts.length;q++)cum.push(cum[q-1]+d3.geoDistance(pts[q-1],pts[q]));const R={k,pts,cum};if(m)_s1R=R;return R}
+// where the flagship is on its drawn course at progress u (0..1): [lon,lat,index of the segment it is on]
+function s1At(R,u){const L=R.cum[R.cum.length-1]*u;let i=0;while(i<R.pts.length-2&&R.cum[i+1]<L)i++;const sl=R.cum[i+1]-R.cum[i],f=sl>0?(L-R.cum[i])/sl:0,g=d3.geoInterpolate(R.pts[i],R.pts[i+1])(Math.max(0,Math.min(1,f)));return[g[0],g[1],i]}
+function s1Pos(now){const t=S.trip;if(!t||!t.s1)return null;const p=tripPos(now);if(!p)return null;const q=s1At(s1Route(t),p.u);return{lon:q[0],lat:q[1],u:p.u}}
 // map: the course ahead, the flagship and its escort ships
 function s1Draw(ctx,now){const t=S.trip;if(!t||!t.s1||typeof tripPos!=="function")return;const p=tripPos(now);if(!p)return;
-  ctx.save();try{const gi=d3.geoInterpolate([t.from.lon,t.from.lat],[t.to.lon,t.to.lat]);ctx.strokeStyle="rgba(56,189,248,.55)";ctx.lineWidth=1.5;ctx.setLineDash([4,4]);ctx.beginPath();let on=false;
-    for(let i=0;i<=32;i++){const u=p.u+(1-p.u)*i/32,g=gi(u);if(!visible(g[0],g[1])){on=false;continue}const [px,py]=proj(g);if(on)ctx.lineTo(px,py);else{ctx.moveTo(px,py);on=true}}ctx.stroke();ctx.setLineDash([])}catch(e){}
-  if(!visible(p.lon,p.lat)){ctx.restore();return}const [x,y]=proj([p.lon,p.lat]);
+  const RR=s1Route(t),R=RR.pts,N=R.length-1,q=s1At(RR,p.u),i0=q[2],pos=[q[0],q[1]];
+  ctx.save();try{ctx.strokeStyle="rgba(56,189,248,.55)";ctx.lineWidth=1.5;ctx.setLineDash([4,4]);ctx.beginPath();let on=false;
+    for(let i=i0;i<=N;i++){const g=i===i0?pos:R[i];if(!visible(g[0],g[1])){on=false;continue}const [px,py]=proj(g);if(on)ctx.lineTo(px,py);else{ctx.moveTo(px,py);on=true}}ctx.stroke();ctx.setLineDash([])}catch(e){}
+  if(!visible(pos[0],pos[1])){ctx.restore();return}const [x,y]=proj(pos);
   ctx.font="16px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("🛳",x,y);ctx.fillStyle="#7dd3fc";
   for(let i=0;i<Math.min(8,t.esc||0);i++){const r=13+Math.floor(i/4)*6,an=i*Math.PI/2+Math.PI/4+Math.floor(i/4)*.6;ctx.beginPath();ctx.arc(x+Math.cos(an)*r,y+Math.sin(an)*r,2.4,0,Math.PI*2);ctx.fill()}
   ctx.font="bold 10px system-ui,sans-serif";ctx.fillStyle="#38bdf8";ctx.fillText("SEA ONE",x,y-17);ctx.restore()}
@@ -6283,7 +6308,7 @@ function wd(){let d=S.wd;if(!d||typeof d!=="object")d=S.wd={};if(!(d.tot>=0))d.t
 function wdLog(e){const d=wd(),now=Date.now();d.tot+=e.n;d.c[e.c]=(d.c[e.c]||0)+e.n;
   if(e.war){const l=d.log.find(x=>x.war&&x.c===e.c&&x.day===(S.day||0));if(l){l.n+=e.n;l.t=now;return}d.log.unshift({war:1,c:e.c,n:e.n,day:S.day||0,t:now})}
   else d.log.unshift({k:e.k,city:e.city,c:e.c,n:e.n,by:e.by||"",t:now});d.log=d.log.slice(0,DEATHCFG.keep)}
-function popStrike(k,c,by){const W=WPNCFG.w[k];if(!W||!c)return 0;_wdStrike=1;let dead=0;try{dead=popKill(c.country,3,Math.min(POPCFG.cityPop[c.size]*(DEATHCFG.cap[k]||1),POPCFG.cityPop[c.size]*dmgHit(W,c)*W.mort*(DEATHCFG.mult[k]||1)*(.8+Math.random()*.4)))}finally{_wdStrike=0}
+function popStrike(k,c,by){const W=WPNCFG.w[k];if(!W||!c)return 0;try{sfx("boom",W.r)}catch(e){}_wdStrike=1;let dead=0;try{dead=popKill(c.country,3,Math.min(POPCFG.cityPop[c.size]*(DEATHCFG.cap[k]||1),POPCFG.cityPop[c.size]*dmgHit(W,c)*W.mort*(DEATHCFG.mult[k]||1)*(.8+Math.random()*.4)))}finally{_wdStrike=0}
   wdLog({k,city:c.id,c:c.country,n:dead,by});try{deathPop(k,c,dead)}catch(e){}return dead}
 function deathPop(k,c,dead){const W=WPNCFG.w[k],mw=document.getElementById("mapwrap");if(!W||!mw||document.hidden)return;let box=document.getElementById("deathpop");
   if(!box){box=document.createElement("div");box.id="deathpop";box.style.cssText="position:absolute;right:12px;top:120px;z-index:58;display:flex;flex-direction:column;gap:8px;width:min(300px,80vw);pointer-events:none";mw.appendChild(box)}
@@ -6962,7 +6987,8 @@ const TIPS={
 #tutring{position:fixed;z-index:8999;border:2px solid var(--accent);border-radius:12px;pointer-events:none;box-shadow:0 0 0 4px rgba(0,0,0,.15);animation:tutpulse 1.6s ease-in-out infinite}
 @keyframes tutpulse{50%{box-shadow:0 0 0 8px rgba(0,0,0,.05)}}
 html.set-rm #tutring{animation:none}@media (prefers-reduced-motion:reduce){#tutring{animation:none}}
-html.th-ledger #tutbox,html.th-ledger #tipbox{border-radius:2px}html.th-command #tutbox,html.th-command #tipbox,html.th-command #tutbox button,html.th-command #tipbox button,html.th-command #tutring{border-radius:0}`;document.head.appendChild(st)})();
+html.th-ledger #tutbox,html.th-ledger #tipbox{border-radius:2px}html.th-command #tutbox,html.th-command #tipbox,html.th-command #tutbox button,html.th-command #tipbox button,html.th-command #tutring{border-radius:0}
+@media (max-width:819px){body:not(.sh-open):not(.ph-open) #tutbox,body:not(.sh-open):not(.ph-open) #tipbox{top:auto!important;bottom:calc(env(safe-area-inset-bottom,0px) + 150px);left:max(12px,env(safe-area-inset-left,0px));right:calc(max(12px,env(safe-area-inset-right,0px)) + 44px);margin:0;padding:8px 12px;font-size:12px;max-height:30vh;overflow:auto}body:not(.sh-open):not(.ph-open) #tutbox h4,body:not(.sh-open):not(.ph-open) #tipbox h4{font-size:13px}body:not(.sh-open):not(.ph-open) #tutbox .tb,body:not(.sh-open):not(.ph-open) #tipbox .tb{margin-top:6px}body:not(.sh-open):not(.ph-open) #tutbox button,body:not(.sh-open):not(.ph-open) #tipbox button{min-height:40px}}`;document.head.appendChild(st)})();
 let tutStep=-1,tutWas=false;
 function tutClose(done){const b=$("#tutbox"),r=$("#tutring");if(b)b.remove();if(r)r.remove();tutStep=-1;if(done){S.tut=9;delete S.tutS;save()}setTimeout(tipCheck,300)}
 function tutShow(i){i=Math.max(0,+i||0);tutStep=i;const s=TUT[i];if(!s){tutClose(1);toast("Guide done. Replay it any time from Settings on your phone.");return}if(S.tutS!==i){S.tutS=i;save()}const tb=$("#tipbox");if(tb)tb.remove();
@@ -7863,11 +7889,11 @@ setInterval(()=>{try{if(_cfPop){const el=document.getElementById("cfpop");if(el&
     if((card?card.dataset.bgsig:"")!==sig){if(Date.now()-(PH.touched||0)>=3000&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)))phRender()}
     else bgFill(PH.el)}}catch(e){console.warn("bgfill",e)}},2000);
 /* ---------- Settings app (device prefs in S.set; UI theme mirrored to localStorage for first paint) ---------- */
-var SET_DEF={ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1};
+var SET_DEF={ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5};
 var SET_UI=[["classic","Classic","The original look"],["glass","Glass","Frosted dark panels, violet glow"],["ledger","Ledger","Cream paper, ink and serif type"],["command","Command","Neon HUD, cyan and magenta"]];
 var SET_FONT="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@500;700&family=Playfair+Display:wght@700;900&family=Source+Serif+4:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Chakra+Petch:wght@500;700&display=swap";
 var _setSig="";
-function setG(){const s=(S.set&&typeof S.set==="object")?S.set:(S.set={});for(const k in SET_DEF)if(s[k]==null)s[k]=SET_DEF[k];if(!SET_UI.some(u=>u[0]===s.ui))s.ui="classic";if(![.9,1,1.15].includes(+s.fs))s.fs=1;return s}
+function setG(){const s=(S.set&&typeof S.set==="object")?S.set:(S.set={});for(const k in SET_DEF)if(s[k]==null)s[k]=SET_DEF[k];if(!SET_UI.some(u=>u[0]===s.ui))s.ui="classic";if(![.9,1,1.15].includes(+s.fs))s.fs=1;if(![.2,.5,.8,1].includes(+s.vol))s.vol=.5;return s}
 function setApply(force){const s=setG(),sig=JSON.stringify(s);if(!force&&sig===_setSig)return;_setSig=sig;const H=document.documentElement;
   for(const [k] of SET_UI)H.classList.toggle("th-"+k,k!=="classic"&&s.ui===k);
   if(s.ui!=="classic"&&!document.getElementById("th-font")){const l=document.createElement("link");l.id="th-font";l.rel="stylesheet";l.href=SET_FONT;document.head.appendChild(l)}
@@ -7877,7 +7903,7 @@ function setApply(force){const s=setG(),sig=JSON.stringify(s);if(!force&&sig===_
   const m=document.querySelector('meta[name="theme-color"]');if(m&&s.ui!=="classic")m.content={glass:"#0b1020",ledger:"#fbf5e6",command:"#000000"}[s.ui];else if(m)m.content=themeGet()==="light"?"#fbfaf5":"#141f21";
   try{if(typeof draw==="function")draw()}catch(e){}}
 function setPut(k,v){const s=setG();if(k==="mode"){themeSet(v);setApply(1);return}
-  s[k]=k==="ui"?v:+v;setApply();save();if(k==="ui")toast(`Settings: ${SET_UI.find(u=>u[0]===v)[1]} theme`)}
+  s[k]=k==="ui"?v:+v;setApply();save();if(k==="snd"||k==="vol"){try{sndApply();if(k==="snd"&&s.snd)sfx("click")}catch(e){}}if(k==="ui")toast(`Settings: ${SET_UI.find(u=>u[0]===v)[1]} theme`)}
 function setReset(){S.set={};setG();themeSet("dark");setApply(1);save();toast("Settings reset to defaults")}
 function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="group">${opts.map(([v,n])=>`<button data-ph="setv" data-k="${k}" data-v="${v}" aria-pressed="${String(cur)===String(v)}">${n}</button>`).join("")}</div>`,
   tog=(k,n,d)=>`<div class="set-row"><span>${n}<small>${d}</small></span>${seg(k,[[1,"On"],[0,"Off"]],s[k])}</div>`;
@@ -7888,6 +7914,9 @@ function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="g
   <div class="ph-sub">Comfort</div>
   ${tog("rm","Reduce motion","No confetti, fly-overs or animations")}
   ${tog("vib","Vibration","Buzz on wins and warnings (phones)")}
+  <div class="ph-sub">Sound</div>
+  ${tog("snd","Sound and music","Clicks, blasts and mood music")}
+  ${s.snd?`<div class="set-row"><span>Volume<small>Effects and music</small></span>${seg("vol",[[.2,"Low"],[.5,"Med"],[.8,"High"],[1,"Max"]],s.vol)}</div>`:""}
   <div class="ph-sub">Notifications</div>
   ${tog("toast","Pop-up messages","Off keeps only wins and warnings")}
   ${tog("tick","News ticker","Headline strip over the map")}
@@ -7896,6 +7925,40 @@ function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="g
   <button class="set-reset" data-ph="setreset">Reset settings</button>
   <div class="ph-sub" style="opacity:.7">Settings are saved with your game.</div>`}
 setApply(1);
+/* ---------- Sound (WebAudio synth only, no files). Off by default: S.set.snd (0/1), S.set.vol (0..1).
+   One lazy AudioContext, created only from a user gesture. sfx(kind,size) for clicks/booms; music = soft generative chords whose mood follows wars (tense) and big wins (upbeat). ---------- */
+var SND={ac:null,mst:null,mus:null,mood:"calm",win:0,lastClick:0,lastBoom:0,booms:0,next:0,tmr:null,noise:null};
+function sndOn(){return !!(S.set&&S.set.snd)}
+function sndVol(){const v=S.set?+S.set.vol:.5;return isFinite(v)?Math.max(0,Math.min(1,v)):.5}
+function sndInit(){if(SND.ac||!sndOn())return SND.ac;try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;const ac=new AC();SND.ac=ac;
+  SND.mst=ac.createGain();SND.mst.gain.value=sndVol()*.6;SND.mst.connect(ac.destination);SND.mus=ac.createGain();SND.mus.gain.value=.0001;SND.mus.connect(SND.mst);
+  const b=ac.createBuffer(1,ac.sampleRate,ac.sampleRate),ch=b.getChannelData(0);for(let i=0;i<ch.length;i++)ch[i]=Math.random()*2-1;SND.noise=b;
+  SND.mus.gain.setTargetAtTime(.35,ac.currentTime,3);SND.tmr=setInterval(sndMusic,1000)}catch(e){console.warn("snd",e);SND.ac=null}return SND.ac}
+function sndApply(){if(!SND.ac){if(sndOn())sndInit();return}const ac=SND.ac,t=ac.currentTime;SND.mst.gain.setTargetAtTime(sndOn()?sndVol()*.6:0,t,.15);
+  try{if(!sndOn()||document.hidden)ac.suspend();else ac.resume()}catch(e){}}
+function sndMood(){if(Date.now()<SND.win)return "up";let war=0;try{war=(S.wars||[]).some(w=>w.l>=4)||(typeof bgMilKeys==="function"&&bgMilKeys().length)||Date.now()-SND.lastBoom<9e4}catch(e){}return war?"tense":"calm"}
+function sndTone(f,t,dur,g,type,dest){const ac=SND.ac,o=ac.createOscillator(),v=ac.createGain();o.type=type||"sine";o.frequency.value=f;v.gain.setValueAtTime(.0001,t);
+  v.gain.exponentialRampToValueAtTime(g,t+Math.min(.6,dur*.3));v.gain.exponentialRampToValueAtTime(.0001,t+dur);o.connect(v);v.connect(dest||SND.mst);o.start(t);o.stop(t+dur+.05)}
+var SND_PROG={calm:[[0,4,7,11],[5,9,12,16],[-3,0,4,7],[2,5,9,12]],tense:[[0,3,7,10],[1,5,8,12],[0,3,6,10],[-2,1,5,8]],up:[[0,4,7,12],[5,9,12,17],[7,11,14,19],[0,4,7,16]]};
+function sndMusic(){const ac=SND.ac;if(!ac||!sndOn()||ac.state!=="running")return;const t=ac.currentTime;if(t<SND.next-.5)return;
+  const m=sndMood();SND.mood=m;const root={calm:196,tense:174.6,up:220}[m],len={calm:6,tense:5,up:3}[m],P=SND_PROG[m],ch=P[Math.floor(t/len)%P.length],st=Math.max(t,SND.next);
+  ch.forEach((s,i)=>sndTone(root*Math.pow(2,s/12),st+i*(m==="up"?.12:.04),len*1.1,.05,m==="tense"?"triangle":"sine",SND.mus));
+  sndTone(root/2*Math.pow(2,ch[0]/12),st,len,m==="tense"?.07:.05,"sine",SND.mus);
+  if(m==="up")for(let i=0;i<4;i++)sndTone(root*2*Math.pow(2,ch[i%4]/12),st+i*len/4,.4,.025,"triangle",SND.mus);
+  if(m==="tense")sndTone(root*2*Math.pow(2,ch[2]/12),st+len/2,len/3,.02,"sawtooth",SND.mus);
+  SND.next=st+len}
+function sfx(kind,size){if(!sndOn())return;const ac=sndInit();if(!ac||ac.state!=="running")return;const t=ac.currentTime,now=Date.now();
+  if(kind==="click"){if(now-SND.lastClick<60)return;SND.lastClick=now;sndTone(900+Math.random()*250,t,.05,.05,"triangle");return}
+  if(kind==="win"){[0,4,7,12].forEach((s,i)=>sndTone(523*Math.pow(2,s/12),t+i*.08,.35,.07,"triangle"));return}
+  if(kind==="boom"){if(now-SND.lastBoom<250&&SND.booms>=3)return;SND.booms=now-SND.lastBoom<250?SND.booms+1:1;SND.lastBoom=now;
+    const z=Math.max(.2,Math.min(1,(size||6)/30)),dur=.5+z*2.5,src=ac.createBufferSource(),fl=ac.createBiquadFilter(),v=ac.createGain();src.buffer=SND.noise;src.loop=true;
+    fl.type="lowpass";fl.frequency.setValueAtTime(1800*z+400,t);fl.frequency.exponentialRampToValueAtTime(60,t+dur);v.gain.setValueAtTime(.0001,t);v.gain.exponentialRampToValueAtTime(.25+z*.35,t+.02);
+    v.gain.exponentialRampToValueAtTime(.0001,t+dur);src.connect(fl);fl.connect(v);v.connect(SND.mst);src.start(t,Math.random()*.5);src.stop(t+dur+.05);
+    sndTone(70-z*30+Math.random()*10,t,dur*.8,.2+z*.2,"sine")}}
+function sndWin(){SND.win=Date.now()+45e3;sfx("win")}
+document.addEventListener("pointerdown",()=>{if(sndOn()){sndInit();sndApply()}},true);
+document.addEventListener("click",e=>{if(sndOn()&&e.target&&e.target.closest&&e.target.closest("button,[data-ph],a,.chip"))sfx("click")},true);
+document.addEventListener("visibilitychange",()=>{try{sndApply()}catch(e){}});
 /* ===== ACHIEVEMENTS =====
    S.ach = {id: unlockedMs} (optional; missing on old saves). achCheck() runs from checkGoals (after every commit and each game hour).
    The first check on a save without S.ach unlocks silently and shows one summary toast. Badges carry no cash reward (balance neutral). */
@@ -8013,9 +8076,11 @@ const ICO={trophy:`<path d="M8 4h8v5a4 4 0 0 1-8 0z M8 6H5a3 3 0 0 0 3 4 M16 6h3
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
 const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["pop","Population","#0369a1"],["trophy","Trophies","#a16207"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
+/* side gutter for floating widgets: 12px or the safe-area inset, whichever is larger (measured from a hidden probe) */
+let _gutEl=null;function gutLR(){if(!_gutEl){_gutEl=document.createElement("div");_gutEl.setAttribute("aria-hidden","true");_gutEl.style.cssText="position:fixed;visibility:hidden;pointer-events:none;top:0;height:0;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px))";document.body.appendChild(_gutEl)}const r=_gutEl.getBoundingClientRect();return[r.left||12,Math.max(12,innerWidth-r.right)||12]}
 function phPlace(){const el=PH.el,sc=phScale();el.style.setProperty("--phs",sc);const r=el.getBoundingClientRect(),w=r.width,h=r.height,W=innerWidth,H=innerHeight;
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
-  PH.x=Math.max(4,Math.min(W-w-4,PH.x));PH.y=Math.max(4,Math.min(H-h-4,PH.y));el.style.left=PH.x/sc+"px";el.style.top=PH.y/sc+"px"}
+  {const [gl,gr]=gutLR();PH.x=Math.max(gl,Math.min(W-w-gr,PH.x))}PH.y=Math.max(4,Math.min(H-h-4,PH.y));el.style.left=PH.x/sc+"px";el.style.top=PH.y/sc+"px"}
 function phRender(){const el=PH.el;const _sc=[...el.querySelectorAll(".ph-screen,.ph-app")].map(x=>x.scrollTop),_app=PH._ra;
   if(PH.app!=="stocks")mkCQ="";const _fa=document.activeElement,_fk=_fa&&_fa.id==="mkcq",_ss=_fk?_fa.selectionStart:0,_se=_fk?_fa.selectionEnd:0;phRender0();
   if(_fk){const n=el.querySelector("#mkcq");if(n){n.focus();try{n.setSelectionRange(_ss,_se)}catch(e){}}}
@@ -8161,12 +8226,13 @@ const SW={el:document.createElement("div"),open:true,x:innerWidth<820?innerWidth
 try{const sp=JSON.parse(localStorage.getItem("mer_statspos"));if(sp){Object.assign(SW,sp);SW.user=1}}catch(_){}
 try{const f=localStorage.getItem("mer_statsfold");if(f!==null)SW.open=f!=="1";else if(innerWidth<820)SW.open=false}catch(_){}
 SW.el.id="statsw";document.getElementById("app").appendChild(SW.el);
-function swPlace(){const w=SW.el.offsetWidth||240;if(!SW.user){/* default spot only: keep clear of the news ticker (it drops lower under the View streets pill) */const tk=document.getElementById("ticker");if(tk&&tk.offsetParent){const r=tk.getBoundingClientRect(),ar=SW.el.parentNode.getBoundingClientRect();if(r.height&&r.right>SW.x+ar.left&&r.left<SW.x+ar.left+w&&SW.y+ar.top<r.bottom+6&&SW.y+ar.top+40>r.top)SW.y=Math.round(r.bottom-ar.top+6)}}SW.x=Math.max(4,Math.min(innerWidth-w-4,SW.x));SW.y=Math.max(4,Math.min(innerHeight-40,SW.y));SW.el.style.transform=`translate(${SW.x}px,${SW.y}px)`}
+function swPlace(){const w=SW.el.offsetWidth||240;if(!SW.user){/* default spot only: keep clear of the news ticker (it drops lower under the View streets pill) */const tk=document.getElementById("ticker");if(tk&&tk.offsetParent){const r=tk.getBoundingClientRect(),ar=SW.el.parentNode.getBoundingClientRect();if(r.height&&r.right>SW.x+ar.left&&r.left<SW.x+ar.left+w&&SW.y+ar.top<r.bottom+6&&SW.y+ar.top+40>r.top)SW.y=Math.round(r.bottom-ar.top+6)}}{const [gl,gr]=gutLR();SW.x=Math.max(gl,Math.min(innerWidth-w-gr,SW.x))}SW.y=Math.max(4,Math.min(innerHeight-40,SW.y));SW.el.style.transform=`translate(${SW.x}px,${SW.y}px)`}
 function swRender(){SW.el.classList.toggle("folded",!SW.open);const h=S.hist||[],d=h.slice(-15).map((v,i,a)=>i?v-a[i-1]:0).slice(1),mx=Math.max(1,...d.map(Math.abs));
   SW.el.innerHTML=`<div class="sw-top"><span class="ph-grip"></span><b>📊 Stats</b><button data-sw aria-label="${SW.open?"Fold":"Open"} stats">${SW.open?"–":"+"}</button></div>`+(SW.open?`<div class="sw-body"><small style="color:var(--muted)">Net worth${h.length>1?`, last ${h.length} days`:""}</small>${spark()}
   <div class="sw-row"><span>💰 Cash</span><b>${fmt(S.cash)}</b></div><div class="sw-row"><span>🏦 Debt</span><b>${fmt(S.debt||0)}</b></div><div class="sw-row"><span>🏙 Cities</span><b>${Object.keys(S.own).filter(k=>Object.keys(S.own[k]||{}).length).length}</b></div>
   <small style="color:var(--muted)">Daily change</small><div class="sw-bars">${d.length?d.map(v=>`<i class="${v<0?"neg":""}" style="height:${Math.abs(v)/mx*100}%" title="${fmt(v)}"></i>`).join(""):'<small style="color:var(--muted)">Fills in as days pass</small>'}</div></div>`:"");swPlace()}
 SW.el.addEventListener("click",e=>{if(!e.target.closest("[data-sw]"))return;SW.open=!SW.open;try{localStorage.setItem("mer_statsfold",SW.open?"0":"1")}catch(_){}swRender()});
+addEventListener("resize",()=>{try{phPlace()}catch(e){}try{swPlace()}catch(e){}});
 mkDrag(SW.el,".sw-top","mer_statspos",()=>({x:SW.x,y:SW.y}),(x,y)=>{SW.x=x;SW.y=y;SW.user=1;swPlace()});
 window.addEventListener("resize",swPlace);setInterval(swRender,2000);swRender();
 
