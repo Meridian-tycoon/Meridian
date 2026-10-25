@@ -848,7 +848,7 @@ function sellAll(c){const o=S.own[c.id];for(const k in o)clearBizState(c,k);let 
 function commit(){checkGoals();save();renderSheet();hud();draw();if(typeof tutTick==="function")tutTick()}
 
 /* ---------- industry: land, farms, mines, factories, warehouses, fleet ---------- */
-S.sites=S.sites||[];S.lease=S.lease||{};S.sup=S.sup||{};S.iev=S.iev||{};S.pand=S.pand||{cur:null,hist:[]};S.inv=S.inv||{};S.wh=S.wh||{};S.px=S.px||{};S.auto=S.auto||{};S.fleet=S.fleet||[];S.nid=S.nid||1;
+S.sites=S.sites||[];S.lease=S.lease||{};S.sup=S.sup||{};S.iev=S.iev||{};S.pand=S.pand||{cur:null,hist:[]};S.inv=S.inv||{};S.wh=S.wh||{};S.px=S.px||{};S.auto=S.auto||{};S.fleet=S.fleet||[];S.aline=!!S.aline;S.nid=S.nid||1;
 const G={wheat:["Wheat",12,"raw"],corn:["Corn",10,"raw"],cattle:["Cattle",160,"raw"],ore:["Iron ore",15,"raw"],coal:["Coal",12,"raw"],sand:["Sand",4,"raw"],
   flour:["Flour",30,"mid"],beef:["Beef",35,"mid"],steel:["Steel",80,"mid"],glass:["Glass",28,"mid"],
   bread:["Bread",22,"fin"],burgers:["Burgers",75,"fin"],tools:["Tools",180,"fin"],electronics:["Electronics",420,"fin"]};
@@ -1107,7 +1107,7 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
         <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2"><button class="buy up" data-act="buy" data-g="${g}" data-q="10" ${S.cash<p*10||nop?"disabled":""}>+10</button><button class="buy" data-act="buy" data-g="${g}" data-q="100" ${S.cash<p*100||nop||!hasHQ(c)?"disabled":""}>+100</button></span></div>`}
       h+=`</div>`;
       const here=S.fleet.filter(v=>v.city===c.id&&!v.arr),incoming=S.fleet.filter(v=>v.arr&&v.dest===c.id);
-      h+=hireHtml(c)+supHtml(c);
+      h+=alHtml()+hireHtml(c)+supHtml(c);
       if(S.hired.some(x=>x.from===c.id||x.to===c.id))h+=`<div class="sec">Hired shipments</div><div class="list">`+S.hired.filter(x=>x.from===c.id||x.to===c.id).map(x=>`<div class="row"><div class="n">${RIVALS[x.ri].n}: ${gq(x.q)} ${G[x.g][0].toLowerCase()}</div><div class="d">${CITIES[x.from].name} → ${CITIES[x.to].name} · arrives in ${fmtDur(x.arr-Date.now())}</div><span></span></div>`).join("")+`</div>`;
       h+=`<div class="sec">Your own fleet · parked here</div><div class="list">`;
       if(!here.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">No vehicles here.</p>`;
@@ -1150,6 +1150,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="ownland"){const s=S.sites.find(x=>x.id===id),p=plotPrice(c,zoneOf(s)||"farm",s.size);if(S.cash<p){toast(`Need ${fmt(p)}`);return}S.cash-=p;delete s.lease;toast("Land bought. No more rent.")}
   else if(a==="sellland"){const s=S.sites.find(x=>x.id===id);if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}S.cash+=s.lease?0:plotPrice(c,zoneOf(s)||"farm",s.size)*.75;S.sites=S.sites.filter(x=>x!==s);toast("Land sold")}
   else if(a==="wh"){const p=whCost(c);if(S.cash<p)return;S.cash-=p;ensureWh(c);toast(`Warehouse open in ${c.name}`)}
+  else if(a==="aline"){S.aline=!S.aline;if(S.aline)alTick(Date.now());toast(S.aline?"Auto-line on":"Auto-line off")}
   else if(a==="whup"){const p=whUp(c);if(S.cash<p)return;S.cash-=p;S.wh[c.id]++;toast("Warehouse expanded")}
   else if(a==="sell"){if(G[b.dataset.g][2]==="gov"&&!govOK(c)){toast(hasTech("govlic")?"Government buyers are only in cities of size 4+":"Research the Defense contractor licence to sell this");return}if(G[b.dataset.g][2]==="gov"&&!hasHQ(c)){toast("Government contracts need a registered company: open an HQ here");return}const g=b.dataset.g,street=!hasHQ(c),q=street?Math.min(20,S.inv[c.id][g]||0):(S.inv[c.id][g]||0),v=sellGood(c,g,q)*(street?.7:1);S.cash+=v;S.earned=(S.earned||0)+v;S.inv[c.id][g]-=q;if(S.inv[c.id][g]<1e-6)delete S.inv[c.id][g];toast(`Sold ${gq(q)} ${G[g][0].toLowerCase()} for ${fmt(v)}`)}
   else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q;if(g==="uranium"&&!uranAnyPermit()){toast("Needs a uranium permit: apply to a government in the Gov tab first");return}const B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q*tpu(g)>whCap(c)+1e-9){toast(`Not enough warehouse space: ${fmtT(whRoom(c))} free, ${q} ${G[g][0].toLowerCase()} weigh ${fmtT(q*tpu(g))}`);return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
@@ -1157,7 +1158,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="ship"){shipForm=shipForm===id?null:id;renderSheet();shipInfo();return}
   else if(a==="go"){const v=S.fleet.find(x=>x.id===id);if(!v||v.job||v.arr||v.cargo){toast("That vehicle is busy");return}const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,km=distKm(c,d),fuel=vFuel(v.type,km,g?Math.min(capU(v.type,g),inv0(c,g))*tpu(g):0,c,d);
     if(S.cash<fuel){toast(`Need ${fmt(fuel)} for fuel`);return}
-    depart(v,c,d,g);const rep=$("#sf-r")&&$("#sf-r").checked;v.route=rep&&g?{from:c.id,to:d.id,g,back:$("#sf-b").value}:null;
+    depart(v,c,d,g);v.al=null;const rep=$("#sf-r")&&$("#sf-r").checked;v.route=rep&&g?{from:c.id,to:d.id,g,back:$("#sf-b").value}:null;
     shipForm=null;toast(rep&&g?`Route set: ${c.name} ⇄ ${d.name}`:`${V.n} #${v.id} left for ${d.name}`)}
   else if(a==="stoproute"){const v=S.fleet.find(x=>x.id===id);v.route=null;toast("Route cancelled. Vehicle parks after this trip.")}
   else if(a==="slv"){const s=S.sites.find(x=>x.id===id);if(!s.reg){toast("Register this land at your HQ to upgrade it");return}const _=0,k=supCost(s);if(S.cash<k)return;S.cash-=k;s.lv=slv(s)+1;toast(`${OP[s.op].n}: ${(EQ[OP[s.op].cat]||[])[s.lv-1]||"Mk "+s.lv} installed`)}
@@ -2299,7 +2300,7 @@ const hourOf=t=>Math.floor(t/DAYMS);
 function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=(totals().inc+(typeof ishFinHr==="function"?ishFinHr():0))*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
 function accrue(){if(S.dead)return 0;const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);if(typeof popTick==="function")popTick(dt/DAYMS);if(typeof careerTick==="function")careerTick(dt/DAYMS);
-  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runFleet(now);const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}try{lxTick(now)}catch(e){console.warn("lxTick",e)}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
+  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runFleet(now);try{alTick(now)}catch(e){console.warn("alTick",e)}const g=saleTick(now,now-dt);const sold=runIndustry(dt/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}try{lxTick(now)}catch(e){console.warn("lxTick",e)}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
@@ -8404,6 +8405,35 @@ function aimHour(quiet){const C=AIMCFG,a=aim();
   if(Math.random()<C.prov){const pick=z=>z[Math.floor(Math.random()*z.length)],x=pick(COUNTRIES);
     if(x&&!aimHuman(x)){const ys=COUNTRIES.filter(y=>y!==x&&!aimHuman(y)&&!wfAtWar(x,y)&&kmBetween(cap(x),cap(y))<5000);if(ys.length)aimFire(x,pick(ys),null,quiet,1)}}
   if(!quiet&&(a.q.s||a.q.p)){const t=`While you were away: ${a.q.s} AI missile strike${a.q.s===1?"":"s"} in world wars${a.q.p?`, ${a.q.p} provocation launch${a.q.p===1?"":"es"} raised tensions`:""}`;stNews(t);a.q={s:0,p:0}}}
+/* ---------- Auto-line: depot vehicles restock warehouse-supplied businesses automatically ----------
+   S.aline (bool, default off). Each tick: for every city with businesses that draw goods from a warehouse (USE),
+   if the local warehouse holds under AL_LOW hours of a good (counting what is already inbound), the nearest other
+   depot that holds that good AND has an idle vehicle (no route/job/cargo) that can reach it sends one load
+   (capped by capacity, depot stock and AL_FILL hours of need). Normal fuel/wear/travel apply; the vehicle then drives
+   back empty to its home depot. Vehicles on Auto-line carry v.al={home,to}. */
+const AL_LOW=6,AL_FILL=12;
+function alRates(){const r={};for(const id in S.own){const c=CITIES[id];if(!c||!hasWh(c)||unhOn(c))continue;const need={};   // units/h each warehouse city's businesses draw
+    for(const b of BIZ){if(!USE[b.k])continue;const lv=uSum(id,b.k,l=>l);if(!lv)continue;for(const g in USE[b.k])need[g]=(need[g]||0)+USE[b.k][g]*lv}r[id]=need}return r}
+function alNeeds(R){const out=[];for(const id in R){const c=CITIES[id],need=R[id];
+    for(const g in need){const have=inv0(c,g)+lxIncoming(c,g);if(have<need[g]*AL_LOW)out.push({c,g,rate:need[g],want:need[g]*AL_FILL-have})}}return out}
+function alTick(now){S.alMiss=S.alMiss||{};
+  for(const v of S.fleet){if(!v.al||v.arr)continue;const h=CITIES[v.al.home];   // back home: free it; at drop-off: drive home empty
+    if(v.city===v.al.home||!h||!hasWh(h)){v.al=null;continue}
+    if(!v.cargo&&!v.route&&!v.job&&!depart(v,CITIES[v.city],h,"",now)){v.al=null}}
+  if(!S.aline)return;
+  const R=alRates(),spare=(w,g)=>inv0(w,g)-((R[w.id]||{})[g]||0)*AL_FILL;   // a depot keeps AL_FILL hours of its own businesses' need (stops ping-pong)
+  for(const n of alNeeds(R)){const busy=S.fleet.some(v=>v.al&&v.al.to===n.c.id&&v.al.g===n.g&&v.arr&&v.cargo);if(busy)continue;
+    let best=null;for(const id in S.wh){const w=CITIES[id];if(!w||w===n.c||S.wh[id]==null||spare(w,n.g)<1||lxBlock(w,n.c))continue;
+      const vs=lxIdle(w).filter(v=>!v.al&&lxVehOK(v,w,n.c));if(!vs.length)continue;const km=distKm(w,n.c);if(!best||km<best.km)best={w,v:vs[0],km}}
+    const mk=n.c.id+":"+n.g;
+    if(!best){if(!S.alMiss[mk]){S.alMiss[mk]=1;S.log.unshift(`Auto-line: no depot with a free vehicle holds ${G[n.g][0].toLowerCase()} for ${n.c.name}`);S.log=S.log.slice(0,3)}continue}
+    delete S.alMiss[mk];const {w,v}=best,q=Math.max(1,Math.min(capU(v.type,n.g),spare(w,n.g),n.want)),inv=S.inv[w.id];
+    const keep=inv[n.g]-q;inv[n.g]=q;                     // depart() loads min(capacity, stock): expose only q
+    const ok=depart(v,w,n.c,n.g,now);inv[n.g]=(inv[n.g]||0)+keep;if(inv[n.g]<1e-6)delete inv[n.g];
+    if(!ok){if(!S.alMiss[mk+"$"]){S.alMiss[mk+"$"]=1;S.log.unshift(`Auto-line: not enough cash for fuel to restock ${G[n.g][0].toLowerCase()} in ${n.c.name}`);S.log=S.log.slice(0,3)}continue}delete S.alMiss[mk+"$"];
+    if(ok){v.al={home:w.id,to:n.c.id,g:n.g};S.log.unshift(`Auto-line: ${VEH[v.type].n} #${v.id} taking ${Math.round(q)} ${G[n.g][0].toLowerCase()} ${w.name} → ${n.c.name}`);S.log=S.log.slice(0,3)}}}
+function alHtml(){const run=S.fleet.filter(v=>v.al&&v.arr&&v.cargo).length,back=S.fleet.filter(v=>v.al&&v.arr&&!v.cargo).length;
+  return `<div class="sec">Auto-line</div><div class="list"><div class="row"><div class="n">Auto-line ${S.aline?'<span class="tag boom">ON</span>':'<span class="tag">OFF</span>'}</div><div class="d">${S.aline?`${run} deliver${run===1?"y":"ies"} running${back?` · ${back} returning`:""}. `:""}Idle vehicles at your nearest depot that holds the goods restock businesses that draw supplies from a warehouse (under ${AL_LOW} h left). Normal fuel costs apply.</div><button class="buy${S.aline?" up":""}" data-act="aline">${S.aline?"Turn off":"Turn on"}</button></div></div>`}
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
