@@ -1952,9 +1952,9 @@ function selfOp(c,b,lv){const k=bkey(c,b.k),st=S.staff[k],o=S.opf[k];S.staff[k]=
 // h = real hours elapsed (capped at SHOPCAP). Long gaps (offline catch-up) run in ≤1h steps so managers keep restocking
 // and orders that arrived while away are delivered at the step they land. Online ticks are one step.
 const SHOPCAP=48; // offline catch-up cap in game hours, same as earnings in accrue(): managers don't restock beyond it
-function runShops(h){const now=Date.now();S.shopT=now;S.mgrShort=S.mgrShort||{};h=Math.min(Math.max(0,h||0),SHOPCAP);
+function runShops(h,now,quiet){now=now||Date.now();S.shopT=now;S.mgrShort=S.mgrShort||{};h=Math.min(Math.max(0,h||0),SHOPCAP);
   const n=h>1?Math.min(SHOPCAP,Math.ceil(h)):1,sh=h/n;
-  for(let i=1;i<=n;i++)shopStep(sh,now-(n-i)*sh*DAYMS,now);try{stockAlerts(now,h>1)}catch(e){console.warn("stockAlerts",e)}}
+  for(let i=1;i<=n;i++)shopStep(sh,now-(n-i)*sh*DAYMS,now);if(!quiet)try{stockAlerts(now,h>1)}catch(e){console.warn("stockAlerts",e)}}
 function shopStep(h,t,now){const short=[];
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv)continue;const key=bkey(c,b.k);
     const op=isStaffed(c,b.k)?1:(tenantRun(b.k)?1:present(c)?selfOp(c,b,lv):0);
@@ -2300,7 +2300,7 @@ const hourOf=t=>Math.floor(t/DAYMS);
 function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=(totals().inc+(typeof ishFinHr==="function"?ishFinHr():0))*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
 function accrue(){if(S.dead)return 0;const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);if(typeof popTick==="function")popTick(dt/DAYMS);if(typeof careerTick==="function")careerTick(dt/DAYMS);
-  if(typeof runTrip==="function")runTrip(now);if(typeof runShops==="function")runShops(Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);const{g,sold}=alRun(now,dt);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}try{lxTick(now)}catch(e){console.warn("lxTick",e)}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
+  if(typeof runTrip==="function")runTrip(now);const{g,sold}=alRun(now,dt,Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}try{lxTick(now)}catch(e){console.warn("lxTick",e)}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
@@ -8405,49 +8405,119 @@ function aimHour(quiet){const C=AIMCFG,a=aim();
   if(Math.random()<C.prov){const pick=z=>z[Math.floor(Math.random()*z.length)],x=pick(COUNTRIES);
     if(x&&!aimHuman(x)){const ys=COUNTRIES.filter(y=>y!==x&&!aimHuman(y)&&!wfAtWar(x,y)&&kmBetween(cap(x),cap(y))<5000);if(ys.length)aimFire(x,pick(ys),null,quiet,1)}}
   if(!quiet&&(a.q.s||a.q.p)){const t=`While you were away: ${a.q.s} AI missile strike${a.q.s===1?"":"s"} in world wars${a.q.p?`, ${a.q.p} provocation launch${a.q.p===1?"":"es"} raised tensions`:""}`;stNews(t);a.q={s:0,p:0}}}
-/* ---------- Auto-line: depot vehicles restock warehouse-supplied businesses automatically ----------
-   S.aline (bool, default off). Each tick: for every city with businesses that draw goods from a warehouse (USE),
-   if the local warehouse holds under AL_LOW hours of a good (counting what is already inbound), the nearest other
-   depot that holds that good AND has an idle vehicle (no route/job/cargo) that can reach it sends one load
-   (capped by capacity, depot stock and AL_FILL hours of need). Normal fuel/wear/travel apply; the vehicle then drives
-   back empty to its home depot. Vehicles on Auto-line carry v.al={home,to}. */
+/* ---------- Auto-line: your vehicles keep every city's businesses supplied automatically ----------
+   S.aline (bool, default off). Needs, per city you own businesses in: goods drawn from a warehouse (USE: burgers, bread, beef, tools,
+   electronics; cities with a depot only) and Fuel for gas stations (kL/h they pump; counts station stock + pending orders + fuel in the
+   city's depot). A need fires when under AL_LOW hours remain (counting what is already inbound); one Auto-line trip per city+good at a time.
+   PUSH: the nearest OTHER depot holding spare goods with an idle vehicle (no route/job/cargo) sends one load, then drives home empty.
+   FETCH (city to city), used when no depot can push: an idle owned vehicle (one parked in the needy city first, else the idle vehicle
+   nearest the source) drives to the nearest city where the goods can be had, loads, brings them back to the needy city and, if it came
+   from elsewhere, drives home empty. Sources, in order: (1) your own depot stock in another city (free); (2) the market of another
+   city where you have a depot, at its buy price (+15%, same as the Buy buttons), paid on loading and only with the cash for it.
+   A depot always keeps AL_FILL hours of its own businesses' need (no ping-pong). Loads are capped at AL_FILL hours of need.
+   Fuel unloaded in a city (or already in its depot) goes into its gas stations the way the manual restock does (depot first, free).
+   Normal fuel, wear and travel time apply. v.al = {home,to,g} (push) or {home,to,g,fx:1,src,buy,q,st:"go"|"del"|"back"} (fetch). */
 const AL_LOW=6,AL_FILL=12;
-function alRates(){const r={};for(const id in S.own){const c=CITIES[id];if(!c||!hasWh(c)||unhOn(c))continue;const need={};   // units/h each warehouse city's businesses draw
-    for(const b of BIZ){if(!USE[b.k])continue;const lv=uSum(id,b.k,l=>l);if(!lv)continue;for(const g in USE[b.k])need[g]=(need[g]||0)+USE[b.k][g]*lv}r[id]=need}return r}
-function alNeeds(R){const out=[];for(const id in R){const c=CITIES[id],need=R[id];
-    for(const g in need){const have=inv0(c,g)+lxIncoming(c,g);if(have<need[g]*AL_LOW)out.push({c,g,rate:need[g],want:need[g]*AL_FILL-have})}}return out}
+const alGas=()=>BIZ.filter(b=>b.fuel&&SUP[b.k]);
+function alGasRate(c,b){if(!(S.own[c.id]||{})[b.k])return 0;const op=isStaffed(c,b.k)?1:present(c)?selfRate:0;return op?uSum(c.id,b.k,l=>useRate(b,l,c))*op:0}   // kL/h pumped
+function alRates(){const r={},gs=alGas();for(const id in S.own){const c=CITIES[id];if(!c||unhOn(c))continue;const need={};   // units/h each city's businesses use
+    if(hasWh(c))for(const b of BIZ){if(!USE[b.k])continue;const lv=uSum(id,b.k,l=>l);if(!lv)continue;for(const g in USE[b.k])need[g]=(need[g]||0)+USE[b.k][g]*lv}
+    let f=0;for(const b of gs)f+=alGasRate(c,b);if(f>0)need.fuel=(need.fuel||0)+f;
+    if(hasWh(c)||f>0)r[id]=need}return r}
+function alNeeds(R){const out=[],gs=alGas();for(const id in R){const c=CITIES[id],need=R[id];
+    for(const g in need){let have=inv0(c,g)+lxIncoming(c,g);
+      if(g==="fuel")for(const b of gs)if((S.own[id]||{})[b.k]){const key=bkey(c,b.k);have+=S.stock[key]||0;for(const o of S.orders)if(o.key===key)have+=o.q}
+      if(have<need[g]*AL_LOW)out.push({c,g,rate:need[g],want:need[g]*AL_FILL-have})}}return out}
+const alBusy=(c,g)=>S.fleet.some(v=>v.al&&v.al.to===c.id&&v.al.g===g&&(v.al.fx?v.al.st!=="back":!!(v.arr&&v.cargo)));
+function alLog(m){S.log.unshift("Auto-line: "+m);S.log=S.log.slice(0,3)}
+function alOnce(k,m){S.alMiss=S.alMiss||{};if(!S.alMiss[k]){S.alMiss[k]=1;alLog(m)}}
+/* fuel in a city's depot tops up its gas stations that are under AL_LOW hours (as the manual restock: depot fuel goes in first, free) */
+function alGasFill(){for(const id in S.own){const c=CITIES[id];if(!c||unhOn(c)||!(inv0(c,"fuel")>=1))continue;
+    for(const b of alGas()){const r=alGasRate(c,b);if(r<=0)continue;const key=bkey(c,b.k),have=S.stock[key]||0;if(have>=r*AL_LOW)continue;
+      const q=Math.floor(Math.min(inv0(c,"fuel"),r*AL_FILL-have));if(q>=1)gasTake(c,key,{dep:q,buy:0,p:unitCost(b,c)})}}}
+/* load q units of g at w for a fetch vehicle (own stock first, else buy at w's market); returns units loaded, 0 if none */
+function alLoad(v,a,w,N,spare,now){const g=a.g,cap=capU(v.type,g),fuel=q=>vFuel(v.type,distKm(w,N),q*tpu(g),w,N);
+  if(!a.buy){const q=Math.floor(Math.min(a.q,cap,Math.max(0,spare(w,g))));if(q>=1&&S.cash>=fuel(q)){const inv=S.inv[w.id];inv[g]-=q;if(inv[g]<1e-6)delete inv[g];return depart(v,w,N,"",now,{g,q})?q:(inv[g]=(inv[g]||0)+q,0)}
+    if(q>=1){a.why="cash";return 0}if(!(G[g][2]!=="gov"&&g!=="uranium"&&buyGood(w,g,1).v<=alLocal(N,g,1))){a.why="out";return 0}a.buy=1}   // own stock ran out at the source: buy there only if not dearer than at home
+  a.why="cash";if(G[g][2]==="gov"||g==="uranium"){a.why="out";return 0}
+  let q=Math.floor(Math.min(a.q,cap));for(let i=0;i<12&&q>=1;i++){const c=buyGood(w,g,q).v+fuel(q);if(S.cash>=c)break;q=Math.floor(q*Math.max(.1,Math.min(.9,(S.cash-fuel(0))/c)))}
+  if(q<1)return 0;const B=buyGood(w,g,q);if(S.cash<B.v+fuel(q))return 0;S.cash-=B.v;B.commit();if(alTick.off)alTick.off.b+=B.v;
+  if(!depart(v,w,N,"",now,{g,q})){S.cash+=B.v;return 0}return q}
+/* a trip is only worth it if its fuel (all legs) costs no more than the load is worth in the needy city: stops planes hauling cheap fuel */
+const alWorth=(fuel,q,N,g)=>fuel<=q*px(N,g);
+const alLocal=(N,g,q)=>buyGood(N,g,q).v/q;               // unit price of buying in the needy city itself (what the Buy button / manager pay)
+function alFetch(n,spare,now){const N=n.c,g=n.g,mkt=G[g][2]!=="gov"&&g!=="uranium";
+  const idle=S.fleet.filter(v=>v.city!=null&&!v.arr&&!v.route&&!v.job&&!v.cargo&&!v.al&&CITIES[v.city]&&!unhOn(CITIES[v.city]));
+  const src=[];for(const id in S.wh){const w=CITIES[id];if(!w||w===N||S.wh[id]==null||lxBlock(w,N))continue;const own=spare(w,g)>=1;
+    if(own||mkt)src.push({w,own,km:distKm(w,N)})}
+  if(!src.length)return "src";if(!idle.length)return "veh";
+  let poor=0,dear=0,local=0;
+  const plan=(s,v)=>{const w=s.w,H=CITIES[v.city];let q=Math.min(capU(v.type,g),n.want);if(s.own)q=Math.min(q,spare(w,g));q=Math.max(1,Math.floor(q));
+    const fuel=vFuel(v.type,distKm(H,w),0,H,w)+vFuel(v.type,distKm(w,N),q*tpu(g),w,N)+(H!==N?vFuel(v.type,distKm(N,H),0,N,H):0),buy=s.own?0:buyGood(w,g,q).v;
+    return {s,v,H,q,fuel,buy,u:(fuel+buy)/q}};
+  const pick=(s,vs)=>{const ps=vs.map(v=>plan(s,v)),ok=ps.filter(x=>alWorth(x.fuel,x.q,N,g));if(ps.length&&!ok.length)dear=1;return ok.sort((a,b)=>a.u-b.u)[0]};
+  const best=s=>{const w=s.w;return pick(s,idle.filter(v=>v.city===N.id&&lxVehOK(v,N,w)))||pick(s,idle.filter(v=>{const H=CITIES[v.city];return v.city!==N.id&&lxVehOK(v,H,w)&&lxVehOK(v,w,N)&&(H===w||!lxBlock(H,w))})
+    .map(v=>[v,distKm(CITIES[v.city],w)]).sort((a,b)=>a[1]-b[1]).slice(0,8).map(x=>x[0]))};    // the 8 idle vehicles nearest the source
+  const go=P=>{if(S.cash<P.fuel+(P.s.own?0:buyGood(P.s.w,g,1).v)){poor=1;return false}   // cannot afford even one unit plus the fuel
+    if(!depart(P.v,P.H,P.s.w,"",now)){poor=1;return false}const {v,H,q,s}=P,w=s.w;
+    v.al={home:H.id,to:N.id,g,fx:1,src:w.id,buy:s.own?0:1,q,st:"go"};
+    alLog(`${VEH[v.type].n} #${v.id} fetching ${G[g][0].toLowerCase()} from ${w.name} for ${N.name}${s.own?"":" (buying there)"}`);return true};
+  // 1) your own stock: nearest city first
+  for(const s of src.filter(s=>s.own).sort((a,b)=>a.km-b.km)){const P=best(s);if(P&&go(P))return ""}
+  // 2) another city's market, only when buying there and driving it home beats buying in the needy city itself; cheapest landed cost first
+  if(mkt){const lu=alLocal(N,g,1),ms=src.filter(s=>!s.own&&buyGood(s.w,g,1).v<lu);if(!ms.length&&src.some(s=>!s.own))local=1;   // markets dearer than home even before fuel: skip
+    const ps=ms.map(best).filter(Boolean),ok=ps.filter(P=>P.u<alLocal(N,g,P.q));
+    if(ps.length&&!ok.length)local=1;for(const P of ok.sort((a,b)=>a.u-b.u))if(go(P))return ""}
+  return poor?"cash":local?"local":dear?"dear":"veh"}
 function alTick(now){S.alMiss=S.alMiss||{};
-  for(const v of S.fleet){if(!v.al||v.arr)continue;const h=CITIES[v.al.home];   // back home: free it; at drop-off: drive home empty
-    if(v.city===v.al.home||!h||!hasWh(h)){v.al=null;continue}
+  const R=alRates(),spare=(w,g)=>inv0(w,g)-((R[w.id]||{})[g]||0)*AL_FILL;   // a depot keeps AL_FILL hours of its own businesses' need (stops ping-pong)
+  for(const v of S.fleet){if(!v.al||v.arr)continue;const a=v.al,h=CITIES[a.home];
+    if(a.fx){const N=CITIES[a.to],w=CITIES[a.src];if(!h||!N||!w){v.al=null;continue}
+      if(v.cargo||v.route||v.job){if(v.route||v.job)v.al=null;continue}            // waiting to unload (uninhabitable city) / taken over manually
+      if(a.st==="go"&&v.city===a.src){a.why="";const q=lxBlock(w,N)?0:alLoad(v,a,w,N,spare,now);
+        if(q>=1){a.st="del";a.q=q;continue}
+        const mk=a.to+":"+a.g+"@"+a.src;const gn=G[a.g][0].toLowerCase();alOnce(mk,a.why==="cash"?`not enough cash to load ${gn} in ${w.name} for ${N.name}`:a.why==="out"?`${w.name} ran out of ${gn}`:`${lxBlock(w,N)||"route closed"}: ${gn} not fetched for ${N.name}`);
+        a.st="back";if(v.city===a.home||!depart(v,w,h,"",now))v.al=null;continue}
+      if(a.st==="del"&&v.city===a.to){delete S.alMiss[a.to+":"+a.g+"@"+a.src];if(a.g==="fuel")alGasFill()}   // an in-flight trip finishes even if Auto-line was turned off
+      if(v.city===a.home){v.al=null;continue}
+      a.st="back";if(!depart(v,CITIES[v.city],h,"",now))v.al=null;continue}
+    if(v.city===a.home||!h||!hasWh(h)){v.al=null;continue}   // push: back home: free it; at drop-off: drive home empty
     if(!v.cargo&&!v.route&&!v.job&&!depart(v,CITIES[v.city],h,"",now)){v.al=null}}
   if(!S.aline)return;
-  const R=alRates(),spare=(w,g)=>inv0(w,g)-((R[w.id]||{})[g]||0)*AL_FILL;   // a depot keeps AL_FILL hours of its own businesses' need (stops ping-pong)
-  for(const n of alNeeds(R)){const busy=S.fleet.some(v=>v.al&&v.al.to===n.c.id&&v.al.g===n.g&&v.arr&&v.cargo);if(busy)continue;
+  alGasFill();
+  for(const n of alNeeds(R)){if(alBusy(n.c,n.g))continue;
     let best=null;for(const id in S.wh){const w=CITIES[id];if(!w||w===n.c||S.wh[id]==null||spare(w,n.g)<1||lxBlock(w,n.c))continue;
-      const vs=lxIdle(w).filter(v=>!v.al&&lxVehOK(v,w,n.c));if(!vs.length)continue;const km=distKm(w,n.c);if(!best||km<best.km)best={w,v:vs[0],km}}
-    const mk=n.c.id+":"+n.g;
-    if(!best){if(!S.alMiss[mk]){S.alMiss[mk]=1;S.log.unshift(`Auto-line: no depot with a free vehicle holds ${G[n.g][0].toLowerCase()} for ${n.c.name}`);S.log=S.log.slice(0,3)}continue}
+      const km=distKm(w,n.c),pq=v=>Math.max(1,Math.min(capU(v.type,n.g),spare(w,n.g),n.want)),pf=v=>vFuel(v.type,km,pq(v)*tpu(n.g),w,n.c)+vFuel(v.type,km,0,n.c,w);
+      const vs=lxIdle(w).filter(v=>!v.al&&lxVehOK(v,w,n.c)&&alWorth(pf(v),pq(v),n.c,n.g)).sort((a,b)=>pf(a)/pq(a)-pf(b)/pq(b));if(!vs.length)continue;if(!best||km<best.km)best={w,v:vs[0],km}}
+    const mk=n.c.id+":"+n.g,gn=G[n.g][0].toLowerCase();
+    if(!best){const r=alFetch(n,spare,now);
+      if(r==="src"||r==="veh"||r==="dear"||r==="local"){alOnce(mk,r==="src"?`no city with a depot of yours holds or sells ${gn} for ${n.c.name}`:r==="dear"?`fetching ${gn} for ${n.c.name} would cost more in fuel than it is worth`:r==="local"?`${gn} is cheapest to buy in ${n.c.name} itself; no trip sent`:`no free vehicle can fetch ${gn} for ${n.c.name}`);continue}
+      delete S.alMiss[mk];if(r==="cash"){alOnce(mk+"$",`not enough cash to fetch ${gn} for ${n.c.name}`);continue}delete S.alMiss[mk+"$"];continue}
     delete S.alMiss[mk];const {w,v}=best,q=Math.max(1,Math.min(capU(v.type,n.g),spare(w,n.g),n.want)),inv=S.inv[w.id];
     const keep=inv[n.g]-q;inv[n.g]=q;                     // depart() loads min(capacity, stock): expose only q
     const ok=depart(v,w,n.c,n.g,now);inv[n.g]=(inv[n.g]||0)+keep;if(inv[n.g]<1e-6)delete inv[n.g];
-    if(!ok){if(!S.alMiss[mk+"$"]){S.alMiss[mk+"$"]=1;S.log.unshift(`Auto-line: not enough cash for fuel to restock ${G[n.g][0].toLowerCase()} in ${n.c.name}`);S.log=S.log.slice(0,3)}continue}delete S.alMiss[mk+"$"];
-    if(ok){v.al={home:w.id,to:n.c.id,g:n.g};S.log.unshift(`Auto-line: ${VEH[v.type].n} #${v.id} taking ${Math.round(q)} ${G[n.g][0].toLowerCase()} ${w.name} → ${n.c.name}`);S.log=S.log.slice(0,3)}}}
+    if(!ok){alOnce(mk+"$",`not enough cash for fuel to restock ${gn} in ${n.c.name}`);continue}delete S.alMiss[mk+"$"];
+    v.al={home:w.id,to:n.c.id,g:n.g};alLog(`${VEH[v.type].n} #${v.id} taking ${Math.round(q)} ${gn} ${w.name} → ${n.c.name}`)}
+  alGasFill()}
 /* Offline catch-up: when a long gap is being accrued and Auto-line is on (or its vehicles are still out), step the gap in
    AL_STEP slices of game time so deliveries arrive, unload, drive home and get re-dispatched, interleaved with income,
-   fuel spending and the businesses' stock draw. Short (online) gaps take the single-step path. Tally goes to alTick.off. */
+   fuel spending, shop stock (gas stations pumping) and the businesses' stock draw. Short (online) gaps take the single-step path.
+   shH = hours of shop time to run (runShops). Tally goes to alTick.off ({n deliveries, f of them fetch trips, q units, b spent buying}). */
 const AL_STEP=DAYMS/4,AL_MAXN=200;
-function alRun(now,dt){let g=0,sold=0;
-  if(dt>AL_STEP*1.5&&(S.aline||S.fleet.some(v=>v.al))){const n=Math.min(AL_MAXN,Math.ceil(dt/AL_STEP)),t0=now-dt,off=alTick.off||(alTick.off={n:0,q:0});
+function alRun(now,dt,shH){let g=0,sold=0;
+  if(dt>AL_STEP*1.5&&(S.aline||S.fleet.some(v=>v.al))){const n=Math.min(AL_MAXN,Math.ceil(dt/AL_STEP)),t0=now-dt,off=alTick.off||(alTick.off={n:0,f:0,q:0,b:0}),ts=now-(shH||0)*DAYMS;let tp=ts;
     if(!S.saleT||S.saleT<t0)S.saleT=t0;
     for(let i=1;i<=n;i++){const t=i===n?now:t0+dt*i/n;
+      if(t>tp){runShops((t-tp)/DAYMS,t,1);tp=t}
       const due=S.fleet.filter(v=>v.al&&v.cargo&&v.arr&&v.arr<=t).map(v=>[v,v.cargo.q]);
-      runFleet(t);for(const [v,q] of due)if(!v.cargo){off.n++;off.q+=q}
+      runFleet(t);for(const [v,q] of due)if(!v.cargo){off.n++;off.q+=q;if(v.al&&v.al.fx)off.f++}
       try{alTick(t)}catch(e){console.warn("alTick",e)}
       if(t>S.saleT)g+=saleTick(t,t0);sold+=runIndustry(dt/n/DAYMS)}
+    try{stockAlerts(now,(shH||0)>1)}catch(e){console.warn("stockAlerts",e)}
     return {g,sold}}
-  runFleet(now);try{alTick(now)}catch(e){console.warn("alTick",e)}g=saleTick(now,now-dt);sold=runIndustry(dt/DAYMS);return {g,sold}}
-function alHtml(){const run=S.fleet.filter(v=>v.al&&v.arr&&v.cargo).length,back=S.fleet.filter(v=>v.al&&v.arr&&!v.cargo).length;
-  return `<div class="sec">Auto-line</div><div class="list"><div class="row"><div class="n">Auto-line ${S.aline?'<span class="tag boom">ON</span>':'<span class="tag">OFF</span>'}</div><div class="d">${S.aline?`${run} deliver${run===1?"y":"ies"} running${back?` · ${back} returning`:""}. `:""}Idle vehicles at your nearest depot that holds the goods restock businesses that draw supplies from a warehouse (under ${AL_LOW} h left). Normal fuel costs apply.</div><button class="buy${S.aline?" up":""}" data-act="aline">${S.aline?"Turn off":"Turn on"}</button></div></div>`}
+  if(shH!=null)runShops(shH);runFleet(now);try{alTick(now)}catch(e){console.warn("alTick",e)}g=saleTick(now,now-dt);sold=runIndustry(dt/DAYMS);return {g,sold}}
+function alHtml(){const A=S.fleet.filter(v=>v.al),run=A.filter(v=>!v.al.fx&&v.arr&&v.cargo).length,fx=A.filter(v=>v.al.fx&&v.al.st!=="back").length,back=A.filter(v=>v.arr&&!v.cargo&&(!v.al.fx||v.al.st==="back")).length;
+  return `<div class="sec">Auto-line</div><div class="list"><div class="row"><div class="n">Auto-line ${S.aline?'<span class="tag boom">ON</span>':'<span class="tag">OFF</span>'}</div><div class="d">${S.aline||A.length?`${run} deliver${run===1?"y":"ies"} running · ${fx} fetch trip${fx===1?"":"s"}${back?` · ${back} returning`:""}. `:""}Keeps businesses that draw from a warehouse, and gas stations, above ${AL_LOW} h of supply. A depot with the goods and a free vehicle sends a load; otherwise a free vehicle (one in the city first) fetches them from the nearest city with your stock, or buys them at the nearest city with your depot. Normal fuel costs apply.</div><button class="buy${S.aline?" up":""}" data-act="aline">${S.aline?"Turn off":"Turn on"}</button></div></div>`}
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -8751,7 +8821,7 @@ new MutationObserver(draw).observe(document.documentElement,{attributes:true,att
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeSheet()});
 /* offline: full pay for the time away, up to 48 hours, then a welcome-back summary */
 function catchUp(){const now0=Date.now(),away=now0-(S.acc||now0),cash0=S.cash,debt0=S.debt||0,hadStock=Object.keys(S.stock||{}).filter(k=>S.stock[k]>0);
-  const shop=ishTick()||{paid:0,done:0,open:0};alTick.off={n:0,q:0};const got=accrue();const al=alTick.off;alTick.off=null;const offPeace=S._offPeace||[];delete S._offPeace;if(offPeace.length)setTimeout(()=>toast(`War weariness forced white peace with ${offPeace.join(", ")} while you were away`),600);
+  const shop=ishTick()||{paid:0,done:0,open:0};alTick.off={n:0,f:0,q:0,b:0};const got=accrue();const al=alTick.off;alTick.off=null;const offPeace=S._offPeace||[];delete S._offPeace;if(offPeace.length)setTimeout(()=>toast(`War weariness forced white peace with ${offPeace.join(", ")} while you were away`),600);
   S.last=Date.now();checkGoals();save();hud();draw();
   if(away>5*60000){const hrs=away/DAYMS,t=hrs>=1?hrs.toFixed(1)+" h":Math.round(away/60000)+" min";
     if(got>1){S.log.unshift(`While you were away (${t}): ${fmt(got)} earned`);S.log=S.log.slice(0,3);hud()}
@@ -8761,7 +8831,7 @@ function awaySummary(r){if(mqBusy("away")){mqQ().unshift(()=>awaySummary(r));ret
   const row=(a,b,col)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)"><span>${a}</span><b${col?` style="color:${col}"`:""}>${b}</b></div>`;
   el.innerHTML=`<div style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px" data-away="x"><div style="background:var(--panel);color:var(--ink);border-radius:14px;max-width:360px;width:100%;padding:18px;box-shadow:0 18px 40px rgba(0,0,0,.35)">
     <h3 style="margin:0 0 4px">While you were away</h3><p class="d" style="margin:0 0 10px;color:var(--muted)">Your empire kept running for ${fmtDur(r.away)}.</p>
-    ${r.got>1?row("Earned",fmt(r.got),"var(--good)"):""}${row("Cash change",(r.net>=0?"+":"")+fmt(r.net),r.net>=0?"var(--good)":"var(--bad)")}${r.shop&&r.shop.paid>=.01?row(`Shop loan payments${r.shop.done?` · ${r.shop.done} paid off`:""}`,"−"+(r.shop.paid<100?fmtc(r.shop.paid):fmt(r.shop.paid)),"var(--bad)"):""}${r.al&&r.al.n?row("Auto-line",`${r.al.n} deliver${r.al.n===1?"y":"ies"}, ${gq(r.al.q)} goods moved`):""}${Math.abs(r.debt)>1?row("Debt change",(r.debt>0?"+":"")+fmt(r.debt),r.debt>0?"var(--bad)":"var(--good)"):""}
+    ${r.got>1?row("Earned",fmt(r.got),"var(--good)"):""}${row("Cash change",(r.net>=0?"+":"")+fmt(r.net),r.net>=0?"var(--good)":"var(--bad)")}${r.shop&&r.shop.paid>=.01?row(`Shop loan payments${r.shop.done?` · ${r.shop.done} paid off`:""}`,"−"+(r.shop.paid<100?fmtc(r.shop.paid):fmt(r.shop.paid)),"var(--bad)"):""}${r.al&&r.al.n?row("Auto-line",`${r.al.n} deliver${r.al.n===1?"y":"ies"}${r.al.f?` (${r.al.f} fetched)`:""}, ${gq(r.al.q)} goods moved${r.al.b>=1?`, ${fmt(r.al.b)} spent buying`:""}`):""}${Math.abs(r.debt)>1?row("Debt change",(r.debt>0?"+":"")+fmt(r.debt),r.debt>0?"var(--bad)":"var(--good)"):""}
     ${r.ran.length?`<p style="margin:10px 0 4px;color:var(--bad)"><b>Ran out of stock:</b></p><div class="d">${r.ran.slice(0,5).map(nm).join("<br>")}${r.ran.length>5?`<br>and ${r.ran.length-5} more`:""}</div>`:""}
     ${(r.peace||[]).length?`<p class="d" style="margin:10px 0 0"><b>White peace</b> (war weariness hit 100) with ${r.peace.join(", ")}.</p>`:""}
     ${r.capped?`<p class="d" style="margin:10px 0 0;color:var(--muted)">Offline earnings stop after 48 hours. Check in at least every two days to keep everything paid.</p>`:""}
