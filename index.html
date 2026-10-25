@@ -2738,8 +2738,8 @@ function wlDay(ws,d,quiet){const C=WLCFG,pc=dipPlayerC();
     const c=CITIES[bt.c];
     if(bt["h"+o]<=0){const back=c.country===w[s];w.cc=w.cc||{};if(back)delete w.cc[c.id];else w.cc[c.id]=s;
       const t=`${w[s]} ${back?"recaptured":"captured"} ${c.name}`;w.ev=[{d:S.day,c:c.id,s},...(w.ev||[])].slice(0,C.ev);w.bt=null;w.fp=Math.max(5,Math.min(95,w.fp+(s==="a"?6:-6)));
-      dipSay(t,1,quiet);if(!quiet){toast("⚔ "+t);wlBoom(c)}}
-    else if(bt["h"+s]<=0){w.bt=null;w.fp=Math.max(5,Math.min(95,w.fp+(s==="a"?-5:5)));dipSay(`${w[o]} holds ${c.name} against ${w[s]}`,dipRel(w.a,w.b),quiet)}}}
+      dipSay(t,1,quiet);if(!quiet){toast("⚔ "+t);wlBoom(c);stBattle(w,w[s],c,back?2:1)}}
+    else if(bt["h"+s]<=0){w.bt=null;w.fp=Math.max(5,Math.min(95,w.fp+(s==="a"?-5:5)));dipSay(`${w[o]} holds ${c.name} against ${w[s]}`,dipRel(w.a,w.b),quiet);if(!quiet)stBattle(w,w[o],c,0)}}}
 /* marching units: home capital -> front (or back on recall); display only */
 const _wlm=[];let _wlB=[];
 function wlMarch(w,n,s,back){try{const h=cfCap(n),f=bgLerp(w.a,w.b,(w.fp||50)/100);if(!h||!f)return;const p=[h.lon,h.lat],col=WLCOL[s]||"#fff";
@@ -2926,7 +2926,7 @@ function wfBack(quiet){const p=pol(),off=wfOff(),B=WFCFG.back;if(!(p.r>=0&&p.c)|
   else{if(!vs){const near=COUNTRIES.filter(x=>x!==c&&("Government of "+x)!==fr&&kmBetween(cap(c),cap(x))<5000&&!wfAtWar(c,x));if(!near.length)return null;vs=pick(near)}o={k:"e",to:c,vs}}
   amt=Math.min(B.hi,Math.round(B.lo*Math.pow(B.hi/B.lo,Math.pow(Math.random(),2))/1e6)*1e6);
   const x=Object.assign(o,{id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),fr,ty,amt,exp:Date.now()+B.exp*DAYMS});off.push(x);
-  if(!quiet){S.log.unshift(`${fr} offers ${fmt(amt)} to ${c} to ${o.k==="w"?"fight on against "+o.vs:"stir tension with "+o.vs}`);S.log=S.log.slice(0,3);stOffer(x)}return x}
+  if(!quiet)stOffer(x);return x}
 /* deliver backer money as anonymous funding (local authority, or the online queue like a player donation) */
 function wfPush(o){const w=o.k==="w"?wfActive().find(x=>wlGid(x)===o.w):null,remote=wfRemote()&&(o.k==="e"?wwShared():!!(w&&w.gid));
   if(!remote){if(wfApply(o))wfPublish(true);return}
@@ -2963,7 +2963,7 @@ function flNews(a,b,lv,x){try{x=x||{};const f=FL.find(e=>!e[0]||(e[1]?e[0][0]===
     cx={A,B,fav,oth,capA:cap(A).name,capB:cap(B).name,city:stR(ctyCities(B)).name,co:stR(RIVALS).n};
   const rows=(f[2]["thbw"[lv-1]]||[]).filter(s=>{const m=/^@([^:]+):/.exec(s);return !m||m[1].split(",").every(c=>c===A||c===B)});
   return rows.length?stR(rows).replace(/^@[^:]+:/,"").replace(/\{(\w+)\}/g,(m,k)=>cx[k]):""}catch(e){return ""}}
-function story(){const s=S.story=S.story&&typeof S.story==="object"?S.story:{};if(!s.seen||typeof s.seen!=="object")s.seen={};
+function story(){const s=S.story=S.story&&typeof S.story==="object"?S.story:{};if(!s.seen||typeof s.seen!=="object")s.seen={};for(const k of ["wg","oc"])if(!s[k]||typeof s[k]!=="object")s[k]={};
   const y=s.ys=s.ys&&typeof s.ys==="object"?s.ys:{};if(!(y.st>=0&&y.st<=5))y.st=0;for(const k of ["d0","cd","z","d5"])if(!(y[k]>=0))y[k]=0;if(!YSK.includes(y.pair)){y.pair=null;if(y.st)y.st=0}
   if(typeof y.fav!=="string")y.fav=null;if(!y.ch||typeof y.ch!=="object")y.ch={};if(!Array.isArray(y.sk))y.sk=[];return s}
 /* one story line: the News app (S.news) and the World news list; `from` makes it a phone message from a character */
@@ -3027,6 +3027,20 @@ function stPriyaHtml(){try{const r=stRv();if(!r.pc)return"";if((S.day||0)>r.pc.d
 /* Business tab: feuds against the player that hit this city */
 function stFeudLine(c){try{const day=S.day||0;return ((S.wf&&S.wf.cr)||[]).filter(x=>x&&x.b===-1&&x.end>day&&RIVALS[x.a]).map(x=>{const rc=(S.rivals[x.a]||{}).cities||[],sh=rc.filter(id=>S.own&&S.own[id]),here=sh.includes(c.id),d=x.end-day;
     return `<div class="row" style="border-left:3px solid var(--bad)"><div class="n">Feud with ${RIVALS[x.a].n}</div><div class="d">−${Math.round((1-WFCFG.cr.hit)*100)}% in ${sh.length} shared cit${sh.length===1?"y":"ies"}${here?" (including this one)":""}, ends in ${d} day${d===1?"":"s"}.${sh.length?`<br><small style="color:var(--muted)">${sh.slice(0,6).map(id=>(CITIES[id]||{}).name).join(", ")}${sh.length>6?"…":""}</small>`:""}</div></div>`}).join("")}catch(e){return""}}
+/* Arc 3 (docs/story/arc-wars.md): generals on captures/holds (one line per war per 5 days), conquest, liberation, occupation timer. Narration only.
+   S.story.wg={<war id>:day a general last spoke}, S.story.oc={<country>:{d,h}} last occupation line */
+const STGEN={USA:["General Dana Reyes","Hold the line, count the cost."],China:["General Gao Wenbo","The sea does not forget."],India:["General Vikram Rathore","We do not start, we finish."],
+  Japan:["Admiral Noriko Hayakawa","The tide decides, not the speech."],UK:["General Sir Rupert Ainsley","Steady, gentlemen."],France:["General Bastien Roche","We carry our own flag."],
+  "Türkiye":["General Orhan Tekin","Air is cheaper than blood."],Brazil:["General Ana Beatriz Lacerda","Supply first, glory later."]};
+function stBattle(w,n,c,k){try{const s=story(),id=String(wlGid(w)),day=S.day||0,g=STGEN[n];for(const i in s.wg)if(s.wg[i]<day-30)delete s.wg[i];
+  if(!g||(s.wg[id]!=null&&day<s.wg[id]+5))return;s.wg[id]=day;
+  stNews(`${g[0]} after ${k?(k===2?"retaking":"taking"):"holding"} ${c.name}: "${g[1]}"`)}catch(e){}}
+function stConq(a,b,pc){try{const g=STGEN[a],m=STMIN[b];stNews(g?`${g[0]}: "${cap(b).name} has fallen." Meridian Wire: the map has changed`:`${a} takes control of ${b}; Meridian Wire: "the map has changed"`);
+  if(m&&b!==pc)stNews(`${m}, from exile in Istanbul: "${b} is not a province of ${a}"`)}catch(e){}}
+function stFree(n,by){try{stNews(`${n} is free again; crowds fill ${cap(n).name} as ${by}'s garrison leaves`)}catch(e){}}
+function stOcc(n,o){try{const s=story(),C=MILCFG,full=C.occDays*24,pc=pol().c,g=STGEN[pc],who=g?g[0]:"Your chief of staff",day=S.day||0,x=s.oc[n]=s.oc[n]||{};
+  let t="";if(o.calm===1&&x.d!==day)t=`Resistance in ${cap(n).name} down to ${Math.round(o.resist)}%`;else if(o.calm===Math.ceil(full/2)&&x.h!==day){x.h=day;t=`Garrison holds; ${full-o.calm} h until ${n} is ours`}
+  if(!t)return;x.d=day;stNews(`${t}${milOccLeft(n)}`,who);for(const k in s.oc)if(!mil().occ[k]&&k!==n)delete s.oc[k]}catch(e){}}
 const stTS=(a,b)=>{const T=a&&b?wf().tens[wfPair(a,b)]:null;return T?WFCFG.stages.indexOf(wfStage(T.v)):0},
   stWar=(a,b)=>!!(a&&b&&(S.wars||[]).some(w=>w&&w.l>=4&&((w.a===a&&w.b===b)||(w.a===b&&w.b===a))));
 const stFP=x=>{const a=wfHQ(x.a),b=x.b===-1?wfMe():wfHQ(x.b);return a&&b&&a!==b?[a,b]:null};
@@ -3148,7 +3162,7 @@ function dipConquer(a,b,quiet){const d=dip(),p=S.pol,pc=dipPlayerC(),pw=pc&&(S.w
   let mine="";if(p){if(p.ctrl&&p.ctrl[b]){delete p.ctrl[b];mine=" · it left your sphere of influence"}
     const m=p.mil;if(m){if(m.occ&&m.occ[b]){const gr=m.occ[b].gar||0;delete m.occ[b];mine=" · your occupation ended"}if(m.wars&&m.wars[b]){delete m.wars[b];mine=" · your war with it ended"}}}
   for(const m in d.ruler)if(d.ruler[m]===b)delete d.ruler[m]; // a ruled country's own subjects revert to independence
-  dipSay(`${a} conquers ${b}${mine}`,1,quiet)}
+  dipSay(`${a} conquers ${b}${mine}`,1,quiet);if(!quiet&&a!==pc)stConq(a,b,pc)}
 function dipInvade(w,by,quiet){const d=dip(),n=dipPlayerC();d.inv={by,n,w:w.id,day:d.day,stage:1,prog:0,rcd:0,fort:0};w.inv=1;
   setTimeout(()=>{if(!quiet)toast(`⚠ War is coming to ${n}: ${bunk().lv?"know the way to your bunker":"consider building a bunker (Gov › Bunker)"}`)},2500);
   const t=`WARNING: ${by} masses troops on ${n}'s border. Invasion in ${DIPCFG.warn} days: fund talks, rally defences, build an army`;dipSay(t,1,quiet);if(!quiet)toast(t)}
@@ -3178,7 +3192,7 @@ function dipDay(quiet){const C=DIPCFG,d=dip();d.day++;S.wars=S.wars||[];const ws
   // liberation, and countries you took back from a ruler are free again
   for(const n in d.ruler){const by=d.ruler[n];
     if(p&&((p.ctrl&&p.ctrl[n])||(p.mil&&p.mil.occ&&p.mil.occ[n]))){delete d.ruler[n];dipSay(`You free ${n} from ${by}`,1,quiet);continue}
-    if(d.day-d.rsince[n]>=C.libAfter&&Math.random()<C.libP+(warLvl(by)>=3?.03:0)+(gov(by).appr<40?.02:0)){delete d.ruler[n];d.rsince[n]=0;gov(n).appr=55;dipSay(`${n} throws off ${by}'s rule and regains independence`,1,quiet)}}
+    if(d.day-d.rsince[n]>=C.libAfter&&Math.random()<C.libP+(warLvl(by)>=3?.03:0)+(gov(by).appr<40?.02:0)){delete d.ruler[n];d.rsince[n]=0;gov(n).appr=55;dipSay(`${n} throws off ${by}'s rule and regains independence`,1,quiet);if(!quiet)stFree(n,by)}}
   // new rivalry
   if(d.day>=d.cd&&ws.length<C.maxWars&&Math.random()<C.startP){const fr=COUNTRIES.filter(n=>!d.ruler[n]);
     if(fr.length>1){const wt=fr.map(n=>n===dipPlayerC()?0:dipPower(n)*dipAggr(n)),tot=wt.reduce((x,y)=>x+y,0);let r=Math.random()*tot,a=fr[fr.length-1];for(let i=0;i<fr.length;i++){r-=wt[i];if(r<=0){a=fr[i];break}}
@@ -4440,7 +4454,7 @@ function milHour(quiet){const p=S.pol;if(!p||!p.mil)return;const m=mil(),C=MILCF
     if(w.front>=100||w.enemyStr<w.enemyMax*.05)milEndWar(n,"win");else if(w.front<=0||milStr()<=0)milEndWar(n,"lose")}
   m.supply=nw?sup/nw:C.supplyBase;
   for(const n in m.occ){const o=m.occ[n],need=Math.max(1,ctyScale(n)*.5);o.resist=Math.max(0,Math.min(100,o.resist+C.occDrift-C.occGar*2*Math.min(1.5,(o.gar||0)/need)+(lead?0:.5)+(Math.random()-.5)));
-    o.calm=o.resist<C.occCalm?(o.calm||0)+1:0;
+    o.calm=o.resist<C.occCalm?(o.calm||0)+1:0;if(!quiet)stOcc(n,o);
     if(o.calm>=C.occDays*24){delete m.occ[n];p.ctrl[n]={since:Date.now(),loy:C.occLoy};say(`${n} has been integrated into your controlled countries`)}
     else if(o.resist>C.occRevolt&&Math.random()<.12){const g=o.gar||0;delete m.occ[n];m.units.inf=Math.max(0,m.units.inf-g);p.appr=Math.max(0,p.appr-10);say(`Revolt! ${n} threw off your occupation`)}}}
 let govTab="pol";
