@@ -790,9 +790,6 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
     h+=`<div class="row${S.mgr[c.id]?" own":""}"><div class="n">City manager ${S.mgr[c.id]?'<span class="tag boom">Hired</span>':""}</div>
       <div class="d">${S.mgr[c.id]?"Sales here are 20% higher.":"Raises sales of every business here by 20%. One-time fee."}</div>
       ${S.mgr[c.id]?`<button class="buy up" id="fire">Fire</button>`:`<button class="buy" id="hire" ${S.cash<mc?"disabled":""}>Hire ${fmt(mc)}</button>`}</div>`;
-    const ac=adCost(c),boom=ev&&ev.m>1;
-    h+=`<div class="row"><div class="n">Ad campaign</div><div class="d">${boom?`Customers are already flooding in (${ev.d}h left).`:"Billboards and radio. Starts a 5-hour boom here."}</div>
-      <button class="buy up" id="ads" ${S.cash<ac||boom?"disabled":""}>Run ${fmt(ac)}</button></div>`;
     h+=mktHtml(c);
     const plan=upgradePlan(c);
     if(plan.n)h+=`<div class="row"><div class="n">Upgrade everything I can afford</div><div class="d">${plan.n} upgrade${plan.n>1?"s":""}, cheapest first · +<b>${fmt(plan.gain)}</b>/day</div>
@@ -822,7 +819,6 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
   sheet.querySelectorAll("[data-menu]").forEach(btn=>btn.onclick=()=>{const [k,id]=btn.dataset.menu.split("|"),b=BIZ.find(x=>x.k===k),m=(MENUS[k]||[]).find(x=>x.id===id);if(!b||!m||menuOf(c,k).id===id)return;
     const fee=Math.round(cost(b,c)*MENU_SW);if(S.cash<fee){toast(`Switching menus costs ${fmt(fee)}`);return}
     S.cash-=fee;S.menu=S.menu||{};S.menu[bkey(c,k)]=id;toast(`${b.n} now serves ${m.n} (${fmt(fee)} refit).`);commit()});
-  const ad=$("#ads");if(ad)ad.onclick=()=>{const k=adCost(c);if(S.cash<k)return;S.cash-=k;S.events[c.id]={m:1.4,d:5};toast(`Ads running in ${c.name} for 5 hours`);commit()};
   const ua=$("#upall");if(ua)ua.onclick=()=>{const pl=upgradePlan(c);for(const [k,i] of pl.steps)upgrade(c,k,i,1);toast(`${pl.n} upgrades done in ${c.name}`);commit()};
   sheet.querySelectorAll("[data-bo]").forEach(btn=>btn.onclick=()=>{const i=+btn.dataset.bo,k=buyoutCost(c);if(S.cash<k)return;S.cash-=k;
     S.rivals[i].cities=S.rivals[i].cities.filter(x=>x!==c.id);if(wrShared()){S.rbo=S.rbo||{};(S.rbo[i]=S.rbo[i]||[]).push(c.id)}S.rivals[i].nw=Math.max(rivalSeed(i)*.35,S.rivals[i].nw-k*.5*rvk(i));toast(`Bought out ${RIVALS[i].n} in ${c.name}`);bigMove(`our company bought out ${RIVALS[i].n} in ${c.name} for ${fmt(k)}`,k,1);commit()});
@@ -1343,22 +1339,27 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-life]");if(!b
    Gross is ~1.2–1.4× profit, so a fresh campaign returns gross×boost×days ≈ 1.3–1.8× its cost at best; the floor
    makes tiny cities pay back worse. Fatigue f per place: boost ÷ (1+f); each launch adds +1 (global +1 to "all"),
    decays 0.25 per game day, so an immediate repeat gives ~half the boost and loses money.
-   Tiers: Flyers 1 day +12% · Radio 2 days +20% · TV 4 days +30% (one at a time per city) · Global 3 days +8% everywhere. */
-S.mkt=S.mkt||{camps:[],fat:{}};if(!Array.isArray(S.mkt.camps))S.mkt.camps=[];S.mkt.fat=S.mkt.fat||{};
-const MKT=[{k:"flyer",n:"Flyers",e:"📄",days:1,b:.12,min:300},{k:"radio",n:"Radio spots",e:"📻",days:2,b:.20,min:2500},{k:"tv",n:"TV campaign",e:"📺",days:4,b:.30,min:20000},{k:"global",n:"Global campaign",e:"🌍",days:3,b:.08,min:60000,g:1}],MKTK=Object.fromEntries(MKT.map(t=>[t.k,t]));
-function mcLive(){const now=Date.now();return((S.mkt&&S.mkt.camps)||[]).filter(x=>x.end>now)}
+   Tiers: Billboard blitz 5 hours +40% (replaces the old one-off "Ad campaign" boom) · Flyers 1 day +12% · Radio 2 days +20% · TV 4 days +30% (one at a time per city) · Global 3 days +8% everywhere. */
+// campaign state lives in S.mkc {camps,fat}; old saves kept it inside S.mkt (shared with stock levels) and migrate here once
+function mkc(){let a=S.mkc;if(!a||typeof a!=="object")a=S.mkc={};const o=S.mkt&&typeof S.mkt==="object"?S.mkt:null;
+  if(o&&(o.camps||o.fat)){if(Array.isArray(o.camps))a.camps=(Array.isArray(a.camps)?a.camps:[]).concat(o.camps);if(o.fat&&typeof o.fat==="object")a.fat=Object.assign({},o.fat,a.fat||{});delete o.camps;delete o.fat}
+  if(!Array.isArray(a.camps))a.camps=[];if(!a.fat||typeof a.fat!=="object")a.fat={};return a}
+mkc();
+const MKT=[{k:"blitz",n:"Billboard blitz",e:"🪧",days:5/24,b:.40,min:6000},{k:"flyer",n:"Flyers",e:"📄",days:1,b:.12,min:300},{k:"radio",n:"Radio spots",e:"📻",days:2,b:.20,min:2500},{k:"tv",n:"TV campaign",e:"📺",days:4,b:.30,min:20000},{k:"global",n:"Global campaign",e:"🌍",days:3,b:.08,min:60000,g:1}],MKTK=Object.fromEntries(MKT.map(t=>[t.k,t]));
+function mcLive(){const now=Date.now();return mkc().camps.filter(x=>x.end>now)}
 function mktMult(c){let m=1;for(const x of mcLive())if(x.city==null||x.city===c.id)m*=1+x.b;return m}
 function mktBase(c){if(c)return Math.max(0,cityProfit(c)/mktMult(c));let t=0;for(const id in S.own)if(CITIES[id])t+=Math.max(0,cityProfit(CITIES[id])/mktMult(CITIES[id]));return t}
 function mktCost(t,c){return Math.round(t.min*(t.g?1:PRICE[c.size])+t.b*t.days*mktBase(t.g?null:c)*.75)}
-function mktBoost(t,c){return t.b/(1+((S.mkt.fat||{})[t.g?"all":c.id]||0))}
-function mktDay(){const f=S.mkt.fat;for(const k in f){f[k]=Math.max(0,f[k]-.25);if(!f[k])delete f[k]}S.mkt.camps=mcLive()}
+function mktBoost(t,c){return t.b/(1+(mkc().fat[t.g?"all":c.id]||0))}
+function mktDay(){const f=mkc().fat;for(const k in f){f[k]=Math.max(0,f[k]-.25);if(!f[k])delete f[k]}mkc().camps=mcLive()}
 function mktLaunch(k,c){const t=MKTK[k];if(!t)return;if(!t.g&&mcLive().some(x=>x.city===c.id)){toast(`A campaign is already running in ${c.name}`);return}if(t.g&&mcLive().some(x=>x.city==null)){toast("A global campaign is already running");return}
-  const p=mktCost(t,c);if(S.cash<p)return;const b=mktBoost(t,c),key=t.g?"all":c.id;S.cash-=p;S.mkt.camps.push({k,city:t.g?null:c.id,b,end:Date.now()+t.days*DAYMS});S.mkt.fat[key]=(S.mkt.fat[key]||0)+1;
-  S.log.unshift(`${t.n}${t.g?"":" in "+c.name}: −${fmt(p)} (+${Math.round(b*100)}% sales for ${t.days} day${t.days>1?"s":""})`);S.log=S.log.slice(0,3);toast(`${t.e} ${t.n} launched: +${Math.round(b*100)}% sales`)}
+  const p=mktCost(t,c);if(S.cash<p)return;const b=mktBoost(t,c),key=t.g?"all":c.id;S.cash-=p;const M=mkc();M.camps.push({k,city:t.g?null:c.id,b,end:Date.now()+t.days*DAYMS});M.fat[key]=(M.fat[key]||0)+1;
+  S.log.unshift(`${t.n}${t.g?"":" in "+c.name}: −${fmt(p)} (+${Math.round(b*100)}% sales for ${mktDur(t)})`);S.log=S.log.slice(0,3);toast(`${t.e} ${t.n} launched: +${Math.round(b*100)}% sales`)}
+const mktDur=t=>t.days<1?Math.round(t.days*24)+" hours":t.days+" day"+(t.days>1?"s":"");
 function mktLeft(x){const d=(x.end-Date.now())/DAYMS;return d>=1?d.toFixed(1)+" days":Math.max(1,Math.round(d*24))+"h"}
 function mktHtml(c){const live=mcLive(),here=live.filter(x=>x.city===c.id||x.city==null);let h=`<div class="row"><div class="n">Marketing</div><div class="d">${here.length?here.map(x=>`${MKTK[x.k].e} ${MKTK[x.k].n} <b style="color:var(--good)">+${Math.round(x.b*100)}%</b> · ${mktLeft(x)} left`).join("<br>"):"Paid ads lift sales of every business here. Repeating too soon wears out the audience."}</div></div>`;
   for(const t of MKT){const busy=t.g?live.some(x=>x.city==null):live.some(x=>x.city===c.id),p=mktCost(t,c),b=mktBoost(t,c);
-    h+=`<div class="row"><div class="n">${t.e} ${t.n}</div><div class="d">+${Math.round(b*100)}% sales ${t.g?"in all your cities":"here"} for ${t.days} day${t.days>1?"s":""}${b<t.b-.001?` <span style="color:var(--bad)">(audience tired: was +${Math.round(t.b*100)}%)</span>`:""}</div><button class="buy up" data-mkt="${t.k}" ${S.cash<p||busy?"disabled":""}>${busy?(live.some(x=>x.k===t.k&&(t.g||x.city===c.id))?"Running":"Wait"):"Run "+fmt(p)}</button></div>`}
+    h+=`<div class="row"><div class="n">${t.e} ${t.n}</div><div class="d">+${Math.round(b*100)}% sales ${t.g?"in all your cities":"here"} for ${mktDur(t)}${b<t.b-.001?` <span style="color:var(--bad)">(audience tired: was +${Math.round(t.b*100)}%)</span>`:""}</div><button class="buy up" data-mkt="${t.k}" ${S.cash<p||busy?"disabled":""}>${busy?(live.some(x=>x.k===t.k&&(t.g||x.city===c.id))?"Running":"Wait"):"Run "+fmt(p)}</button></div>`}
   return h}
 S.hq=S.hq||{};S.reg=S.reg||{};S.bonus=S.bonus||{};
 const TAXDAYS=7,TAXP=TAXDAYS*24*DAYMS,TAX_REG=.2,TAX_UNREG=.4;
@@ -2123,7 +2124,6 @@ const GOALS=[
 function checkGoals(){for(const g of GOALS){if(S.goals.includes(g.id))continue;if(g.v()>=g.t){S.goals.push(g.id);S.cash+=g.r;
   toast(`Goal: ${g.n}${g.r?` · +${fmt(g.r)}`:""}`);S.log.unshift(`Goal reached: ${g.n}`);S.log=S.log.slice(0,3);try{ptEvent("goal: "+g.n)}catch(e){}}}if(typeof achCheck==="function")achCheck()}
 
-const adCost=c=>Math.round(6000*PRICE[c.size]+Math.max(0,cityProfit(c))*1.5);
 // every unit (first + extras) of every type here; steps are [type, unit index] for upgrade(c,k,i)
 function upgradePlan(c){const o=S.own[c.id]||{},u=[];for(const b of BIZ)if(o[b.k])uLv(c.id,b.k).forEach((lv,i)=>u.push({b,i,lv}));let cash=S.cash,cost=0,gain=0;const steps=[];
   for(;;){let best=null;for(const x of u){if(x.lv>=MAXLV)continue;const k=upCost(x.b,c,x.lv);if(!best||k<best.k)best={x,k}}
@@ -2825,7 +2825,7 @@ function wwMirror(quiet){if(!wwShared())return;const pc=dipPlayerC(),d=dip(),old
 function wjPub(w,s){try{if(!ON.ready||!ON.user)return;const gid=w.gid||(WRM?w.id:0);if(!gid)return;const r=ON.db.collection("wjoin").doc(ON.user.uid);
   if(!s)return void r.delete().catch(()=>{});
   r.set({w:gid,s,n:wlPT(),name:wlName().slice(0,20),c:String(dipPlayerC()||"").slice(0,40),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't share your troops: "+(e&&e.code||e)})}catch(e){}}
-function wwListen(){try{evListen()}catch(e){}try{mkwListen()}catch(e){}try{lnListen()}catch(e){}if(ON.unsubWW)return;
+function wwListen(){try{evListen()}catch(e){}try{g1Listen()}catch(e){}try{mkwListen()}catch(e){}try{lnListen()}catch(e){}if(ON.unsubWW)return;
   ON.unsubWW=ON.db.collection("world").doc("wars").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list))return;WW={list:v.list,ruler:v.ruler||{}};
     try{localStorage.setItem(WWKEY,JSON.stringify(WW))}catch(e){}if(ON.authKnown&&!WRM){wwMirror(false);draw();onRefresh()}},e=>{ON.err="Couldn't load world wars: "+(e&&e.code||e)});
   ON.unsubWJ=ON.db.collection("wjoin").onSnapshot(q=>{const a=[],old=Date.now()-3*864e5;q.forEach(x=>{const v=x.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():Date.now();if(ON.user&&x.id===ON.user.uid)return;if(at<old||!Number.isInteger(v.w)||(v.s!=="a"&&v.s!=="b"))return;a.push({uid:x.id,w:v.w,s:v.s,n:+v.n||0,name:v.name,c:v.c,at})});
@@ -4734,7 +4734,7 @@ function evDraw1(ctx,from,to,t0,off,clr,arr,j,col,lab,now){let pt,u=0;if(now<off
   ctx.globalAlpha=1;ctx.translate(x,y);ctx.rotate(ang);ctx.font="16px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillStyle=col;ctx.save();ctx.rotate(Math.PI/4);ctx.fillText("✈",0,0);ctx.restore();
   if(now>=off){ctx.font="10px system-ui,sans-serif";ctx.fillStyle="#94a3b8";for(let i=0;i<j;i++){const s=i%2?1:-1,r=Math.floor(i/2)+1;ctx.save();ctx.translate(-10*r,s*9*r);ctx.rotate(Math.PI/4);ctx.fillText("✈",0,0);ctx.restore()}}
   ctx.restore();ctx.font="bold 10px system-ui,sans-serif";ctx.textAlign="center";ctx.fillStyle=col;ctx.fillText(now<off?lab+" · boarding":lab,x,y-14);ctx.textAlign="start"}
-function drawEvac(ctx){const now=Date.now();try{g1Draw(ctx,now)}catch(e){}try{s1Draw(ctx,now)}catch(e){}const f=S.air1&&S.air1.fl;if(f&&!f.lost){const c=CITIES[f.city],d=CITIES[f.to];if(c&&d)evDraw1(ctx,c,d,f.t0,f.off,f.clr,f.up&&f.arr?f.arr:f.clr+AIRCFG.flyS[1]*1000,f.j,"#60a5fa","AIR ONE",now)}
+function drawEvac(ctx){const now=Date.now();try{g1DrawOthers(ctx,now)}catch(e){}try{g1Draw(ctx,now)}catch(e){}try{s1Draw(ctx,now)}catch(e){}const f=S.air1&&S.air1.fl;if(f&&!f.lost){const c=CITIES[f.city],d=CITIES[f.to];if(c&&d)evDraw1(ctx,c,d,f.t0,f.off,f.clr,f.up&&f.arr?f.arr:f.clr+AIRCFG.flyS[1]*1000,f.j,"#60a5fa","AIR ONE",now)}
   for(const v of (typeof ON!=="undefined"&&ON.ev)||[]){if(!(v.a>now))continue;evDraw1(ctx,CITIES[v.f],CITIES[v.t],v.o,v.o,v.c,v.a,Math.min(6,+v.j||0),"#fbbf24","AIR ONE · "+String(v.name||"").slice(0,20),now)}}
 // Government app tab
 function airApp(){const a=air1(),C=AIRCFG,now=Date.now(),off=GOVCFG.offices[0].n,T=AIRCFG.tiers;
@@ -4771,9 +4771,18 @@ function g1Trip(dest){const a=g1(),T=g1L(),t=S.trip;if(!T||!t)return;t.g1=a.lv;t
   if(Math.random()<P){const x=`🚙 Ground One was ambushed on the road into ${c.country}: your ${T.esc} escort guards fought them off`;S.log.unshift("Government: "+x);S.log=S.log.slice(0,3);setTimeout(()=>toast(x),1200)}
   else{a.lv--;t.esc=a.lv?G1CFG.lv[a.lv].esc:0;const x=a.lv?`🚙 Ground One was ambushed in ${c.country}: you're unhurt but the motorcade is shot up and drops to Level ${a.lv} (${G1CFG.lv[a.lv].n})`:`🚙 Ground One was ambushed in ${c.country}: you're unhurt but the limousine is written off`;S.log.unshift("Government: "+x);S.log=S.log.slice(0,3);setTimeout(()=>toast(x),1200)}}
 // every tick: upkeep while in office, upgrades lost out of office
-function g1Tick(now){const a=g1();if(!a.lv){a.pt=0;return}
+function g1Tick(now){try{g1Pub()}catch(e){}const a=g1();if(!a.lv){a.pt=0;return}
   if(!airGov()){a.pt=now;if(a.lv>1){a.lv=1;const x="🚙 You lost Ground One's upgrades (you lost your office). The limousine is parked until you win office again.";S.log.unshift("Government: "+x);S.log=S.log.slice(0,3);toast(x)}return}
   if(!a.pt)a.pt=now;const dt=Math.min(now-a.pt,2*DAYMS);if(dt>=10000){S.cash-=G1CFG.lv[a.lv].up*dt/DAYMS;a.pt=now}}
+// shared online world: publish your live Ground One motorcade to g1trip/{uid}; others' show on the map
+let _g1K="";
+function g1Pub(){if(typeof ON==="undefined"||!ON.ready||!ON.user)return;const t=S.trip,on=t&&t.g1&&t.from&&CITIES[t.from.city]&&CITIES[t.to.city]&&t.arr>Date.now(),k=on?[ON.user.uid,t.from.city,t.to.city,t.dep,t.esc].join(":"):"";if(k===_g1K)return;_g1K=k;
+  const r=ON.db.collection("g1trip").doc(ON.user.uid);if(on)r.set({f:t.from.city,t:t.to.city,o:Math.round(t.dep),a:Math.round(t.arr),j:Math.max(0,Math.min(12,Math.floor(+t.esc||0))),name:String((onProf().name||"Tycoon")).slice(0,20)}).catch(()=>{});else r.delete().catch(()=>{})}
+function g1Listen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubG1)return;ON.unsubG1=ON.db.collection("g1trip").onSnapshot(q=>{const a=[],now=Date.now();q.forEach(d=>{const v=d.data()||{};if(ON.user&&d.id===ON.user.uid)return;if(!CITIES[v.f]||!CITIES[v.t]||!(v.a>now)||!(v.a>v.o))return;a.push({uid:d.id,...v})});ON.g1=a},()=>{})}catch(e){}}
+function g1DrawOthers(ctx,now){for(const v of (typeof ON!=="undefined"&&ON.g1)||[]){if(!(v.a>now)||now<v.o)continue;const A=CITIES[v.f],B=CITIES[v.t];if(!A||!B)continue;const u=Math.min(1,(now-v.o)/(v.a-v.o)),g=d3.geoInterpolate([A.lon,A.lat],[B.lon,B.lat])(u);if(!visible(g[0],g[1]))continue;const [x,y]=proj(g);
+  ctx.save();ctx.font="14px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("🚙",x,y);ctx.fillStyle="#94a3b8";
+  for(let i=0;i<Math.min(12,+v.j||0);i++){const r=11+Math.floor(i/4)*5,an=i*Math.PI/2+Math.floor(i/4)*.6;ctx.beginPath();ctx.arc(x+Math.cos(an)*r,y+Math.sin(an)*r,2,0,Math.PI*2);ctx.fill()}
+  ctx.font="bold 10px system-ui,sans-serif";ctx.fillStyle="#fbbf24";ctx.fillText("GROUND ONE · "+String(v.name||"").slice(0,20),x,y-15);ctx.restore()}}
 // map: your motorcade with its escort cars
 function g1Draw(ctx,now){const t=S.trip;if(!t||!t.g1||typeof tripPos!=="function")return;const p=tripPos(now);if(!p||!visible(p.lon,p.lat))return;const [x,y]=proj([p.lon,p.lat]);
   ctx.save();ctx.font="15px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("🚙",x,y);ctx.fillStyle="#94a3b8";
@@ -4814,7 +4823,9 @@ const s1L=()=>{const a=s1();return a.lv?S1CFG.lv[a.lv]:null};
 const s1Ok=()=>airGov()&&!!s1L();
 // coastal city: any of 16 points 50/100 km around it is open ocean on the world map (cached; unknown until the map loads)
 const _s1C=new Map();let _s1F=null; // features (winding-fixed) + bounds
-function s1Coast(c){if(!c)return false;if(_s1C.has(c.id))return _s1C.get(c.id);if(!world||!world.features||typeof d3==="undefined")return true;let r=false;
+// Great Lakes / St Lawrence ports (the world map counts the lakes as land): treat as coastal, no drive
+const s1Lake=c=>!!c&&(c.country==="USA"||c.country==="Canada")&&c.lat>=41&&c.lat<=49.5&&c.lon>=-92.5&&c.lon<=-66.5;
+function s1Coast(c){if(!c)return false;if(_s1C.has(c.id))return _s1C.get(c.id);if(s1Lake(c)){_s1C.set(c.id,true);return true}if(!world||!world.features||typeof d3==="undefined")return true;let r=false;
   if(!_s1F)_s1F=world.features.map(f=>cfFeat(f.properties.name)).filter(Boolean).map(g=>[g,d3.geoBounds(g)]);
   try{for(const km of [50,100]){for(let i=0;i<8&&!r;i++){const b=i*Math.PI/4,la=c.lat+km/111*Math.cos(b),lo=c.lon+km/(111*Math.max(.2,Math.cos(c.lat*Math.PI/180)))*Math.sin(b);if(!_s1F.some(([g,B])=>(B[0][0]>B[1][0]||(lo>=B[0][0]-1&&lo<=B[1][0]+1))&&la>=B[0][1]-1&&la<=B[1][1]+1&&d3.geoContains(g,[lo,la])))r=true}if(r)break}}catch(e){r=true}
   _s1C.set(c.id,r);return r}
@@ -4839,11 +4850,14 @@ function s1Mask(){if(_s1M)return _s1M;if(!world||!world.features||typeof d3==="u
   c.fillStyle="#000";c.beginPath();for(const f of world.features){const g=cfFeat(f.properties.name);if(g)pa(g)}c.fill();
   c.globalCompositeOperation="destination-out";c.lineWidth=2.5;c.beginPath();for(const [a,b] of S1CAN){c.moveTo(...pr(a));c.lineTo(...pr(b))}c.stroke();
   const D=c.getImageData(0,0,S1W,S1H).data,m=new Uint8Array(S1W*S1H);for(let i=0;i<m.length;i++)m[i]=D[i*4+3]>110?1:0;_s1M=m}catch(e){_s1M=null}return _s1M}
+// warm the sea mask in idle time for Sea One owners, so the first voyage doesn't hitch
+setTimeout(function w(){try{if(!s1().lv||_s1M)return;if(!world||!world.features)return void setTimeout(w,5000);(window.requestIdleCallback||setTimeout)(()=>s1Mask())}catch(e){}},4000);
 const s1Cx=lo=>((Math.floor((lo+180)*2)%S1W)+S1W)%S1W,s1Cy=la=>Math.max(0,Math.min(S1H-1,Math.floor((90-la)*2))),s1Ll=i=>[(i%S1W)/2-180+.25,90-Math.floor(i/S1W)/2-.25];
 function s1Near(m,lo,la){const x0=s1Cx(lo),y0=s1Cy(la);for(let r=0;r<=24;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;const y=y0+dy;if(y<0||y>=S1H)continue;const i=y*S1W+((x0+dx)%S1W+S1W)%S1W;if(!m[i])return i}return -1}
 function s1Clear(m,a,b){let dl=b[0]-a[0];if(dl>180)dl-=360;if(dl<-180)dl+=360;const n=Math.ceil(Math.max(Math.abs(dl),Math.abs(b[1]-a[1]))*4)+1;for(let k=1;k<n;k++){const u=k/n;if(m[s1Cy(a[1]+(b[1]-a[1])*u)*S1W+s1Cx(a[0]+dl*u)])return false}return true}
 function s1Path(m,s,g){const N=S1W*S1H,G=new Float32Array(N).fill(Infinity),P=new Int32Array(N).fill(-1),C=new Uint8Array(N),hp=[],hf=[],gl=s1Ll(g),cw=new Float32Array(S1H);for(let y=0;y<S1H;y++)cw[y]=Math.max(.05,Math.cos((90-y/2-.25)*Math.PI/180));
-  const h=i=>d3.geoDistance(s1Ll(i),gl)*360/Math.PI,push=(i,f)=>{let k=hp.length;hp.push(i);hf.push(f);while(k){const q=(k-1)>>1;if(hf[q]<=f)break;hp[k]=hp[q];hf[k]=hf[q];k=q}hp[k]=i;hf[k]=f},
+  const R=Math.PI/180,gy=Math.cos(gl[1]*R),h=i=>{const q=s1Ll(i),a=Math.sin((q[1]-gl[1])*R/2),b=Math.sin((q[0]-gl[0])*R/2);return 1.5*4*Math.asin(Math.min(1,Math.sqrt(a*a+Math.cos(q[1]*R)*gy*b*b)))/R}, // weighted (1.5×) great-circle heuristic: near-optimal, far fewer cells explored
+    push=(i,f)=>{let k=hp.length;hp.push(i);hf.push(f);while(k){const q=(k-1)>>1;if(hf[q]<=f)break;hp[k]=hp[q];hf[k]=hf[q];k=q}hp[k]=i;hf[k]=f},
     pop=()=>{const top=hp[0],li=hp.pop(),lf=hf.pop();if(hp.length){let k=0;for(;;){let c=2*k+1;if(c>=hp.length)break;if(c+1<hp.length&&hf[c+1]<hf[c])c++;if(hf[c]>=lf)break;hp[k]=hp[c];hf[k]=hf[c];k=c}hp[k]=li;hf[k]=lf}return top};
   G[s]=0;push(s,h(s));let n=0;while(hp.length){const i=pop();if(i===g)break;if(C[i])continue;C[i]=1;if(++n>200000)return null;const x=i%S1W,y=(i-x)/S1W;
     for(let dy=-1;dy<=1;dy++){const yy=y+dy;if(yy<0||yy>=S1H)continue;for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const j=yy*S1W+(x+dx+S1W)%S1W;if(m[j]||C[j])continue;const c=G[i]+Math.hypot(dx*cw[yy],dy);if(c<G[j]){G[j]=c;P[j]=i;push(j,c+h(j))}}}}
@@ -8305,7 +8319,7 @@ setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now
   if(S.fleet.some(v=>v.arr))draw()},1000);
 function refreshButtons(){sheet.querySelectorAll("button.buy").forEach(b=>{const m=b.textContent.match(/\$([\d.,]+)([KMB]?)/);
   if(!m||b.dataset.fixed)return;const v=parseFloat(m[1].replace(/,/g,""))*({K:1e3,M:1e6,B:1e9}[m[2]]||1);if(!b.closest(".row")||/Maxed/.test(b.textContent))return;
-  if(b.id==="ads"&&S.events[sel.id]&&S.events[sel.id].m>1)return;b.disabled=S.cash<v})}
+  b.disabled=S.cash<v})}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")catchUp()});
 
 /* ---------- the player's phone: a draggable, foldable gadget that goes everywhere ---------- */
