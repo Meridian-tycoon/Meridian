@@ -9077,14 +9077,14 @@ function alGasFill(){for(const id in S.own){const c=CITIES[id];if(!c||unhOn(c)||
 /* load q units of g at w for a fetch vehicle (own stock first, else buy at w's market); returns units loaded, 0 if none */
 function alLoad(v,a,w,N,spare,now){const g=a.g,cap=capU(v.type,g),fuel=q=>vFuel(v.type,distKm(w,N),q*tpu(g),w,N);
   if(!a.buy){const q=Math.floor(Math.min(a.q,cap,Math.max(0,spare(w,g))));if(q>=1&&S.cash>=fuel(q)){const inv=S.inv[w.id];inv[g]-=q;if(inv[g]<1e-6)delete inv[g];return depart(v,w,N,"",now,{g,q})?q:(inv[g]=(inv[g]||0)+q,0)}
-    if(q>=1){a.why="cash";return 0}if(!(G[g][2]!=="gov"&&g!=="uranium"&&buyGood(w,g,1).v<=alLocal(N,g,1))){a.why="out";return 0}a.buy=1}   // own stock ran out at the source: buy there only if not dearer than at home
-  a.why="cash";if(G[g][2]==="gov"||g==="uranium"){a.why="out";return 0}
+    if(q>=1){a.why="cash";return 0}if(!(alMkt(g)&&buyGood(w,g,1).v<=alLocal(N,g,1))){a.why="out";return 0}a.buy=1}   // own stock ran out at the source: buy there only if not dearer than at home
+  a.why="cash";if(!alMkt(g)){a.why="out";return 0}
   let q=Math.floor(Math.min(a.q,cap));for(let i=0;i<12&&q>=1;i++){const c=buyGood(w,g,q).v+fuel(q);if(S.cash>=c)break;q=Math.floor(q*Math.max(.1,Math.min(.9,(S.cash-fuel(0))/c)))}
   if(q<1)return 0;const B=buyGood(w,g,q);if(S.cash<B.v+fuel(q))return 0;S.cash-=B.v;B.commit();if(alTick.off)alTick.off.b+=B.v;
   if(!depart(v,w,N,"",now,{g,q})){S.cash+=B.v;return 0}return q}
 /* a trip is only worth it if its fuel (all legs) costs no more than the load is worth in the needy city: stops planes hauling cheap fuel */
 const alWorth=(fuel,q,N,g)=>fuel<=q*px(N,g);
-const alMkt=g=>!!G[g]&&G[g][2]!=="gov"&&g!=="uranium";
+const alMkt=g=>!S.alNoBuy&&!!G[g]&&G[g][2]!=="gov"&&g!=="uranium";
 const alLocal=(N,g,q)=>g==="fuel"?px(N,"fuel")*1.1:buyGood(N,g,q).v/q;   // unit price of buying in the needy city itself (fuel: as a manager restock, +10%; goods: the Buy button, +15%)
 /* buy up to `want` units of n.g in the needy city itself (no vehicle). Returns units bought, or -1 when it could not (cash / room). */
 function alBuyLocal(n,now,want,bridge){const N=n.c,g=n.g,mk=N.id+":"+g,gn=G[g][0].toLowerCase();if(!alMkt(g)||unhOn(N))return 0;let q=Math.floor(want);if(q<1)return 0;let cost=0,got=0,short=false;
@@ -9098,7 +9098,7 @@ function alBuyLocal(n,now,want,bridge){const N=n.c,g=n.g,mk=N.id+":"+g,gn=G[g][0
   if(got<1){alOnce(mk+"$b",`not enough cash to buy ${gn} in ${N.name}`);return -1}
   if(short)alOnce(mk+"$b",`not enough cash to buy all the ${gn} needed in ${N.name}`);else delete S.alMiss[mk+"$b"];delete S.alMiss[mk+"$r"];if(alTick.off){alTick.off.b+=cost;alTick.off.lb=(alTick.off.lb||0)+1}
   (alTick.src=alTick.src||{})[mk]=N.name+" (bought locally)";alOnce(mk+"L",bridge?`buying ${gn} in ${N.name} to bridge the gap until the next vehicle arrives`:`buying ${gn} in ${N.name} itself (cheaper than a trip, or no trip possible)`);return got}
-function alFetch(n,spare,now){const N=n.c,g=n.g,mkt=G[g][2]!=="gov"&&g!=="uranium";
+function alFetch(n,spare,now){const N=n.c,g=n.g,mkt=alMkt(g);
   const KM={},km=(a,b)=>{const k=a.id<b.id?a.id+"-"+b.id:b.id+"-"+a.id;return KM[k]!=null?KM[k]:(KM[k]=distKm(a,b))};
   const idle=S.fleet.filter(v=>v.city!=null&&!v.arr&&!v.route&&!v.job&&!v.cargo&&!v.al&&v.hm==null&&CITIES[v.city]&&!unhOn(CITIES[v.city]));
   const src=[];for(const id in S.wh){const w=CITIES[id];if(!w||w===N||S.wh[id]==null||lxBlock(w,N))continue;const own=spare(w,g)>=1;
@@ -9403,7 +9403,7 @@ function dvSetF(k,val){const f=DV.f;if(k==="rep")f.rep=!!val;else if(k==="q")f.q
 function dvPage(){const now=Date.now(),rows=dvRows(),A=S.fleet.filter(v=>v.al&&v.al.fx&&v.al.st!=="back").length,idle=S.fleet.filter(dvIdle).length;
   let units=0,val=0;for(const v of S.fleet)if(v.arr&&v.cargo&&G[v.cargo.g]){units+=v.cargo.q;const d=CITIES[v.dest];val+=v.cargo.q*(d?px(d,v.cargo.g):G[v.cargo.g][1])}
   const k=(lb,v,ft,extra)=>`<div class="mdx-card"><span>${lb}</span><b>${v}</b><small>${ft}</small>${extra||""}</div>`;
-  let h=`<div class="mdx-kpis dv-k">${k("Active deliveries",rows.filter(r=>r.st!=="Parked").length,`${rows.filter(r=>r.st==="Outbound").length} outbound · ${rows.filter(r=>r.st==="Returning").length} returning`)}${k("Fetch trips",A,"Auto-line city-to-city")}${k("Vehicles",`${idle} / ${S.fleet.length-idle}`,"idle / busy")}${k("Goods in transit",lxg(units),`worth ${fmt(val)}`)}${k("Auto-line",S.aline?"ON":"OFF",S.aline?"keeping stock topped up":"automatic restock off",`<button class="lx-btn${S.aline?" on":""}" data-dv="aline" aria-pressed="${S.aline}">${S.aline?"Turn off":"Turn on"}</button>`)}</div>`;
+  let h=`<div class="mdx-kpis dv-k">${k("Active deliveries",rows.filter(r=>r.st!=="Parked").length,`${rows.filter(r=>r.st==="Outbound").length} outbound · ${rows.filter(r=>r.st==="Returning").length} returning`)}${k("Fetch trips",A,"Auto-line city-to-city")}${k("Vehicles",`${idle} / ${S.fleet.length-idle}`,"idle / busy")}${k("Goods in transit",lxg(units),`worth ${fmt(val)}`)}${k("Auto-line",S.aline?"ON":"OFF",S.aline?"keeping stock topped up":"automatic restock off",`<button class="lx-btn${S.aline?" on":""}" data-dv="aline" aria-pressed="${S.aline}">${S.aline?"Turn off":"Turn on"}</button>`)}${k("Auto-buy from market",S.alNoBuy?"OFF":"ON",S.alNoBuy?"only your own depot stock is moved":"buys goods when no depot has them",`<button class="lx-btn${S.alNoBuy?"":" on"}" data-dv="albuy" aria-pressed="${!S.alNoBuy}">${S.alNoBuy?"Turn on":"Turn off"}</button>`)}</div>`;
   if(DV.note&&now-DV.nt<8000)h+=`<div class="lx-note" role="status" style="${/^(Need|No |Not|That|Pick|Trucks|Could)/.test(DV.note)?"color:#b91c1c":""}">${dxE(DV.note)}</div>`;
   h+=`<div class="mdx-card"><div class="mdx-ch"><h3>Active deliveries</h3><span style="margin-left:auto;display:flex;align-items:center;gap:6px;font:600 12px Figtree,sans-serif;color:#2563eb"><span class="mdx-live"></span>Live</span></div>`;
   if(!rows.length)h+=`<div class="mdx-empty">No deliveries under way. Turn on Auto-line or create one below.</div>`;
@@ -9453,6 +9453,7 @@ function dvAct(a,b){const id=b.dataset.id,now=Date.now(),v=S.fleet.find(x=>Strin
   if(b.getAttribute("aria-disabled")==="true"){dvNote(b.title||"Not available");dvRender(true);return}
   if(a==="close"){dvClose();return}if(a==="theme"){themeSet(themeGet()==="dark"?"light":"dark");b.innerHTML=themeIco();return}
   if(a!=="cancel"&&a!=="alcan"&&a!=="lcan"&&a!=="rcan")DV.arm=null;
+  if(a==="albuy"){S.alNoBuy=!S.alNoBuy;dvNote(S.alNoBuy?"Auto-buy off: Auto-line only moves your own stock.":"Auto-buy on: Auto-line buys at the market when no depot has the goods.");done=true}
   if(a==="aline"){S.aline=!S.aline;if(S.aline)alTick(now);dvNote(S.aline?"Auto-line on.":"Auto-line off. Trips under way finish.");done=true}
   else if(a==="recall"&&v){const ok=v.job?lxRecall(v):dvRecall(v);dvNote(ok?`${VEH[v.type].n} #${v.id} is heading back${v.cargo?" with its load":""}.`:"That vehicle is already heading back.");done=ok}
   else if(a==="cancel"&&v){if(dvArm("c"+v.id)){const ok=dvCancel(v);dvNote(ok?`Cancelled: ${VEH[v.type].n} #${v.id} is heading back.`:"Nothing to cancel.");done=ok}}
