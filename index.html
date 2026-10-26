@@ -10025,7 +10025,7 @@ function ipoExec(o,q,now){const st=ipoStat(o,now),s0=ipoSent(o,now),s1=+ipoCl(s0
 const ipoStatTxt={live:"Live",halt:"Halted by the developer",dormant:"Dormant: founder away 14+ days, selling only",orphan:"Orphaned: founder away 30+ days, cash out at 90% of fair value",delisted:"Delisted: cash out at the buyout price"};
 /* ---- your listing (S.ipo) ---- */
 function ipoS(){let o=S.ipo;if(!o||typeof o!=="object"||Array.isArray(o))o=S.ipo={st:"none"};if(!["none","road","live"].includes(o.st))o.st="none";
-  for(const k of["N","pub","pool","E","E72","bk","paid","raised","fees","ban","bbq","bb0","soAt","sentAt","fAt","at","t0","skips","ipx","fl"])if(!Number.isFinite(o[k])||o[k]<0)o[k]=0;
+  for(const k of["N","pub","pool","E","E72","bk","paid","raised","fees","ban","bbq","bb0","soAt","sentAt","fAt","at","t0","skips","ipx","fl","sg","sq"])if(!Number.isFinite(o[k])||o[k]<0)o[k]=0;
   if(!(o.sent>=.8&&o.sent<=1.25))o.sent=1;if(!(o.mx>=.8&&o.mx<=1.3))o.mx=1;if(!Array.isArray(o.nws))o.nws=[];if(!Array.isArray(o.hist))o.hist=[];
   if(o.st!=="none"&&(!(o.N>=1e6)||!/^[A-Z]{3,5}$/.test(o.tk||"")))o.st="none";
   if(o.st==="live"){o.pub=Math.min(Math.floor(o.pub),Math.floor(o.N*IPOC.fmax));o.pool=Math.min(Math.floor(o.pool),o.pub)}return o}
@@ -10056,7 +10056,7 @@ function ipoList(now){const o=ipoS(),pl=ipoPlan(o.N,o.fl),m=pl.o;
   if(!pl.ok){o.st="none";ipoNews(o,`${o.tk} IPO pulled: under the 50% net worth cap the float would be under 10% (the $1M fee is spent)`);return}
   const g=m.E72>0?ipoCl(m.E/m.E72-1,-.5,1):0,dem=ipoCl(1+.05*g+.15*(m.mx-1)+(ipoMood(0,now)-1)+(Math.random()-.5)*.1,.9,1.1),px=pl.fair*dem;
   const pub=Math.max(Math.ceil(o.N*IPOC.fmin),Math.min(pl.pub,Math.floor(IPOC.cap*m.bk/px))),gross=Math.min(pub*px,IPOC.cap*m.bk),uw=gross*IPOC.uw,net=gross-uw;
-  S.cash+=net;Object.assign(o,{st:"live",E:m.E,E72:m.E72,mx:m.mx,bk:m.bk,pub,pool:pub,sent:+(1+Math.random()*.15).toFixed(4),sentAt:now,fAt:now,at:now,ipx:px,raised:net,fees:o.fees+uw,
+  S.cash+=net;Object.assign(o,{st:"live",E:m.E,E72:m.E72,mx:m.mx,bk:m.bk,pub,pool:pub,sent:+(1+Math.random()*.15).toFixed(4),sentAt:now,fAt:now,at:now,ipx:px,sg:gross,sq:pub,raised:net,fees:o.fees+uw,
     paid:0,skips:0,sk:0,hp:0,rep:{t:now,E:m.E},hist:[px],bb0:0,bbq:0,soAt:0,pubd:0,perr:""});
   ipoNews(o,`${o.tk} lists at ${fp(px)}: you raised ${fmt(net)} for ${ipoPct(pub/o.N)} of ${ipoName()}`);try{confetti()}catch(e){}}
 /* the mandatory dividend: the public share of every positive hour of profit, charged like wages (offline too, with accrue's 48 h cap) */
@@ -10072,7 +10072,10 @@ function ipoDay(quiet){ipoRec();const o=ipoS(),now=Date.now();if(o.st!=="live")r
   o.hist.push(ipoPx(o,now));if(o.hist.length>48)o.hist.splice(0,o.hist.length-48)}
 /* ---- founder actions: buy back, secondary offering, delist ---- */
 function ipoBBLeft(o,now){const cap=Math.floor(o.N*IPOC.bb);return now-(o.bb0||0)>=24*DAYMS?cap:Math.max(0,cap-(o.bbq||0))}
-const ipoBBPx=(o,now)=>Math.max(ipoPx(o,now),ipoFair(o,now,1))*(1+IPOC.spr)*IPOC.bbp;   // never below fair value, so a buyback can't lift net worth
+/* price floor for founder repurchases: never below the average price the public paid (IPO + secondaries).
+   Stops list -> sell the businesses -> buy back cheap. Honest bad luck costs ~7-10% over what was raised. */
+const ipoFloor=o=>o.sq>0&&o.sg>0?o.sg/o.sq:(o.ipx||0);
+const ipoBBPx=(o,now)=>Math.max(ipoPx(o,now),ipoFair(o,now,1),ipoFloor(o))*(1+IPOC.spr)*IPOC.bbp;   // never below fair value, so a buyback can't lift net worth
 const ipoSOPx=(o,now)=>ipoFair(o,now,1)*.95;
 const ipoMine=()=>IPO.uid?IPO.all[IPO.uid]||null:null;
 function ipoFTx(fn){const be=ipoBE();if(!be)return Promise.reject(new Error("offline"));const u=be.uid();IPO.busy=1;return be.tx(u,null,l=>({l:fn(l)})).then(w=>{ipoPatch(u,w&&w.l);return w}).finally(()=>{IPO.busy=0})}
@@ -10088,9 +10091,9 @@ async function ipoSO(frac){const o=ipoS(),now=Date.now();if(o.st!=="live"||IPO.b
   const px=ipoSOPx(o,now);let q=Math.min(Math.floor(o.N*frac),ipoSOMax(o,now),Math.floor(IPOC.cap*Math.max(0,o.bk)/Math.max(px,1e-9)));
   if(q<=0){toast(now-(o.soAt||0)<IPOC.soGap?"One secondary offering per 7 days":"You must keep 51% of your company");return}
   if(o.pubd)try{await ipoFTx(l=>{if(l.pub+q>Math.floor(l.N*IPOC.fmax))throw new Error("51%");return{pub:l.pub+q,pool:l.pool+q,soAt:"__ts"}})}catch(e){toast("Offering failed: "+(e&&e.message||e));return}
-  const gross=q*px,net=gross*(1-IPOC.uw);S.cash+=net;o.pub+=q;o.pool+=q;o.soAt=now;o.raised+=net;o.fees+=gross-net;
+  const gross=q*px,net=gross*(1-IPOC.uw);S.cash+=net;o.pub+=q;o.pool+=q;o.soAt=now;o.sg=(o.sg||0)+gross;o.sq=(o.sq||0)+q;o.raised+=net;o.fees+=gross-net;
   ipoNews(o,`${o.tk} sells ${ipoPct(q/o.N)} more of the company at ${fp(px)}: raised ${fmt(net)}`,1);toast(`Offering done: +${fmt(net)}`);save();hud();phRender()}
-function ipoDelPx(o,now){let p=Math.max(ipoPx(o,now),ipoFair(o,now,1));const d=o.pubd?ipoMine():null;if(d)p=Math.max(p,(d.E||0)*121/d.N,(d.ref||0)*.71);return p*1.1}
+function ipoDelPx(o,now){let p=Math.max(ipoPx(o,now),ipoFair(o,now,1),ipoFloor(o));const d=o.pubd?ipoMine():null;if(d)p=Math.max(p,(d.E||0)*121/d.N,(d.ref||0)*.71);return p*1.1}
 async function ipoDelist(){const o=ipoS(),now=Date.now();if(o.st!=="live"||IPO.busy)return;const px=ipoDelPx(o,now),cost=o.pub*px;if(S.cash<cost){toast(`Delisting costs ${fmt(cost)}`);return}
   const outPx=+px.toPrecision(8);
   if(o.pubd){try{await ipoFTx(l=>({st:"delisted",outPx}))}catch(e){toast("Delisting failed: "+(e&&e.message||e));return}try{ipoBE().untk(o.tk).catch(()=>{})}catch(e){}}
@@ -10195,7 +10198,7 @@ function ipoMineHtml(){const o=ipoS(),now=Date.now(),m=ipoMine();let h="";
       ${o.skips?ipoRow("Skipped dividends",o.skips,"#ef4444"):""}${ipoRow("Earnings (24 h avg)",fmt(o.E)+"/hr")}${ipoRow("Valued at",Math.round(ipoM(o))+" h of earnings")}${ipoRow("Fair price",fp(fair))}${ipoRow("Investor mood",(ipoSent(o,now)*100-100>=0?"+":"")+(ipoSent(o,now)*100-100).toFixed(1)+"%")}${ipoRow("Raised in total",fmt(o.raised||0))}</div>
     <p class="ph-sub" style="margin-top:6px">${IPO.uid?o.pubd?"Trading online: other players can buy your shares from the public pool.":o.perr?`<b style="color:#fbbf24">${devEsc(o.perr)}</b>`:"Publishing your listing online…":"Solo listing: AI investors hold the float. Sign in to let other players trade it."}</p>`;
   if(o.perr&&!o.pubd&&/taken/.test(o.perr))h+=`<div style="display:flex;gap:5px;margin-top:4px"><input class="ipo-in" data-ipo="tk2" maxlength="5" value="${devEsc(IPO.w.tk2||"")}" placeholder="New ticker" style="flex:1;min-width:0">${ipoBtn("ipoTk","Rename","",0,1)}</div>`;
-  h+=`<div style="margin-top:10px;font-weight:700;font-size:12px;color:#fff">Buy back shares <span style="font-weight:400;color:#cbd5e1">at ${fp(bbp)} (ask +5%, never below fair) · ${ipoPct(bbl/o.N)} left today</span></div>`+ipoGrid(3,[.01,.025,.05].map(f=>ipoBtn("ipoBB",`<b>${ipoPct(f)}</b><br>${fmt(Math.floor(o.N*f)*bbp)}`,f,!bbl||o.halt||!o.pub)).join(""));
+  h+=`<div style="margin-top:10px;font-weight:700;font-size:12px;color:#fff">Buy back shares <span style="font-weight:400;color:#cbd5e1">at ${fp(bbp)} (ask +5%, never below fair or the price shares were sold at) · ${ipoPct(bbl/o.N)} left today</span></div>`+ipoGrid(3,[.01,.025,.05].map(f=>ipoBtn("ipoBB",`<b>${ipoPct(f)}</b><br>${fmt(Math.floor(o.N*f)*bbp)}`,f,!bbl||o.halt||!o.pub)).join(""));
   h+=`<div style="margin-top:10px;font-weight:700;font-size:12px;color:#fff">Secondary offering <span style="font-weight:400;color:#cbd5e1">at ${fp(ipoSOPx(o,now))} (fair −5%)${som?"":" · "+(now-(o.soAt||0)<IPOC.soGap?"next in "+wevLeft(o.soAt+IPOC.soGap-now):"51% reached")}</span></div>`+ipoGrid(2,[.05,.1].map(f=>ipoBtn("ipoSO",`<b>Sell ${ipoPct(f)}</b><br>+${fmt(Math.min(Math.floor(o.N*f),Math.floor(o.N*IPOC.fmax)-o.pub)*ipoSOPx(o,now)*(1-IPOC.uw))}`,f,!som||o.halt)).join(""));
   h+=`<div style="margin-top:10px;font-weight:700;font-size:12px;color:#fff">Delist <span style="font-weight:400;color:#cbd5e1">buy every public share at ${fp(dp)}</span></div>`+ipoGrid(1,ipoBtn("ipoDel","Delist for "+fmt(o.pub*dp),"",S.cash<o.pub*dp));
   return h+ipoNewsHtml(o)}
