@@ -9182,6 +9182,7 @@ function alPlan(R,now){S.dvl=S.dvl||[];const P=S.alPause||{},cyc=(v,W,N)=>Math.m
     while(mine.length>1){const x=mine[mine.length-1],t=thr(x);if(cov-t<rate)break;cov-=t;mine.pop();S.dvl=S.dvl.filter(y=>y!==x)}   // use went down: drop spare trucks
     let guard=0;while(cov<rate&&made<24&&guard++<24){
       const ws=Object.keys(S.wh).map(i=>CITIES[i]).filter(w=>w&&w!==N&&S.wh[w.id]!=null&&inv0(w,g)>=1&&!lxBlock(w,N)).sort((a,b)=>distKm(a,N)-distKm(b,N));
+      if(!ws.length&&alMkt(g))ws.push(...Object.keys(S.wh).map(i=>CITIES[i]).filter(w=>w&&w!==N&&S.wh[w.id]!=null&&!lxBlock(w,N)).sort((a,b)=>distKm(a,N)-distKm(b,N)));   // no depot holds it: nearest depot city, buying a load at its market each trip
       let pick=null;for(const w of ws){const vs=S.fleet.filter(v=>dvIdle(v)&&!S.dvl.some(x=>x.on&&x.v===v.id)&&lxVehOK(v,CITIES[v.city],w)&&lxVehOK(v,w,N)&&capU(v.type,g)>=1).sort((a,b)=>distKm(CITIES[a.city],w)-distKm(CITIES[b.city],w));if(vs.length){pick={w,v:vs[0]};break}}
       if(!pick){if(!ws.length)alOnce(id+":"+g+"P",`no depot of yours holds ${G[g][0].toLowerCase()} to run a line to ${N.name}`);else alOnce(id+":"+g+"V",`no free vehicle for a ${G[g][0].toLowerCase()} line to ${N.name}`);break}
       const {w,v}=pick,line={id:S.nid++,v:v.id,src:w.id,to:N.id,g,q:capU(v.type,g),on:true,n:0,qd:0,why:"",t:now,au:1};S.dvl.push(line);mine.push(line);cov+=thr(line);made++;
@@ -9232,6 +9233,11 @@ function dvStep(v,now,depth){const a=v.al,line=a.ln?dvLine(a.ln):null,live=a.ln?
       else{if(depart(v,here,W,"",now))why("");else why("not enough cash for fuel");return}}
     else{const b=lxBlock(W,N);if(b){why(b);return}
       const q=Math.floor(Math.min(a.q,capU(v.type,a.g),inv0(W,a.g)));
+      if(q<1&&line&&line.au&&alMkt(a.g)){   // Auto-line standing line, depot empty: buy a load at that city's market and bring it
+        let bq=Math.floor(Math.min(a.q,capU(v.type,a.g)));const B=bq>=1?buyGood(W,a.g,bq):null,f=vFuel(v.type,distKm(W,N),bq*tpu(a.g),W,N);
+        if(!B||S.cash<B.v+f){why(`not enough cash to buy ${gn} in ${W.name}`);return}
+        S.cash-=B.v;B.commit();if(!depart(v,W,N,"",now,{g:a.g,q:bq})){S.cash+=B.v;why("not enough cash for fuel");return}
+        a.st="del";a.lq=bq;why("");return}
       if(q<1){if(line){why(`waiting for ${gn} in ${W.name}`);return}alOnce("cu"+v.id,`${nm}: no ${gn} left in ${W.name}, delivery to ${N.name} dropped`);a.st="back"}
       else{if(S.cash<vFuel(v.type,distKm(W,N),q*tpu(a.g),W,N)){why("not enough cash for fuel");return}
         const inv=S.inv[W.id];inv[a.g]-=q;if(inv[a.g]<1e-6)delete inv[a.g];
