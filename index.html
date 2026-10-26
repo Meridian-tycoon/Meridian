@@ -5406,6 +5406,71 @@ function drawRigs(ctx){const rs=rigs();if(!rs.length)return;const now=Date.now()
   ctx.restore()}
 /* Oil rig dashboard: full page in the same style as the HQ / Military dashboards */
 const RX={el:null,open:false,note:"",log:[]};
+/* FUEL EXPORT CONTRACTS (Offshore Oil dashboard).
+   Company contracts (local): big companies offer to buy refined fuel from your rigs at a premium; up to 4 open offers, a new one about every 6 game hours,
+   each expires after 2-4 game days. "Deliver" takes the fuel from your rigs' storage and pays at once.
+   Player orders (online, Firestore): rig owners list their fuel in fuelsell/{uid} {name,fuel,px,at}; another player orders fuelord/{id}
+   {by,byName,to,toName,q,px,city,st,at} and pays up front (held in their save). The seller fills (fuel leaves the rigs, seller is paid) or declines;
+   the buyer's game then lands the fuel in the chosen depot, or refunds a declined/cancelled order. Cash moves only inside each player's own save. */
+const FXCFG={max:4,every:6,expMin:2,expMax:4,premMin:1.05,premMax:1.35,qMin:.5,qMax:3,ordMax:5,asks:[.9,1,1.1,1.25]};
+const fx=()=>{if(!S.fx||typeof S.fx!=="object")S.fx={};const f=S.fx;if(!Array.isArray(f.of))f.of=[];if(!(f.next>0))f.next=0;if(!(f.done>=0))f.done=0;if(!(f.ask>0))f.ask=1;if(!f.ord||typeof f.ord!=="object")f.ord={};return f};
+const rigFuel=()=>rigs().reduce((a,r)=>a+(r.st&&r.st.fuel>0?r.st.fuel:0),0);
+function rigTake(q){let left=q;for(const r of rigs()){if(!r.st)continue;const t=Math.min(left,r.st.fuel||0);r.st.fuel-=t;left-=t;if(left<=0)break}return q-left}
+function fxTick(now){const f=fx(),rs=rigs();f.of=f.of.filter(o=>o.exp>now);if(!rs.length||f.of.length>=FXCFG.max||now<f.next)return;
+  const day=rs.reduce((a,r)=>a+rigDay(r).fuel+rigDay(r).oil*rigPx("oil")/rigPx("fuel")*RIGCFG.fuelX,0),R=(a,b)=>a+Math.random()*(b-a);
+  const co=RIVALS[Math.floor(Math.random()*RIVALS.length)].n,q=Math.max(100,Math.round(day*R(FXCFG.qMin,FXCFG.qMax)/100)*100),px=+(rigPx("fuel")*R(FXCFG.premMin,FXCFG.premMax)).toFixed(2);
+  f.of.push({id:(f.cid=(f.cid||0)+1),co,q,px,exp:now+R(FXCFG.expMin,FXCFG.expMax)*DAYMS});f.next=now+FXCFG.every*DAYMS/24*R(.6,1.4)}
+function fxDeliver(id){const f=fx(),o=f.of.find(x=>x.id===id);if(!o)return;rigTick(Date.now());if(rigFuel()<o.q)return toast(`${o.co} wants ${fmtN(o.q)} fuel: you have ${fmtN(rigFuel())} on your rigs`);
+  rigTake(o.q);const v=Math.round(o.q*o.px);S.cash+=v;S.earned=(S.earned||0)+v;try{wevAdd("oil",v)}catch(e){}f.done++;f.of=f.of.filter(x=>x!==o);toast(`🛢 Contract delivered: ${fmtN(o.q)} fuel to ${o.co} for ${fmt(v)}`)}
+/* online player orders */
+const FO={on:0,sub:{},sell:[],inb:[],out:[],last:0,busy:{},f:{to:"",q:"",city:""},err:""};
+const foOk=()=>!!(typeof ON!=="undefined"&&ON.db&&ON.user&&window.firebase);
+function foEnsure(){if(!foOk()){if(FO.on){for(const k in FO.sub)try{FO.sub[k]()}catch(e){}FO.sub={};FO.on=0}return}const uid=ON.user.uid,now=Date.now();
+  if(!FO.on&&(rigs().length||Object.keys(fx().ord).length||RX.open)){FO.on=1;const db=ON.db,arr=q=>{const a=[];q.forEach(d=>a.push(Object.assign({id:d.id},d.data()||{})));return a},er=w=>e=>{FO.err="Couldn't load "+w+": "+(e&&e.code||e)};
+    FO.sub.s=db.collection("fuelsell").orderBy("at","desc").limit(30).onSnapshot(q=>{FO.sell=arr(q).filter(x=>x.id!==uid);if(RX.open)rxRender()},er("sellers"));
+    FO.sub.i=db.collection("fuelord").where("to","==",uid).onSnapshot(q=>{FO.inb=arr(q);if(RX.open)rxRender()},er("incoming orders"));
+    FO.sub.o=db.collection("fuelord").where("by","==",uid).onSnapshot(q=>{FO.out=arr(q);foSettle();if(RX.open)rxRender()},er("your orders"))}
+  if(rigs().length&&now-FO.last>60000){FO.last=now;rigTick(now);const FV=window.firebase.firestore.FieldValue;
+    db0().collection("fuelsell").doc(uid).set({name:(onProf().name||"Tycoon").slice(0,20),fuel:Math.min(1e12,Math.floor(rigFuel())),px:Math.round(rigPx("fuel")*fx().ask*100)/100,at:FV.serverTimestamp()}).catch(e=>{FO.err="Couldn't list your fuel: "+(e&&e.code||e)})}}
+const db0=()=>ON.db;
+function foOrder(){const f=FO.f,uid=foOk()&&ON.user.uid,sl=FO.sell.find(x=>x.id===f.to),q=Math.floor(+String(f.q).replace(/[^0-9]/g,"")||0),c=CITIES[+f.city];if(!uid)return toast("Sign in to the online world first");
+  if(!sl)return toast("Pick a seller");if(!c||!hasWh(c))return toast("Pick one of your depots to receive the fuel");if(q<100)return toast("Order at least 100 fuel");if(q>sl.fuel)return toast(`${sl.name} only has ${fmtN(sl.fuel)} fuel`);
+  if(FO.out.filter(o=>o.st==="open").length>=FXCFG.ordMax)return toast(`At most ${FXCFG.ordMax} open orders`);const cost=Math.round(q*sl.px);if(S.cash<cost)return toast(`That order costs ${fmt(cost)}`);if(FO.busy.ord)return;
+  FO.busy.ord=1;S.cash-=cost;const ref=ON.db.collection("fuelord").doc();fx().ord[ref.id]=cost;save();hud();const FV=window.firebase.firestore.FieldValue;
+  ref.set({by:uid,byName:(onProf().name||"Tycoon").slice(0,20),to:sl.id,toName:String(sl.name||"Tycoon").slice(0,20),q,px:+sl.px,city:c.id,st:"open",at:FV.serverTimestamp()})
+    .then(()=>{delete FO.busy.ord;FO.f.q="";toast(`📨 Ordered ${fmtN(q)} fuel from ${sl.name} for ${fmt(cost)} (paid up front, refunded if declined)`);rxRender()},
+      e=>{delete FO.busy.ord;delete fx().ord[ref.id];S.cash+=cost;save();hud();toast("Order refused: "+(e&&e.code||e))})}
+/* seller: fill or decline an incoming order */
+function foFill(id,ok){const o=FO.inb.find(x=>x.id===id);if(!o||o.st!=="open"||FO.busy[id])return;const q=Math.floor(+o.q||0),v=Math.round(q*(+o.px||0));
+  if(ok){rigTick(Date.now());if(rigFuel()<q)return toast(`You need ${fmtN(q)} fuel on your rigs (you have ${fmtN(rigFuel())})`)}FO.busy[id]=1;const ref=ON.db.collection("fuelord").doc(id);
+  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists||d.data().st!=="open")throw new Error("order is no longer open");t.update(ref,{st:ok?"filled":"declined"})})
+    .then(()=>{delete FO.busy[id];if(ok){rigTake(q);S.cash+=v;S.earned=(S.earned||0)+v;try{wevAdd("oil",v)}catch(e){}toast(`🛢 Sold ${fmtN(q)} fuel to ${o.byName} for ${fmt(v)}`)}else toast(`Order from ${o.byName} declined`);save();hud();rxRender()},
+      e=>{delete FO.busy[id];toast("Couldn't update the order: "+(e&&e.message||e))})}
+/* buyer: cancel an open order, and settle filled / declined ones (once, guarded by the status change) */
+function foCancel(id){const o=FO.out.find(x=>x.id===id);if(!o||o.st!=="open"||FO.busy[id])return;FO.busy[id]=1;const ref=ON.db.collection("fuelord").doc(id);
+  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists||d.data().st!=="open")throw new Error("the seller already answered");t.update(ref,{st:"cancel"})})
+    .then(()=>{delete FO.busy[id];const f=fx(),v=f.ord[id]!=null?f.ord[id]:Math.round(o.q*o.px);delete f.ord[id];S.cash+=v;save();hud();toast(`Order cancelled: ${fmt(v)} refunded`);rxRender()},e=>{delete FO.busy[id];toast("Couldn't cancel: "+(e&&e.message||e))})}
+function foSettle(){for(const o of FO.out){if(!(o.st==="filled"||o.st==="declined")||FO.busy[o.id])continue;FO.busy[o.id]=1;const ref=ON.db.collection("fuelord").doc(o.id);
+  ON.db.runTransaction(async t=>{const d=await t.get(ref);const st=d.exists&&d.data().st;if(st!=="filled"&&st!=="declined")throw new Error("settled");t.update(ref,{st:"done"});return st})
+    .then(st=>{delete FO.busy[o.id];const f=fx(),v=f.ord[o.id]!=null?f.ord[o.id]:Math.round(o.q*o.px);delete f.ord[o.id];
+      if(st==="filled"){const c=CITIES[o.city]||CITIES[0];ensureWh(c);const iv=S.inv[c.id];iv.fuel=(iv.fuel||0)+Math.floor(o.q);toast(`🛢 ${fmtN(o.q)} fuel from ${o.toName} arrived in ${c.name}`)}
+      else{S.cash+=v;toast(`${o.toName} declined your fuel order: ${fmt(v)} refunded`)}save();hud();if(RX.open)rxRender()},()=>{delete FO.busy[o.id]})}}
+setInterval(()=>{try{fxTick(Date.now());foEnsure()}catch(e){}},5000);
+function fxHtml(){const now=Date.now(),f=fx(),have=rigFuel(),uid=foOk()&&ON.user.uid,whs=Object.keys(S.wh||{}).filter(i=>S.wh[i]!=null&&CITIES[i]).map(i=>CITIES[i]);
+  const btn=(a,k,t,dis,bg)=>`<button class="mdx-pill" data-rx="${a}" data-v="${dxE(String(k))}" ${dis?"disabled":""} style="border:0;cursor:pointer;color:#fff;background:${bg||"#0f766e"};opacity:${dis?.5:1}">${t}</button>`;
+  const sel=(id,v,opts,ph)=>`<select data-fo="${id}" style="max-width:100%">${ph?`<option value="">${ph}</option>`:""}${opts.map(([k,t])=>`<option value="${dxE(String(k))}"${String(k)===String(v)?" selected":""}>${dxE(t)}</option>`).join("")}</select>`;
+  let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Export contracts</h3><small style="margin-left:auto;opacity:.6">${f.done} delivered</small></div>`+
+    (rigs().length?(f.of.length?`<div class="mdx-rows">${f.of.map(o=>{const v=o.q*o.px,pr=Math.round((o.px/rigPx("fuel")-1)*100);return `<div><span>🏢 <b>${dxE(o.co)}</b> wants ${fmtN(o.q)} fuel<br><small>${fmt(o.px)}/unit (+${pr}% over market) · expires in ${fmtDur(o.exp-now)}</small></span>${btn("fxdel",o.id,"Deliver · "+fmt(v),have<o.q)}</div>`}).join("")}</div>`:`<div class="mdx-empty">No offers right now. Companies send new ones every few hours.</div>`)
+      +`<div class="mdx-note">Fuel comes out of your rigs' storage (${fmtN(have)} on board now) and is paid on delivery.</div>`:`<div class="mdx-empty">Build a rig to get export offers.</div>`)+`</div>`;
+  h+=`<div class="mdx-card"><div class="mdx-ch"><h3>Player fuel market</h3></div>`;
+  if(!uid)h+=`<div class="mdx-empty">Sign in to the online world to trade fuel with other players.</div>`;
+  else{if(FO.err)h+=`<div class="mdx-empty">${dxE(FO.err)}</div>`;
+    if(rigs().length)h+=`<div class="mdx-rows"><div><span>Your asking price<br><small>${fmt(rigPx("fuel")*f.ask)}/unit · listed with ${fmtN(have)} fuel</small></span>${sel("ask",f.ask,FXCFG.asks.map(a=>[a,Math.round(a*100)+"% of market"]))}</div></div>`;
+    const inb=FO.inb.filter(o=>o.st==="open");if(inb.length)h+=`<div class="mdx-ch" style="margin-top:10px"><h3>Orders for your fuel</h3></div><div class="mdx-rows">${inb.map(o=>`<div><span><b>${dxE(o.byName)}</b> wants ${fmtN(o.q)} fuel<br><small>${fmt(o.px)}/unit · ${fmt(o.q*o.px)} paid on filling</small></span><span style="display:flex;gap:6px">${btn("fofill",o.id,"Fill",have<o.q)}${btn("fodec",o.id,"Decline",0,"#475569")}</span></div>`).join("")}</div>`;
+    const sl=FO.sell.filter(x=>x.fuel>=100);h+=`<div class="mdx-ch" style="margin-top:10px"><h3>Buy from a player</h3></div>`+(sl.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${sel("to",FO.f.to,sl.map(x=>[x.id,`${x.name} · ${fmtN(x.fuel)} fuel · ${fmt(x.px)}/unit`]),"Seller")}
+      <input data-fo="q" value="${dxE(FO.f.q)}" placeholder="Amount" inputmode="numeric" style="width:100px">${sel("city",FO.f.city,whs.map(c=>[c.id,"to "+c.name]),"Deliver to depot")}${btn("foord",0,"Order")}</div><div class="mdx-note">You pay when you order; a decline or cancel refunds you. Fuel lands in your depot once the seller fills it.</div>`:`<div class="mdx-empty">No other player is selling fuel right now.</div>`);
+    const mine=FO.out.filter(o=>o.st!=="done"&&o.st!=="cancel");if(mine.length)h+=`<div class="mdx-ch" style="margin-top:10px"><h3>Your orders</h3></div><div class="mdx-rows">${mine.map(o=>`<div><span>${fmtN(o.q)} fuel from <b>${dxE(o.toName)}</b><br><small>${fmt(o.q*o.px)} · ${o.st==="open"?"waiting for the seller":o.st==="filled"?"filled, arriving":"declined, refunding"}</small></span>${o.st==="open"?btn("focan",o.id,"Cancel",0,"#475569"):""}</div>`).join("")}</div>`}
+  return h+`</div>`}
 function rxOpen(){if(!document.getElementById("mdx-css")){const st=document.createElement("style");st.id="mdx-css";st.textContent=DXCSS;document.head.appendChild(st)}
   if(!RX.el){const el=RX.el=document.createElement("div");el.className="mdx-win mx-win";el.setAttribute("role","dialog");el.setAttribute("aria-label","Oil rig dashboard");document.body.appendChild(el);
     el.addEventListener("click",e=>{const b=e.target.closest("[data-rx]");if(!b)return;const a=b.dataset.rx,k=+b.dataset.k;
@@ -5413,13 +5478,15 @@ function rxOpen(){if(!document.getElementById("mdx-css")){const st=document.crea
       if(a==="pmt"){rigPermit();save();hud();rxRender();return}if(a==="build"){rxClose();rigStart();return}
       if(a==="up"){rigUp(k);save();hud();rxRender();return}
       if(a==="sell"){rigSell(k);save();hud();rxRender();return}
+      {const v=b.dataset.v;if(a==="fxdel"){fxDeliver(+v);save();hud();rxRender();return}if(a==="foord"){foOrder();return}if(a==="fofill"){foFill(v,1);return}if(a==="fodec"){foFill(v,0);return}if(a==="focan"){foCancel(v);return}}
       if(a==="tkbuy"){const s=el.querySelector(`[data-rxtk="${k}"]`);if(s){rigTkBuy(+s.value,b.dataset.v);save();hud()}rxRender();return}
       if(a==="tksell"){rigTkSell(k,+b.dataset.v);save();hud();rxRender();return}
       if(a==="ship"){const s=el.querySelector(`[data-rxto="${k}"]`);if(s){rigShip(k,+s.value);save();hud()}rxRender();return}
       if(a==="go"){const r=rigs().find(x=>x.id===k);if(r){rxClose();MM.flyTo({center:[r.lon,r.lat],zoom:4})}return}})}
+  if(!RX.el._fo){RX.el._fo=1;const up=e=>{const t=e.target.closest&&e.target.closest("[data-fo]");if(!t)return;const k=t.dataset.fo;if(k==="ask"){fx().ask=+t.value||1;FO.last=0;save()}else FO.f[k]=t.value};RX.el.addEventListener("change",up);RX.el.addEventListener("input",up)}
   const vw=innerWidth,vh=innerHeight,el=RX.el;if(vw<560){el.classList.add("mdx-full");Object.assign(el.style,{left:"0px",top:"0px",width:vw+"px",height:vh+"px"})}
   else{el.classList.remove("mdx-full");const w=Math.min(1100,vw-48),h=Math.min(780,vh-48);Object.assign(el.style,{left:(vw-w)/2+"px",top:(vh-h)/2+"px",width:w+"px",height:h+"px"})}
-  el.style.display="flex";RX.open=true;rxRender();clearInterval(RX.iv);RX.iv=setInterval(()=>{if(!RX.open)return clearInterval(RX.iv);if(RX.el.contains(document.activeElement)&&document.activeElement.tagName==="SELECT")return;rxRender()},2000)}
+  el.style.display="flex";RX.open=true;rxRender();clearInterval(RX.iv);RX.iv=setInterval(()=>{if(!RX.open)return clearInterval(RX.iv);if(RX.el.contains(document.activeElement)&&/^(SELECT|INPUT)$/.test(document.activeElement.tagName))return;rxRender()},2000)}
 function rxClose(){RX.open=false;clearInterval(RX.iv);if(RX.el)RX.el.style.display="none"}
 function rxRender(){if(!RX.el)return;const sb=RX.el.querySelector(".mdx-body"),sy=sb?sb.scrollTop:0;try{rxDraw()}finally{const nb=RX.el.querySelector(".mdx-body");if(nb&&sy)nb.scrollTop=sy}}
 function rxDraw(){const now=Date.now();rigTick(now);const C=RIGCFG,rs=rigs(),pm=S.rigPmt||{},whs=Object.keys(S.wh||{}).filter(i=>S.wh[i]!=null&&CITIES[i]).map(i=>CITIES[i]);
@@ -5434,6 +5501,7 @@ function rxDraw(){const now=Date.now();rigTick(now);const C=RIGCFG,rs=rigs(),pm=
     <div class="mdx-card"><div class="mdx-ch"><h3>Platforms</h3></div>${rs.length?`<div class="mdx-tblw"><table class="mdx-tbl"><tr><th>Rig</th><th>Level</th><th>Output/day</th><th>On board</th><th>Storage</th><th></th></tr>${rs.map(r=>{const L=rigLv(r),f=full(r);return `<tr><td><b>${dxE(r.n)}</b><br><small>${dxE(L.n)} · self-powered</small></td><td>${r.lv}/5</td><td>${fmt(L.val)}</td><td>${fmtN(r.st?r.st.oil:0)} crude<br>${fmtN(r.st?r.st.fuel:0)} fuel</td><td><div style="width:80px;height:8px;border-radius:4px;background:var(--dxline)"><i style="display:block;height:100%;width:${Math.round(f*100)}%;border-radius:4px;background:${f>=1?"#dc2626":f>.7?"#d97706":"#16a34a"}"></i></div><small>${Math.round(f*100)}%${f>=1?" · full, pumping stopped":""}</small></td><td>${btn("go",r.id,"Map",0,"#475569")}</td></tr>`}).join("")}</table></div>`:`<div class="mdx-empty">No rigs yet. Get a drilling permit, then build one in the ocean.</div>`}</div>
     <div class="mdx-card"><div class="mdx-ch"><h3>Ship oil to a depot</h3></div>${!rs.length?`<div class="mdx-empty">Build a rig first.</div>`:!whs.length?`<div class="mdx-empty">Open a depot (warehouse) in a city to ship your oil there.</div>`:`<div class="mdx-rows">${rs.map(r=>`<div><span>${dxE(r.n)}</span><span style="display:flex;gap:6px;align-items:center"><select data-rxto="${r.id}">${whs.map(c=>`<option value="${c.id}">${dxE(c.name)} · ${fmtN(whRoom(c))} t free</option>`).join("")}</select>${btn("ship",r.id,"🛳️ Ship to",!rigTkFree(r,now).length,"#1d4ed8")}</span></div><div><small>${rigTk(r).length?`${rigTkFree(r,now).length} of ${rigTk(r).length} tankers in port · next load up to ${fmtN(rigTkFree(r,now).length?RIGCFG.tk[rigTkFree(r,now)[0].k].cap:0)} t`:"No tankers yet: oil only leaves by ship"}</small></div>`).join("")}</div>`}</div>
     <div class="mdx-card"><div class="mdx-ch"><h3>Sell surplus to market</h3></div>${rs.length?`<div class="mdx-rows">${rs.map(r=>{const v=(r.st?r.st.fuel:0)*rigPx("fuel")*C.sell;return `<div><span>${dxE(r.n)}<br><small>${fmtN(r.st?r.st.fuel:0)} fuel</small></span>${btn("sell",r.id,"Sell "+fmt(v),v<1,"#7c2d12")}</div>`}).join("")}</div><div class="mdx-note">Refined fuel only, sold straight from the rig at ${Math.round(C.sell*100)}% of the market price. Crude oil can't be exported.</div>`:`<div class="mdx-empty">Build a rig first.</div>`}</div>
+    ${fxHtml()}
     <div class="mdx-card"><div class="mdx-ch"><h3>Tanker fleet</h3></div>${rs.length?`<div class="mdx-tblw"><table class="mdx-tbl"><tr><th>Tanker</th><th>Rig</th><th>Status</th><th></th></tr>${rs.flatMap(r=>rigTk(r).map(t=>`<tr><td>${dxE(C.tk[t.k].n)} #${t.id}<br><small>${fmtN(C.tk[t.k].cap)} t</small></td><td>${dxE(r.n)}</td><td>${t.back>now?`At sea · back in ${fmtDur(t.back-now)}`:"In port"}</td><td>${t.back>now?"":`<button class="mdx-pill" data-rx="tksell" data-k="${r.id}" data-v="${t.id}" style="border:0;cursor:pointer;color:#fff;background:#475569">Sell ${fmt(C.tk[t.k].cost*.6)}</button>`}</td></tr>`)).join("")||`<tr><td colspan="4">No tankers yet.</td></tr>`}</table></div>
       <div class="mdx-ch" style="margin-top:12px"><h3>Buy tankers</h3><select data-rxtk="0" style="margin-left:auto">${rs.map(r=>`<option value="${r.id}">for ${dxE(r.n)}</option>`).join("")}</select></div><div class="mdx-rows">${Object.entries(C.tk).map(([k,T])=>`<div><span>🛳️ ${dxE(T.n)}<br><small>${fmtN(T.cap)} t of fuel per trip · ${T.spd>1?`${Math.round((T.spd-1)*100)}% slower`:"fastest"}</small></span><button class="mdx-pill" data-rx="tkbuy" data-k="0" data-v="${k}" ${S.cash<T.cost?"disabled":""} style="border:0;cursor:pointer;color:#fff;background:#0f766e;opacity:${S.cash<T.cost?.5:1}">Buy ${fmt(T.cost)}</button></div>`).join("")}</div>`:`<div class="mdx-empty">Build a rig first.</div>`}</div>
     <div class="mdx-card"><div class="mdx-ch"><h3>Shipments at sea</h3></div><div class="mdx-tblw">${sea.length?`<table class="mdx-tbl"><tr><th>From</th><th>Cargo</th><th>To</th><th>Arrives</th></tr>${sea.map(x=>`<tr><td>${dxE(x.r.n)}</td><td>${fmtN(x.q)} ${dxE(G[x.g][0].toLowerCase())}</td><td>${dxE(CITIES[x.to].name)}</td><td>${fmtDur(Math.max(0,x.arr-now))}</td></tr>`).join("")}</table>`:`<div class="mdx-empty">No ships at sea.</div>`}</div></div></div>

@@ -322,6 +322,41 @@ service cloud.firestore {
     // Done = the carrier adds {done} with server time between eta and dl. Cancel = shipper deletes before acceptance. Delete after done must come in the same batch as
     // transfers/f<id> paying the carrier the full pay (existsAfter/getAfter), so a haul cannot be settled without paying. An accepted haul that is not done by dl may be deleted by the shipper (refund).
     // If the shipper never settles, the carrier may claim 24 h after done (see Claim); a claimed haul can no longer be paid by transfer, so it is never paid twice.
+    // ---------- Fuel market (index.html fx*/fo*): rig owners list fuel, other players order it ----------
+    // fuelsell/{uid}: a rig owner's listing. fuelord/{id}: an order from buyer `by` to seller `to`. Cash and fuel move only inside each player's own save.
+    match /fuelsell/{uid} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'fuel', 'px', 'at'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 20
+        && request.resource.data.fuel is int && request.resource.data.fuel >= 0 && request.resource.data.fuel <= 1000000000000
+        && request.resource.data.px is number && request.resource.data.px > 0 && request.resource.data.px <= 1000000
+        && request.resource.data.at == request.time;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+    match /fuelord/{id} {
+      allow read: if request.auth != null && (resource.data.by == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['by', 'byName', 'to', 'toName', 'q', 'px', 'city', 'st', 'at'])
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.to is string && request.resource.data.to != request.auth.uid && request.resource.data.to.size() <= 128
+        && request.resource.data.byName is string && request.resource.data.byName.size() <= 20
+        && request.resource.data.toName is string && request.resource.data.toName.size() <= 20
+        && request.resource.data.q is int && request.resource.data.q >= 100 && request.resource.data.q <= 1000000000000
+        && request.resource.data.px is number && request.resource.data.px > 0 && request.resource.data.px <= 1000000
+        && request.resource.data.city is int && request.resource.data.city >= 0 && request.resource.data.city < 10000
+        && request.resource.data.st == 'open' && request.resource.data.at == request.time;
+      // the seller fills or declines an open order
+      allow update: if request.auth != null && resource.data.to == request.auth.uid && resource.data.st == 'open'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st'])
+        && request.resource.data.st in ['filled', 'declined'];
+      // the buyer cancels an open order, or marks a filled / declined one settled
+      allow update: if request.auth != null && resource.data.by == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st'])
+        && ((resource.data.st == 'open' && request.resource.data.st == 'cancel')
+            || (resource.data.st in ['filled', 'declined'] && request.resource.data.st == 'done'));
+      allow delete: if request.auth != null && resource.data.by == request.auth.uid && resource.data.st in ['done', 'cancel'];
+    }
     match /freight/{id} {
       allow read: if request.auth != null;
       allow create: if request.auth != null
