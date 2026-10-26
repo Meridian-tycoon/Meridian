@@ -9143,7 +9143,8 @@ function alTick(now){S.alMiss=S.alMiss||{};
     if(v.city===a.home||!h||!hasWh(h)){v.al=null;continue}   // push: back home: free it; at drop-off: drive home empty
     if(!v.cargo&&!v.route&&!v.job&&!depart(v,CITIES[v.city],h,"",now)){v.al=null}}
   try{dvLines(now)}catch(e){console.warn("dv",e)}   // repeating custom lines run whether Auto-line is on or off
-  if(!S.aline)return;
+  if(!S.aline){if((S.dvl||[]).some(x=>x.au))S.dvl=S.dvl.filter(x=>!x.au);return}   // Auto-line off: its standing lines stop (vehicles finish the leg and drive back)
+  try{alPlan(R,now)}catch(e){console.warn("al",e)}
   alGasFill();
   for(const n of alNeeds(R)){const mk=n.c.id+":"+n.g,gn=G[n.g][0].toLowerCase(),lu=alMkt(n.g)?alLocal(n.c,n.g,Math.max(1,n.want)):Infinity,min=Math.max(1,n.rate*AL_MINH);let sent=0,r="";
     // several trips at once: keep sending while stock + inbound is under AL_FILL hours, free vehicles exist and fewer than AL_PAR run
@@ -9170,6 +9171,22 @@ function alTick(now){S.alMiss=S.alMiss||{};
     if(r==="src"||r==="veh"||r==="dear"||r==="local"){alOnce(mk,r==="src"?`no city with a depot of yours holds or sells ${gn} for ${n.c.name}`:r==="dear"?`fetching ${gn} for ${n.c.name} would cost more in fuel than it is worth`:r==="local"?`${gn} is cheapest to buy in ${n.c.name} itself; no trip sent`:`no free vehicle can fetch ${gn} for ${n.c.name}`);continue}
     delete S.alMiss[mk];if(r==="cash")alOnce(mk+"$",`not enough cash to fetch ${gn} for ${n.c.name}`)}
   alGasFill()}
+/* Standing lines: for every city + good your businesses use, keep enough of your own vehicles looping depot → city non-stop
+   to match the use rate (units/h), whatever the stock level. Lines show in the Deliveries dashboard (au:1) and stop when Auto-line is off. */
+function alPlan(R,now){S.dvl=S.dvl||[];const P=S.alPause||{},cyc=(v,W,N)=>Math.max(.05,(legMs(v,W,N)+legMs(v,N,W))/DAYMS);let made=0;
+  for(const id in R){const N=CITIES[id];for(const g in R[id]){const rate=R[id][g];if(!(rate>0)||!G[g])continue;
+    const mine=S.dvl.filter(x=>x.au&&x.to===N.id&&x.g===g);
+    if(P[id+":"+g]){if(mine.length)S.dvl=S.dvl.filter(x=>!mine.includes(x));continue}
+    const thr=x=>{const v=S.fleet.find(y=>y.id===x.v),W=CITIES[x.src];return v&&W?x.q/cyc(v,W,N):0};
+    let cov=0;for(const x of mine)cov+=thr(x);
+    while(mine.length>1){const x=mine[mine.length-1],t=thr(x);if(cov-t<rate)break;cov-=t;mine.pop();S.dvl=S.dvl.filter(y=>y!==x)}   // use went down: drop spare trucks
+    let guard=0;while(cov<rate&&made<24&&guard++<24){
+      const ws=Object.keys(S.wh).map(i=>CITIES[i]).filter(w=>w&&w!==N&&S.wh[w.id]!=null&&inv0(w,g)>=1&&!lxBlock(w,N)).sort((a,b)=>distKm(a,N)-distKm(b,N));
+      let pick=null;for(const w of ws){const vs=S.fleet.filter(v=>dvIdle(v)&&!S.dvl.some(x=>x.on&&x.v===v.id)&&lxVehOK(v,CITIES[v.city],w)&&lxVehOK(v,w,N)&&capU(v.type,g)>=1).sort((a,b)=>distKm(CITIES[a.city],w)-distKm(CITIES[b.city],w));if(vs.length){pick={w,v:vs[0]};break}}
+      if(!pick){if(!ws.length)alOnce(id+":"+g+"P",`no depot of yours holds ${G[g][0].toLowerCase()} to run a line to ${N.name}`);else alOnce(id+":"+g+"V",`no free vehicle for a ${G[g][0].toLowerCase()} line to ${N.name}`);break}
+      const {w,v}=pick,line={id:S.nid++,v:v.id,src:w.id,to:N.id,g,q:capU(v.type,g),on:true,n:0,qd:0,why:"",t:now,au:1};S.dvl.push(line);mine.push(line);cov+=thr(line);made++;
+      alLog(`${VEH[v.type].n} #${v.id} now runs ${G[g][0].toLowerCase()} ${w.name} → ${N.name} non-stop`)}}}
+  if(made)dvLines(now)}
 /* Offline catch-up: when a long gap is being accrued and Auto-line is on (or its vehicles are still out), step the gap in
    AL_STEP slices of game time so deliveries arrive, unload, drive home and get re-dispatched, interleaved with income,
    fuel spending, shop stock (gas stations pumping) and the businesses' stock draw. Short (online) gaps take the single-step path.
