@@ -2492,7 +2492,7 @@ const hourOf=t=>Math.floor(t/DAYMS);
 function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=(totals().inc+(typeof ishFinHr==="function"?ishFinHr():0))*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
 function accrue(){if(S.dead)return 0;const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);if(typeof popTick==="function")popTick(dt/DAYMS);if(typeof careerTick==="function")careerTick(dt/DAYMS);
-  if(typeof runTrip==="function")runTrip(now);const{g,sold}=alRun(now,dt,Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}try{lxTick(now)}catch(e){console.warn("lxTick",e)}try{flipTick(now)}catch(e){console.warn("flipTick",e)}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
+  if(typeof runTrip==="function")runTrip(now);const{g,sold}=alRun(now,dt,Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}try{lxTick(now)}catch(e){console.warn("lxTick",e)}try{flipTick(now)}catch(e){console.warn("flipTick",e)}try{crtTick(now)}catch(e){console.warn("crtTick",e)}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,168);
@@ -3130,13 +3130,13 @@ const wfMe=()=>(CITIES[(S.home||{city:0}).city]||CITIES[0]).country;
 function wfCR(){const d=wf();if(!Array.isArray(d.cr))d.cr=[];for(const x of d.cr)if(x&&x.end<=(S.day||0)&&RIVALS[x.a]&&(x.b===-1||RIVALS[x.b]))STF.push(x);d.cr=d.cr.filter(x=>x&&RIVALS[x.a]&&(x.b===-1||RIVALS[x.b])&&x.end>(S.day||0));return d.cr}
 function wfOff(){const d=wf();if(!Array.isArray(d.off))d.off=[];const n=Date.now(),p=pol();d.off=p.r>=0&&p.c?d.off.filter(x=>x&&x.exp>n&&x.to===p.c):[];return d.off}
 /* rival company in a feud with the player: cities they share earn a little less */
-function wfFeudHit(c){try{const cr=(S.wf&&S.wf.cr)||[];let m=1;for(const x of cr)if(x.b===-1&&x.end>(S.day||0)&&S.rivals[x.a]&&S.rivals[x.a].cities.includes(c.id))m*=WFCFG.cr.hit;return m}catch(e){return 1}}
+function wfFeudHit(c){try{const cr=(S.wf&&S.wf.cr)||[];let m=1;for(const x of cr)if(x.b===-1&&x.end>(S.day||0)&&!crtInj("co:"+x.a)&&S.rivals[x.a]&&S.rivals[x.a].cities.includes(c.id))m*=WFCFG.cr.hit;return m}catch(e){return 1}}
 function wfFeud(quiet){const C=WFCFG.cr,cr=wfCR(),pick=x=>x[Math.floor(Math.random()*x.length)];if(cr.length>=C.max||Math.random()>C.p)return null;
   const a=Math.floor(Math.random()*RIVALS.length),mine=Object.keys(S.own||{}).length>0;let b;
-  if(mine&&Math.random()<C.you&&!cr.some(x=>x.a===a&&x.b===-1))b=-1;else{const o=RIVALS.map((_,j)=>j).filter(j=>j!==a&&!cr.some(x=>(x.a===a&&x.b===j)||(x.a===j&&x.b===a)));if(!o.length)return null;b=pick(o)}
+  if(mine&&Math.random()<C.you&&!cr.some(x=>x.a===a&&x.b===-1)&&!crtInj("co:"+a))b=-1;else{const o=RIVALS.map((_,j)=>j).filter(j=>j!==a&&!cr.some(x=>(x.a===a&&x.b===j)||(x.a===j&&x.b===a)));if(!o.length)return null;b=pick(o)}
   const x={a,b,end:(S.day||0)+C.days[0]+Math.floor(Math.random()*(C.days[1]-C.days[0]+1))};cr.push(x);
   const m=b===-1?`${RIVALS[a].n} declared a corporate rivalry against your company`:`${RIVALS[a].n} started a corporate rivalry with ${RIVALS[b].n}`;
-  if(wfAuth())wfSay(m);if(!quiet){S.log.unshift(m);S.log=S.log.slice(0,3)}return x}
+  if(wfAuth())wfSay(m);if(!quiet){S.log.unshift(m);S.log=S.log.slice(0,3)}if(b===-1)try{crtFeud(a,quiet)}catch(e){}return x}
 /* AI money pick for a rival: a feuding company pushes its own HQ country against its enemy's */
 function wfFeudPair(i){const x=wfCR().find(y=>y.a===i||y.b===i);if(!x)return null;const e=x.a===i?x.b:x.a,a=wfHQ(i),b=e===-1?wfMe():wfHQ(e);return a&&b&&a!==b&&!wfAtWar(a,b)?[a,b]:null}
 function wfBack(quiet){const p=pol(),off=wfOff(),B=WFCFG.back;if(!(p.r>=0&&p.c)||off.length>=B.max||Math.random()>B.p)return null;
@@ -4108,7 +4108,7 @@ function trPick(id,pol){const os=LG().offers.filter(o=>o.from===id);if(!os.lengt
   const key={pay:o=>-o.pay,rate:o=>-o.pay/jobDur(o),near:o=>o.km,fast:o=>jobDur(o)}[pol];return key?os.sort((a,b)=>key(a)-key(b))[0]:null}
 function runLogi(){const l=LG(),now=Date.now();
   for(const j of l.jobs.filter(j=>now>=j.arr)){const h=HB(j.from);S.cash+=j.pay;S.earned=(S.earned||0)+j.pay;l.earned+=j.pay;l.done++;l.tons+=j.tons;l.rep[j.ri]=Math.min(50,repOf(j.ri)+1);
-    h.done++;h.earned+=j.pay;h.tons+=j.tons;if(j.late){l.late++;h.late++}
+    h.done++;h.earned+=j.pay;h.tons+=j.tons;if(j.late){l.late++;h.late++;try{crtLate(j,now-j.arr>60000)}catch(e){}}
     l.hist.unshift({t:now,day:S.day||1,hub:j.from,to:j.to,g:j.g,tons:j.tons,ri:j.ri,pay:j.pay,late:!!j.late});l.hist.length=Math.min(l.hist.length,60);
     S.log.unshift(`Trucking: delivered ${j.tons} t of ${j.g} for ${RIVALS[j.ri].n}, +${fmt(j.pay)}`);S.log=S.log.slice(0,3)}
   l.jobs=l.jobs.filter(j=>now<j.arr);l.offers=l.offers.filter(o=>o.exp>now&&(S.own[o.from]||{}).trucking);
@@ -4122,7 +4122,7 @@ function carrierQuote(i,c,d,q,g){q=g&&G[g]?q*Math.max(.25,tpu(g)):q;const C=CARR
   return{km,sea,price:Math.max(300,Math.round(km*q*C.rate*(sea?.7:1)*(1-Math.min(.2,(LG().rep[i]||0)*.004))*fxHire())),ms:Math.max(5*60000,km/(base*C.spd)*DAYMS),rel:C.rel}}
 S.hired=S.hired||[];
 function runHired(now){for(const h of S.hired.filter(x=>now>=x.arr)){const d=CITIES[h.to];ensureWh(d);
-    if(h.lost){S.log.unshift(`${RIVALS[h.ri].n} lost your ${G[h.g][0].toLowerCase()} shipment. Refunded ${fmt(h.price)}`);S.cash+=h.price}
+    if(h.lost){S.log.unshift(`${RIVALS[h.ri].n} lost your ${G[h.g][0].toLowerCase()} shipment. Refunded ${fmt(h.price)}`);S.cash+=h.price;try{crtCargo(h)}catch(e){}}
     else{S.inv[d.id][h.g]=(S.inv[d.id][h.g]||0)+h.q;S.log.unshift(`${RIVALS[h.ri].n} delivered ${gq(h.q)} ${G[h.g][0].toLowerCase()} to ${d.name}`)}S.log=S.log.slice(0,3)}
   S.hired=S.hired.filter(x=>now<x.arr)}
 let hireF={g:"",d:"",q:0};
@@ -4567,8 +4567,8 @@ function polHour(quiet){const p=S.pol;if(!p)return;pol();const C=GOVCFG;
   for(const n in p.ctrl){const c=p.ctrl[n];c.loy=Math.max(0,Math.min(100,c.loy+C.loyDrift*(1-presFx("loy"))+(!polLeader()||p.appr<35?C.loyLowAppr:0)));
     if(c.loy<C.loyLose&&Math.random()<.25){delete p.ctrl[n];if(!quiet)logPol(`${n} broke away from your influence`)}}
   if(typeof milHour==="function")milHour(quiet)}
-function govApp(){const p=pol();const seg=`<div class="ph-seg gov-seg" style="margin-bottom:8px"><button data-ph="govtab" data-k="mis" aria-pressed="${govTab==="mis"}"><i>🎯</i>Missions</button><button data-ph="govtab" data-k="pol" aria-pressed="${govTab==="pol"}"><i>🗳</i>Politics</button><button data-ph="govtab" data-k="mil" aria-pressed="${govTab==="mil"}"><i>⚔</i>Military</button><button data-ph="govtab" data-k="bunk" aria-pressed="${govTab==="bunk"}"><i>🛡</i>Bunker</button><button data-ph="govtab" data-k="air" aria-pressed="${govTab==="air"}"><i>✈</i>Air One</button><button data-ph="govtab" data-k="g1" aria-pressed="${govTab==="g1"}"><i>🚙</i>Ground One</button><button data-ph="govtab" data-k="s1" aria-pressed="${govTab==="s1"}"><i>🛳</i>Sea One</button><button data-ph="govtab" data-k="off" aria-pressed="${govTab==="off"}"><i>🏛</i>Office</button></div>`;
-  const gn=govNotesHtml(),nh=gn?`<div class="ph-card"><b>Government notices</b><span>${gn}</span></div>`:"";if(govTab==="mil")return seg+phInvCard()+milApp()+nh;if(govTab==="bunk")return seg+phInvCard()+bunkApp()+nh;if(govTab==="off")return seg+phInvCard()+officeApp()+nh;if(govTab==="air")return seg+phInvCard()+airApp()+nh;if(govTab==="g1")return seg+phInvCard()+g1App()+nh;if(govTab==="s1")return seg+phInvCard()+s1App()+nh;if(govTab==="mis")return seg+phInvCard()+misApp()+intApp()+nh;return seg+phInvCard()+govApp0()+nh}
+function govApp(){const p=pol();const seg=`<div class="ph-seg gov-seg" style="margin-bottom:8px"><button data-ph="govtab" data-k="mis" aria-pressed="${govTab==="mis"}"><i>🎯</i>Missions</button><button data-ph="govtab" data-k="pol" aria-pressed="${govTab==="pol"||govTab==="court"}"><i>🗳</i>Politics</button><button data-ph="govtab" data-k="mil" aria-pressed="${govTab==="mil"}"><i>⚔</i>Military</button><button data-ph="govtab" data-k="bunk" aria-pressed="${govTab==="bunk"}"><i>🛡</i>Bunker</button><button data-ph="govtab" data-k="air" aria-pressed="${govTab==="air"}"><i>✈</i>Air One</button><button data-ph="govtab" data-k="g1" aria-pressed="${govTab==="g1"}"><i>🚙</i>Ground One</button><button data-ph="govtab" data-k="s1" aria-pressed="${govTab==="s1"}"><i>🛳</i>Sea One</button><button data-ph="govtab" data-k="off" aria-pressed="${govTab==="off"}"><i>🏛</i>Office</button></div>`;
+  const gn=govNotesHtml(),nh=gn?`<div class="ph-card"><b>Government notices</b><span>${gn}</span></div>`:"";if(govTab==="mil")return seg+phInvCard()+milApp()+nh;if(govTab==="bunk")return seg+phInvCard()+bunkApp()+nh;if(govTab==="off")return seg+phInvCard()+officeApp()+nh;if(govTab==="air")return seg+phInvCard()+airApp()+nh;if(govTab==="g1")return seg+phInvCard()+g1App()+nh;if(govTab==="s1")return seg+phInvCard()+s1App()+nh;if(govTab==="mis")return seg+phInvCard()+misApp()+intApp()+nh;const cs=(()=>{try{const x=S.court;return x?(x.claims||[]).length+(x.cases||[]).length:0}catch(e){return 0}})(),sub=`<div class="ph-seg"><button data-ph="govtab" data-k="pol" aria-pressed="${govTab!=="court"}">🗳 Politics</button><button data-ph="govtab" data-k="court" aria-pressed="${govTab==="court"}">⚖️ Courts${cs?` (${cs})`:""}</button></div>`;if(govTab==="court")return seg+sub+phInvCard()+crtHtml()+nh;return seg+sub+phInvCard()+govApp0()+nh}
 function phInvCard(){const d=dip(),inv=d.inv;if(!inv)return "";const w=(S.wars||[]).find(x=>x.id===inv.w);if(!w)return "";const rc=Math.round(warCost(w)*DIPCFG.rallyCost),tc=warCost(w),warn=inv.stage===1;
   const bt=(a,t,dis)=>`<button class="buy" data-ph="${a}" style="flex:1;color:#fff;background:#7c2d12!important;border-color:#f59e0b" ${dis?"disabled":""}>${t}</button>`;
   return `<div class="ph-card" style="border:1px solid #b91c1c;background:#7f1d1d33"><b>⚠ ${inv.by} ${warn?"threatens":"is invading"} ${inv.n}</b>
@@ -5908,7 +5908,7 @@ function intCheck(k,n,b){const pc=pol().c;
 function intExpose(n,T){const x=intSt(),p=pol(),pc=p.c,C=INTCFG.expose,out=[];const lv=intNet(n);if(lv>0){x.net[n]=lv-1;if(!x.net[n]){delete x.net[n];delete x.nu[n]}out.push("asset lost")}
   if(pc&&pc!==n&&!wfAtWar(pc,n)){intAddTens(n,pc,C.tens);out.push(`tension with ${n} +${C.tens}`)}
   p.appr=Math.max(0,(+p.appr||0)-C.appr);out.push(`approval −${C.appr}`);
-  stNews(`🕵️ ${n} exposes a ${pc||"foreign"} ${T.s} operation and expels diplomats`);return "EXPOSED: "+out.join(", ")}
+  stNews(`🕵️ ${n} exposes a ${pc||"foreign"} ${T.s} operation and expels diplomats`);try{crtExpose(n,T);out.push(`${n} sues at the International Court`)}catch(e){}return "EXPOSED: "+out.join(", ")}
 function intEffect(k,n,b,x,now){const d=dip(),K=v=>{const o=x.intel[n]=x.intel[n]&&typeof x.intel[n]==="object"?x.intel[n]:{};o[v]=now+INTCFG.dur*DAYMS},pc=pol().c;
   if(k==="humint"){const lv=Math.min(INTCFG.maxNet,intNet(n)+1);x.net[n]=lv;x.nu[n]=now;K("o");return `asset recruited · network level ${lv}/${INTCFG.maxNet}`}
   if(k==="sigint"){K("s");const nt=Object.keys(wfView().tens||{}).filter(q=>q.split("|").includes(n)).length,ns=aim().inc.filter(y=>y.at>now&&(y.att===n||y.def===n)).length;return `comms intercepted: ${nt} tension meter${nt===1?"":"s"}, ${ns} strike${ns===1?"":"s"} in flight`}
@@ -5916,7 +5916,7 @@ function intEffect(k,n,b,x,now){const d=dip(),K=v=>{const o=x.intel[n]=x.intel[n
   if(k==="osint"){K("o");return "open-source profile updated"}
   if(k==="cyber"){if(d.gdp[n]>0)d.gdp[n]*=.98;return `${n}'s grid and banks hit, GDP −2%`}
   if(k==="heist"){const amt=Math.round(intCost(k,n)*INTCFG.heist*(.8+.4*Math.random()));S.cash+=amt;if(d.gdp[n]>0)d.gdp[n]*=.995;return `${fmt(amt)} siphoned into a black account`}
-  if(k==="ci"){x.ci=Math.min(now+2*DAYMS,Math.max(x.ci,now)+DAYMS);let r=`home shielded for ${fmtDur(x.ci-now)}`;if(Math.random()<.5){const p=pol();p.appr=Math.min(100,(+p.appr||0)+2);stNews(`🛡 ${pc} arrests a foreign spy ring`);r+=" · spy ring arrested, approval +2"}return r}
+  if(k==="ci"){x.ci=Math.min(now+2*DAYMS,Math.max(x.ci,now)+DAYMS);let r=`home shielded for ${fmtDur(x.ci-now)}`;if(Math.random()<.5){const p=pol();p.appr=Math.min(100,(+p.appr||0)+2);let sn=null;try{sn=crtSpyRing(pc)}catch(e){}stNews(`🛡 ${pc} arrests ${sn?`a ${sn}`:"a foreign"} spy ring`);r+=` · ${sn?sn+" ":""}spy ring arrested, approval +2${sn?", grounds to sue":""}`}return r}
   if(k==="stir"){const v=intAddTens(n,b,12+Math.random()*6),inc=["a border shooting","a sunk fishing boat","a hacked ministry","a bombed embassy car","leaked war plans"][Math.floor(Math.random()*5)];
     stNews(`${n} blames ${b} for ${inc}; tensions rise`);return `${n} now blames ${b} · tension ${intRemote()?"≈":""}${Math.round(v)} (${wfStage(v)[1]})${intRemote()?" once the world updates":""}`}
   if(k==="calm"){const t0=intTens(n,b),v=intAddTens(n,b,-20),rr=[];if(t0>0&&!intRemote())rr.push(`tension ${n}–${b} now ${Math.round(v)}`);let r="";const w=(S.wars||[]).find(w=>w&&!w.gid&&w.l>=1&&w.l<=2&&wfPair(w.a,w.b)===wfPair(n,b));
@@ -5936,7 +5936,7 @@ function intRun(k,n,b){const T=INTCFG.op[k],x=intSt(),now=Date.now(),p=pol(),pc=
   x.log.unshift({t:now,k,n,b:T.two?b:null,ok:ok?1:0,c,res,exp});x.log=x.log.slice(0,INTCFG.keep);
   const tx=`${T.s} ${T.n}${T.self?"":` · ${n}${T.two?" / "+b:""}`}: ${res}`;logPol(tx);save();hud();return (ok?"✅ ":"❌ ")+tx}
 // counterintelligence: a planned enemy strike on you is foiled (called from wpnRetal once k is rolled)
-function intFoil(n,k,quiet){if(!intCiOn()||Math.random()>=INTCFG.ciFoil)return false;const t=`🛡 Counterintelligence foiled a planned ${(WPNCFG.w[k]||{n:"missile"}).n.toLowerCase()} strike by ${n}`;
+function intFoil(n,k,quiet){if(!intCiOn()||Math.random()>=INTCFG.ciFoil*(crtInj("gov:"+n)?2:1))return false;try{crtPlot(n,k)}catch(e){}const t=`🛡 Counterintelligence foiled a planned ${(WPNCFG.w[k]||{n:"missile"}).n.toLowerCase()} strike by ${n}`;
   S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);if(!quiet){toast(t);stNews(t)}return true}
 function intApp(){if(!intOn())return `<div class="ph-card"><b>🕵️ Intelligence Agency</b><span>Locked. Buy <b>Intelligence Agency</b> (${fmt(PRES_ITEMS.intel.price)}) in the presidential office shop: spies, satellites, cyber operations, false flags and back-channel diplomacy against any country.</span><button class="buy" data-ph="govtab" data-k="off" style="width:100%;margin-top:8px">🏛 Go to the Office tab to buy it</button></div>`;
   if(!polLeader())return `<div class="ph-card"><b>🕵️ Intelligence Agency</b><span>Your agency only takes orders from the Leader. Win back the top office to run operations.</span></div>`;
@@ -7194,7 +7194,7 @@ function frClaimed(id,v){const x=FS(),m=x.my[id];if(m){delete x.my[id];ensureWh(
 function frSweep(){if(!ON.user||!ON.db||!FR.got)return;const now=Date.now(),x=FS(),uid=ON.user.uid,by={};for(const d of FR.docs)by[d.id]=d.data;
   for(const id in x.my){if(FR.infl[id])continue;const m=x.my[id],v=by[id];
     if(!v){FR.infl[id]=1;ON.db.collection("freight").doc(id).get().then(s=>{delete FR.infl[id];if(!s.exists)frRefund(id,false)},()=>{delete FR.infl[id]});continue}
-    if(v.claim)frClaimed(id,v);else if(v.done)frSettle(id,v);else if(!v.carrier?now>m.dl:now>m.dl+FR_GRACE)frDelete(id,false)}
+    if(v.claim)frClaimed(id,v);else if(v.done)frSettle(id,v);else if(!v.carrier?now>m.dl:now>m.dl+FR_GRACE){if(v.carrier)try{crtFrMiss(id,m,v)}catch(e){}frDelete(id,false)}}
   for(const id in x.owe){if(FR.infl[id])continue;const v=by[id];if(v&&v.claim){const o=x.owe[id];delete x.owe[id];frLog({r:"paid",g:o.g,q:o.q,a:o.pay,n:o.nm+" (from escrow)"});save();frDrop(id)}else if(v)frPay(id);else delete x.owe[id]}
   for(const d of FR.docs){const v=d.data,id=d.id;if(v.shipper===uid&&!x.my[id]&&!x.owe[id]&&!FR.infl[id]&&(v.claim||!v.done&&(!v.carrier?now>v.dl:now>v.dl+FR_GRACE)))frDrop(id);
     /* stale posts nobody took, a day past their deadline: anyone may clear them (the shipper is refunded on return) */
@@ -7206,7 +7206,7 @@ function frSweep(){if(!ON.user||!ON.db||!FR.got)return;const now=Date.now(),x=FS
     if(v.claim){S.cash+=r.pay;frLog({r:"earned",g:r.g,q:r.q,a:r.pay,n:"from escrow"});delete x.run[id];save();hud();frPaint();continue}
     if(v.done&&!r.done){r.done=1;save()}
     else if(v.done&&frDoneMs(v)&&now>frDoneMs(v)+FR_CLAIM+60000){FR.infl["r"+id]=1;ON.db.collection("freight").doc(id).update({claim:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete FR.infl["r"+id];if(x.run[id]){S.cash+=r.pay;frLog({r:"earned",g:r.g,q:r.q,a:r.pay,n:"from escrow"});delete x.run[id];toast(`${r.sh} never settled: you claimed the ${fmt(r.pay)} they escrowed`);save();hud();frPaint()}},()=>{delete FR.infl["r"+id]})}
-    else if(!r.done&&now>r.dl+FR_GRACE){frLog({r:"lost",g:r.g,q:r.q,a:r.pay});delete x.run[id];save();frPaint()}
+    else if(!r.done&&now>r.dl+FR_GRACE){frLog({r:"lost",g:r.g,q:r.q,a:r.pay});try{crtFrLost(id,r)}catch(e){}delete x.run[id];save();frPaint()}
     else if(!r.done&&now>=r.eta){FR.infl["r"+id]=1;ON.db.collection("freight").doc(id).update({done:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete FR.infl["r"+id];r.done=1;toast(`Haul delivered, payment of ${fmt(r.pay)} is coming from ${r.sh}`);save();frPaint()},e=>{delete FR.infl["r"+id]})}}}
 if(onEnabled())setInterval(()=>{try{frSweep()}catch(e){console.warn("fr",e)}},15000);
 /* phone: Freight app */
@@ -8786,8 +8786,8 @@ const aimHuman=n=>{const pc=dipPlayerC();if(n===pc||(S.pol&&S.pol.c===n&&S.pol.r
 function aimArc(from,c){if(typeof trjAdd!=="function"||document.visibilityState!=="visible")return;const now=Date.now();
   if(_trj.filter(f=>f.ai&&now<f.t0+f.dur+f.fade).length>=AIMCFG.arcs)return;const f=trjAdd(from,c,"msl",now,trjMs("msl"),"ai"+from+c.id+now);if(f){f.ai=1;f.sp=1;if(typeof wpnAnim==="function")wpnAnim()}}
 function aimHit(att,c,quiet){const a=aim(),C=AIMCFG,now=Date.now(),o=S.own&&S.own[c.id];if(!o||!Object.keys(o).length)return 0;
-  const dm=C.hit*(intCiOn()?INTCFG.ciDmg:1);a.h=a.h.filter(x=>now<x.until);a.h.push({city:c.id,t:now,until:now+C.hitDays*DAYMS,dmg:dm});if(!quiet)toast(`🚀 ${att}'s missile hit ${c.name}: your businesses there lose ${Math.round(dm*100)}% demand for a day${dm<C.hit?" (counterintelligence halved it)":""}`);return 1}
-function aimFire(att,def,w,quiet,prov){const cs=ctyCities(def);if(!cs.length)return;const C=AIMCFG,o=cap(att);
+  const ij=crtInj("gov:"+att),dm=C.hit*(intCiOn()?INTCFG.ciDmg:1)*(ij?.5:1);try{crtMsl(att,c,quiet)}catch(e){}a.h=a.h.filter(x=>now<x.until);a.h.push({city:c.id,t:now,until:now+C.hitDays*DAYMS,dmg:dm});if(!quiet)toast(`🚀 ${att}'s missile hit ${c.name}: your businesses there lose ${Math.round(dm*100)}% demand for a day${ij?" (court injunction halved it)":dm<C.hit?" (counterintelligence halved it)":""}`);return 1}
+function aimFire(att,def,w,quiet,prov){const cs=ctyCities(def);if(!cs.length)return;if(prov&&def===dipPlayerC()&&crtInj("gov:"+att))return;const C=AIMCFG,o=cap(att);
   let c;if(prov){const s=cs.slice().sort((x,y)=>kmBetween(o,x)-kmBetween(o,y));c=s[0]}else c=cs[Math.floor(Math.random()*cs.length)];if(!c)return;
   const sea=prov?Math.random()<.5:0;
   if(prov){const d=wf(),k=wfPair(att,def),T=d.tens[k]=d.tens[k]||{v:0,f:{}},was=wfStage(T.v)[1];T.v=Math.min(95,(+T.v||0)+C.tens);T.t=Date.now();d.dirty=1;
@@ -9259,6 +9259,132 @@ function dvAct(a,b){const id=b.dataset.id,now=Date.now(),v=S.fleet.find(x=>Strin
     if(err)dvNote(err);else{dvNote(DV.f.rep?`Line started: ${dvGn(F.g)} ${F.W.name} → ${F.N.name}, repeating.`:`${VEH[F.v.type].n} #${F.v.id} is on its way: ${dvGn(F.g)} × ${lxg(F.q)} to ${F.N.name}.`);DV.f.q=0;DV.f.rep=false;done=true}}
   if(done){save();hud();if(typeof draw==="function")draw();if(sel&&mode==="city"&&tab==="wh"&&sheet.classList.contains("open")&&!shipForm)renderSheet()}
   dvRender(true)}
+/* ---------- Courts and lawsuits (Government app › Politics › ⚖️ Courts) ----------
+   Grounds to sue ("claims") are recorded by events and can be filed within CRTCFG.exp game days:
+   a hired rival carrier lost your cargo (runHired), an online carrier missed a haul's deadline (frSweep), a rival company declared a feud on you (wfFeud),
+   counterintelligence arrested a foreign spy ring or foiled a planned strike (intEffect ci / intFoil), an AI government's missile hit your businesses outside a war with you (aimHit).
+   Company claims go to the National Court; claims against governments go to the International Court and only an office holder can file them.
+   Filing costs a court fee plus the lawyer tier; the hearing comes CRTCFG.hear game days later. Odds = base + evidence + your lawyer − their lawyer.
+   Win: damages plus costs paid by the court fund (never out of another player's cash), or an injunction (part damages and the rival / country is barred for inj days:
+   a rival can't feud with you, a country's provocation launches at you stop and its missiles do half damage to your businesses, counter-intel foils its strikes twice as often).
+   Lose: pay their costs; international cases cost approval, company cases cost reputation with that carrier. Part-way through, the other side offers to settle.
+   You get sued when your spies are exposed (intExpose), when your trucking contract runs late (runLogi) or when you lose an online haul (frSweep):
+   settle, hire a better lawyer, or let the public defender take it. Local to this save, no Firestore.
+   Optional save field: S.court {claims:[], cases:[], hist:[], inj:{"co:<rival>"|"gov:<country>": until ms}, keys:[], nid, won, lost}. */
+const CRTCFG={exp:3,maxClaims:10,maxCases:6,keep:20,hear:{nat:.25,int:.5},settleAt:.35,
+  fee:{nat:[.03,200],int:[.03,20000]},
+  lw:[{n:"Public defender",ic:"🧑‍⚖️",r:0,min:0,o:0},{n:"Law firm",ic:"💼",r:.06,min:300,o:.12},{n:"Elite firm",ic:"🏛️",r:.14,min:1500,o:.22}],
+  opp:{co:.08,gov:.1,pl:.04},base:.32,evW:.4,inj:{co:5,gov:4},injCut:.5,lose:{cost:1.5,appr:2,rep:5},sueLate:.3};
+const CRT={tier:1,rem:"dmg",off:[]};
+function crtSt(){const x=S.court=S.court&&typeof S.court==="object"&&!Array.isArray(S.court)?S.court:{},now=Date.now();
+  for(const k of ["claims","cases","hist","keys"])if(!Array.isArray(x[k]))x[k]=[];if(!x.inj||typeof x.inj!=="object"||Array.isArray(x.inj))x.inj={};
+  for(const k of ["nid","won","lost"])x[k]=Number.isFinite(+x[k])&&+x[k]>=0?Math.floor(+x[k]):0;
+  const ok=o=>o&&typeof o==="object"&&["co","gov","pl"].includes(o.who)&&typeof o.n==="string"&&Number.isFinite(+o.amt)&&+o.amt>0&&(o.who!=="co"||!!RIVALS[o.ri]);
+  x.claims=x.claims.filter(c=>ok(c)&&+c.exp>now).slice(0,CRTCFG.maxClaims);
+  x.cases=x.cases.filter(c=>ok(c)&&Number.isFinite(+c.at)&&Number.isFinite(+c.t));
+  for(const c of x.cases){c.lw=Math.max(0,Math.min(2,c.lw|0));c.ev=Math.max(0,Math.min(1,+c.ev||0));for(const k of ["fee","spent","so"])c[k]=Math.max(0,+c[k]||0);c.def=c.def?1:0;c.court=c.who==="gov"?"int":"nat";if(c.rem!=="inj"||c.who==="pl")c.rem="dmg"}
+  x.hist=x.hist.filter(h=>h&&typeof h==="object"&&typeof h.txt==="string").slice(0,CRTCFG.keep);
+  x.keys=x.keys.filter(k=>typeof k==="string").slice(0,60);
+  for(const k in x.inj)if(!(+x.inj[k]>now))delete x.inj[k];return x}
+const crtInj=k=>{const j=S.court&&S.court.inj;return !!(j&&+j[k]>Date.now())};
+const crtCourt=w=>w==="gov"?"int":"nat";
+const crtCN=c=>c==="int"?"International Court":"National Court";
+const crtFee=(amt,court)=>{const f=CRTCFG.fee[court]||CRTCFG.fee.nat;return Math.round(Math.max(f[1],amt*f[0]))};
+const crtLwCost=(amt,i)=>{const W=CRTCFG.lw[i];return W&&W.r?Math.round(Math.max(W.min,amt*W.r)):0};
+const crtMe=()=>String((S.online&&S.online.name)||S.name||"Meridian Holdings").slice(0,24);
+const crtBy=c=>c.court==="int"?((S.pol&&S.pol.c)||"your government"):crtMe();
+const crtInjKey=c=>c.who==="co"?"co:"+c.ri:c.who==="gov"?"gov:"+c.n:"";
+// your chance to win: plaintiff = base + evidence + your lawyer − theirs; defendant = 1 − (their base + evidence + their lawyer − yours)
+function crtOdds(c,lw){const C=CRTCFG,W=C.lw[lw==null?c.lw:lw]||C.lw[0],o=C.opp[c.who]||0,e=C.base+C.evW*(+c.ev||0);
+  return Math.max(.08,Math.min(.92,c.def?1-(e+o-W.o):e+W.o-o))}
+// extra evidence from the Intelligence Agency for cases against governments
+function crtEvB(cl){const r=[];if(cl.who!=="gov")return r;try{
+  if(cl.k==="spy"||cl.k==="plot"){if(intKnow(cl.n,"s"))r.push(["SIGINT intercepts",.15]);const lv=intNet(cl.n);if(lv)r.push([`spy network level ${lv}`,.04*lv])}
+  if(cl.k==="msl"&&intKnow(cl.n,"i"))r.push(["satellite imagery",.1])}catch(e){}return r}
+const crtEv=cl=>Math.min(1,(+cl.ev||0)+crtEvB(cl).reduce((a,b)=>a+b[1],0));
+const crtDefSettle=c=>Math.round(c.amt*(.3+.5*(1-crtOdds(c))));
+function crtLog(m){S.log.unshift("Courts: "+m);S.log=S.log.slice(0,3)}
+function crtKey(x,k){if(!k)return true;if(x.keys.includes(k))return false;x.keys.unshift(k);x.keys=x.keys.slice(0,60);return true}
+/* a ground to sue: o = {k, who:"co"|"gov"|"pl", ri, n, amt, ev, txt, key, quiet} */
+function crtClaim(o){try{const x=crtSt();if(!o||!(o.amt>0)||(o.who==="co"&&!RIVALS[o.ri])||!crtKey(x,o.key))return null;const now=Date.now();
+  const cl={id:++x.nid,k:String(o.k||""),who:o.who,ri:o.who==="co"?o.ri:null,n:String(o.n||"?").slice(0,40),amt:Math.max(100,Math.round(o.amt)),ev:Math.max(0,Math.min(1,+o.ev||0)),txt:String(o.txt||"").slice(0,120),t:now,exp:now+CRTCFG.exp*DAYMS};
+  x.claims.unshift(cl);x.claims=x.claims.slice(0,CRTCFG.maxClaims);crtLog(`grounds to sue ${cl.n} for ${fmt(cl.amt)}`);if(!o.quiet&&typeof toast==="function")toast(`⚖️ Grounds to sue ${cl.n}: file within ${CRTCFG.exp} days in Government › Politics › Courts`);return cl}catch(e){console.warn("court",e);return null}}
+/* someone sues you: the case goes straight to a hearing with the public defender */
+function crtSued(o){try{const x=crtSt();if(!o||!(o.amt>0)||(o.who==="co"&&!RIVALS[o.ri]))return null;if(x.cases.length>=CRTCFG.maxCases||!crtKey(x,o.key))return null;
+  const now=Date.now(),court=crtCourt(o.who),c={id:++x.nid,k:String(o.k||""),who:o.who,ri:o.who==="co"?o.ri:null,n:String(o.n||"?").slice(0,40),amt:Math.max(100,Math.round(o.amt)),ev:Math.max(0,Math.min(1,+o.ev||0)),txt:String(o.txt||"").slice(0,120),t:now,at:now+CRTCFG.hear[court]*DAYMS,lw:0,def:1,fee:0,spent:0,so:0,court,rem:"dmg"};
+  x.cases.unshift(c);stNews(`⚖️ ${c.n} sues ${crtBy(c)} for ${fmt(c.amt)} at the ${crtCN(court)}: ${c.txt}`);crtLog(`${c.n} is suing you for ${fmt(c.amt)}`);
+  if(!o.quiet&&typeof toast==="function")toast(`⚖️ ${c.n} is suing you for ${fmt(c.amt)}: hearing in ${fmtDur(c.at-now)}`);return c}catch(e){console.warn("court",e);return null}}
+function crtFile(id){const x=crtSt(),cl=x.claims.find(c=>c.id===id);if(!cl)return "That claim has expired";const court=crtCourt(cl.who),p=pol();
+  if(court==="int"&&!(p.r>=0&&p.c))return "Only an office holder (Councillor, Minister or Leader) can take a government to the International Court";
+  if(x.cases.length>=CRTCFG.maxCases)return `At most ${CRTCFG.maxCases} cases at once`;
+  const tier=Math.max(0,Math.min(2,CRT.tier|0)),fee=crtFee(cl.amt,court),cost=fee+crtLwCost(cl.amt,tier);if(S.cash<cost)return `You need ${fmt(cost)} for court and lawyer fees`;
+  const now=Date.now(),rem=cl.who!=="pl"&&CRT.rem==="inj"?"inj":"dmg";S.cash-=cost;x.claims=x.claims.filter(c=>c!==cl);
+  const c={id:cl.id,k:cl.k,who:cl.who,ri:cl.ri,n:cl.n,amt:cl.amt,ev:crtEv(cl),txt:cl.txt,t:now,at:now+CRTCFG.hear[court]*DAYMS,lw:tier,def:0,fee,spent:cost,so:0,court,rem};
+  x.cases.unshift(c);stNews(`⚖️ ${crtBy(c)} sues ${c.n} at the ${crtCN(court)}: ${c.txt}`);crtLog(`filed against ${c.n}`);
+  toast(`Case filed against ${c.n}: hearing in ${fmtDur(c.at-now)}, ${Math.round(crtOdds(c)*100)}% to win`);return ""}
+function crtLwUp(id,tier){const x=crtSt(),c=x.cases.find(z=>z.id===id);if(!c)return "Case closed";tier=Math.max(0,Math.min(2,tier|0));if(tier<=c.lw)return "You already have that lawyer";
+  const cost=crtLwCost(c.amt,tier)-crtLwCost(c.amt,c.lw);if(S.cash<cost)return `You need ${fmt(cost)}`;S.cash-=cost;c.spent+=cost;c.lw=tier;toast(`${CRTCFG.lw[tier].n} hired: ${Math.round(crtOdds(c)*100)}% to win`);return ""}
+function crtEnd(c,res,net,txt,quiet){const x=crtSt();x.cases=x.cases.filter(z=>z!==c);x.hist.unshift({t:Date.now(),n:c.n,res,net:Math.round(net),def:c.def,court:c.court,txt});x.hist=x.hist.slice(0,CRTCFG.keep);
+  crtLog(txt);if(quiet)CRT.off.push({res,net:Math.round(net),txt});else if(typeof toast==="function")toast("⚖️ "+txt)}
+function crtSettle(id){const x=crtSt(),c=x.cases.find(z=>z.id===id);if(!c)return "Case closed";
+  if(c.def){const pay=crtDefSettle(c);if(S.cash<pay)return `You need ${fmt(pay)} to settle`;S.cash-=pay;stNews(`⚖️ ${crtBy(c)} settles with ${c.n} out of court`);crtEnd(c,"settled",-pay-c.spent,`Settled ${c.n}'s claim for ${fmt(pay)}`);return ""}
+  if(!c.so)return "No settlement offer yet";S.cash+=c.so;stNews(`⚖️ ${c.n} settles with ${crtBy(c)} for ${fmt(c.so)}`);crtEnd(c,"settled",c.so-c.spent,`${c.n} settled for ${fmt(c.so)}`);return ""}
+// winning an injunction: the barred rival's feud with you ends now
+function crtInjApply(c){if(c.who==="co"){try{for(const f of wfCR())if(f.a===c.ri&&f.b===-1)f.end=S.day||0}catch(e){}}}
+function crtVerdict(c,quiet){const x=crtSt(),C=CRTCFG,win=Math.random()<crtOdds(c),p=pol(),cn=crtCN(c.court),by=crtBy(c);let cash=0,txt;
+  if(!c.def){if(win){const dam=Math.round(c.amt*(c.rem==="inj"?C.injCut:1));cash=dam+c.spent;let ij="";
+      if(c.rem==="inj"){const k=crtInjKey(c),d=C.inj[c.who]||4;if(k){x.inj[k]=Math.max(+x.inj[k]||0,Date.now())+d*DAYMS;crtInjApply(c);ij=` and a ${d}-day injunction`}}
+      txt=`Won against ${c.n}: ${fmt(dam)} damages${ij}, costs refunded`;stNews(`⚖️ ${cn} fines ${c.n} ${fmt(dam)}${ij?" and grants an injunction":""}, ruling for ${by}`);x.won++}
+    else{const cost=Math.round(Math.max(300,c.fee*C.lose.cost));cash=-cost;
+      if(c.court==="int"&&p.r>=0)p.appr=Math.max(0,(+p.appr||0)-C.lose.appr);if(c.who==="co"&&RIVALS[c.ri]){const l=LG();l.rep[c.ri]=Math.max(0,(l.rep[c.ri]||0)-C.lose.rep)}
+      txt=`Lost against ${c.n}: paid ${fmt(cost)} of their costs${c.court==="int"?`, approval −${C.lose.appr}`:c.who==="co"?`, reputation −${C.lose.rep}`:""}`;stNews(`⚖️ ${cn} throws out the case against ${c.n} brought by ${by}`);x.lost++}}
+  else{if(win){cash=c.spent;txt=`Case dismissed: ${c.n}'s claim thrown out${c.spent?`, ${fmt(c.spent)} legal costs refunded`:""}`;stNews(`⚖️ ${cn} dismisses ${c.n}'s case against ${by}`);x.won++}
+    else{const pay=c.amt+Math.round(crtFee(c.amt,c.court)*.5);cash=-pay;if(c.court==="int"&&p.r>=0)p.appr=Math.max(0,(+p.appr||0)-C.lose.appr);
+      txt=`Lost: ordered to pay ${c.n} ${fmt(pay)}${c.court==="int"?`, approval −${C.lose.appr}`:""}`;stNews(`⚖️ ${cn} orders ${by} to pay ${c.n} ${fmt(c.amt)}`);x.lost++}}
+  S.cash+=cash;crtEnd(c,win?"won":"lost",cash-c.spent,txt,quiet)}
+/* every accrue (10 s): settlement offers, verdicts and expiry; a hearing that passed more than a minute ago resolved offline and goes in the welcome-back summary */
+function crtTick(now){if(!S.court)return;now=now||Date.now();const x=crtSt();
+  for(const c of x.cases.slice()){try{if(now>=c.at)crtVerdict(c,now-c.at>60000);
+    else if(!c.def&&!c.so&&now>=c.t+(c.at-c.t)*CRTCFG.settleAt){c.so=Math.max(100,Math.round(c.amt*(c.rem==="inj"?CRTCFG.injCut:1)*(.35+.45*crtOdds(c))));crtLog(`${c.n} offers to settle for ${fmt(c.so)}`)}}catch(e){console.warn("court",e);x.cases=x.cases.filter(z=>z!==c)}}}
+function crtOffNote(){const o=CRT.off;CRT.off=[];if(!o.length)return null;const w=o.filter(r=>r.res==="won").length,net=o.reduce((a,r)=>a+r.net,0);
+  stNews(`⚖️ While you were away: ${o.length} court verdict${o.length===1?"":"s"}, ${w} won, ${o.length-w} lost`);return {n:o.length,w,net,txt:o.slice(0,3).map(r=>r.txt)}}
+/* event hooks (each wrapped by the caller's try/catch) */
+const crtGv=g=>G[g]?G[g][0].toLowerCase():String(g);
+function crtFrMiss(id,m,v){const nm=String(v.carrierName||"A carrier").slice(0,20);crtClaim({k:"fr",who:"pl",n:nm,amt:Math.max(500,m.pay*.8+(G[m.g]?G[m.g][1]*m.q*.1:0)),ev:.7,txt:`missed the deadline on your ${m.q} ${crtGv(m.g)} haul`,key:"fm"+id})}
+function crtFrLost(id,r){crtSued({k:"fr",who:"pl",n:String(r.sh||"A shipper").slice(0,20),amt:Math.max(500,r.pay),ev:.7,txt:`your trucks never delivered their ${r.q} ${crtGv(r.g)}`,key:"fl"+id})}
+function crtSpyRing(pc){const fx=COUNTRIES.filter(n=>n!==pc);if(!fx.length)return;let n=null,b=0;for(const c of fx){const t=intTens(c,pc);if(t>b){b=t;n=c}}if(!n)n=fx[Math.floor(Math.random()*fx.length)];
+  crtClaim({k:"spy",who:"gov",n,amt:intCost("ci",pc)*1.2,ev:.45,txt:`${n}'s spy ring was caught operating in ${pc}`,key:"sr"+Date.now()});return n}
+function crtPlot(n,k){const pc=pol().c;if(!pc)return;crtClaim({k:"plot",who:"gov",n,amt:INTCFG.k*.3*Math.max(3,ctyScale(pc)),ev:.5,txt:`${n} planned a ${(WPNCFG.w[k]||{n:"missile"}).n.toLowerCase()} strike on ${pc}`,key:"pl"+n+(S.day||0)})}
+function crtMsl(att,c,quiet){if(S.pol&&S.pol.mil&&S.pol.mil.wars&&S.pol.mil.wars[att])return;crtClaim({k:"msl",who:"gov",n:att,amt:30000*Math.max(1,c.size)*Math.max(1,Object.keys(S.own[c.id]||{}).length),ev:.6,txt:`${att}'s missile hit your businesses in ${c.name}`,key:"ms"+att+(S.day||0),quiet})}
+function crtFeud(i,quiet){const sh=(S.rivals[i]||{cities:[]}).cities.filter(id=>S.own&&S.own[id]).length;crtClaim({k:"feud",who:"co",ri:i,n:RIVALS[i].n,amt:25000*(1+sh),ev:.4,txt:`${RIVALS[i].n} is running a smear and price-war campaign against you`,key:"fd"+i+(S.day||0),quiet})}
+function crtExpose(n,T){const pc=pol().c;if(!pc)return;const k=Object.keys(INTCFG.op).find(q=>INTCFG.op[q]===T)||"humint";crtSued({k:"spy",who:"gov",n,amt:intCost(k,n)*1.5,ev:.7,txt:`your ${T.s} operation in ${n} was exposed`,key:"ex"+n+Date.now()})}
+function crtLate(j,quiet){if(!RIVALS[j.ri]||Math.random()>=CRTCFG.sueLate)return;crtSued({k:"late",who:"co",ri:j.ri,n:RIVALS[j.ri].n,amt:j.pay*.8,ev:.55,txt:`your trucks delivered their ${j.tons} t of ${j.g} late`,key:"lt"+j.id+"_"+j.dep,quiet})}
+function crtCargo(h){const v=G[h.g]?G[h.g][1]*h.q*1.2:0;if(v<100)return;crtClaim({k:"cargo",who:"co",ri:h.ri,n:RIVALS[h.ri].n,amt:v,ev:.6,txt:`lost your ${gq(h.q)} ${crtGv(h.g)} shipment to ${CITIES[h.to]?CITIES[h.to].name:"its destination"}`,key:"hl"+h.dep+"_"+h.ri,quiet:1})}
+/* phone UI */
+function crtAct(a,k){const x=crtSt();let r="";
+  if(a==="crttier")CRT.tier=Math.max(0,Math.min(2,+k|0));else if(a==="crtrem")CRT.rem=k==="inj"?"inj":"dmg";
+  else if(a==="crtfile")r=crtFile(+k);else if(a==="crtdrop"){x.claims=x.claims.filter(c=>c.id!==+k);toast("Claim dropped")}
+  else if(a==="crtset")r=crtSettle(+k);else if(a==="crtlw"){const [id,t]=String(k).split("|");r=crtLwUp(+id,+t)}
+  if(r)toast(r)}
+const crtWho=c=>c.who==="co"?`<span style="display:inline-block;width:8px;height:8px;background:${RIVALS[c.ri].col};margin-right:5px;border-radius:2px"></span>`:c.who==="gov"?"🏳️ ":"👤 ";
+function crtHtml(){const x=crtSt(),now=Date.now(),C=CRTCFG,p=pol(),off=p.r>=0&&p.c,ij=Object.keys(x.inj);
+  const bt=(a,k,t,dis,bg)=>`<button class="buy" data-ph="${a}" data-k="${k}" style="color:#fff;background:${bg||"#1e3a8a"}!important;border-color:#93c5fd;padding:5px 9px;font-size:12px" ${dis?"disabled":""}>${t}</button>`;
+  const ijn=k=>k.slice(0,3)==="co:"?(RIVALS[+k.slice(3)]||{n:"?"}).n:k.slice(4);
+  let h=`<div class="ph-card"><b>⚖️ Courts</b><span>Sue rivals over lost freight and dirty tricks, and foreign governments over spying and strikes. Company cases go to the National Court, cases against governments to the International Court.</span></div>
+  <div class="ph-rows"><div><span>Open claims</span><b>${x.claims.length}</b></div><div><span>Active cases</span><b>${x.cases.length} / ${C.maxCases}</b></div><div><span>Record</span><b>${x.won} won · ${x.lost} lost</b></div>${ij.map(k=>`<div><span>🚫 Injunction on ${dxE(ijn(k))}</span><b>${fmtDur(x.inj[k]-now)}</b></div>`).join("")}</div>`;
+  h+=`<p class="ph-sub" style="margin-top:10px">Lawyer for new cases</p><div class="ph-seg">${C.lw.map((W,i)=>`<button data-ph="crttier" data-k="${i}" aria-pressed="${CRT.tier===i}">${W.ic} ${W.n.split(" ")[0]}${W.o?` +${Math.round(W.o*100)}%`:""}</button>`).join("")}</div>
+  <p class="ph-sub">Remedy against a company or government</p><div class="ph-seg"><button data-ph="crtrem" data-k="dmg" aria-pressed="${CRT.rem!=="inj"}">💰 Full damages</button><button data-ph="crtrem" data-k="inj" aria-pressed="${CRT.rem==="inj"}">🚫 Injunction</button></div>`;
+  h+=`<p class="ph-sub" style="margin-top:10px">Claims you can file</p><div class="ph-list">${x.claims.map(cl=>{const court=crtCourt(cl.who),fee=crtFee(cl.amt,court),cost=fee+crtLwCost(cl.amt,CRT.tier),ev=crtEv(cl),b=crtEvB(cl),
+      tc={who:cl.who,ev,lw:CRT.tier,def:0},o=crtOdds(tc),lock=court==="int"&&!off,rem=cl.who!=="pl"&&CRT.rem==="inj";
+      return `<div><b style="display:block">${crtWho(cl)}vs ${dxE(cl.n)} · ${court==="int"?"International":"National"} Court</b>${dxE(cl.txt)}<br><small style="opacity:.8">Claim ${fmt(cl.amt)} · evidence ${Math.round(ev*100)}%${b.length?" ("+b.map(z=>z[0]).join(", ")+")":""} · ${Math.round(o*100)}% to win · win ${fmt(Math.round(cl.amt*(rem?C.injCut:1)))}${rem?` + ${C.inj[cl.who]}-day injunction`:""} · expires in ${fmtDur(cl.exp-now)}</small>
+      ${lock?`<div class="ph-sub" style="margin:4px 0 0">Only an office holder can take a government to court.</div>`:""}<div style="display:flex;gap:6px;margin-top:6px">${bt("crtfile",cl.id,`File · ${fmt(cost)}`,lock||S.cash<cost||x.cases.length>=C.maxCases)}${bt("crtdrop",cl.id,"Drop",0,"#374151")}</div></div>`}).join("")||`<div>No grounds right now. Lost cargo, missed hauls, rival feuds, caught spies and missile strikes give you grounds to sue.</div>`}</div>`;
+  h+=`<p class="ph-sub" style="margin-top:10px">Active cases</p><div class="ph-list">${x.cases.map(c=>{const o=crtOdds(c),W=C.lw[c.lw],ups=[1,2].filter(t=>t>c.lw).map(t=>bt("crtlw",c.id+"|"+t,`${C.lw[t].ic} ${C.lw[t].n.split(" ")[0]} ${fmt(crtLwCost(c.amt,t)-crtLwCost(c.amt,c.lw))}`,S.cash<crtLwCost(c.amt,t)-crtLwCost(c.amt,c.lw),"#374151")).join("");
+      const set=c.def?bt("crtset",c.id,`Settle · pay ${fmt(crtDefSettle(c))}`,S.cash<crtDefSettle(c),"#7c2d12"):c.so?bt("crtset",c.id,`Accept ${fmt(c.so)}`,0,"#14532d"):"";
+      return `<div><b style="display:block">${crtWho(c)}${c.def?`${dxE(c.n)} vs you`:`You vs ${dxE(c.n)}`} · ${c.court==="int"?"International":"National"}</b>${dxE(c.txt)}<br><small style="opacity:.8">${c.def?"They claim":"Claim"} ${fmt(c.amt)}${c.rem==="inj"?" · seeking injunction":""} · ${W.ic} ${W.n} · <b style="color:${o>=.6?"#4ade80":o>=.4?"#fbbf24":"#f87171"}">${Math.round(o*100)}% to win</b> · hearing in ${fmtDur(c.at-now)}${!c.def&&!c.so?" · settlement talks soon":""}</small>
+      ${set||ups?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${set}${ups}</div>`:""}</div>`}).join("")||"<div>No cases in court.</div>"}</div>`;
+  if(x.hist.length)h+=`<p class="ph-sub" style="margin-top:10px">Verdicts</p><div class="ph-list">${x.hist.slice(0,8).map(r=>`<div><b style="display:block;color:${r.res==="won"?"#4ade80":r.res==="lost"?"#f87171":"#fbbf24"}">${r.res==="won"?"Won":r.res==="lost"?"Lost":"Settled"} · ${r.net>=0?"+":"−"}${fmt(Math.abs(r.net))}</b>${dxE(r.txt)} · ${fmtDur(now-r.t)} ago</div>`).join("")}</div>`;
+  h+=`<p class="ph-sub" style="margin-top:8px">Court fee ${Math.round(C.fee.nat[0]*100)}% of the claim (min ${fmt(C.fee.nat[1])}, International Court min ${fmt(C.fee.int[1])}). Hearings in ${Math.round(C.hear.nat*24)} game hours (International ${Math.round(C.hear.int*24)}). Claims expire after ${C.exp} days. A win pays damages and your costs from the court fund; a loss costs you their legal bill. Injunction wins pay ${Math.round(C.injCut*100)}% damages and bar the rival from feuding with you, or stop a country's provocation launches and halve its missile damage to you. Intelligence files (SIGINT, spy networks, satellite imagery) strengthen cases against governments.</p>`;
+  return h}
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -9369,6 +9495,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
     setTimeout(()=>{if(b.isConnected&&b.dataset.arm){delete b.dataset.arm;b.textContent=t0;b.style.width=w0;b.style.flex=f0}},4000);return} // disarm after 4 s
   if(a==="unfold"){PH.open=true;PH.app=null;setTimeout(()=>{if(typeof tutTick==="function")tutTick()},0)}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="phsz"){PH.szUi=!PH.szUi}else if(a==="phsetsz"){PH.sz=+b.dataset.v;try{localStorage.setItem("meridian-phone-size",String(PH.sz))}catch(e){}}else if(a==="app"){PH.app=b.dataset.k}else if(a==="setv"){setPut(b.dataset.k,b.dataset.v)}else if(a==="setreset"){setReset()}else if(a==="settut"){PH.open=false;phRender();closeSheet();tutStart();return}
   else if(/^hr(sch|up|dn|fire|hire)$/.test(a)){hrAct(a,b.dataset.k);save();hud()}
+  else if(/^crt/.test(a)){crtAct(a,b.dataset.k);save();hud()}
   else if(a==="dash"){DX.page="fin";dxOpen();return}
   else if(a==="dashlog"){DX.page="log";dxOpen();return}
   else if(a==="dashtruck"){DX.page="truck";dxOpen();return}
@@ -9434,7 +9561,7 @@ PH.el.addEventListener("input",e=>{if(e.target.id!=="phc")return;const v=e.targe
   window.addEventListener("pointerup",e=>{if(!st||e.pointerId!==st.id)return;st=null;PH.el.classList.remove("dragging");
     if(PH.dragged){if(!PH.open){const w=PH.el.offsetWidth;PH.x=PH.x+w/2<innerWidth/2?4:innerWidth-w-4;phPlace()}phSave();setTimeout(()=>PH.dragged=false,0)}})})();
 window.addEventListener("resize",phPlace);
-setInterval(()=>{trackNews();if(PH.open&&PH.app==="stocks"&&mkSel&&document.activeElement&&document.activeElement.id==="mkcq"){mkLive();return}if(PH.open&&Date.now()-(PH.touched||0)<3000)return;const gi=S.dip&&S.dip.inv?1:0,gch=gi||PH.gi;PH.gi=gi;if(!PH.open||(PH.app==="govt"&&gch)||[null,"wallet","needs","job","weather","stocks"].includes(PH.app)||(PH.app==="travel"&&S.trip))phRender()},2000);
+setInterval(()=>{trackNews();if(PH.open&&PH.app==="stocks"&&mkSel&&document.activeElement&&document.activeElement.id==="mkcq"){mkLive();return}if(PH.open&&Date.now()-(PH.touched||0)<3000)return;const gi=S.dip&&S.dip.inv?1:0,gch=gi||PH.gi;PH.gi=gi;if(!PH.open||(PH.app==="govt"&&(gch||govTab==="court"))||[null,"wallet","needs","job","weather","stocks"].includes(PH.app)||(PH.app==="travel"&&S.trip))phRender()},2000);
 trackNews();phRender();
 /* movable windows: city sheet (desktop) + stats widget */
 function mkDrag(el,handle,key,get,set){let st=null;
@@ -9568,13 +9695,14 @@ function catchUp(){const now0=Date.now(),away=now0-(S.acc||now0),cash0=S.cash,de
   S.last=Date.now();checkGoals();save();hud();draw();
   if(away>5*60000){const hrs=away/DAYMS,t=hrs>=1?hrs.toFixed(1)+" h":Math.round(away/60000)+" min";
     if(got>1){S.log.unshift(`While you were away (${t}): ${fmt(got)} earned`);S.log=S.log.slice(0,3);hud()}
-    const ran=hadStock.filter(k=>!(S.stock[k]>0));awaySummary({away,got,net:S.cash-cash0,debt:(S.debt||0)-debt0,ran,capped:away>48*DAYMS,peace:offPeace,shop,al})}}
+    const ran=hadStock.filter(k=>!(S.stock[k]>0));awaySummary({away,got,net:S.cash-cash0,debt:(S.debt||0)-debt0,ran,capped:away>48*DAYMS,peace:offPeace,shop,al,court:crtOffNote()})}else CRT.off=[]}
 function awaySummary(r){if(mqBusy("away")){mqQ().unshift(()=>awaySummary(r));return}r=Object.assign({away:0,got:0,net:0,debt:0,ran:[],peace:[],shop:{paid:0,done:0,open:0}},r||{});if(!Array.isArray(r.ran))r.ran=[];if(!r.shop)r.shop={paid:0,done:0,open:0};let el=$("#away");if(!el){el=document.createElement("div");el.id="away";document.body.appendChild(el)}
   const nm=k=>{const [id,b]=k.split(":");const c=CITIES[id],bz=BIZ.find(x=>x.k===b);return (bz?bz.n:b)+(c?" in "+c.name:"")};
   const row=(a,b,col)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)"><span>${a}</span><b${col?` style="color:${col}"`:""}>${b}</b></div>`;
   el.innerHTML=`<div style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px" data-away="x"><div style="background:var(--panel);color:var(--ink);border-radius:14px;max-width:360px;width:100%;padding:18px;box-shadow:0 18px 40px rgba(0,0,0,.35)">
     <h3 style="margin:0 0 4px">While you were away</h3><p class="d" style="margin:0 0 10px;color:var(--muted)">Your empire kept running for ${fmtDur(r.away)}.</p>
     ${r.got>1?row("Earned",fmt(r.got),"var(--good)"):""}${row("Cash change",(r.net>=0?"+":"")+fmt(r.net),r.net>=0?"var(--good)":"var(--bad)")}${r.shop&&r.shop.paid>=.01?row(`Shop loan payments${r.shop.done?` · ${r.shop.done} paid off`:""}`,"−"+(r.shop.paid<100?fmtc(r.shop.paid):fmt(r.shop.paid)),"var(--bad)"):""}${r.al&&(r.al.n||r.al.lb)?row("Auto-line",`${r.al.n} deliver${r.al.n===1?"y":"ies"}${r.al.f?` (${r.al.f} fetched)`:""}, ${gq(r.al.q)} goods moved${r.al.lb?`, ${r.al.lb} local buy${r.al.lb===1?"":"s"}`:""}${r.al.b>=1?`, ${fmt(r.al.b)} spent buying`:""}`):""}${Math.abs(r.debt)>1?row("Debt change",(r.debt>0?"+":"")+fmt(r.debt),r.debt>0?"var(--bad)":"var(--good)"):""}
+    ${r.court&&r.court.n?row(`⚖️ Court verdicts · ${r.court.w} won, ${r.court.n-r.court.w} lost`,(r.court.net>=0?"+":"−")+fmt(Math.abs(r.court.net)),r.court.net>=0?"var(--good)":"var(--bad)"):""}
     ${r.ran.length?`<p style="margin:10px 0 4px;color:var(--bad)"><b>Ran out of stock:</b></p><div class="d">${r.ran.slice(0,5).map(nm).join("<br>")}${r.ran.length>5?`<br>and ${r.ran.length-5} more`:""}</div>`:""}
     ${(r.peace||[]).length?`<p class="d" style="margin:10px 0 0"><b>White peace</b> (war weariness hit 100) with ${r.peace.join(", ")}.</p>`:""}
     ${r.capped?`<p class="d" style="margin:10px 0 0;color:var(--muted)">Offline earnings stop after 48 hours. Check in at least every two days to keep everything paid.</p>`:""}
