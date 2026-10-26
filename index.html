@@ -1071,7 +1071,19 @@ const TECH=[
 const TK=Object.fromEntries(TECH.map(t=>[t.k,t]));
 const canResearch=t=>!hasTech(t.k)&&(t.req||[]).every(hasTech);
 const BASEVEH=JSON.parse(JSON.stringify({truck:{cap:30,spd:400},hvtruck:{cap:60,spd:380},roadtrain:{cap:120,spd:350},ship:{cap:3000,spd:250},bulkship:{cap:8000,spd:230},plane:{cap:60,spd:2500},cargo747:{cap:150,spd:2300}}));
-function applyTechs(){const af=hasTech("autofreight")?1.2:1;for(const k in VEH){const c=VEH[k].cls;if(c==="truck"){VEH[k].spd=BASEVEH[k].spd*(hasTech("logi")?1.3:1)*af;VEH[k].cap=BASEVEH[k].cap*(hasTech("haulage")?1.2:1)}else if(c==="ship"){VEH[k].cap=BASEVEH[k].cap*(hasTech("container")?2:1);VEH[k].spd=BASEVEH[k].spd*af}else VEH[k].spd=BASEVEH[k].spd*(hasTech("aero")?1.4:1)*(hasTech("hypersonic")?1.25:1)}}
+/* fleet upgrades bought in the Deliveries dashboard (Mark, 2026-10-26): engines = faster trucks, chassis = more weight per truck */
+const FUP={spd:{n:"Engine tuning",d:"Every truck drives faster",per:.08,max:10,base:250000,g:1.6,ico:"⚡"},cap:{n:"Reinforced chassis",d:"Every truck carries more weight",per:.12,max:10,base:300000,g:1.6,ico:"🏋"}};
+function fupLv(k){return Math.max(0,Math.min(FUP[k].max,+((S.fup||{})[k])||0))}
+function fupM(k){return 1+FUP[k].per*fupLv(k)}
+function fupCost(k){const F=FUP[k],l=fupLv(k);return l>=F.max?0:Math.round(F.base*Math.pow(F.g,l))}
+function fupBuy(k){const F=FUP[k];if(!F)return"";const l=fupLv(k),c=fupCost(k);if(l>=F.max)return`${F.n} is maxed out`;if(S.cash<c)return`Need ${fmt(c)} for ${F.n}`;S.cash-=c;S.fup=S.fup||{};S.fup[k]=l+1;applyTechs();return`${F.n} level ${l+1}: trucks now ${k==="spd"?"drive":"carry"} +${Math.round(F.per*(l+1)*100)}%`}
+function fupHtml(){let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Fleet upgrades</h3><span class="lx-tag">all trucks</span></div><div style="display:flex;flex-wrap:wrap;gap:12px">`;
+  for(const k in FUP){const F=FUP[k],l=fupLv(k),c=fupCost(k),mx=l>=F.max;
+    h+=`<div style="flex:1 1 240px;min-width:0;display:flex;flex-direction:column;gap:4px"><b>${F.ico} ${F.n} · Lv ${l}/${F.max}</b><small>${F.d}: now +${Math.round(F.per*l*100)}%${mx?"":`, next level +${Math.round(F.per*(l+1)*100)}%`}</small>
+      <div class="lx-bar"><i style="width:${l/F.max*100}%"></i></div>
+      <button class="lx-btn" data-dv="fup" data-k="${k}" ${mx||S.cash<c?'aria-disabled="true"':""} title="${mx?"Maxed out":S.cash<c?`Need ${fmt(c)}`:""}">${mx?"Maxed":`Upgrade · ${fmt(c)}`}</button></div>`}
+  return h+`</div><small style="display:block;margin-top:8px">Applies to trucks, heavy trucks and road trains, on top of research bonuses. Trips already on the road keep their old time.</small></div>`}
+function applyTechs(){const af=hasTech("autofreight")?1.2:1;for(const k in VEH){const c=VEH[k].cls;if(c==="truck"){VEH[k].spd=BASEVEH[k].spd*(hasTech("logi")?1.3:1)*af*fupM("spd");VEH[k].cap=BASEVEH[k].cap*(hasTech("haulage")?1.2:1)*fupM("cap")}else if(c==="ship"){VEH[k].cap=BASEVEH[k].cap*(hasTech("container")?2:1);VEH[k].spd=BASEVEH[k].spd*af}else VEH[k].spd=BASEVEH[k].spd*(hasTech("aero")?1.4:1)*(hasTech("hypersonic")?1.25:1)}}
 /* later research (retail ... asteroid): small multipliers that stack with everything else; all 1 when not researched, so old saves are unchanged */
 function techBiz(b){return (hasTech("retail")&&["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","gasstation","rest"].includes(b.k)?1.05:1)*(hasTech("smartbld")&&["apt","office","hotel"].includes(b.k)?1.06:1)*(hasTech("aimgmt")?1.08:1)}
 function techWage(){return hasTech("payroll")?.95:1}
@@ -9489,7 +9501,7 @@ function dvPage(){const now=Date.now(),rows=dvRows(),A=S.fleet.filter(v=>v.al&&v
       <td class="dv-w"><div class="dv-a">${r.rec}${r.edit}${r.can}</div></td></tr>`;
       if(DV.ed&&DV.ed.k==="v"+v.id&&r.a&&(r.a.fx||r.a.cu)&&r.a.st==="go"&&!v.cargo)h+=dvEditRow(v)}
     h+=`</tbody></table></div>`}
-  const [alh,cuh]=dvLinesHtml();h+=`</div>${dvGapHtml()}${alh}<div class="dv-two">${cuh}<div class="mdx-card" style="min-width:0"><div class="mdx-ch"><h3>Create a custom delivery</h3></div>${dvFormHtml()}</div></div>`;
+  const [alh,cuh]=dvLinesHtml();h+=`</div>${dvGapHtml()}${fupHtml()}${alh}<div class="dv-two">${cuh}<div class="mdx-card" style="min-width:0"><div class="mdx-ch"><h3>Create a custom delivery</h3></div>${dvFormHtml()}</div></div>`;
   return h}
 /* Truck tracker: for every city + good your businesses use, the trucks Auto-line runs vs the trucks the use rate needs
    (load ÷ round trip from the nearest depot city must match units/h). Estimate uses a standard truck when none runs yet. */
@@ -9543,7 +9555,8 @@ function dvAct(a,b){const id=b.dataset.id,now=Date.now(),v=S.fleet.find(x=>Strin
   if(a==="close"){dvClose();return}if(a==="theme"){themeSet(themeGet()==="dark"?"light":"dark");b.innerHTML=themeIco();return}
   if(a!=="cancel"&&a!=="alcan"&&a!=="lcan"&&a!=="rcan")DV.arm=null;
   if(a==="albuy"){S.alNoBuy=!S.alNoBuy;dvNote(S.alNoBuy?"Auto-buy off: Auto-line only moves your own stock.":"Auto-buy on: Auto-line buys at the market when no depot has the goods.");done=true}
-  if(a==="aline"){S.aline=!S.aline;if(S.aline)alTick(now);dvNote(S.aline?"Auto-line on.":"Auto-line off. Trips under way finish.");done=true}
+  if(a==="fup"){dvNote(fupBuy(b.dataset.k));done=true}
+  else if(a==="aline"){S.aline=!S.aline;if(S.aline)alTick(now);dvNote(S.aline?"Auto-line on.":"Auto-line off. Trips under way finish.");done=true}
   else if(a==="recall"&&v){const ok=v.job?lxRecall(v):dvRecall(v);dvNote(ok?`${VEH[v.type].n} #${v.id} is heading back${v.cargo?" with its load":""}.`:"That vehicle is already heading back.");done=ok}
   else if(a==="cancel"&&v){if(dvArm("c"+v.id)){const ok=dvCancel(v);dvNote(ok?`Cancelled: ${VEH[v.type].n} #${v.id} is heading back.`:"Nothing to cancel.");done=ok}}
   else if(a==="edit"&&v&&v.al){const k="v"+v.id;DV.ed=DV.ed&&DV.ed.k===k?null:{k,q:Math.round(v.al.q),to:v.al.to}}
