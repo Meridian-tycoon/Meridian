@@ -9988,11 +9988,13 @@ window.__evt={S:()=>wevS(),WEV,cur:t=>wevCur(t),wk:t=>wevWk(t),kind:w=>wevKind0(
    is subtracted from net worth, so listing barely moves the leaderboard.
    Phase 2 (online): ipotk/{TICKER} reserves the ticker, ipo/{uid} is the listing, ipo/{uid}/hold/{holder} one player's holding (mirrored in S.iph).
    Prices are never stored: every client computes them from the listing (24 h average earnings x multiple, sentiment, market mood, seeded noise).
-   Cash never moves between saves: buyers pay into, and sellers are paid from, the public pool ("institutions"). Holder dividends and delisting
-   payouts to online holders are Phase 3. */
+   Cash never moves between saves: buyers pay into, and sellers are paid from, the public pool ("institutions").
+   Phase 3: dividends reach player holders through a per-share accumulator on the listing (dps = cumulative dividend per public share, dpsAt),
+   raised by the founder from what ipoAcc actually paid; each holder collects q x (dps - its last seen dps, S.iph[id].dps, mirrored on the hold doc).
+   When a listing is delisted, holders are cashed out at outPx automatically on their next sync (ipoAuto). Old saves migrate silently (ipoS / ipoIph). */
 const IPOC={nw:10e6,inc:25e3,cities:5,day:72,fee:1e6,uw:.04,fmin:.1,fmax:.49,cap:.5,ban:168*DAYMS,road:DAYMS,bb:.05,bbp:1.05,so:.1,soGap:168*DAYMS,
   hold:.1,win:.05,cool:60000,pubGap:600000,spr:.015,tf:.001,imp:3,keep:48*DAYMS,dorm:336*DAYMS,orph:720*DAYMS};
-const IPO={be:null,all:{},unsub:null,uid:null,loaded:0,busy:0,cbusy:0,err:"",hist:{},fpub:0,crT:0,delT:0,rec:0,arm:0,w:{tk:"",N:1e7,fl:30}};
+const IPO={be:null,all:{},unsub:null,uid:null,loaded:0,busy:0,cbusy:0,err:"",hist:{},fpub:0,crT:0,delT:0,rec:0,arm:0,aoT:{},mkT:{},w:{tk:"",N:1e7,fl:30}};
 const ipoMs=x=>x&&typeof x.toMillis==="function"?x.toMillis():+x||0;
 const ipoAvg=a=>a.length?a.reduce((t,x)=>t+x,0)/a.length:0;
 function ipoCl(v,a,b){return Math.max(a,Math.min(b,v))}
@@ -10025,17 +10027,18 @@ function ipoExec(o,q,now){const st=ipoStat(o,now),s0=ipoSent(o,now),s1=+ipoCl(s0
 const ipoStatTxt={live:"Live",halt:"Halted by the developer",dormant:"Dormant: founder away 14+ days, selling only",orphan:"Orphaned: founder away 30+ days, cash out at 90% of fair value",delisted:"Delisted: cash out at the buyout price"};
 /* ---- your listing (S.ipo) ---- */
 function ipoS(){let o=S.ipo;if(!o||typeof o!=="object"||Array.isArray(o))o=S.ipo={st:"none"};if(!["none","road","live"].includes(o.st))o.st="none";
-  for(const k of["N","pub","pool","E","E72","bk","paid","raised","fees","ban","bbq","bb0","soAt","sentAt","fAt","at","t0","skips","ipx","fl","sg","sq"])if(!Number.isFinite(o[k])||o[k]<0)o[k]=0;
+  for(const k of["N","pub","pool","E","E72","bk","paid","raised","fees","ban","bbq","bb0","soAt","sentAt","fAt","at","t0","skips","ipx","fl","sg","sq","dps"])if(!Number.isFinite(o[k])||o[k]<0)o[k]=0;
   if(!(o.sent>=.8&&o.sent<=1.25))o.sent=1;if(!(o.mx>=.8&&o.mx<=1.3))o.mx=1;if(!Array.isArray(o.nws))o.nws=[];if(!Array.isArray(o.hist))o.hist=[];
   if(o.st!=="none"&&(!(o.N>=1e6)||!/^[A-Z]{3,5}$/.test(o.tk||"")))o.st="none";
-  if(o.st==="live"){o.pub=Math.min(Math.floor(o.pub),Math.floor(o.N*IPOC.fmax));o.pool=Math.min(Math.floor(o.pool),o.pub)}return o}
+  if(o.st==="live"){o.pub=Math.min(Math.floor(o.pub),Math.floor(o.N*IPOC.fmax));o.pool=Math.min(Math.floor(o.pool),o.pub)}
+  if(!(S.ipoV>=3)){S.ipoV=3;if(o.st==="live")ipoNews(o,`${o.tk}: dividends now also reach players who hold your shares (nothing to do, your listing was updated)`,1)}return o}
 const ipoLive=()=>{const o=S.ipo;return!!(o&&o.st==="live"&&o.N>0)};
 const ipoTk=()=>ipoLive()&&/^[A-Z]{3,5}$/.test(S.ipo.tk)?S.ipo.tk:null;
 const ipoName=()=>(String(S.name||(S.online&&S.online.name)||"Meridian").replace(/[<>"]/g,"").trim().slice(0,21)||"Meridian")+" Holdings";
 function ipoNews(o,m,quiet){o.nws.unshift({t:Date.now(),m});o.nws=o.nws.slice(0,6);S.log.unshift("Markets: "+m);S.log=S.log.slice(0,3);if(!quiet)try{toast(m)}catch(e){}}
 /* net worth: the founder owes the public shares at fair value (no sentiment, so it moves smoothly); holders count their shares at the bid */
 function ipoOwed(){const o=S.ipo;if(!o||o.st!=="live"||!(o.N>0)||!(o.pub>0))return 0;const v=o.pub*ipoFair(o,0,1);return Number.isFinite(v)?v:0}
-function ipoIph(){let h=S.iph;if(!h||typeof h!=="object"||Array.isArray(h))h=S.iph={};for(const k in h){const x=h[k];if(!x||typeof x!=="object"||!(x.q>=0)){delete h[k];continue}for(const f of["q","avg","px","at","d0","dq"])if(!Number.isFinite(x[f])||x[f]<0)x[f]=0}return h}
+function ipoIph(){let h=S.iph;if(!h||typeof h!=="object"||Array.isArray(h))h=S.iph={};for(const k in h){const x=h[k];if(!x||typeof x!=="object"||!(x.q>=0)){delete h[k];continue}for(const f of["q","avg","px","at","d0","dq","dv"])if(!Number.isFinite(x[f])||x[f]<0)x[f]=0;if(x.dps!=null&&!(Number.isFinite(x.dps)&&x.dps>=0))delete x.dps}return h}
 function ipoHoldVal(){const h=S.iph;if(!h||typeof h!=="object")return 0;let v=0;for(const k in h){const x=h[k];if(x&&x.q>0&&x.px>0)v+=x.q*x.px}return Number.isFinite(v)?v:0}
 /* ---- requirements, plan and roadshow ---- */
 function ipoReq(){const t=totals(),bk=t.nw+(t.owed||0),e=ipoEarn(),o=ipoS(),now=Date.now(),hq=Object.keys(S.hq||{}).filter(k=>S.hq[k]&&CITIES[k]).length,cs=ipoCities(),ban=o.ban+IPOC.ban-now;
@@ -10061,7 +10064,7 @@ function ipoList(now){const o=ipoS(),pl=ipoPlan(o.N,o.fl),m=pl.o;
   ipoNews(o,`${o.tk} lists at ${fp(px)}: you raised ${fmt(net)} for ${ipoPct(pub/o.N)} of ${ipoName()}`);try{confetti()}catch(e){}}
 /* the mandatory dividend: the public share of every positive hour of profit, charged like wages (offline too, with accrue's 48 h cap) */
 function ipoAcc(dt){const o=S.ipo;if(!o||o.st!=="live"||!(o.pub>0)||!(dt>0))return;let inc=0;try{inc=totals().inc}catch(e){return}if(!(inc>0))return;
-  const due=inc*o.pub/o.N*Math.min(dt,Math.max(0,Date.now()-(o.at||0)))/DAYMS,pay=Math.min(due,Math.max(0,S.cash));S.cash-=pay;o.paid=(o.paid||0)+pay;o.hp=(o.hp||0)+pay;if(pay<due-.005)o.sk=1}
+  const due=inc*o.pub/o.N*Math.min(dt,Math.max(0,Date.now()-(o.at||0)))/DAYMS,pay=Math.min(due,Math.max(0,S.cash));S.cash-=pay;o.paid=(o.paid||0)+pay;o.hp=(o.hp||0)+pay;o.dps=(o.dps||0)+pay/o.pub;if(pay<due-.005)o.sk=1}
 function ipoDay(quiet){ipoRec();const o=ipoS(),now=Date.now();if(o.st!=="live")return;const e=ipoEarn(),t=totals();
   o.E=Math.min(e.E,o.E*1.1+1000);o.E72=e.E72;o.mx=ipoMx();o.bk=Math.max(0,t.nw+(t.owed||0));
   if(!o.pubd){let s=ipoSent(o,now);const g=o.E72>0?o.E/o.E72-1:0;s+=(Math.random()-.5)*.03+(g>.02?.004:g<-.02?-.004:0);if(o.sk)s*=.9;o.sent=+ipoCl(s,.8,1.25).toFixed(4);o.sentAt=now}
@@ -10096,12 +10099,12 @@ async function ipoSO(frac){const o=ipoS(),now=Date.now();if(o.st!=="live"||IPO.b
 function ipoDelPx(o,now){let p=Math.max(ipoPx(o,now),ipoFair(o,now,1),ipoFloor(o));const d=o.pubd?ipoMine():null;if(d)p=Math.max(p,(d.E||0)*121/d.N,(d.ref||0)*.71);return p*1.1}
 async function ipoDelist(){const o=ipoS(),now=Date.now();if(o.st!=="live"||IPO.busy)return;const px=ipoDelPx(o,now),cost=o.pub*px;if(S.cash<cost){toast(`Delisting costs ${fmt(cost)}`);return}
   const outPx=+px.toPrecision(8);
-  if(o.pubd){try{await ipoFTx(l=>({st:"delisted",outPx}))}catch(e){toast("Delisting failed: "+(e&&e.message||e));return}try{ipoBE().untk(o.tk).catch(()=>{})}catch(e){}}
+  if(o.pubd){try{await ipoFTx(l=>Object.assign({st:"delisted",outPx},ipoDpsW(o,l,Date.now())))}catch(e){toast("Delisting failed: "+(e&&e.message||e));return}try{ipoBE().untk(o.tk).catch(()=>{})}catch(e){}}
   S.cash-=cost;const tk=o.tk;S.ipo={st:"none",ban:now,nws:o.nws,hist:[],last:{tk,outPx,at:now}};ipoNews(S.ipo,`${tk} delists: every public share bought back at ${fp(px)} (${fmt(cost)})`,1);toast(`${tk} is private again`);save();hud();phRender()}
 /* ---- online: backend (tests swap IPO.be for a mock with the same shape) ---- */
 function ipoBE(){if(IPO.be)return IPO.be;if(typeof ON==="undefined"||!ON.db||!ON.user)return null;const db=ON.db,FS=window.firebase.firestore,lr=u=>db.collection("ipo").doc(u),hr=(u,h)=>lr(u).collection("hold").doc(h);
   const cv=d=>{const o={};for(const k in d){const v=d[k];if(v==="__keep")continue;o[k]=v==="__ts"?FS.FieldValue.serverTimestamp():v}return o};
-  const pl=d=>{const o=Object.assign({},d);for(const k of["fAt","sentAt","at","soAt","d0"])if(k in o)o[k]=ipoMs(o[k]);return o};
+  const pl=d=>{const o=Object.assign({},d);for(const k of["fAt","sentAt","at","soAt","d0","dpsAt"])if(k in o)o[k]=ipoMs(o[k]);return o};
   return{uid:()=>ON.user&&ON.user.uid,
     watch:cb=>db.collection("ipo").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>a.push(Object.assign(pl(d.data()||{}),{id:d.id})));cb(a)},e=>{IPO.err="Couldn't load player companies: "+(e&&e.code||e)}),
     tkOwner:tk=>db.collection("ipotk").doc(tk).get().then(s=>s.exists?(s.data()||{}).uid:null),
@@ -10112,21 +10115,37 @@ function ipoBE(){if(IPO.be)return IPO.be;if(typeof ON==="undefined"||!ON.db||!ON
     dev:(fid,d)=>lr(fid).update(cv(d)),
     tx:(fid,hid,fn)=>db.runTransaction(async t=>{const ls=await t.get(lr(fid));if(!ls.exists)throw new Error("listing not found");const hs=hid?await t.get(hr(fid,hid)):null;
       const w=fn(Object.assign(pl(ls.data()||{}),{id:fid}),hs&&hs.exists?pl(hs.data()||{}):null);if(w.l)t.update(lr(fid),cv(w.l));if(w.h)hs.exists?t.update(hr(fid,hid),cv(w.h)):t.set(hr(fid,hid),cv(w.h));return w}),
+    hdps:(fid,dps)=>hr(fid,ON.user.uid).update({dps}),
     mine:()=>db.collectionGroup("hold").where("uid","==",ON.user.uid).get().then(q=>{const a=[];q.forEach(d=>a.push(Object.assign(pl(d.data()||{}),{fid:d.ref.parent.parent.id})));return a})}}
 function ipoClean(v){if(!v||typeof v!=="object"||!/^[A-Z]{3,5}$/.test(v.tk||"")||!(v.N>0))return null;const n=k=>Number.isFinite(+v[k])?+v[k]:0;
   return{id:String(v.id),tk:v.tk,name:String(v.name||v.tk).slice(0,30),col:/^#[0-9a-f]{6}$/i.test(v.col||"")?v.col:"#2563eb",N:n("N"),pub:n("pub"),pool:n("pool"),E:n("E"),E72:n("E72"),
-    mx:ipoCl(n("mx")||1,.8,1.3),bk:n("bk"),ref:n("ref"),fAt:n("fAt"),sent:ipoCl(n("sent")||1,.8,1.25),sentAt:n("sentAt"),soAt:n("soAt"),st:["live","halt","delisted"].includes(v.st)?v.st:"live",outPx:n("outPx"),at:n("at"),ext:1}}
+    mx:ipoCl(n("mx")||1,.8,1.3),bk:n("bk"),ref:n("ref"),fAt:n("fAt"),sent:ipoCl(n("sent")||1,.8,1.25),sentAt:n("sentAt"),soAt:n("soAt"),st:["live","halt","delisted"].includes(v.st)?v.st:"live",outPx:n("outPx"),at:n("at"),dps:Math.max(0,n("dps")),dpsAt:n("dpsAt"),ext:1}}
 function ipoTick(now){const o=ipoS();if(o.st==="road"&&now-o.t0>=IPOC.road)ipoList(now);
   const be=ipoBE(),uid=be?be.uid():null;
   if(uid!==IPO.uid){if(IPO.unsub){try{IPO.unsub()}catch(e){}}IPO.unsub=null;IPO.uid=uid;IPO.all={};IPO.loaded=0;IPO.rec=0;
     if(be)try{IPO.unsub=be.watch(a=>{const m={};for(const v of a){const c=ipoClean(v);if(c)m[c.id]=c}IPO.all=m;IPO.loaded=1;IPO.err=""})}catch(e){IPO.err=String(e&&e.message||e)}}
-  ipoMirror(now);if(be&&IPO.loaded){try{ipoSync(now,be)}catch(e){console.warn("ipoSync",e)}ipoRecover(be)}}
+  ipoMirror(now);if(be&&IPO.loaded){try{ipoSync(now,be)}catch(e){console.warn("ipoSync",e)}ipoRecover(be);try{ipoDiv(now,be);ipoAuto(now)}catch(e){console.warn("ipoDiv",e)}}}
 /* holder side: refresh last known prices (used for net worth offline too) and the in-memory sparkline */
 function ipoMirror(now){const h=ipoIph();for(const id in IPO.all){const x=IPO.all[id];if(x.st==="delisted"&&!h[id])continue;const p=ipoPx(x,now);let a=IPO.hist[id];
     if(!a){a=IPO.hist[id]=[];for(let i=30;i>0;i--)a.push(ipoBase(x,now-i*DAYMS)*ipoSent(x,now))}a.push(p);if(a.length>90)a.shift()}
   for(const id in h){const x=IPO.all[id];if(x){h[id].px=ipoBid(x,now);h[id].tk=x.tk;h[id].n=x.name}else if(IPO.loaded&&IPO.uid&&h[id].q<=0)delete h[id]}}
 function ipoRecover(be){if(IPO.rec||!be.mine)return;IPO.rec=1;const h=ipoIph();if(Object.keys(h).length)return;
-  be.mine().then(a=>{for(const v of a){if(!(v.q>0)||!v.fid)continue;const x=IPO.all[v.fid];h[v.fid]={tk:x?x.tk:"",n:x?x.name:"",q:v.q,avg:+v.avg||0,px:x?ipoBid(x,Date.now()):+v.avg||0,at:v.at||0,d0:v.d0||0,dq:v.dq||0}}save()}).catch(()=>{})}
+  be.mine().then(a=>{for(const v of a){if(!(v.q>0)||!v.fid)continue;const x=IPO.all[v.fid];h[v.fid]={tk:x?x.tk:"",n:x?x.name:"",q:v.q,avg:+v.avg||0,px:x?ipoBid(x,Date.now()):+v.avg||0,at:v.at||0,d0:v.d0||0,dq:v.dq||0,dps:Number.isFinite(+v.dps)&&v.dps!=null?+v.dps:x?x.dps:0}}save()}).catch(()=>{})}
+/* ---- Phase 3 dividends ----
+   founder: how far the published dps may rise now (firestore.rules: dps x N grows at most (3E + 10k) an hour of elapsed time, 48 h max) */
+function ipoDpsCap(d,now){const ms=Math.min(Math.max(0,now-(d.dpsAt||d.fAt||now)-5000),48*DAYMS);return(d.dps||0)+((d.E||0)*3+1e4)*ms/DAYMS/d.N*.98}
+function ipoDpsW(o,d,now){if(!d||!(d.N>0))return{};const v=Math.min(o.dps||0,ipoDpsCap(d,now));return v>(d.dps||0)+1e-9?{dps:+v.toPrecision(12),dpsAt:"__ts"}:{}}
+/* holder: what a holding is owed (q x rise in dps since it last collected) */
+function ipoDue(h,x){if(!h||!x||!(h.q>0))return 0;const d=(x.dps||0)-(h.dps||0);return d>0?h.q*d:0}
+/* collect every holding's dividends into cash; a holding without a marker (bought before Phase 3) starts at the current dps, no back pay */
+function ipoDiv(now,be){const hh=ipoIph();let tot=0;const msg=[];
+  for(const id in hh){const h=hh[id],x=IPO.all[id];if(!x||id===IPO.uid)continue;if(h.dps==null){h.dps=x.dps||0;continue}
+    const p=ipoDue(h,x);if((x.dps||0)>h.dps){h.dps=x.dps;if(p>0&&Number.isFinite(p)){S.cash+=p;h.dv=(h.dv||0)+p;tot+=p;msg.push(x.tk)}}
+    if(be&&be.hdps&&h.q>0&&h.dps!==h.mk&&now-(IPO.mkT[id]||0)>=10*60000){IPO.mkT[id]=now;const v=h.dps;be.hdps(id,v).then(()=>{h.mk=v}).catch(()=>{})}}
+  if(tot>=.01){try{wevAdd("tech",tot)}catch(e){}if(tot>=1)try{toast(`Dividends from ${msg.join(", ")}: +${fmt(tot)}`)}catch(e){}save()}return tot}
+/* holder: a delisted company's shares are cashed out at outPx on the next sync, no button needed */
+function ipoAuto(now){if(IPO.busy)return;const hh=ipoIph();for(const id in hh){const h=hh[id],x=IPO.all[id];if(!x||x.st!=="delisted"||!(h.q>0)||id===IPO.uid)continue;
+    if(now-(h.at||0)<IPOC.cool||now-(IPO.aoT[id]||0)<60000)continue;IPO.aoT[id]=now;ipoTrade(id,-h.q,1);return}}
 /* founder side: create the online listing, mirror pool and sentiment back, publish earnings at most every 10 min (within the rules' caps) */
 function ipoSync(now,be){const o=ipoS(),me=be.uid(),d=IPO.all[me];if(IPO.cbusy)return;
   if(d&&d.st==="delisted"&&o.st!=="live"){if(d.pool>=d.pub&&now-IPO.delT>60000){IPO.delT=now;be.del().catch(()=>{})}return}
@@ -10134,14 +10153,14 @@ function ipoSync(now,be){const o=ipoS(),me=be.uid(),d=IPO.all[me];if(IPO.cbusy)r
   if(d&&d.st==="delisted"){const tk=o.tk;S.ipo={st:"none",ban:now,nws:o.nws,hist:[],last:{tk,outPx:d.outPx,at:now}};ipoNews(S.ipo,`${tk} was delisted by the developer`);save();return}
   if(!d){if(now-IPO.crT<60000)return;IPO.crT=now;IPO.cbusy=1;const E=Math.round(o.E*100)/100,bk=Math.round(o.bk);
     const doc={tk:o.tk,name:ipoName(),col:onProf().col,N:o.N,pub:o.pub,pool:o.pub,E,E72:Math.round(o.E72),mx:+o.mx.toFixed(3),bk,
-      ref:+Math.max(1e-6,Math.min(ipoPx(o,now),(E*440+bk)/o.N*.99)).toPrecision(8),fAt:"__ts",sent:+ipoCl(o.sent,1,1.15).toFixed(4),sentAt:"__ts",st:"live",at:"__ts"};
+      ref:+Math.max(1e-6,Math.min(ipoPx(o,now),(E*440+bk)/o.N*.99)).toPrecision(8),fAt:"__ts",sent:+ipoCl(o.sent,1,1.15).toFixed(4),sentAt:"__ts",st:"live",at:"__ts",dps:0,dpsAt:"__ts"};
     Promise.resolve(be.tkOwner?be.tkOwner(o.tk):null).then(ow=>{if(ow&&ow!==me)throw new Error("ticker "+o.tk+" is already taken online: pick another below");return be.create(doc,ow!==me)})
-      .then(()=>{o.pubd=1;o.perr="";o.pool=o.pub;o.sent=doc.sent;o.sentAt=now;ipoNews(o,`${o.tk} now trades online: other players can buy your shares`,1);save()})
+      .then(()=>{o.pubd=1;o.perr="";o.pool=o.pub;o.dps=0;o.sent=doc.sent;o.sentAt=now;ipoNews(o,`${o.tk} now trades online: other players can buy your shares`,1);save()})
       .catch(e=>{o.perr=String(e&&e.message||e).slice(0,140)}).finally(()=>{IPO.cbusy=0});return}
   o.pubd=1;o.perr="";if(d.pub!==o.pub&&!IPO.busy)o.pub=d.pub;if(!IPO.busy)o.pool=Math.min(d.pool,o.pub);o.sent=d.sent;o.sentAt=d.sentAt;o.halt=d.st==="halt";
   if(now-d.fAt>=IPOC.pubGap+5000&&now-IPO.fpub>=60000&&!IPO.busy){IPO.fpub=now;const ms=Math.max(0,now-d.fAt-5000),mx=Math.min(d.E+990+d.E*ms/36e6*.98,d.E*1.5+990);
     const E=Math.round(Math.max(0,Math.min(o.E,mx))*100)/100,bk=Math.round(Math.min(o.bk,d.bk*1.5+1e6)),ref=+ipoCl(ipoPx(o,now),d.ref*.71,d.ref*1.29).toPrecision(8);
-    be.upd({E,E72:Math.round(o.E72),mx:+o.mx.toFixed(3),bk,ref,fAt:"__ts",name:ipoName(),col:onProf().col}).catch(e=>{o.perr="Couldn't publish earnings: "+(e&&e.code||e&&e.message||e)})}}
+    be.upd(Object.assign({E,E72:Math.round(o.E72),mx:+o.mx.toFixed(3),bk,ref,fAt:"__ts",name:ipoName(),col:onProf().col},ipoDpsW(o,d,now))).catch(e=>{o.perr="Couldn't publish earnings: "+(e&&e.code||e&&e.message||e)})}}
 /* other players: buy from / sell to the public pool. Caps (also in firestore.rules): 10% of a company per player, 5% traded per 24 h, 1 trade a minute, no self-trading */
 function ipoWin(h,now){return h&&now-(h.d0||0)<24*DAYMS?(h.dq||0):0}
 function ipoChk(x,h,q,now){if(!x)return"Listing not found";if(x.id===IPO.uid)return"You can't trade your own company";const st=ipoStat(x,now),hq=h?h.q:0;
@@ -10149,20 +10168,22 @@ function ipoChk(x,h,q,now){if(!x)return"Listing not found";if(x.id===IPO.uid)ret
   if(q>0){if(st!=="live")return st==="delisted"?"Delisted: you can only cash out":"The founder has been away 14+ days: buying is closed";if(q>x.pool)return"Not enough shares left in the market pool";
     if((hq+q)*10>x.N)return"Max 10% of a company per player"}else if(-q>hq)return"You don't own that many shares";
   if(h&&now-(h.at||0)<IPOC.cool)return`One trade a minute: next in ${Math.ceil((IPOC.cool-(now-h.at))/1000)}s`;
-  if((ipoWin(h,now)+Math.abs(q))*20>x.N)return"Max 5% of a company traded per 24 h";return""}
-async function ipoTrade(fid,q){const be=ipoBE(),now=Date.now();if(!be){toast("Sign in (Saves > Online) to trade player companies");return}if(IPO.busy)return;
+  if(!(st==="delisted"&&q<0&&hq+q===0)&&(ipoWin(h,now)+Math.abs(q))*20>x.N)return"Max 5% of a company traded per 24 h";return""}
+async function ipoTrade(fid,q,auto){const be=ipoBE(),now=Date.now();if(!be){toast("Sign in (Saves > Online) to trade player companies");return}if(IPO.busy)return;
   const x=IPO.all[fid],h0=ipoIph()[fid];q=Math.trunc(q);
-  if(q<0&&x&&h0){const left=Math.floor(x.N*IPOC.win)-ipoWin(h0,now);if(-q>left&&left>0)q=-left}   // selling: capped to what the 24 h window still allows
-  const e0=ipoChk(x,h0,q,now);if(e0){toast(e0);return}
+  if(q<0&&x&&h0&&!(x.st==="delisted"&&-q===h0.q)){const left=Math.floor(x.N*IPOC.win)-ipoWin(h0,now);if(-q>left&&left>0)q=-left}   // selling: capped to what the 24 h window still allows
+  const e0=ipoChk(x,h0,q,now);if(e0){if(!auto)toast(e0);return}
   const est=ipoExec(x,q,now).px*q;if(q>0&&S.cash<est){toast(`Need ${fmt(est)}`);return}
   IPO.busy=1;let r=null;const me=be.uid(),nm=(onProf().name||"Player").slice(0,20);
   try{r=await be.tx(fid,me,(l,h)=>{const o=Object.assign({},ipoClean(Object.assign({},l,{id:fid}))||{}),t=Date.now(),e=ipoChk(o,h,q,t);if(e)throw new Error(e);
       const ex=ipoExec(o,q,t),oq=h?h.q:0,nq=oq+q,cost=ex.px*q;if(q>0&&S.cash<cost)throw new Error("Need "+fmt(cost));
-      const inWin=h&&t-(h.d0||0)<24*DAYMS,hw={uid:me,name:nm,q:nq,avg:+(q>0?(oq*(h?h.avg:0)+cost)/nq:nq>0?h.avg:0).toPrecision(8),d0:inWin?"__keep":"__ts",dq:(inWin?h.dq:0)+Math.abs(q),at:"__ts"};
-      const lw=o.st==="delisted"?{pool:o.pool-q}:{pool:o.pool-q,sent:ex.s1,sentAt:"__ts"};return{l:lw,h:hw,px:ex.px,cost,d0:inWin?h.d0:t,dq:hw.dq,nq,avg:hw.avg}})}
-  catch(e){toast("Trade failed: "+(e&&e.message||e));IPO.busy=0;phRender();return}
-  IPO.busy=0;ipoPatch(fid,r.l);const hh=ipoIph();S.cash-=r.cost;if(q<0)try{wevAdd("tech",(r.px-(h0?h0.avg:0))*-q)}catch(e){}
-  hh[fid]=Object.assign(hh[fid]||{},{tk:x.tk,n:x.name,q:r.nq,avg:r.avg,px:ipoBid(x,Date.now()),at:Date.now(),d0:r.d0,dq:r.dq});
+      const inWin=h&&t-(h.d0||0)<24*DAYMS,hw={uid:me,name:nm,q:nq,avg:+(q>0?(oq*(h?h.avg:0)+cost)/nq:nq>0?h.avg:0).toPrecision(8),d0:inWin?"__keep":"__ts",dq:(inWin?h.dq:0)+Math.abs(q),at:"__ts",dps:o.dps||0};
+      const lw=o.st==="delisted"?{pool:o.pool-q}:{pool:o.pool-q,sent:ex.s1,sentAt:"__ts"};return{l:lw,h:hw,px:ex.px,cost,d0:inWin?h.d0:t,dq:hw.dq,nq,avg:hw.avg,dps:o.dps||0}})}
+  catch(e){if(!auto)toast("Trade failed: "+(e&&e.message||e));IPO.busy=0;phRender();return}
+  IPO.busy=0;ipoPatch(fid,r.l);const hh=ipoIph();S.cash-=r.cost;const dv=h0&&h0.dps!=null?ipoDue(h0,{dps:r.dps}):0;if(dv>0&&Number.isFinite(dv)){S.cash+=dv;h0.dv=(h0.dv||0)+dv}   // dividends not yet collected on the old holding
+  if(q<0)try{wevAdd("tech",(r.px-(h0?h0.avg:0))*-q)}catch(e){}
+  hh[fid]=Object.assign(hh[fid]||{},{tk:x.tk,n:x.name,q:r.nq,avg:r.avg,px:ipoBid(x,Date.now()),at:Date.now(),d0:r.d0,dq:r.dq,dps:r.dps,mk:r.dps});
+  if(auto){try{ipoNews(ipoS(),`${x.tk} was delisted: your ${(-q).toLocaleString()} shares were bought out at ${fp(r.px)} (${fmt(-r.cost)})`)}catch(e){}save();hud();phRender();return}
   toast(q>0?`Bought ${q.toLocaleString()} ${x.tk} for ${fmt(r.cost)}`:`Sold ${(-q).toLocaleString()} ${x.tk} for ${fmt(-r.cost)}`);save();hud();phRender()}
 function ipoDev(fid,k){const be=ipoBE(),x=IPO.all[fid];if(!be||!x||!devUid(IPO.uid))return;const d=k==="halt"?{st:x.st==="halt"?"live":"halt"}:{st:"delisted",outPx:+(ipoFair(x,Date.now(),1)*.9).toPrecision(8)};
   be.dev(fid,d).then(()=>toast(`${x.tk}: ${d.st}`)).catch(e=>toast("Dev action failed: "+(e&&e.code||e)))}
@@ -10216,7 +10237,7 @@ function ipoDetHtml(fid){const x=IPO.all[fid],now=Date.now();let h=`<div style="
     <div class="ph-sub" style="color:${st==="live"?"#22c55e":"#fbbf24"}">${ipoStatTxt[st]}${st==="live"&&idle>IPOC.keep?" · founder away "+Math.floor(idle/(24*DAYMS))+"d: value decaying 2%/day":""}</div>
     <div class="ph-rows">${ipoRow("You own",hd&&hd.q?hd.q.toLocaleString()+" sh · "+ipoPct(hd.q/x.N):"0")}${hd&&hd.q?ipoRow("Value (at bid)",fmt(hd.q*bid))+ipoRow("Avg cost",fp(hd.avg))+ipoRow("Gain",fmt((bid-hd.avg)*hd.q),bid>=hd.avg?"#22c55e":"#ef4444"):""}
       ${ipoRow("Bid / ask",fp(bid)+" / "+fp(p*(1+IPOC.spr)))}${ipoRow("Market cap",fmt(p*x.N))}${ipoRow("Earnings (24 h avg)",fmt(x.E)+"/hr")}${ipoRow("Shares in the pool",x.pool.toLocaleString()+" of "+x.pub.toLocaleString())}
-      ${ipoRow("Founder last update",wevLeft(idle)+" ago")}${ipoRow("Traded in 24 h",ipoPct(win/x.N)+" of 5%")}${cd?ipoRow("Next trade in",Math.ceil(cd/1000)+"s"):""}</div>`;
+      ${hd&&hd.dv?ipoRow("Dividends received",fmt(hd.dv),"#22c55e"):""}${ipoRow("Founder last update",wevLeft(idle)+" ago")}${ipoRow("Traded in 24 h",ipoPct(win/x.N)+" of 5%")}${cd?ipoRow("Next trade in",Math.ceil(cd/1000)+"s"):""}</div>`;
   if(me)h+=`<p class="ph-sub" style="margin-top:8px">This is your company. Manage it in the My IPO tab.</p>`;
   else{const fr=[.001,.005,.01],qs=fr.map(v=>Math.max(1,Math.floor(x.N*v))),busy=IPO.busy||cd>0;
     h+=ipoGrid(3,qs.map((q,i)=>ipoBtn("ipoTr","Buy "+ipoPct(fr[i]),q,busy||!!ipoChk(x,hd,q,now)||S.cash<ipoExec(x,q,now).px*q,1)).join(""))

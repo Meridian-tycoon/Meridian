@@ -748,7 +748,7 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1';
     }
     function validIpo(d) {
-      return d.keys().hasOnly(['tk', 'name', 'col', 'N', 'pub', 'pool', 'E', 'E72', 'mx', 'bk', 'ref', 'fAt', 'sent', 'sentAt', 'soAt', 'st', 'outPx', 'at'])
+      return d.keys().hasOnly(['tk', 'name', 'col', 'N', 'pub', 'pool', 'E', 'E72', 'mx', 'bk', 'ref', 'fAt', 'sent', 'sentAt', 'soAt', 'st', 'outPx', 'at', 'dps', 'dpsAt'])
         && d.keys().hasAll(['tk', 'name', 'col', 'N', 'pub', 'pool', 'E', 'E72', 'mx', 'bk', 'ref', 'fAt', 'sent', 'sentAt', 'st', 'at'])
         && d.tk is string && d.tk.matches('^[A-Z]{3,5}$')
         && d.name is string && d.name.size() > 0 && d.name.size() <= 30
@@ -765,6 +765,8 @@ service cloud.firestore {
         && d.st in ['live', 'halt', 'delisted']
         && (!('outPx' in d) || (d.outPx is number && d.outPx >= 0))
         && (!('soAt' in d) || d.soAt is timestamp)
+        && (!('dps' in d) || (d.dps is number && d.dps >= 0))
+        && (!('dpsAt' in d) || d.dpsAt is timestamp)
         && d.fAt is timestamp && d.sentAt is timestamp && d.at is timestamp;
     }
     // Founder: earnings at most every 10 min (E rises at most 10%/h and 1.5x per write, book 1.5x, ref +-30%), buyback from the
@@ -773,7 +775,7 @@ service cloud.firestore {
     function ipoFounderOk(o, n) {
       let ch = n.diff(o).affectedKeys();
       return o.st != 'delisted'
-        && ch.hasOnly(['name', 'col', 'E', 'E72', 'mx', 'bk', 'ref', 'fAt', 'pub', 'pool', 'soAt', 'st', 'outPx'])
+        && ch.hasOnly(['name', 'col', 'E', 'E72', 'mx', 'bk', 'ref', 'fAt', 'pub', 'pool', 'soAt', 'st', 'outPx', 'dps', 'dpsAt'])
         && (!ch.hasAny(['E', 'E72', 'mx', 'bk', 'ref', 'fAt']) || (n.fAt == request.time && msSince(o.fAt) >= 600000
             && (n.E - o.E - 1000) * 36000000 <= o.E * msSince(o.fAt) && n.E <= o.E * 1.5 + 1000
             && n.bk <= o.bk * 1.5 + 1000000 && n.ref <= o.ref * 1.3 && n.ref >= o.ref * 0.7))
@@ -781,7 +783,15 @@ service cloud.firestore {
         && (n.pub >= o.pub || (o.pub - n.pub == o.pool - n.pool && (o.pub - n.pub) * 20 <= o.N))
         && (n.pub <= o.pub || (n.pub - o.pub == n.pool - o.pool && (n.pub - o.pub) * 10 <= o.N
             && n.soAt == request.time && (!('soAt' in o) || msSince(o.soAt) >= 604800000)))
-        && (!ch.hasAny(['st', 'outPx']) || (n.st == 'delisted' && n.outPx * o.N >= o.E * 120 && n.outPx >= o.ref * 0.7));
+        && (!ch.hasAny(['st', 'outPx']) || (n.st == 'delisted' && n.outPx * o.N >= o.E * 120 && n.outPx >= o.ref * 0.7))
+        && (!ch.hasAny(['dps', 'dpsAt']) || ipoDpsOk(o, n));
+    }
+    // Phase 3 dividends: dps (cumulative dividend per public share) only rises, stamped with server time, and at most
+    // (3 x earnings + 10k) an hour of elapsed time since the last raise (48 h max), spread over all N shares.
+    function ipoDpsOk(o, n) {
+      let ms = math.min(msSince(o.get('dpsAt', o.fAt)), 172800000);
+      return n.dpsAt == request.time && n.dps is number && n.dps > o.get('dps', 0)
+        && (n.dps - o.get('dps', 0)) * o.N <= (o.E * 3 + 10000) * ms / 3600000;
     }
     // Another player's trade: only pool and sentiment change, and the pool moves exactly opposite to their hold doc in the same batch.
     // No trading while halted; no buying once delisted or when the founder has not published for 14 days.
@@ -820,6 +830,7 @@ service cloud.firestore {
         && request.resource.data.st == 'live' && request.resource.data.pool == request.resource.data.pub
         && request.resource.data.sent >= 1.0 && request.resource.data.sent <= 1.15
         && !('soAt' in request.resource.data) && !('outPx' in request.resource.data)
+        && request.resource.data.get('dps', 0) == 0 && (!('dpsAt' in request.resource.data) || request.resource.data.dpsAt == request.time)
         && request.resource.data.ref * request.resource.data.N <= request.resource.data.E * 440 + request.resource.data.bk + 1
         && request.resource.data.at == request.time && request.resource.data.fAt == request.time
         && request.resource.data.sentAt == request.time;
@@ -831,11 +842,19 @@ service cloud.firestore {
       allow delete: if request.auth != null && request.auth.uid == uid
         && resource.data.st == 'delisted' && resource.data.pool == resource.data.pub;
       // a holding: written only by its holder (never the founder), at most 10% of the company, 1 write a minute,
-      // 5% traded per 24 h, and the listing's pool must move by exactly the opposite amount in the same batch. Never deleted.
+      // 5% traded per 24 h (except cashing out all of a delisted company), and the listing's pool must move by exactly
+      // the opposite amount in the same batch. dps = the listing's dividend accumulator the holder last collected up to. Never deleted.
       match /hold/{h} {
         allow read: if request.auth != null;
+        // dividend marker only: never down, never past the listing's published dps
+        allow update: if request.auth != null && request.auth.uid == h
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dps'])
+          && request.resource.data.dps is number && request.resource.data.dps >= resource.data.get('dps', 0)
+          && request.resource.data.dps <= get(ipoL(uid)).data.get('dps', 0);
         allow create, update: if request.auth != null && request.auth.uid == h && h != uid
-          && request.resource.data.keys().hasOnly(['uid', 'name', 'q', 'avg', 'd0', 'dq', 'at'])
+          && request.resource.data.keys().hasOnly(['uid', 'name', 'q', 'avg', 'd0', 'dq', 'at', 'dps'])
+          && (!('dps' in request.resource.data) || (request.resource.data.dps is number && request.resource.data.dps >= 0
+              && request.resource.data.dps <= getAfter(ipoL(uid)).data.get('dps', 0)))
           && request.resource.data.uid == h
           && request.resource.data.name is string && request.resource.data.name.size() <= 20
           && request.resource.data.q is int && request.resource.data.q >= 0
@@ -843,7 +862,9 @@ service cloud.firestore {
           && request.resource.data.avg is number && request.resource.data.avg >= 0
           && request.resource.data.at == request.time
           && (resource == null || msSince(resource.data.at) >= 60000)
-          && ipoDayOk(resource, request.resource.data, get(ipoL(uid)).data.N)
+          && (ipoDayOk(resource, request.resource.data, get(ipoL(uid)).data.N)
+              || (get(ipoL(uid)).data.st == 'delisted' && request.resource.data.q == 0
+                  && request.resource.data.d0 is timestamp && request.resource.data.dq is int))
           && getAfter(ipoL(uid)).data.pool == get(ipoL(uid)).data.pool - (request.resource.data.q - (resource == null ? 0 : resource.data.q));
       }
     }
