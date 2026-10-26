@@ -360,6 +360,8 @@ const DEV_UIDS=["BRGRStgYLlbkVbrBTagBrDbpVyg1"];
 const DEV_NAME="Mark Vani";
 const devNorm=x=>String(x==null?"":x).toLowerCase().replace(/\s+/g,"");
 const devUid=u=>!!u&&DEV_UIDS.indexOf(u)>=0;
+/* developer immunity: signed in with a DEV_UIDS uid = no cooldowns, no sanctions, no retaliation. Every other player keeps the normal rules. */
+const devGod=()=>{try{return typeof ON!=="undefined"&&!!ON.user&&devUid(ON.user.uid)}catch(e){return false}};
 /* Government immunity: these accounts keep 100% approval and can't be removed from office or arrested while they hold one */
 const GOV_IMMUNE=["BRGRStgYLlbkVbrBTagBrDbpVyg1"];
 /* country-limited immunity: uid -> the only country where it applies (while they govern it) */
@@ -2355,7 +2357,7 @@ function logGov(m){S.log.unshift("Politics: "+m);S.log=S.log.slice(0,3)}
    Otherwise the AI government decides at once. The fee is paid up front and refunded on a refusal. */
 const URQ={fee:10e6,wait:24*3600000,cd:6*3600000};
 const URQ_FREE=["BRGRStgYLlbkVbrBTagBrDbpVyg1"]; // player IDs with no retry cooldown after a refused uranium permit or a lost election (Gov tab)
-const urqCdOn=()=>{try{return !(ON.user&&URQ_FREE.indexOf(ON.user.uid)>=0)}catch(e){return true}}; // fee, how long a player governor has to answer before the AI decides, retry cooldown after an AI refusal
+const urqCdOn=()=>{try{return !(devGod()||ON.user&&URQ_FREE.indexOf(ON.user.uid)>=0)}catch(e){return true}}; // fee, how long a player governor has to answer before the AI decides, retry cooldown after an AI refusal
 const uranFee=()=>URQ.fee;
 const uranPermit=n=>!!(S.gov&&S.gov[n]&&S.gov[n].uPermit);
 /* true if the player holds a uranium permit in at least one country: needed to buy uranium on the market */
@@ -3974,8 +3976,8 @@ function ugCover(){const g=UG().gang;if(!g)return{ok:0,heat:1};const m=g.m||1;re
 const ugOk=j=>Math.min(.95,j.ok+ugCover().ok),ugHeat=j=>j.heat*ugCover().heat;
 const ugPay=j=>Math.round(j.p*COL(ugCity())*(1+UG().rep*.01)*(UG().gang&&j.gang?1+UG().gang.m*.03:1));
 function ugDo(k){const u=UG(),j=UGJ.find(x=>x.k===k),c=ugCity(),now=Date.now();if(jailed()){toast("Not from prison");return}
-  if((u.cd[k]||0)>now)return;if(j.rep&&u.rep<j.rep){toast(`Needs ${j.rep} street rep`);return}if(j.gang&&(!u.gang||u.gang.m<j.gang)){toast(j.gang>1?`Needs a gang with ${j.gang}+ members`:"Join or start a gang first");return}
-  u.cd[k]=now+j.cd*1000;const pol=[.7,1,1.4][law(c,"police")??1];
+  if(!devGod()&&(u.cd[k]||0)>now)return;if(j.rep&&u.rep<j.rep){toast(`Needs ${j.rep} street rep`);return}if(j.gang&&(!u.gang||u.gang.m<j.gang)){toast(j.gang>1?`Needs a gang with ${j.gang}+ members`:"Join or start a gang first");return}
+  u.cd[k]=devGod()?0:now+j.cd*1000;const pol=[.7,1,1.4][law(c,"police")??1];
   const caught=Math.random()<(u.heat/100)*.5*pol;
   if(caught||Math.random()>ugOk(j)){u.heat=Math.min(100,u.heat+ugHeat(j)*1.5);if(arrest(j.reason,j.sev,c)){u.rep=Math.max(0,u.rep-3);return}toast("It went wrong. You got away, barely.");return}
   const v=ugPay(j);S.cash+=v;u.earned+=v;u.heat=Math.min(100,u.heat+ugHeat(j));u.rep+=1;toast(`+${fmt(v)} · heat ${Math.round(u.heat)}%`);vib&&vib(15)}
@@ -4266,9 +4268,9 @@ function careerTick(dt){if(!S.job){if(S.career)S.career.key="";return}const C=ca
     else if(t.k==="peak")t.v=m>=CAREER.peak?t.v+dt:0;else if(t.k==="clean"){if(rec>t.r){t.r=rec;t.v=0}else t.v+=dt}else if(t.k==="study")t.v=edu>t.e?1:0}
   const done=C.tasks.filter(t=>t.v>=t.h);if(done.length){for(const t of done){C.ch=Math.min(CAREER.max,C.ch+CAREER.T[t.k].p);toast(`Task done: +${CAREER.T[t.k].p}% promotion chance`)}C.tasks=C.tasks.filter(t=>t.v<t.h);careerFill(C)}}
 function careerAsk(){const C=career(),r=C.rank;if(!S.job||r>=CAREER.ranks.length-1||jailed())return;const inR=(Date.now()-C.since)/DAYMS;
-  if(inR<CAREER.minH[r]||Date.now()<(C.cd||0)||C.ch<1)return;
+  if(inR<CAREER.minH[r]||!devGod()&&Date.now()<(C.cd||0)||C.ch<1)return;
   if(Math.random()*100<C.ch){C.rank++;C.ch=0;C.since=Date.now();C.tasks=[];careerFill(C);const j=JK[S.job.k];S.log.unshift(`Promoted: ${CAREER.ranks[C.rank]}${j.n}`);S.log=S.log.slice(0,3);toast(`Promoted to ${CAREER.ranks[C.rank]}${j.n}! +${Math.round(CAREER.rankW*100)}% pay`)}
-  else{C.ch=Math.floor(C.ch*CAREER.failKeep);C.cd=Date.now()+CAREER.cool*DAYMS;toast("Promotion denied. Try again later.")}}
+  else{C.ch=Math.floor(C.ch*CAREER.failKeep);C.cd=devGod()?0:Date.now()+CAREER.cool*DAYMS;toast("Promotion denied. Try again later.")}}
 function careerHtml(){const C=career(),r=C.rank,j=JK[S.job.k],c=CITIES[S.job.city],top=r>=CAREER.ranks.length-1,inR=(Date.now()-C.since)/DAYMS,need=top?0:CAREER.minH[r],cd=Math.max(0,(C.cd||0)-Date.now());
   const why=top?"Top of the ladder":jailed()?"Not from prison":inR<need?`Needs ${fmtDur((need-inR)*DAYMS)} more in role`:cd?`Cooldown ${fmtDur(cd)}`:C.ch<1?"Complete tasks first":"";
   let h=`<div class="ph-sub" style="margin-top:12px;color:#fff;font-weight:600">Career</div><div class="ph-rows"><div><span>Rank</span><b>${CAREER.ranks[r]||"Entry "}level</b></div><div><span>Time in rank</span><b>${fmtDur(inR*DAYMS)}</b></div>`;
@@ -4349,11 +4351,11 @@ const polPRq=p=>{const gb=Math.max(0,Math.min(GOVCFG.prGain,95-p.appr)),g=Math.m
 function polPR(){const p=pol();if(p.r<0)return;if(p.appr>=95)return toast("Approval is already maxed");const {g,c}=polPRq(p);if(S.cash<c)return toast(`PR campaign costs ${fmt(c)}`);S.cash-=c;p.appr=Math.min(95,p.appr+g);toast(`Approval +${Math.round(g*10)/10}`)}
 function polResign(){const p=pol();if(p.r<0)return;logPol(`You stepped down as ${GOVCFG.offices[p.r].n} of ${p.c}`);polFall();if(typeof milUpkeep==="function"&&milUpkeep()>0)setTimeout(()=>toast(`Your army is in reserve at ${fmt(milUpkeep())}/hr. Disband it in Gov › Military to stop the drain.`),1500)}
 function polFall(){const p=pol();if(p.c&&S.gov&&S.gov[p.c]&&S.gov[p.c].polCtrl){const g=S.gov[p.c];g.ctrl=false;g.contract=0;g.polCtrl=0}if(p.r===GOVCFG.offices.length-1){for(const n in p.ctrl)p.ctrl[n].loy=Math.min(p.ctrl[n].loy,40)}p.r=-1;p.tax=null;p.cd=Date.now()+GOVCFG.loseCd*DAYMS}
-function polSetTax(t){const p=pol(),C=GOVCFG,now=Date.now();if(!polLeader())return;if(now<p.taxCd)return toast("Tax change cooldown: "+fmtDur(p.taxCd-now));t=Math.max(0,Math.min(4,t));const g=gov(p.c);if(g.laws.tax===t)return;
-  g.laws.tax=t;p.tax=t;p.taxCd=now+C.taxCd*DAYMS*(1-presFx("cd"));p.appr=Math.max(0,Math.min(95,p.appr+C.taxAppr[t]));logPol(`${p.c} corporate tax set to ${LAWS.tax.v[t]}`)}
+function polSetTax(t){const p=pol(),C=GOVCFG,now=Date.now();if(!polLeader())return;if(!devGod()&&now<p.taxCd)return toast("Tax change cooldown: "+fmtDur(p.taxCd-now));t=Math.max(0,Math.min(4,t));const g=gov(p.c);if(g.laws.tax===t)return;
+  g.laws.tax=t;p.tax=t;p.taxCd=devGod()?0:now+C.taxCd*DAYMS*(1-presFx("cd"));p.appr=Math.max(0,Math.min(95,p.appr+C.taxAppr[t]));logPol(`${p.c} corporate tax set to ${LAWS.tax.v[t]}`)}
 function polAnnex(n){const p=pol(),C=GOVCFG,now=Date.now();if(!polLeader()||n===p.c||p.ctrl[n]||!COUNTRIES.includes(n))return;
-  if(now<p.acd)return toast("Influence cooldown: "+fmtDur(p.acd-now));const cost=annexCost(n);if(S.cash<cost)return toast(`Needs ${fmt(cost)}`);
-  const ch=annexChance();S.cash-=cost;p.acd=now+C.annexCd*DAYMS*(1-presFx("cd"));
+  if(!devGod()&&now<p.acd)return toast("Influence cooldown: "+fmtDur(p.acd-now));const cost=annexCost(n);if(S.cash<cost)return toast(`Needs ${fmt(cost)}`);
+  const ch=annexChance();S.cash-=cost;p.acd=devGod()?0:now+C.annexCd*DAYMS*(1-presFx("cd"));
   if(Math.random()<ch){p.ctrl[n]={since:now,loy:C.loyStart};p.appr=Math.min(95,p.appr+C.annexAppr);logPol(`${n} joined your sphere of influence`);if(typeof confetti==="function")confetti(80,innerWidth/2,innerHeight/3)}
   else{p.appr=Math.max(0,p.appr+C.annexFailAppr);logPol(`${n} rejected your influence bid (${Math.round(ch*100)}% chance)`)}}
 function polLoyal(n){const p=pol(),c=p.ctrl[n];if(!c)return;const v=Math.round(annexCost(n)*GOVCFG.loyCost);if(S.cash<v)return toast(`Aid package costs ${fmt(v)}`);if(Math.round(c.loy)>=100){c.loy=100;return toast("Loyalty is maxed")};S.cash-=v;c.loy=Math.min(100,c.loy+GOVCFG.loyGain);toast(`${n} loyalty +${GOVCFG.loyGain}`)}
@@ -4447,8 +4449,8 @@ function milDisband(k){const m=mil();if(!m.units[k])return;const n=Math.min(MILC
 const milWarCost=n=>Math.round(annexCost(n)*MILCFG.warMob);
 function milDeclare(n){const p=pol(),m=mil(),C=MILCFG,now=Date.now();if(!polLeader())return toast("Only a Leader can declare war");
   if(n===p.c||p.ctrl[n]||m.occ[n]||m.wars[n]||!COUNTRIES.includes(n))return;if(Object.keys(m.wars).length>=C.maxWars)return toast(`At most ${C.maxWars} wars at once`);
-  if(now<m.cd)return toast("War cooldown: "+fmtDur(m.cd-now));if(milStr()<=0)return toast("Recruit an army first");const c=milWarCost(n);if(S.cash<c)return toast(`Mobilisation costs ${fmt(c)}`);
-  S.cash-=c;m.cd=now+C.warCd*DAYMS*(1-presFx("cd"));p.appr=Math.max(0,p.appr+C.warAppr);const e=milEnemy(n);
+  if(!devGod()&&now<m.cd)return toast("War cooldown: "+fmtDur(m.cd-now));if(milStr()<=0)return toast("Recruit an army first");const c=milWarCost(n);if(S.cash<c)return toast(`Mobilisation costs ${fmt(c)}`);
+  S.cash-=c;m.cd=devGod()?0:now+C.warCd*DAYMS*(1-presFx("cd"));p.appr=Math.max(0,p.appr+C.warAppr);const e=milEnemy(n);
   m.wars[n]={since:now,front:C.frontStart,enemyStr:e,enemyMax:e,terrain:milTerrain(n),weariness:0,battles:[],pcd:0};logPol(`You declared war on ${n}`);try{troopFly(p.c,n)}catch(e){}setTimeout(()=>toast(`⚠ ${n} will strike back with cruise missiles${bunk().lv?": stay near your bunker":": a bunker (Gov › Bunker) keeps you safe"}`),1800)}
 function milEndWar(n,kind,quiet){const p=pol(),m=mil(),C=MILCFG,w=m.wars[n];if(!w)return;delete m.wars[n];const big=annexCost0(n)*C.repShare;
   if(kind==="win"){m.occ[n]={since:Date.now(),resist:C.occResist,gar:0,calm:0};p.appr=Math.min(95,p.appr+C.winAppr);m.morale=Math.min(100,m.morale+10);logPol(`${n} capitulated — it is now under your occupation`)}
@@ -4616,11 +4618,11 @@ function renderUnh(c){sheet.innerHTML=`<div class="shead"><div><h2>${c.name}<spa
   <p class="d" style="margin:10px 0;color:var(--muted)">☠ Nobody lives here any more. Your businesses, land and offices in ${c.name} earn nothing, and nothing can be bought, built or visited until the radiation clears (${UNH_DAYS} game days after the strike). Then the city rebuilds from ${Math.round(dmgLvl(c)*100)}% damage, taking about ${dmgRepDays((S.dmg||{})[c.id]&&S.dmg[c.id].l0||1)} more game days.</p>`;
   $("#cls").onclick=closeSheet}
 // the world reacts to gas/nukes: sanctions-like hit to every city's demand for a while
-function wpnSanction(k){const m=mil(),X=WPNCFG.sanc[k];if(!X)return;const now=Date.now(),o=m.sanc&&m.sanc.until>now?m.sanc:{f:0,until:now};
+function wpnSanction(k){const m=mil(),X=WPNCFG.sanc[k];if(!X)return;if(devGod()){m.sanc=null;const t=`Developer immunity: no sanctions for your ${WPNCFG.w[k].n.toLowerCase()} strike`;logPol(t);milLog(m,t);return}const now=Date.now(),o=m.sanc&&m.sanc.until>now?m.sanc:{f:0,until:now};
   m.sanc={f:Math.max(o.f,X.f),until:Math.max(o.until,now)+X.days*DAYMS};const t=`The world condemns your ${WPNCFG.w[k].n.toLowerCase()} strike: sanctions cut demand ${Math.round(m.sanc.f*100)}% for ${fmtDur(m.sanc.until-now)}`;logPol(t);milLog(m,t)}
-function sancMult(){const m=S.pol&&S.pol.mil,x=m&&m.sanc;return x&&x.until>Date.now()&&x.f>0?1-Math.min(.5,x.f):1}
+function sancMult(){if(devGod())return 1;const m=S.pol&&S.pol.mil,x=m&&m.sanc;return x&&x.until>Date.now()&&x.f>0?1-Math.min(.5,x.f):1}
 // enemy retaliation against your home and controlled countries during a war (called once per war per game hour)
-function wpnRetal(n,w,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,now=Date.now();if(!(w.rcd>=0))w.rcd=0;if(now<w.rcd)return;
+function wpnRetal(n,w,quiet){if(devGod())return;const p=pol(),m=wpn(),C=WPNCFG.ret,now=Date.now();if(!(w.rcd>=0))w.rcd=0;if(now<w.rcd)return;
   const pw=w.enemyMax>0?w.enemyStr/w.enemyMax:0;if(pw<C.minPow)return;
   const tg=[p.c,...Object.keys(p.ctrl||{})].filter(x=>x&&COUNTRIES.includes(x)),cs=CITIES.filter(c=>tg.includes(c.country));if(!cs.length)return;
   let k=null;if(!quiet&&w.ic&&w.enemyMax>=C.icbmMin&&Math.random()<C.odds.icbm*pw)k="icbm";else if(w.nk&&w.enemyMax>=C.nukeMin&&Math.random()<C.odds.nuke*pw)k="nuke";else if((w.wmd||w.weariness>50)&&Math.random()<C.odds.gas*pw)k="gas";else if(Math.random()<C.odds.msl*pw)k="msl";if(!k)return;if(intFoil(n,k,quiet)){w.rcd=now+C.cd[k]*DAYMS*.5;return}
@@ -5678,7 +5680,7 @@ function intSt(){const x=S.intel=S.intel&&typeof S.intel==="object"&&!Array.isAr
   for(const c in x.intel){const v=x.intel[c];if(!COUNTRIES.includes(c)||!v||typeof v!=="object"||!["o","s","i"].some(k=>+v[k]>now))delete x.intel[c]}
   return x}
 // developer account only (signed in with a DEV_UIDS uid): every operation succeeds, spies are never caught, no cooldowns, tension can reach 100
-const intGod=()=>{try{return typeof ON!=="undefined"&&!!ON.user&&devUid(ON.user.uid)}catch(e){return false}};
+const intGod=()=>devGod();
 const intCap=()=>intGod()?100:INTCFG.cap;
 const intNet=n=>{const x=S.intel;return x&&x.net&&+x.net[n]>0?Math.min(INTCFG.maxNet,Math.floor(x.net[n])):0};
 const intKnow=(n,k)=>{const x=S.intel,v=x&&x.intel&&x.intel[n];return v&&+v[k]>Date.now()?v[k]:0};
