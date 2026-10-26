@@ -10289,7 +10289,7 @@ function exMgr(on){const x=exFix();if(!x)return;if(!on){x.mgr=0;toast("Exchange 
 function exOnTrade(a,v){const via=S.exVia;if(!via||!(v>0))return;const c=v*EXC.com;
   if(via==="me"){const x=exDay();if(!x){S.exVia="";return}x.d.vol+=v;x.d.n++;x.d.com+=c;x.tot+=c;S.cash+=c;return}
   const amt=Math.floor(c);if(amt<1||!exOk())return;const ex=EX.list.find(e=>e.id===via);if(!ex)return;
-  ON.db.collection("excom").add({by:ON.user.uid,byName:String(onProf().name||"Tycoon").slice(0,20),to:via,amt:Math.min(1000000000,amt),vol:Math.min(1e15,Math.max(amt*1000,Math.floor(v))),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{EX.err="Commission not sent: "+(e&&e.code||e)})}
+  ON.db.collection("excom").add({by:ON.user.uid,byName:String(onProf().name||"Tycoon").slice(0,20),to:via,amt:Math.min(50000000,amt),vol:Math.min(1e15,Math.max(amt*1000,Math.floor(v))),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{EX.err="Commission not sent: "+(e&&e.code||e)})}
 /* online */
 const EX={on:0,sub:{},list:[],inb:[],last:0,busy:{},err:"",sel:"AAPL",q:""};
 const exOk=()=>!!(typeof ON!=="undefined"&&ON.db&&ON.user&&window.firebase);
@@ -10300,7 +10300,7 @@ function exEnsure(){if(!exOk()){if(EX.on){for(const k in EX.sub)try{EX.sub[k]()}
   if(exOwn()&&now-EX.last>EXC.pub){EX.last=now;const x=exDay(now);
     ON.db.collection("exch").doc(uid).set({name:x.name,own:String(onProf().name||"Tycoon").slice(0,20),fee:EXC.com,vol:Math.min(1e15,Math.round(x.d.vol+x.d.fee/EXC.take)),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{EX.err="Couldn't list your exchange: "+(e&&e.code||e)})}}
 function exCollect(quiet){const x=exFix();if(!x||!exOk())return;for(const o of EX.inb){if(EX.busy[o.id])continue;EX.busy[o.id]=1;const ref=ON.db.collection("excom").doc(o.id);
-  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)throw new Error("gone");const v=Math.max(0,Math.min(1000000000,Math.floor(+d.data().amt||0)));t.delete(ref);return{v,vol:+d.data().vol||0}})
+  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)throw new Error("gone");const v=Math.max(0,Math.min(50000000,Math.floor(+d.data().amt||0)));t.delete(ref);return{v,vol:+d.data().vol||0}})
     .then(r=>{delete EX.busy[o.id];const x2=exDay();if(x2){x2.d.com+=r.v;x2.d.vol+=r.vol;x2.d.n++;x2.tot+=r.v}S.cash+=r.v;S.earned=(S.earned||0)+r.v;if(!quiet)toast(`🏛 Collected ${fmt(r.v)} commission from ${o.byName||"a trader"}`);save();hud();exRefresh()},()=>{delete EX.busy[o.id]})}}
 function exRefresh(){if(EXW.open)exRender();if(PH&&PH.open&&(PH.app==="exch"))phRender()}
 function exTick(){const now=Date.now(),x=exDay(now);if(x){const dt=Math.max(0,Math.min(now-(x.t||now),48*DAYMS));x.t=now;const g=exGross()*dt/DAYMS;x.d.fee+=g;x.d.vol+=g/EXC.take;x.tot+=g}
