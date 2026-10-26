@@ -9417,8 +9417,25 @@ function dvPage(){const now=Date.now(),rows=dvRows(),A=S.fleet.filter(v=>v.al&&v
       <td class="dv-w"><div class="dv-a">${r.rec}${r.edit}${r.can}</div></td></tr>`;
       if(DV.ed&&DV.ed.k==="v"+v.id&&r.a&&(r.a.fx||r.a.cu)&&r.a.st==="go"&&!v.cargo)h+=dvEditRow(v)}
     h+=`</tbody></table></div>`}
-  const [alh,cuh]=dvLinesHtml();h+=`</div>${alh}<div class="dv-two">${cuh}<div class="mdx-card" style="min-width:0"><div class="mdx-ch"><h3>Create a custom delivery</h3></div>${dvFormHtml()}</div></div>`;
+  const [alh,cuh]=dvLinesHtml();h+=`</div>${dvGapHtml()}${alh}<div class="dv-two">${cuh}<div class="mdx-card" style="min-width:0"><div class="mdx-ch"><h3>Create a custom delivery</h3></div>${dvFormHtml()}</div></div>`;
   return h}
+/* Truck tracker: for every city + good your businesses use, the trucks Auto-line runs vs the trucks the use rate needs
+   (load ÷ round trip from the nearest depot city must match units/h). Estimate uses a standard truck when none runs yet. */
+function dvGap(){const R=alRates(),P=S.alPause||{},out=[];
+  for(const id in R){const N=CITIES[id];for(const g in R[id]){const rate=R[id][g];if(!(rate>0)||!G[g]||P[id+":"+g])continue;
+    const ls=(S.dvl||[]).filter(x=>x.au&&x.on&&x.to===N.id&&x.g===g);let cov=0,per=null;
+    for(const x of ls){const v=S.fleet.find(y=>y.id===x.v),W=CITIES[x.src];if(!v||!W)continue;const c=Math.max(.05,(legMs(v,W,N)+legMs(v,N,W))/DAYMS);cov+=x.q/c;if(per==null)per=x.q/c}
+    if(per==null){const ws=Object.keys(S.wh).map(i=>CITIES[i]).filter(w=>w&&w!==N&&S.wh[w.id]!=null).sort((a,b)=>(inv0(b,g)>=1)-(inv0(a,g)>=1)||distKm(a,N)-distKm(b,N));
+      const W=ws[0],t={type:"truck"};if(W){const c=Math.max(.05,(legMs(t,W,N)+legMs(t,N,W))/DAYMS);per=capU("truck",g)/c}}
+    const short=Math.max(0,rate-cov),more=per?Math.ceil(short/per-1e-9):null;
+    out.push({N,g,rate,cov,have:ls.length,more})}}
+  return out.sort((a,b)=>(b.more||0)-(a.more||0)||a.N.name.localeCompare(b.N.name))}
+function dvGapHtml(){const r=dvGap();if(!r.length)return"";const tot=r.reduce((a,x)=>a+(x.more||0),0),idle=S.fleet.filter(v=>dvIdle(v)&&!(S.dvl||[]).some(x=>x.on&&x.v===v.id)).length;
+  const u=g=>g==="fuel"?" kL":"";
+  return `<div class="mdx-card"><div class="mdx-ch"><h3>Truck tracker</h3><small style="margin-left:auto;font:600 12px system-ui;color:${tot?"#b45309":"#15803d"}">${tot?`${tot} more truck${tot>1?"s":""} needed · ${idle} idle`:"Every business is covered"}</small></div>
+  <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;opacity:.7"><th style="padding:4px 6px">City</th><th style="padding:4px 6px">Goods</th><th style="padding:4px 6px">Use /h</th><th style="padding:4px 6px">Sent /h</th><th style="padding:4px 6px">Trucks</th><th style="padding:4px 6px">Still needed</th></tr></thead><tbody>
+  ${r.map(x=>`<tr style="border-top:1px solid #8883"><td style="padding:4px 6px">${x.N.name}</td><td style="padding:4px 6px">${G[x.g][0]}</td><td style="padding:4px 6px">${Math.round(x.rate)}${u(x.g)}</td><td style="padding:4px 6px">${Math.round(x.cov)}${u(x.g)}</td><td style="padding:4px 6px">${x.have}</td><td style="padding:4px 6px;font-weight:700;color:${x.more?"#b45309":"#15803d"}">${x.more==null?"no depot":x.more?"+"+x.more:"✓"}</td></tr>`).join("")}
+  </tbody></table></div>${S.aline?"":`<p style="margin:6px 0 0;font-size:12px;opacity:.75">Auto-line is off, so no standing lines run. Turn it on to send trucks.</p>`}</div>`}
 function dvLinesHtml(){const R=alRates(),P=S.alPause||{},src=alTick.src||{};let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Auto-line lines</h3><small style="margin-left:auto;font:600 12px Figtree,sans-serif;color:var(--dxmut)">target ${AL_FILL} h of need</small></div>`;
   const ls=[];for(const id in R){const c=CITIES[id];for(const g in R[id])if(R[id][g]>0)ls.push({c,g,r:R[id][g]})}
   if(!ls.length)h+=`<div class="mdx-empty">No Auto-line lines: businesses that draw goods from a depot (or gas stations) create them.</div>`;
