@@ -131,6 +131,27 @@ button.buy.up{background:transparent;color:var(--ink)}
 button.buy:disabled{opacity:.32;cursor:not-allowed}
 button.buy.up{border-color:var(--line)}button.buy.up:not(:disabled):hover{border-color:var(--ink)}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.bzf{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0 2px}
+.bzseg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;gap:2px}
+.bzseg button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.bzseg button i{font-style:normal;opacity:.7;font-family:var(--mono);font-size:11px}
+.bzseg button[aria-pressed=true]{background:var(--ink);color:var(--panel)}
+.bzf input[type=search],.bzf select{font:inherit;font-size:12.5px;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:999px;padding:6px 12px;min-width:0}
+.bzf input[type=search]{flex:1 1 110px}.bzaff{font-size:12px;color:var(--muted);display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
+.bz-empty{font-size:12.5px;color:var(--muted);padding:12px 0}.bz-lnk{border:0;background:none;color:var(--ink);text-decoration:underline;font:inherit;cursor:pointer;padding:0}
+.bz-it{border-bottom:1px solid var(--line)}.bz-it.bz-wz{box-shadow:inset 3px 0 0 #dc2626}
+.bz-hd{all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:8px;padding:12px 4px;cursor:pointer;flex-wrap:wrap}
+.bz-hd:hover{background:color-mix(in srgb,var(--ink) 5%,transparent)}.bz-hd:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.bz-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}.bz-nm{font-weight:600}.bz-tg{font-size:11.5px;color:var(--muted)}
+.bz-p{margin-left:auto;font-family:var(--mono);font-weight:600;font-size:13px}.bz-ch{color:var(--muted);transition:transform .2s;font-size:16px;line-height:1}
+.bz-it.open .bz-ch{transform:rotate(90deg)}.bz-body{display:none;padding:0 4px 12px}.bz-it.open .bz-body{display:block}
+#sheet.bzv .bz-body .row{background:transparent!important;border:0;padding:4px 0;grid-template-columns:minmax(0,1fr)}
+#sheet.bzv .bz-body>.row:first-child>.n{display:none}
+#sheet.bzv .row>span[style*="grid-row"]{grid-row:auto!important;grid-column:1/-1!important;flex-direction:row!important;flex-wrap:wrap;margin-top:6px}
+#sheet.bzv .row>span[style*="grid-row"] .buy{flex:1 1 auto}
+#sheet.bzv button.buy{min-height:32px;padding:6px 11px;font-size:12px;min-width:0;border-width:1px;box-shadow:none}
+#sheet.bzv .row.own{background:transparent;padding-inline:0}
+#sheet.bzv .ops{background:color-mix(in srgb,var(--ownbg) 55%,transparent)}
 .sec{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--ink);margin:22px 0 2px;display:flex;align-items:center;gap:8px}
 .sec::after{content:"";flex:1;height:1px;background:var(--line)}
 .cttag{display:inline-block;font:700 10px var(--mono);color:#fff;padding:1px 5px;border-radius:4px;margin-right:4px;vertical-align:1px;letter-spacing:.5px}
@@ -877,18 +898,32 @@ function openCity(c){const fresh=mode!=="city"||sel!==c;mode="city";if(sel!==c)s
 function closeSheet(){sel=null;sheet.classList.remove("open","full");draw()}
 /* the one new-game path: erase this slot's local save and reload. Locks saving/cloud upload first so nothing (pagehide upload, autosave) rewrites the old game; the cloud save document and the online account are not touched. */
 function startNewGame(){save.lock=true;if(typeof CS!=="undefined")CS.busy=true;try{localStorage.removeItem(KEY)}catch(e){}location.reload()}
-function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.contains("open"))renderResearch();return}if(mode==="pf"){if(sheet.classList.contains("open"))renderPortfolio();return}if(!sel)return;const c=sel,o=S.own[c.id]||{},ev=S.events[c.id];if(unhOn(c)){renderUnh(c);return}if(tab==="life"){renderLife(c);return}if(tab==="hq"){renderHQ(c);return}if(tab==="gov"){govHtml(c);return}if(tab!=="biz"){renderInd(c);return}
+/* Business tab view state (session only): v all|mine|new, s best|cheap|az, aff = affordable only, q = search, op = expanded owned rows */
+const bzF={v:"all",s:"best",aff:0,q:"",op:{}};
+function renderSheet(){sheet.classList.remove("bzv");if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.contains("open"))renderResearch();return}if(mode==="pf"){if(sheet.classList.contains("open"))renderPortfolio();return}if(!sel)return;const c=sel,o=S.own[c.id]||{},ev=S.events[c.id];if(unhOn(c)){renderUnh(c);return}if(tab==="life"){renderLife(c);return}if(tab==="hq"){renderHQ(c);return}if(tab==="gov"){govHtml(c);return}if(tab!=="biz"){renderInd(c);return}
   let h=`<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}${typeof stormAt==="function"&&stormAt(c)?`<span class="tag bust">STORM</span>`:""}${dmgLvl(c)>=DMG.dead?`<span class="tag bust">DESTROYED</span>`:dmgLvl(c)>=.05?`<span class="tag bust">DAMAGED</span>`:""}</h2>
     <p>${c.country} · market size ${"●".repeat(c.size)}${"○".repeat(5-c.size)}</p></div>
     <button class="x" id="cls" aria-label="Close">×</button></div>
     <div class="meta"><div><span>Land price </span>×${PRICE[c.size]}</div><div><span>Demand </span>×${(DEMAND[c.size]*evMult(c)*compMult(c)).toFixed(2)}</div><div><span>Yours </span>${fmt(cityProfit(c))}/hr</div></div>${dmgLine(c)}`+tabsHtml()+(()=>{const f=stFeudLine(c);return f?`<div class="list">${f}</div>`:""})();
-  const mine=BIZ.filter(b=>o[b.k]),avail=BIZ.filter(b=>!o[b.k]&&(b.cx==null||b.cx===c.id));
+  const mine0=BIZ.filter(b=>o[b.k]),avail0=BIZ.filter(b=>!o[b.k]&&(b.cx==null||b.cx===c.id));
+  const bzq=bzF.q.trim().toLowerCase(),bzm=b=>!bzq||b.n.toLowerCase().includes(bzq)||(b.d||"").toLowerCase().includes(bzq);
+  const bzNet=b=>{const p=potential(b,c,1);return p-(SUP[b.k]?useRate(b,1,c)*unitCost(b,c):0)},bzSort=(a,f)=>bzF.s==="az"?a.sort((x,y)=>x.n.localeCompare(y.n)):bzF.s==="cheap"?a.sort((x,y)=>cost(x,c)-cost(y,c)):a.sort((x,y)=>f(y)-f(x));
+  const mine=bzF.v==="new"?[]:bzSort(mine0.filter(bzm),b=>profit(b,c,o[b.k])),avail=bzF.v==="mine"?[]:bzSort(avail0.filter(b=>bzm(b)&&(!bzF.aff||S.cash>=cost(b,c)*FIT)),bzNet);
+  {const chip=(k,n)=>`<button data-bzf="${k}" aria-pressed="${bzF.v===k}">${n}</button>`;
+    h+=`<div class="bzf" role="toolbar" aria-label="Filter businesses"><div class="bzseg">${chip("all","All")}${chip("mine",`Mine${mine0.length?` <i>${mine0.length}</i>`:""}`)}${chip("new",`Open new <i>${avail0.length}</i>`)}</div>
+      <input type="search" id="bz-q" placeholder="Search" value="${bzF.q.replace(/[&"<>]/g,"")}" aria-label="Search businesses">
+      <select id="bz-s" aria-label="Sort"><option value="best"${bzF.s==="best"?" selected":""}>Most profit</option><option value="cheap"${bzF.s==="cheap"?" selected":""}>Cheapest</option><option value="az"${bzF.s==="az"?" selected":""}>A–Z</option></select>
+      ${bzF.v!=="mine"?`<label class="bzaff"><input type="checkbox" id="bz-aff"${bzF.aff?" checked":""}> I can afford</label>`:""}</div>`}
+  if(bzF.v!=="new"&&mine0.length&&!mine.length)h+=`<p class="bz-empty">None of your businesses here match “${bzF.q.replace(/[&"<>]/g,"")}”.</p>`;
+  if(bzF.v==="mine"&&!mine0.length)h+=`<p class="bz-empty">You don't own anything in ${c.name} yet. <button class="bz-lnk" data-bzf="new">See what you can open</button></p>`;
   const wz=mine.length?wzInfo(c):null;
   if(mine.length){h+=`<div class="sec">Your businesses here</div><div class="list">`;
     for(const b of mine){const lv=o[b.k],p=profit(b,c,lv);const uc=upCost(b,c,lv),xs=XU(c.id,b.k),nu=1+xs.length,bc=cost(b,c),blk=bizBlock(b,c),ub=(i,l)=>l<MAXLV?`<button class="buy up" data-up="${b.k}|${i}" ${S.cash<upCost(b,c,l)?"disabled":""}>Upgrade ${fmt(upCost(b,c,l))}</button>`:`<button class="buy up" disabled>Maxed</button>`,sb=(i,l)=>`<button class="buy up" data-sell1="${b.k}|${i}">Sell ${fmt(uVal(b,c,l,!i&&isLeased(c,b.k)))}</button>`;
+      const bzo=bzF.op[b.k]!=null?bzF.op[b.k]:mine0.length<=2,opf=opFactor(c,b);
+      h+=`<div class="bz-it${bzo?" open":""}${wzRow(wz)?" bz-wz":""}"><button class="bz-hd" data-bzt="${b.k}" aria-expanded="${bzo}"><span class="bz-dot" style="background:${opf>.01?"var(--good)":"var(--bad)"}" title="${opf>.01?"Selling":"Not selling"}"></span><span class="bz-nm">${b.n}</span><span class="bz-tg">${nu>1?`×${nu} · `:""}Lv ${lv}${isLeased(c,b.k)?" · rented":""}${bizReg(c,b.k)?"":` · <b style="color:var(--bad)">unregistered</b>`}${opf>.01?"":` · <b style="color:var(--bad)">not selling</b>`}</span><span class="bz-p" style="color:${p<0?"var(--bad)":"var(--good)"}">${fmt(nu>1?cityUnitsP(b,c):p)}/hr</span><span class="bz-ch" aria-hidden="true">›</span></button><div class="bz-body">`;
       h+=`<div class="row own${wzRow(wz)}"><div class="n">${b.n} ${wzTag(wz)}${nu>1?`<span class="tag boom">×${nu} · ${fmt(cityUnitsP(b,c))}/hr</span> `:""}<span class="tag" style="border:1px solid var(--line)">${nu>1?"#1 ":""}Lv ${lv}</span>${isLeased(c,b.k)?`<span class="tag" style="border:1px solid var(--line)">Rented · ${fmt(bizRent(b,c))}/hr</span>`:""}${bizReg(c,b.k)?"":`<span class="tag bust">Unregistered</span>`}</div>
       <div class="d">${USE[b.k]?(supFrac(c,b)>.99?'<span style="color:var(--good)">✓ Supplied from your warehouse (+35%)</span> · ':`<span style="color:var(--muted)">Supply ${Object.entries(USE[b.k]).map(([g,q])=>q*uSum(c.id,b.k,l=>l)+' '+G[g][0].toLowerCase()).join(' + ')}/hr from a warehouse here for +35%${supFrac(c,b)>0?' (now '+Math.round(supFrac(c,b)*100)+'%)':''}</span> · `):''}Making <b style="color:${p<0?"var(--bad)":"var(--good)"}">${fmt(p)}</b>/hr${lv<MAXLV?` → <b>${fmt(profit(b,c,lv+1))}</b> at Lv ${lv+1}`:" · max level"}</div>${wzLine(wz,b.k)}
-      <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${ub(0,lv)}${isLeased(c,b.k)?`<button class="buy" data-own="${b.k}" ${S.cash<cost(b,c)*(1-FIT)?"disabled":""}>Buy premises ${fmt(cost(b,c)*(1-FIT))}</button>`:""}${sb(0,lv)}<button class="buy" data-buy="${b.k}" ${S.cash<bc||blk?"disabled":""}>Open another ${fmt(bc)}</button></span></div>`+xs.map((l,j)=>`<div class="row own${wzRow(wz)}"><div class="n">${b.n} #${j+2} <span class="tag" style="border:1px solid var(--line)">Lv ${l}</span></div><div class="d">Making <b>${fmt(profit(b,c,l))}</b>/hr${l<MAXLV?` → <b>${fmt(profit(b,c,l+1))}</b> at Lv ${l+1}`:" · max level"}. Shares staff, stock and menu with #1.</div><span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${ub(j+1,l)}${sb(j+1,l)}</span></div>`).join("")+opsHtml(c,b,lv)+menuHtml(c,b,lv)+(CARTS.includes(b.k)?cartTips(c,b,lv):"")}
+      <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${ub(0,lv)}${isLeased(c,b.k)?`<button class="buy" data-own="${b.k}" ${S.cash<cost(b,c)*(1-FIT)?"disabled":""}>Buy premises ${fmt(cost(b,c)*(1-FIT))}</button>`:""}${sb(0,lv)}<button class="buy" data-buy="${b.k}" ${S.cash<bc||blk?"disabled":""}>Open another ${fmt(bc)}</button></span></div>`+xs.map((l,j)=>`<div class="row own${wzRow(wz)}"><div class="n">${b.n} #${j+2} <span class="tag" style="border:1px solid var(--line)">Lv ${l}</span></div><div class="d">Making <b>${fmt(profit(b,c,l))}</b>/hr${l<MAXLV?` → <b>${fmt(profit(b,c,l+1))}</b> at Lv ${l+1}`:" · max level"}. Shares staff, stock and menu with #1.</div><span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${ub(j+1,l)}${sb(j+1,l)}</span></div>`).join("")+opsHtml(c,b,lv)+menuHtml(c,b,lv)+(CARTS.includes(b.k)?cartTips(c,b,lv):"")+`</div></div>`}
     const mc=mgrCost(c);
     h+=`<div class="row${S.mgr[c.id]?" own":""}"><div class="n">City manager ${S.mgr[c.id]?'<span class="tag boom">Hired</span>':""}</div>
       <div class="d">${S.mgr[c.id]?"Sales here are 20% higher.":"Raises sales of every business here by 20%. One-time fee."}</div>
@@ -903,14 +938,14 @@ function renderSheet(){if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.
     for(const i of here)h+=`<div class="row"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${RIVALS[i].col};margin-right:6px"></span>${RIVALS[i].n}</div>
       <div class="d">Buy out their local branch to win back customers.<br><small style="color:var(--muted)">${rivalFacts(i)}</small></div><button class="buy up" data-bo="${i}" ${S.cash<bc?"disabled":""}>Buy out ${fmt(bc)}</button></div>`;
     h+=`</div>`}
-  h+=`<div class="sec">Open a business</div><div class="list">`;
+  if(bzF.v!=="mine"){h+=`<div class="sec">Open a business${bzq||bzF.aff?` <small>${avail.length} of ${avail0.length}</small>`:""}</div><div class="list">`;
   for(const b of avail){const k=cost(b,c),blk=bizBlock(b,c),lock=0,p=potential(b,c,1),pn=p-(SUP[b.k]?useRate(b,1,c)*unitCost(b,c):0),pay=pn>0?Math.ceil(k/pn):null;
     h+=`<div class="row"${lock?' style="opacity:.6"':""}><div class="n">${lock?"🔒 ":""}${b.n}</div>
     <div class="d">${b.d} ${lock?"":`<b style="color:${p<0?"var(--bad)":"var(--ink)"}">${fmt(p)}</b>/hr${pay?` · pays back in ${pay<48?pay+" h":(pay/24).toFixed(1)+" days"}`:p>0?" · never pays back after stock costs":" · loses money here"}`}${blk?`<br><b style="color:var(--bad)">${lock?"Locked: ":""}${blk}.</b>`:""}${!lock&&!blk&&bizRent(b,c)>pn?`<br><small style="color:var(--bad)">⚠ Renting: rent exceeds profit after stock costs</small>`:""}</div>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-buy="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k||blk?"disabled":""}>${lock?"Locked":"Buy "+fmt(k)}</button>${lock?"":`<button class="buy up" data-rent="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k*FIT||blk?"disabled":""} ${!blk&&bizRent(b,c)>pn?'title="Rent exceeds profit after stock costs" style="border-color:var(--bust,#c0392b)"':""}>Rent · ${fmt(k*FIT)} + ${fmt(bizRent(b,c))}/hr${!blk&&bizRent(b,c)>pn?" ⚠":""}</button>`}</span></div>`}
-  if(!avail.length)h+=`<p class="d" style="color:var(--muted);padding:10px 0">You own every business type in ${c.name}.</p>`;
-  h+=`</div>`+cbHtml(c)+propsHtml(c)+popHtml(c)+onPlayersHere(c)+`<div class="foot">${mine.length?`<button id="sellall">Sell everything here (75%)</button>`:""}</div>`;
-  sheet.innerHTML=h;
+  if(!avail.length)h+=`<p class="d" style="color:var(--muted);padding:10px 0">${avail0.length?"Nothing matches these filters.":`You own every business type in ${c.name}.`}</p>`;
+  h+=`</div>`}h+=cbHtml(c)+propsHtml(c)+popHtml(c)+onPlayersHere(c)+`<div class="foot">${mine.length?`<button id="sellall">Sell everything here (75%)</button>`:""}</div>`;
+  sheet.innerHTML=h;sheet.classList.add("bzv");
   $("#cls").onclick=closeSheet;
   sheet.querySelectorAll("[data-buy]").forEach(btn=>btn.onclick=()=>buy(c,btn.dataset.buy));
   sheet.querySelectorAll("[data-rent]").forEach(btn=>btn.onclick=()=>{const k=btn.dataset.rent,b=BIZ.find(x=>x.k===k),p=cost(b,c)*FIT;if(S.cash<p)return;const blk=bizBlock(b,c);if(blk){toast(blk);return}
@@ -1808,6 +1843,10 @@ function marketHtml(c){const inv=S.inv[c.id]||{},mine=S.lst.filter(l=>l.city===c
   else if(!mine.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Nothing in this warehouse to list.</p>`;
   return h+`</div>`}
 let mkForm={};
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-bzf],[data-bzt]");if(!b||!sel)return;
+  if(b.dataset.bzf){bzF.v=b.dataset.bzf;renderSheet();return}const k=b.dataset.bzt,it=b.parentElement,o=!it.classList.contains("open");bzF.op[k]=o;it.classList.toggle("open",o);b.setAttribute("aria-expanded",o)});
+sheet.addEventListener("change",e=>{const t=e.target;if(t.id==="bz-s"){bzF.s=t.value;renderSheet()}else if(t.id==="bz-aff"){bzF.aff=t.checked?1:0;renderSheet()}});
+sheet.addEventListener("input",e=>{const t=e.target;if(t.id!=="bz-q")return;bzF.q=t.value.slice(0,40);const n=t.selectionStart;renderSheet();const q=$("#bz-q");if(q){q.focus();try{q.setSelectionRange(n,n)}catch(x){}}});
 sheet.addEventListener("change",e=>{if(e.target.id==="mk-g"&&sel){mkForm.g=e.target.value;renderSheet()}});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-mk]");if(!b||!sel)return;const c=sel,a=b.dataset.mk;
   if(a==="post"){const g=$("#mk-g").value,inv=S.inv[c.id]||{},q=Math.min(+$("#mk-q").value||0,inv[g]||0),p=+$("#mk-p").value;
