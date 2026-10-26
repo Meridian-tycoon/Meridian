@@ -615,6 +615,20 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
       allow update: if false;
     }
+    function cabDep(c) {
+      return /databases/$(database)/documents/cab/$(c)/dep/$(request.auth.uid);
+    }
+    function cabOld(path, k) {
+      return exists(path) ? get(path).data.get(k, 0) : 0;
+    }
+    function cabNew(path, k) {
+      return existsAfter(path) ? getAfter(path).data.get(k, 0) : 0;
+    }
+    // a fund moves by exactly as much as the caller's own deposit for that fund
+    function cabDelta(c, k) {
+      return cabNew(/databases/$(database)/documents/cab/$(c), k) - cabOld(/databases/$(database)/documents/cab/$(c), k)
+        == cabNew(cabDep(c), k) - cabOld(cabDep(c), k);
+    }
     // Shared funds of one country's cabinet: members add money; spending happens in a transaction by the Leader.
     match /cab/{c} {
       allow read: if govOf(c);
@@ -623,13 +637,21 @@ service cloud.firestore {
         && (!('war' in request.resource.data) || (request.resource.data.war is number && request.resource.data.war >= 0 && request.resource.data.war <= 1000000000000))
         && (!('arms' in request.resource.data) || (request.resource.data.arms is number && request.resource.data.arms >= 0 && request.resource.data.arms <= 1000000000000))
         && (!('wto' in request.resource.data) || (request.resource.data.wto is number && request.resource.data.wto >= 0 && request.resource.data.wto <= 1000000000000))
-        // only the Leader may lower a fund
-        && (govLeader(c) || resource == null
-            || (request.resource.data.get('war', 0) >= resource.data.get('war', 0)
-                && request.resource.data.get('arms', 0) >= resource.data.get('arms', 0)
-                && request.resource.data.get('wto', 0) >= resource.data.get('wto', 0)));
+        // the Leader may spend; anyone else changes each fund only by the same amount as their own deposit record (cab/{c}/dep/{uid})
+        && (govLeader(c) || (cabDelta(c, 'war') && cabDelta(c, 'arms') && cabDelta(c, 'wto')));
       allow delete: if false;
 
+      // each member's own running deposit per fund; changes only together with the fund itself
+      match /dep/{uid} {
+        allow read: if govOf(c) && request.auth.uid == uid;
+        allow create, update: if govOf(c) && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['war', 'arms', 'wto'])
+          && request.resource.data.get('war', 0) is number && request.resource.data.get('war', 0) >= 0
+          && request.resource.data.get('arms', 0) is number && request.resource.data.get('arms', 0) >= 0
+          && request.resource.data.get('wto', 0) is number && request.resource.data.get('wto', 0) >= 0
+          && cabDelta(c, 'war') && cabDelta(c, 'arms') && cabDelta(c, 'wto');
+        allow delete: if false;
+      }
       match /msg/{mid} {
         allow read: if govOf(c);
         allow create: if govOf(c) && validGovMsg(request.resource.data, c);
