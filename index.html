@@ -10273,7 +10273,18 @@ sheet.addEventListener("click",e=>{const a=e.target.closest("[data-ipoapp]");if(
 var EXC={city:"New York",cost:2e9,base:15e6,take:.0005,com:.001,mgrHire:100e6,mgrSal:750e3,mgrBoost:1.25,pub:5*60000,ai:3e9};
 // AI investors: funds trade through your exchange all day (EXC.ai of volume an hour at normal activity), paying the 0.1% commission
 const EXAIF=["Atlas Capital","Northwind Fund","Blue Harbor","Kestrel Partners","Meridian Pension","Orion Quant","Silverline AM","Granite Ridge"];
-function exAiVol(){return exOwn()?EXC.ai*exAct()*(S.exch.mgr?EXC.mgrBoost:1)*(.85+.3*ipoHash("exai:"+Math.floor(Date.now()/36e5))):0}
+// Realistic flow modelled on the real NYSE (New York time): trading 9:30-16:00 ET Mon-Fri carries ~90% of volume, U-shaped (busy open, slow lunch, the closing auction is the biggest spike),
+// pre-market 4:00-9:30 and after-hours 16:00-20:00 are thin, nights and weekends are closed (only a trickle of crypto). Each trading day draws its own size (lognormal, ~±25%),
+// with the odd big day (Fed, jobs report, earnings, triple witching: 1.6-2.4x) and the odd quiet one (holiday-eve: ~0.5x); minute noise on top. Big market moves (exAct) add more.
+const EXNYF=(()=>{try{return new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",weekday:"short",hour:"numeric",minute:"numeric",hourCycle:"h23",year:"numeric",month:"numeric",day:"numeric"})}catch(e){return null}})();
+function exNY(now){if(EXNYF)try{const o={};for(const p of EXNYF.formatToParts(new Date(now)))o[p.type]=p.value;return{wd:o.weekday,h:(+o.hour%24)+(+o.minute)/60,key:o.year+"-"+o.month+"-"+o.day}}catch(e){}
+  const d=new Date(now-5*36e5);return{wd:["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getUTCDay()],h:d.getUTCHours()+d.getUTCMinutes()/60,key:d.toISOString().slice(0,10)}}
+function exFlow(now){now=now||Date.now();const t=exNY(now),wk=t.wd==="Sat"||t.wd==="Sun",h=t.h;if(wk)return .04;
+  const u1=Math.max(1e-6,ipoHash("exd1:"+t.key)),u2=ipoHash("exd2:"+t.key),z=Math.sqrt(-2*Math.log(u1))*Math.cos(6.2832*u2),r=ipoHash("exq:"+t.key),
+  day=Math.exp(.25*z-.03)*(r<.07?1.6+.8*ipoHash("exb:"+t.key):r>.96?.5:1);
+  let sh;if(h>=9.5&&h<16){const x=(h-9.5)/6.5;sh=x<.077?6.2:x>.92?(h>=15.75?9.5:5.4):2.1+3.2*Math.pow(2*x-1,2)}else if(h>=4&&h<9.5)sh=.12+.35*(h-4)/5.5;else if(h>=16&&h<20)sh=.55-.4*(h-16)/4;else sh=.02;
+  const m=Math.floor(now/60000),n=.75+.5*(ipoHash("exm:"+m)*.6+ipoHash("exm5:"+Math.floor(m/5))*.4);return day*sh*n}
+function exAiVol(){return exOwn()?EXC.ai*exAct()*(S.exch.mgr?EXC.mgrBoost:1)*exFlow():0}
 function exOwn(){return !!(EXC&&S.exch&&S.exch.name)}
 const exName=s=>String(s==null?"":s).replace(/<[^>]*>/g,"").replace(/[^A-Za-z0-9 &.'-]/g,"").replace(/\s+/g," ").trim().slice(0,30);
 function exFix(){const x=S.exch;if(!x||typeof x!=="object")return null;if(!x.d||typeof x.d!=="object")x.d={day:0,vol:0,fee:0,com:0,n:0};if(!Array.isArray(x.h))x.h=[];if(!(x.tot>=0))x.tot=0;x.mgr=x.mgr?1:0;return x}
