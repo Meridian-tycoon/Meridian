@@ -4109,11 +4109,12 @@ function jailHtml(){if(!jailed())return"";const J=S.jail,c=CITIES[J.city],lc=Mat
     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="buy" data-jail="bail" data-fixed="1" ${S.cash<bl?"disabled":""}>Post bail ${fmt(bl)}</button>${J.lawyer?"":`<button class="buy up" data-jail="lawyer" data-fixed="1" ${S.cash<lc?"disabled":""}>Hire lawyer ${fmt(lc)}</button>`}${devOn()?`<button class="buy" data-dev="bail" data-fixed="1">Dev: bail out</button>`:""}</div></div>`}
 /* ---------- owner-only dev tools: unlocked per device with ?dev=1, cleared with ?dev=0 ---------- */
 function devOn(){try{return localStorage.getItem("meridian-dev")==="1"}catch(e){return false}}
-function devHtml(){if(!devOn())return"";return `<div class="sec">Dev</div><div class="list"><div class="row"><div class="n">Reset loans</div><div class="d">${B().loans.length} loans · ${fmt(B().loans.reduce((a,l)=>a+l.bal,0))} owed</div><button class="buy" data-dev="loans">Reset loans</button></div>
+function devHtml(){if(!devOn())return"";const dp=S.pol&&S.pol.r>=0&&S.pol.c;return `<div class="sec">Dev</div><div class="list">${devGod()?`<div class="row"><div class="n">🛡 Iron Dome</div><div class="d">${S.dome!==0?`On · intercepts 100% of missiles and WMDs aimed at ${dp?dp:"the country you govern (none right now)"}`:"Off"}</div><button class="buy" data-dev="dome">${S.dome!==0?"Turn off":"Turn on"}</button></div>`:""}<div class="row"><div class="n">Reset loans</div><div class="d">${B().loans.length} loans · ${fmt(B().loans.reduce((a,l)=>a+l.bal,0))} owed</div><button class="buy" data-dev="loans">Reset loans</button></div>
   <div class="row"><div class="n">Bail out of jail</div><div class="d">${jailed()?"In prison · "+fmtDur(S.jail.until-Date.now())+" left":"Not in prison"}</div><button class="buy" data-dev="bail" ${S.jail?"":"disabled"}>Bail out</button></div>
   <div class="row"><div class="n">Finish deliveries</div><div class="d">${S.fleet.filter(v=>v.arr).length} vehicles on the road · ${(S.hired||[]).length} hired</div><button class="buy" data-dev="fleet" ${S.fleet.some(v=>v.arr)||(S.hired||[]).length?"":"disabled"}>Finish now</button></div></div>`}
 function devAct(b){const k=b.dataset.dev;
   if(k==="loans"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to clear";return}const bk=B();bk.loans=[];bk.lates=[];S.debt=bankDebt();toast("Dev: all loans cleared")}
+  else if(k==="dome"){if(!devGod())return;S.dome=S.dome!==0?0:1;toast(S.dome?"🛡 Iron Dome on":"Iron Dome off")}
   else if(k==="bail"){if(!S.jail)return;S.jail=null;toast("Dev: released from prison")}
   else if(k==="fleet"){const now=Date.now();let n=0;for(const v of S.fleet)if(v.arr&&v.arr>now){v.dep=Math.min(v.dep||now,now-1);v.arr=now;n++}for(const x of S.hired||[])if(x.arr>now)x.arr=now;runFleet(now);toast(`Dev: ${n} deliveries finished`)}
   save();hud();reSheet()}
@@ -4992,8 +4993,8 @@ function wpnRetal(n,w,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,now=Date.now();i
   const t=`⚠ ${n} launched a ${W.n.toLowerCase()} at ${c.name}: impact in ${wn}s${wn>BUNKCFG.warn[k]?" (SIGINT early warning)":""}${present(c)?" · you are there, get to your bunker":""}`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);toast(t);wpnAnim();wmdBanner(k,`${WBN[k]}: ${n} → ${c.country} (${c.name}) · {s}`,Math.max(WMDBANNER_MS,wn*1000+1500),now+wn*1000)}
 // an enemy strike lands on city cid (n = attacker). Air defense may shoot a missile down first.
 function wpnLand(n,k,cid,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,W=WPNCFG.w[k],E=C.hit[k],c=CITIES[cid],now=Date.now();if(!W||!E||!c)return;const w=m.wars[n];
-  if(bunkIntercept(k)){if(!Array.isArray(m.icpt))m.icpt=[];m.icpt=m.icpt.filter(x=>now-x.t<WPNCFG.animMs).concat([{city:c.id,t:now}]);
-    const t=`🛡 ${W.n} intercepted over ${c.name}`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);if(!quiet){toast(t);if(typeof wpnAnim==="function")wpnAnim()}return {icpt:1}}
+  if(bunkIntercept(k,null,c)){if(!Array.isArray(m.icpt))m.icpt=[];m.icpt=m.icpt.filter(x=>now-x.t<WPNCFG.animMs).concat([{city:c.id,t:now}]);
+    const t=`🛡 ${W.n} intercepted over ${c.name}${ironDome(c)?" by Iron Dome":""}`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);if(!quiet){toast(t);if(typeof wpnAnim==="function")wpnAnim()}return {icpt:1}}
   m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*E.city,from:n,foe:1});
   const dead=dmgStrike(k,c,0);if(k==="icbm"){if(w)w.rcd=now+C.cd.icbm*DAYMS;unhStrike(c,n)}if(w)w.front=Math.max(0,w.front-E.front);p.appr=Math.max(0,p.appr+E.appr);if(p.ctrl[c.country])p.ctrl[c.country].loy=Math.max(0,p.ctrl[c.country].loy+E.loy);
   const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,t=`${W.ico} ${n} struck ${c.name} with a ${W.n.toLowerCase()}: ${fmtPop(dead)} killed${w?`, front −${E.front}`:""}, approval ${E.appr}${mine?" · your businesses there are hit":""}`;
@@ -5028,9 +5029,11 @@ const bunkInside=c=>{const b=bunk();return !!(b.in&&b.lv>0&&c&&b.city===c.id&&pr
 // one check for one strike event; ev = {id?, k, city}. Shared online events pass the same ev to every player's own bunker on their device.
 function bunkCheck(ev,rnd){const c=CITIES[ev.city];if(!c||!present(c))return {here:0};const b=bunk(),inside=bunkInside(c),surv=inside?bunkSurv(ev.k,b.lv):0,r=rnd!=null?rnd:Math.random();
   return {here:1,inside:inside?1:0,cover:surv>0?1:0,surv,alive:r<surv?1:0}}
-function bunkIntercept(k,rnd){return !!(BUNKCFG.ad.k.includes(k)&&bunkAD()&&(rnd!=null?rnd:Math.random())<BUNKCFG.ad.p)}
+/* Iron Dome: dev account only. While on, every missile and WMD aimed at a city of the country the dev governs is intercepted (100%). */
+const ironDome=c=>{try{const p=S.pol;return devGod()&&S.dome!==0&&!!c&&!!p&&p.r>=0&&!!p.c&&c.country===p.c}catch(e){return false}};
+function bunkIntercept(k,rnd,c){if(ironDome(c))return true;return !!(BUNKCFG.ad.k.includes(k)&&bunkAD()&&(rnd!=null?rnd:Math.random())<BUNKCFG.ad.p)}
 // apply a landed strike to the player (call after the city damage); returns the bunkCheck result
-function bunkPlayer(k,c,by,quiet,mine){if(typeof evLand==="function"&&evLand(k,c)){save();return {here:0,evac:1}}const r=bunkCheck({k,city:c.id}),W=WPNCFG.w[k];if(!r.here)return r;const say=t=>{S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);if(!quiet)toast(t)};
+function bunkPlayer(k,c,by,quiet,mine){if(!mine&&devGod()&&S.dome!==0){if(!quiet)toast(`🛡 Iron Dome shielded you from the ${(WPNCFG.w[k]||{n:"strike"}).n.toLowerCase()} on ${c.name}`);return {here:0,dome:1}}if(typeof evLand==="function"&&evLand(k,c)){save();return {here:0,evac:1}}const r=bunkCheck({k,city:c.id}),W=WPNCFG.w[k];if(!r.here)return r;const say=t=>{S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);if(!quiet)toast(t)};
   if(r.alive){say(`🛡 You survived the ${W.n.toLowerCase()} in your bunker in ${c.name}${r.cover?": your cash is safe":""}`);return r}
   const lost=r.cover?0:Math.round(Math.max(0,S.cash)*BUNKCFG.cashLoss[k]);S.cash-=lost;
   if(BUNKCFG.fatal[k]){S.dead={city:c.id,name:c.name,country:c.country,by:by||"",t:Date.now(),k,foe:mine?0:1};save();if(!quiet||k==="icbm")showGameOver();return r}
@@ -9094,8 +9097,8 @@ function aimFire(att,def,w,quiet,prov){const cs=ctyCities(def);if(!cs.length)ret
 const aimKind=x=>x.prov?(x.sea?"missile test":"missile strike"):"cruise missile strike";
 // a missile lands (x from aim().inc, or built directly for offline catch-up)
 function aimLand(x,quiet){const C=AIMCFG,c=CITIES[x.city];if(!c)return;
-  if(!quiet&&x.me&&bunkIntercept("msl")){x.icpt=1;const m=S.pol&&S.pol.mil;if(m){if(!Array.isArray(m.icpt))m.icpt=[];m.icpt=m.icpt.filter(y=>Date.now()-y.t<WPNCFG.animMs).concat([{city:c.id,t:Date.now()}])}
-    const t=`🛡 ${x.att}'s missile intercepted over ${c.name} by your air defense`;stNews(t);toast(t);if(typeof wpnAnim==="function")wpnAnim();return}
+  if(!quiet&&(x.me||ironDome(c))&&bunkIntercept("msl",null,c)){x.icpt=1;const m=S.pol&&S.pol.mil;if(m){if(!Array.isArray(m.icpt))m.icpt=[];m.icpt=m.icpt.filter(y=>Date.now()-y.t<WPNCFG.animMs).concat([{city:c.id,t:Date.now()}])}
+    const t=`🛡 ${x.att}'s missile intercepted over ${c.name} by ${ironDome(c)?"Iron Dome":"your air defense"}`;stNews(t);toast(t);if(typeof wpnAnim==="function")wpnAnim();return}
   if(x.sea)return;
   if(!x.prov){const w=(S.wars||[]).find(v=>v&&v.a===x.wa&&v.b===x.wb);try{const d=dip();if(d.gdp[x.def]>0)d.gdp[x.def]*=1-C.gdp}catch(e){}if(w&&w.fp!=null)w.fp=Math.max(0,Math.min(100,w.fp+(w.a===x.att?1:-1)*C.fp));
     if(!quiet){const a=aim();if(a.ncH!==S.hour){a.ncH=S.hour;a.nc=0}if(a.nc++<C.news)stNews(`🚀 ${x.att} strikes ${c.name}, ${x.def}, with cruise missiles`)}}
