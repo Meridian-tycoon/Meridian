@@ -225,6 +225,46 @@ service cloud.firestore {
         && request.resource.data.xb == request.time
         && (resource.data.xb == null || resource.data.xb < request.time - duration.value(5, 'm'));
     }
+    // Weekly world events (index.html wev*): one event per UTC week w (week 0 = Mon 5 Jan 1970), scored Mon 00:00 to Sat 23:59 UTC.
+    // world/evt: the master world (developer's save) publishes the current event, the server-wide total and the top 10; everyone reads it.
+    function validEvt(d) {
+      return d.keys().hasOnly(['w', 'k', 'goal', 'prog', 'n', 'top', 'fin', 'last', 'updated'])
+        && d.keys().hasAll(['w', 'k', 'goal', 'prog', 'n', 'top', 'updated'])
+        && d.w is int && d.w >= 0 && d.k in ['rush', 'tour', 'harvest', 'build', 'tech', 'oil']
+        && d.goal is int && d.goal > 0 && d.prog is int && d.prog >= 0 && d.n is int && d.n >= 0
+        && d.top is list && d.top.size() <= 10
+        && (!('fin' in d) || d.fin is bool)
+        && (!('last' in d) || d.last == null || d.last is map)
+        && d.updated == request.time;
+    }
+    match /world/evt {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1'
+        && validEvt(request.resource.data);
+    }
+    // evt/{w}/score/{uid}: a player's score for week w, written only by that player and only inside the week. The score never goes down,
+    // rises by at most 5,000,000 points per write and writes are 30 s apart. Everyone reads (board + goal); nobody deletes.
+    function validEvtScore(w, d) {
+      return w.matches('^[0-9]{1,7}$')
+        && d.keys().hasOnly(['name', 's', 'at']) && d.keys().hasAll(['name', 's', 'at'])
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 20
+        && d.s is int && d.s >= 0 && d.s <= 1000000000000
+        && d.at == request.time
+        && request.time.toMillis() >= (int(w) * 7 + 4) * 86400000
+        && request.time.toMillis() < (int(w) * 7 + 10) * 86400000;
+    }
+    function evtStep(x) {
+      return x >= 0 && x <= 5000000;
+    }
+    match /evt/{w}/score/{uid} {
+      allow read: if true;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && validEvtScore(w, request.resource.data) && request.resource.data.s <= 5000000;
+      allow update: if request.auth != null && request.auth.uid == uid
+        && validEvtScore(w, request.resource.data) && evtStep(request.resource.data.s - resource.data.s)
+        && request.time > resource.data.at + duration.value(30, 's');
+    }
     // A player's troops fighting in a shared war: one doc per player, written and removed only by that player, read by everyone.
     match /wjoin/{uid} {
       allow read: if true;
