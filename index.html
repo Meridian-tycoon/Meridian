@@ -675,7 +675,7 @@ function totals(){let inc=0,assets=0;
   const interest=typeof bankPayHr==="function"?Math.round(bankPayHr()):Math.round(S.debt*0.003);
   const upk=typeof indUpkeep==="function"?indUpkeep():0;assets+=typeof indAssets==="function"?indAssets():0;
   const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof exIncome==="function"){assets+=exAssets()+exCap()}if(typeof flipUpk==="function"){inc-=flipUpk();assets+=flipAssets()}if(typeof polIncome==="function")inc+=polIncome();if(typeof luxIncome==="function"){inc+=luxIncome();assets+=luxAssets()}if(typeof gxUpk==="function")inc-=gxUpk();if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
-  if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity();if(typeof gearAssets==="function")assets+=gearAssets();if(typeof ishIncome==="function"){inc+=ishIncome();assets+=ishAssets()}if(typeof rigIncome==="function"){inc+=rigIncome();assets+=rigAssets()}if(typeof aucIncome==="function"){inc+=aucIncome();assets+=aucAssets()+aucEscrow()}
+  if(typeof airFleetVal==="function")assets+=airFleetVal();if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity();if(typeof gearAssets==="function")assets+=gearAssets();if(typeof ishIncome==="function"){inc+=ishIncome();assets+=ishAssets()}if(typeof rigIncome==="function"){inc+=rigIncome();assets+=rigAssets()}if(typeof aucIncome==="function"){inc+=aucIncome();assets+=aucAssets()+aucEscrow()}
   let owed=0;try{assets+=ipoHoldVal();owed=ipoOwed()}catch(e){}
   return{inc:inc-(typeof bankPayHr==="function"?0:interest)-upk-rent,interest,upk,rent,owed,nw:S.cash+assets-S.debt-owed}}
 
@@ -839,6 +839,7 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   if(typeof drawWarSmoke==="function"&&z<11)try{drawWarSmoke(ctx)}catch(e){}
   if(typeof drawGovLine==="function"&&z<11)try{drawGovLine(ctx)}catch(e){}
   if(typeof drawEvac==="function")try{drawEvac(ctx)}catch(e){}
+  if(typeof airDraw==="function"&&z<11)try{airDraw(ctx,now)}catch(e){}
   if(typeof drawRigs==="function")try{drawRigs(ctx)}catch(e){}
   if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);ctx.restore()}
   const dotA=1-smooth01(10.5,12,z),labA=1-smooth01(8.5,9.6,z);   // our city dots hand over to the real map as you get close
@@ -8609,13 +8610,22 @@ function airTick(now){const a=AIR();if(!a.pl.length)return;let got=0;
       const f=p.dir?r.b:r.a,t=p.dir?r.a:r.b;a.log.unshift({t:p.nx,f,to:t,k:p.k,pax:e.pax,tons:e.tons,net:Math.round(net),late:late?1:0});
       p.dir=p.dir?0:1;p.dep=p.nx;p.nx+=e.ms*(late?1.3:1)}}
   if(a.log.length>ALC.log)a.log.length=ALC.log;return got}
+/* fleet value = what the planes would sell for (list price x ALC.sell), counted in net worth */
+function airFleetVal(){const a=S.air;if(!a||!Array.isArray(a.pl))return 0;let v=0;for(const p of a.pl)if(p&&ALP[p.k])v+=ALP[p.k].cost*ALC.sell;return v}
+/* map: each plane on a route as a small ✈ along its great circle at its leg progress; routes as faint dashes */
+function airDraw(ctx,now){const a=S.air;if(!a||!Array.isArray(a.pl)||!a.pl.length)return;const dn={};ctx.save();ctx.font="12px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
+  for(const p of a.pl){if(!p||!p.nx||p.r==null)continue;const r=airRt(p.r);if(!r||!airIsHub(p.hub))continue;const A=CITIES[p.dir?r.b:r.a],B=CITIES[p.dir?r.a:r.b];if(!A||!B)continue;
+    if(!dn[r.id]){dn[r.id]=1;ctx.beginPath();path({type:"LineString",coordinates:[[A.lon,A.lat],[B.lon,B.lat]]});ctx.setLineDash([2,6]);ctx.strokeStyle="#2563eb";ctx.globalAlpha=.35;ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([])}
+    const u=Math.max(0,Math.min(1,(now-(p.dep||now))/Math.max(1,p.nx-(p.dep||now)))),ip=d3.geoInterpolate([A.lon,A.lat],[B.lon,B.lat]),g=ip(u);if(!visible(g[0],g[1]))continue;
+    const [x,y]=proj(g),h=ip(Math.min(1,u+.01)),[x2,y2]=proj(h);ctx.globalAlpha=1;ctx.save();ctx.translate(x,y);ctx.rotate(Math.atan2(y2-y,x2-x)+Math.PI/4);ctx.fillStyle="#1d4ed8";ctx.fillText("✈",0,0);ctx.restore()}
+  ctx.restore()}
 function airDay(){const a=AIR(),now=Date.now(),c=Math.floor(now/DAYMS);let rev=0,cost=0,pax=0,legs=0;const e0=a.hh.find(e=>e.h===c),e1=a.hh.find(e=>e.h===c-1);for(const e of [e0,e1])if(e){rev+=e.rev;cost+=e.cost;pax+=e.pax;legs+=e.legs}return {rev,cost,net:rev-cost,pax,legs}}
 function AGS(){return DX.ag=DX.ag||{tab:"ov",bk:"nb",bh:-1,rh:-1,rd:-1,note:"",nt:0,force:false}}
 const axBiz=()=>BIZ.find(b=>b.k==="airline");
 function axBuyList(n){const b=axBiz(),cs=CITIES.filter(c=>!airIsHub(c.id)&&!bizBlock(b,c)).sort((x,y)=>cost(b,x)-cost(b,y)).slice(0,n);if(!cs.length)return `<div class="mdx-empty">No city can open an Airline right now.</div>`;
   return cs.map(c=>`<div class="lx-it"><div class="m"><b>${dxE(c.name)}</b><span>${fmt(cost(b,c))} to open · size ${c.size}${airOwnAp(c.id)?" · your airport":""}</span></div><div class="a"><button class="lx-btn" data-ax="go" data-c="${c.id}">Open in ${dxE(c.name)}</button></div></div>`).join("")}
 function axKpis(){const a=AIR(),d=airDay(),fl=a.pl.filter(p=>p.nx).length;let lfs=0,n=0;for(const p of a.pl){const r=p.r!=null?airRt(p.r):null;if(r&&ALP[p.k].seats){lfs+=airEst(p.k,r,0).lf;n++}}
-  return `<div class="lx-k"><div><span>Profit (this + last hr)</span><b style="color:${txCol(d.net)}">${txSgn(d.net)}</b><small>${fmt(d.rev)} revenue</small></div><div><span>Passengers</span><b>${d.pax.toLocaleString()}</b><small>${d.legs} flight${d.legs===1?"":"s"} · ${a.pax.toLocaleString()} all time</small></div><div><span>Load factor</span><b>${n?Math.round(lfs/n*100)+"%":"—"}</b><small>average, passenger routes</small></div><div><span>Planes flying</span><b>${fl}/${a.pl.length}</b><small>${a.rt.length} route${a.rt.length===1?"":"s"} · ${txPct(a.legs-a.late,a.legs)} on time</small></div></div>`}
+  return `<div class="lx-k"><div><span>Profit (this + last hr)</span><b style="color:${txCol(d.net)}">${txSgn(d.net)}</b><small>${fmt(d.rev)} revenue</small></div><div><span>Passengers</span><b>${d.pax.toLocaleString()}</b><small>${d.legs} flight${d.legs===1?"":"s"} · ${a.pax.toLocaleString()} all time</small></div><div><span>Load factor</span><b>${n?Math.round(lfs/n*100)+"%":"—"}</b><small>average, passenger routes</small></div><div><span>Fleet value</span><b>${fmt(airFleetVal())}</b><small>resale, counted in net worth</small></div><div><span>Planes flying</span><b>${fl}/${a.pl.length}</b><small>${a.rt.length} route${a.rt.length===1?"":"s"} · ${txPct(a.legs-a.late,a.legs)} on time</small></div></div>`}
 function axChart(){const a=AIR(),c=Math.floor(Date.now()/DAYMS),xs=[];for(let i=11;i>=0;i--){const e=a.hh.find(x=>x.h===c-i);xs.push(e?e.rev-e.cost:0)}
   const mx=Math.max(1,...xs.map(Math.abs)),W=300,H=80,bw=W/12;
   return `<svg viewBox="0 0 ${W} ${H+14}" width="100%" style="display:block;max-width:100%" role="img" aria-label="Airline profit per hour, last 12 hours"><line x1="0" x2="${W}" y1="${H/2}" y2="${H/2}" stroke="#94a3b8" stroke-width=".5"/>${xs.map((v,i)=>{const h=Math.abs(v)/mx*(H/2-2);return `<rect x="${i*bw+2}" width="${bw-4}" y="${v>=0?H/2-h:H/2}" height="${Math.max(.5,h)}" rx="2" fill="${v<0?"#dc2626":"#2563eb"}"><title>${i===11?"This hour":11-i+" hr ago"}: ${txSgn(v)}</title></rect>`}).join("")}<text x="0" y="${H+12}" font-size="9" fill="#64748b">12 hr ago</text><text x="${W}" y="${H+12}" font-size="9" fill="#64748b" text-anchor="end">now</text></svg>`}
