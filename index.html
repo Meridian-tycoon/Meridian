@@ -10270,12 +10270,15 @@ sheet.addEventListener("click",e=>{const a=e.target.closest("[data-ipoapp]");if(
    Base fee income goes through totals().inc (exIncome); it scales with how much the market moves today (exAct). A hired manager adds 25% and auto-collects commissions.
    S.exVia = "" (game market) | "me" (your own exchange: you keep the 0.1% commission) | another player's uid (0.1% of the trade value is paid to that owner).
    Online: exch/{uid} {name,own,fee,vol,at} lists an exchange; a trader routing through it writes excom/{id} {by,byName,to,amt,vol,at}; the owner claims it (transaction delete) and is credited in their own save. */
-var EXC={city:"New York",cost:2e9,base:15e6,take:.0005,com:.001,mgrHire:100e6,mgrSal:750e3,mgrBoost:1.25,pub:5*60000};
+var EXC={city:"New York",cost:2e9,base:15e6,take:.0005,com:.001,mgrHire:100e6,mgrSal:750e3,mgrBoost:1.25,pub:5*60000,ai:3e9};
+// AI investors: funds trade through your exchange all day (EXC.ai of volume an hour at normal activity), paying the 0.1% commission
+const EXAIF=["Atlas Capital","Northwind Fund","Blue Harbor","Kestrel Partners","Meridian Pension","Orion Quant","Silverline AM","Granite Ridge"];
+function exAiVol(){return exOwn()?EXC.ai*exAct()*(S.exch.mgr?EXC.mgrBoost:1)*(.85+.3*ipoHash("exai:"+Math.floor(Date.now()/36e5))):0}
 function exOwn(){return !!(EXC&&S.exch&&S.exch.name)}
 const exName=s=>String(s==null?"":s).replace(/<[^>]*>/g,"").replace(/[^A-Za-z0-9 &.'-]/g,"").replace(/\s+/g," ").trim().slice(0,30);
 function exFix(){const x=S.exch;if(!x||typeof x!=="object")return null;if(!x.d||typeof x.d!=="object")x.d={day:0,vol:0,fee:0,com:0,n:0};if(!Array.isArray(x.h))x.h=[];if(!(x.tot>=0))x.tot=0;x.mgr=x.mgr?1:0;return x}
 function exAct(){const m=MK();let s=0,n=0;for(const a of ASSETS)if(a.t==="s"){const o=m.open[a.s]||m.px[a.s];s+=Math.abs(m.px[a.s]/o-1);n++}return Math.max(.7,Math.min(1.6,.7+(n?s/n:0)*40))}
-function exGross(){return exOwn()?EXC.base*exAct()*(S.exch.mgr?EXC.mgrBoost:1):0}
+function exGross(){return exOwn()?EXC.base*exAct()*(S.exch.mgr?EXC.mgrBoost:1)+exAiVol()*EXC.com:0}
 function exIncome(){if(!exOwn())return 0;return exGross()-(S.exch.mgr?EXC.mgrSal:0)}
 function exAssets(){return exOwn()?EXC.cost*.75:0}
 function exIndex(){const m=MK();let s=0,n=0;for(const a of ASSETS)if(a.t==="s"){s+=m.px[a.s]/a.p0;n++}return n?s/n*1000:1000}
@@ -10303,7 +10306,8 @@ function exCollect(quiet){const x=exFix();if(!x||!exOk())return;for(const o of E
   ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)throw new Error("gone");const v=Math.max(0,Math.min(50000000,Math.floor(+d.data().amt||0)));t.delete(ref);return{v,vol:+d.data().vol||0}})
     .then(r=>{delete EX.busy[o.id];const x2=exDay();if(x2){x2.d.com+=r.v;x2.d.vol+=r.vol;x2.d.n++;x2.tot+=r.v}S.cash+=r.v;S.earned=(S.earned||0)+r.v;if(!quiet)toast(`🏛 Collected ${fmt(r.v)} commission from ${o.byName||"a trader"}`);save();hud();exRefresh()},()=>{delete EX.busy[o.id]})}}
 function exRefresh(){if(EXW.open)exRender();if(PH&&PH.open&&(PH.app==="exch"))phRender()}
-function exTick(){const now=Date.now(),x=exDay(now);if(x){const dt=Math.max(0,Math.min(now-(x.t||now),48*DAYMS));x.t=now;const g=exGross()*dt/DAYMS;x.d.fee+=g;x.d.vol+=g/EXC.take;x.tot+=g}
+function exTick(){const now=Date.now(),x=exDay(now);if(x){const dt=Math.max(0,Math.min(now-(x.t||now),48*DAYMS));x.t=now;const g=exGross()*dt/DAYMS,ai=exAiVol()*dt/DAYMS,gb=g-ai*EXC.com;x.d.fee+=g;x.d.vol+=gb/EXC.take+ai;x.d.ai=(x.d.ai||0)+ai;x.tot+=g;
+    if(ai>0&&Math.random()<Math.min(1,dt/30000)){const a=ASSETS[Math.floor(Math.random()*ASSETS.length)],sell=Math.random()<.45,v=Math.round(exAiVol()*(.002+Math.random()*.02));EX.ai=EX.ai||[];EX.ai.unshift({t:now,f:EXAIF[Math.floor(Math.random()*EXAIF.length)],s:a.s,sell,v});EX.ai.length=Math.min(EX.ai.length,6)}}
   if(S.exVia&&S.exVia!=="me"&&!EX.list.some(e=>e.id===S.exVia)&&EX.on&&EX.list.length)S.exVia="";if(S.exVia==="me"&&!exOwn())S.exVia="";try{exEnsure()}catch(e){}}
 setInterval(exTick,10000);
 const exViaName=()=>{const v=S.exVia;if(!v)return"";if(v==="me")return exOwn()?S.exch.name:"";const e=EX.list.find(x=>x.id===v);return e?e.name:"a player exchange"};
@@ -10356,7 +10360,8 @@ function exDraw(){const x=exDay();if(!x){exClose();return}const m=MK(),now=Date.
   const hist=x.h.concat([{vol:x.d.vol,fee:x.d.fee+x.d.com}]);
   EXW.el.innerHTML=`<div class="mdx-bar"><span class="mdx-logo" style="background:#1e3a8a;font-size:15px">🏛</span><b>${dxE(x.name)}</b><button class="mdx-th" data-ex="theme" aria-label="Switch light or dark theme" style="margin-left:auto">${themeIco()}</button><button class="mdx-x" data-ex="close" aria-label="Close dashboard">×</button></div>
   <div class="mdx-body"><div class="mdx-in"><div class="mdx-hd"><h2>${dxE(x.name)} <span>🏛</span></h2><div class="mdx-date"><span class="mdx-live"></span>Wall Street, ${EXC.city} · market open</div></div>
-  <div class="mdx-kpis">${kp("Volume today",fmt(x.d.vol),`${x.d.n} player trade${x.d.n===1?"":"s"}`,"#e0ecff","#2563eb","📈")}${kp("Fee income today",fmt(x.d.fee+x.d.com),`${fmt(exIncome())}/hr now · ${fmt(x.tot)} all time`,"#dcfce7","#16a34a","💵")}${kp("Meridian 30 index",Math.round(ix).toLocaleString(),`<span style="color:${up(ich)}">${ich>=0?"+":""}${ich.toFixed(2)}% today</span> · activity ×${exAct().toFixed(2)}`,"#fef3c7","#d97706","📊")}${kp("Commissions",fmt(pend),`${EX.inb.length} waiting to collect`,"#f1f5f9","#0f172a","🤝")}</div>
+  <div class="mdx-kpis">${kp("Volume today",fmt(x.d.vol),`${x.d.n} player trade${x.d.n===1?"":"s"}`,"#e0ecff","#2563eb","📈")}${kp("Fee income today",fmt(x.d.fee+x.d.com),`${fmt(exIncome())}/hr now · ${fmt(x.tot)} all time`,"#dcfce7","#16a34a","💵")}${kp("Meridian 30 index",Math.round(ix).toLocaleString(),`<span style="color:${up(ich)}">${ich>=0?"+":""}${ich.toFixed(2)}% today</span> · activity ×${exAct().toFixed(2)}`,"#fef3c7","#d97706","📊")}${kp("Commissions",fmt(pend),`${EX.inb.length} waiting to collect`,"#f1f5f9","#0f172a","🤝")}${kp("AI investors",fmt(x.d.ai||0),`volume today · ${fmt(exAiVol()*EXC.com)}/hr in fees`,"#ede9fe","#7c3aed","🤖")}</div>
+  ${(EX.ai&&EX.ai.length)?`<div class="mdx-card" style="margin-top:16px"><div class="mdx-ch"><h3>AI investor flow</h3></div><div class="mdx-rows">${EX.ai.map(o=>`<div><span>${dxE(o.f)} ${o.sell?"sold":"bought"} ${o.s}</span><b style="color:${o.sell?"#dc2626":"#16a34a"}">${fmt(o.v)}</b></div>`).join("")}</div></div>`:""}
   <div style="display:grid;grid-template-columns:${full?"minmax(0,1fr)":"minmax(0,2fr) minmax(0,1fr)"};gap:16px;margin-top:16px;align-items:start"><div style="display:flex;flex-direction:column;gap:16px;min-width:0">
     <div class="mdx-card"><div class="mdx-ch"><h3>Trade on ${dxE(x.name)}</h3></div><div class="mdx-rows">
       <div><span><select data-exs="1" aria-label="Asset">${ASSETS.map(z=>`<option value="${z.s}"${z.s===a.s?" selected":""}>${z.s} · ${dxE(z.n)}</option>`).join("")}</select></span><b>${fp(m.px[a.s])}</b></div>
