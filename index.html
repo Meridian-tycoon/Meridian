@@ -2547,14 +2547,16 @@ function renderResearch(){const done=TECH.filter(t=>hasTech(t.k)).length;
   <div class="meta"><div><span>Earning </span>${rpRate().toFixed(1)} RP/hr</div><div><span>From </span>HQ + ${S.sites.filter(x=>x.op&&OP[x.op].rp).length} labs</div></div>
   <p class="d" style="font-size:12px;color:var(--muted);margin:0 0 6px">Build research labs on industrial lots to earn points faster. Each technology costs points and cash. Points are paid every 15 minutes${S.rpP>=.1?` (next: +${Math.floor(S.rpP)} RP)`:""}.</p>`;
   TIERS.forEach((tn,ti)=>{h+=`<div class="sec">Tier ${["I","II","III","IV","V","VI"][ti]} · ${tn}</div><div class="list">`;
-    for(const t of TECH.filter(x=>x.t===ti)){const st=hasTech(t.k)?"done":canResearch(t)?"open":"locked",afford=S.rp>=t.rp&&S.cash>=t.cash;
+    if(ti===3){const n=rsHere(),ok=rsPermit(n),q=S.gov&&S.gov[n]&&S.gov[n].rReq;h=h.replace(/<div class="list">$/,`<p class="d" style="font-size:12px;margin:0 0 4px;color:${ok?"var(--good)":"var(--bad)"}">Tier IV and V research needs a research licence from the government of the country you are in (${n}): ${ok?"approved.":q?`waiting for ${onEsc(q.name||"the government")}.`:`apply in the Gov tab or below (${fmt(RSQ.fee)}).`}</p><div class="list">`)}
+    for(const t of TECH.filter(x=>x.t===ti)){const st=hasTech(t.k)?"done":canResearch(t)?(rsOk(t)?"open":"lic"):"locked",afford=S.rp>=t.rp&&S.cash>=t.cash;
       const unl=OPS.filter(o=>o.req===t.k).map(o=>o.n);
       h+=`<div class="row" style="${st==="locked"?"opacity:.55":""}"><div class="n">${st==="done"?"✓ ":""}${t.n}</div>
       <div class="d">${t.d}${st==="locked"?` <b>Needs ${(t.req||[]).filter(r=>!hasTech(r)).map(r=>TK[r].n).join(" + ")}.</b>`:""}</div>
-      ${st==="done"?`<span class="tag boom" style="grid-row:1/3;grid-column:2">Done</span>`:`<button class="buy${st==="open"?"":" up"}" data-tech="${t.k}" ${st!=="open"||!afford?"disabled":""}>${Math.round(t.rp).toLocaleString()} RP<br>${fmt(t.cash)}</button>`}</div>`}
+      ${st==="lic"?`<button class="buy up" data-rslic="1" ${S.gov&&S.gov[rsHere()]&&S.gov[rsHere()].rReq?"disabled":""}>${S.gov&&S.gov[rsHere()]&&S.gov[rsHere()].rReq?"Licence pending":"Get licence<br>"+fmt(RSQ.fee)}</button>`:st==="done"?`<span class="tag boom" style="grid-row:1/3;grid-column:2">Done</span>`:`<button class="buy${st==="open"?"":" up"}" data-tech="${t.k}" ${st!=="open"||!afford?"disabled":""}>${Math.round(t.rp).toLocaleString()} RP<br>${fmt(t.cash)}</button>`}</div>`}
     h+=`</div>`});
   sheet.innerHTML=h;$("#cls").onclick=closeSheet;
-  sheet.querySelectorAll("[data-tech]").forEach(b=>b.onclick=()=>{const t=TK[b.dataset.tech];if(!canResearch(t)||S.rp<t.rp||S.cash<t.cash)return;
+  sheet.querySelectorAll("[data-rslic]").forEach(b=>b.onclick=()=>{rsApply(rsHere());save();hud();renderResearch()});
+  sheet.querySelectorAll("[data-tech]").forEach(b=>b.onclick=()=>{const t=TK[b.dataset.tech];if(!canResearch(t)||!rsOk(t)||S.rp<t.rp||S.cash<t.cash)return;
     S.rp-=t.rp;S.cash-=t.cash;S.tech[t.k]=1;applyTechs();S.log.unshift(`Researched ${t.n}`);S.log=S.log.slice(0,3);
     toast(t.k==="mars"?"Mars colony established. Humanity is multi-planetary.":`Researched ${t.n}`);save();hud();renderResearch();draw()})}
 function hud(){try{setApply()}catch(e){}const nb=document.querySelectorAll('#needs i');["h","f","m"].forEach((k,i)=>{const v=S.need[k];nb[i].style.width=v+"%";nb[i].style.background=v<25?"var(--bad)":v<50?"var(--accent)":"var(--good)"});let{inc,nw}=totals();for(const st of S.sites){const o=siteOp(st);if(o&&!st.why)inc+=siteEst(st)+o.up*LAND[st.size][1]}if(typeof tweenCash==="function")tweenCash();else $("#cash").textContent=fmt(S.cash);
@@ -2652,9 +2654,9 @@ function pmListen(u){PM.un.forEach(f=>{try{f()}catch(e){}});PM.un=[];PM.mine=[];
   PM.un.push(ON.db.collection("permits").where("uid","==",u.uid).onSnapshot(q=>{PM.mine=q.docs.map(d=>({id:d.id,...d.data()}));pmSweep();onRefresh()},e=>{ON.err="Couldn't load permits: "+(e&&e.code||e)}));
   const c=S.pol&&S.pol.r>=0?S.pol.c:null;PM.c=c;
   if(c)PM.un.push(ON.db.collection("permits").where("c","==",c).onSnapshot(q=>{const old=new Set(PM.inbox.map(x=>x.id));PM.inbox=q.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.st==="pending"&&x.uid!==u.uid&&x.by===u.uid);
-    for(const x of PM.inbox)if(!old.has(x.id))toast(`${x.name} asks your government for a nuclear mining permit`);onRefresh()},e=>{}))}
+    for(const x of PM.inbox)if(!old.has(x.id))toast(`${x.name} asks your government for ${rsDoc(x)?"a research licence":"a nuclear mining permit"}`);onRefresh()},e=>{}))}
 /* apply results of my requests (and time out stale ones) */
-function pmSweep(){if(!S.gov)return;for(const n in S.gov){const g=S.gov[n];if(!g||!g.uReq)continue;const d=PM.mine.find(x=>x.c===n);
+function pmSweep(){if(!S.gov)return;rsSweep();for(const n in S.gov){const g=S.gov[n];if(!g||!g.uReq)continue;const d=PM.mine.find(x=>x.c===n&&!rsDoc(x));
     if(d&&d.st==="approved"){g.uPermit=1;delete g.uReq;logGov(`${d.byName||"The government"} of ${n} approved your nuclear mining permit`);toast(`Nuclear mining permit for ${n} approved`);ON.db.collection("permits").doc(d.id).delete().catch(()=>{})}
     else if(d&&d.st==="denied"){S.cash+=uranFee();delete g.uReq;logGov(`${d.byName||"The government"} of ${n} refused your nuclear mining permit (fee refunded)`);toast(`Permit for ${n} refused, ${fmt(uranFee())} refunded`);ON.db.collection("permits").doc(d.id).delete().catch(()=>{})}
     else if(Date.now()-g.uReq.at>URQ.wait||(PM.got&&!d)){if(d)ON.db.collection("permits").doc(d.id).delete().catch(()=>{});uranAiDecide(n,true)}}
@@ -2670,7 +2672,30 @@ function uranApply(n){const g=gov(n),fee=uranFee();if(g.uReq){toast("Your applic
     .then(()=>toast(`Application sent to ${o.name||"the governing player"}. Fee held until they decide.`),e=>{S.cash+=fee;delete g.uReq;toast("Couldn't send the application: "+(e&&e.code||e));hud();renderSheet()})}
 function uranCancel(n){const g=gov(n);if(!g.uReq)return;S.cash+=uranFee();delete g.uReq;if(ON.db&&ON.user)ON.db.collection("permits").doc(ON.user.uid+"_"+pmKey(n)).delete().catch(()=>{});toast("Application withdrawn, fee refunded")}
 function uranRule(id,ok){const x=PM.inbox.find(d=>d.id===id);if(!x||!ON.db)return;const me=onProf();
-  ON.db.collection("permits").doc(id).update({st:ok?"approved":"denied",byName:(me.name||"Tycoon").slice(0,20)}).then(()=>{logGov(`You ${ok?"approved":"refused"} ${x.name}'s nuclear mining permit`);toast(ok?"Permit approved":"Permit refused");onRefresh()},e=>toast("Couldn't record the decision: "+(e&&e.code||e)))}
+  ON.db.collection("permits").doc(id).update({st:ok?"approved":"denied",byName:(me.name||"Tycoon").slice(0,20)}).then(()=>{logGov(`You ${ok?"approved":"refused"} ${x.name}'s ${rsDoc(x)?"research licence":"nuclear mining permit"}`);toast(ok?"Permit approved":"Permit refused");onRefresh()},e=>toast("Couldn't record the decision: "+(e&&e.code||e)))}
+/* Advanced research licence: Tier IV and V research needs approval from the government of the country you are in
+   (the AI government, or the player who governs it), the same way as the nuclear mining permit. Dev account: always approved. */
+const RSQ={fee:5e6};
+const rsTier=t=>!!t&&(t.t===3||t.t===4);
+const rsDoc=x=>!!x&&typeof x.id==="string"&&x.id.indexOf("_RS")>0;
+const rsHere=()=>{const c=CITIES[(S.loc||S.home||{city:0}).city]||CITIES[0];return c.country};
+const rsPermit=n=>{try{if(devGod())return true}catch(e){}return !!(S.gov&&S.gov[n]&&S.gov[n].rPermit)};
+const rsOk=t=>!rsTier(t)||rsPermit(rsHere());
+function rsAiDecide(n,paid){const g=gov(n);if(Math.random()<uranAiOdds(n)){if(!paid)S.cash-=RSQ.fee;g.rPermit=1;delete g.rReq;logGov(`${n} grants you an advanced research licence`);toast(`${n} government approved your research licence`);return true}
+  if(paid)S.cash+=RSQ.fee;delete g.rReq;g.rDen=Date.now()+URQ.cd;logGov(`${n} refuses your research licence`);toast(`${n} government refused your research licence. Try again in ${fmtDur(URQ.cd)}.`);return false}
+function rsApply(n){const g=gov(n),fee=RSQ.fee;if(rsPermit(n))return;if(g.rReq){toast("Your application is already waiting");return}
+  if(urqCdOn()&&g.rDen>Date.now()){toast(`The ${n} government refused you recently. Try again in ${fmtDur(g.rDen-Date.now())}.`);return}
+  if(S.cash<fee){toast(`Need ${fmt(fee)} for the licence`);return}
+  if(uranIGov(n)){S.cash-=fee;g.rPermit=1;logGov(`You approve your own research licence in ${n}`);toast("You govern here: licence granted");return}
+  const o=uranGov(n);if(!o){rsAiDecide(n,false);return}
+  const me=onProf();S.cash-=fee;g.rReq={at:Date.now(),by:o.uid,name:(o.name||"Player").slice(0,20)};
+  ON.db.collection("permits").doc(ON.user.uid+"_RS"+pmKey(n).slice(0,28)).set({uid:ON.user.uid,name:(me.name||"Tycoon").slice(0,20),c:n,by:o.uid,st:"pending",at:window.firebase.firestore.FieldValue.serverTimestamp()})
+    .then(()=>toast(`Application sent to ${o.name||"the governing player"}. Fee held until they decide.`),e=>{S.cash+=fee;delete g.rReq;toast("Couldn't send the application: "+(e&&e.code||e));hud();renderSheet()})}
+function rsCancel(n){const g=gov(n);if(!g.rReq)return;S.cash+=RSQ.fee;delete g.rReq;if(ON.db&&ON.user)ON.db.collection("permits").doc(ON.user.uid+"_RS"+pmKey(n).slice(0,28)).delete().catch(()=>{});toast("Application withdrawn, fee refunded")}
+function rsSweep(){for(const n in S.gov){const g=S.gov[n];if(!g||!g.rReq)continue;const d=PM.mine.find(x=>x.c===n&&rsDoc(x));
+    if(d&&d.st==="approved"){g.rPermit=1;delete g.rReq;logGov(`${d.byName||"The government"} of ${n} approved your research licence`);toast(`Research licence for ${n} approved`);ON.db.collection("permits").doc(d.id).delete().catch(()=>{})}
+    else if(d&&d.st==="denied"){S.cash+=RSQ.fee;delete g.rReq;logGov(`${d.byName||"The government"} of ${n} refused your research licence (fee refunded)`);toast(`Research licence for ${n} refused, ${fmt(RSQ.fee)} refunded`);ON.db.collection("permits").doc(d.id).delete().catch(()=>{})}
+    else if(Date.now()-g.rReq.at>URQ.wait||(PM.got&&!d)){if(d)ON.db.collection("permits").doc(d.id).delete().catch(()=>{});rsAiDecide(n,true)}}}
 function govHour(quiet){const now=Date.now();if(!quiet)cabCheck();
   for(const n of COUNTRIES){const g=gov(n),pl=PARTIES[g.party].pl;
     g.appr=Math.max(5,Math.min(95,g.appr+(Math.random()-.52)*4));
@@ -2713,7 +2738,11 @@ function govHtml(c){const n=c.country,g=gov(n),P=PARTIES[g.party];let h=cityHead
     h+=`<div class="sec">Nuclear mining permit</div><div class="list"><div class="row"><div class="n">Nuclear mining licence ${has?"<b>ACTIVE</b>":q?"<b>PENDING</b>":""}</div>
     <div class="d">Uranium mines need this government's approval. Fee ${fmt(fee)}, refunded if refused. ${has?"":who}${q?` Waiting for ${onEsc(q.name)}.`:""}${cd?` Refused recently: retry in ${fmtDur(g.uDen-Date.now())}.`:""}</div>
     <button class="buy" data-gov="upermit" data-fixed="1" ${has||q?"":(S.cash<fee||cd?"disabled":"")}>${has?"Give up permit":q?"Withdraw application":"Apply "+fmt(fee)}</button></div></div>`;
-    if(S.pol&&S.pol.c===n&&S.pol.r>=0&&PM.inbox.length){h+=`<div class="sec">Permit requests</div><div class="list">`+PM.inbox.map(x=>`<div class="row"><div class="n">${onEsc(x.name)}</div><div class="d">Asks for a nuclear mining permit in ${n} (paid ${fmt(fee)}).</div><span style="display:flex;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-gov="uok" data-id="${onEsc(x.id)}" data-fixed="1">Approve</button><button class="buy" data-gov="uno" data-id="${onEsc(x.id)}" data-fixed="1">Refuse</button></span></div>`).join("")+`</div>`}}
+    {const has=rsPermit(n),rq=g.rReq,rcd=urqCdOn()&&g.rDen>Date.now();
+      h+=`<div class="sec">Research licence</div><div class="list"><div class="row"><div class="n">Advanced research licence ${has?"<b>ACTIVE</b>":rq?"<b>PENDING</b>":""}</div>
+      <div class="d">Tier IV (Government &amp; military) and Tier V (Space) research done in ${n} needs this government's approval. Fee ${fmt(RSQ.fee)}, refunded if refused. ${has?"":who}${rq?` Waiting for ${onEsc(rq.name)}.`:""}${rcd?` Refused recently: retry in ${fmtDur(g.rDen-Date.now())}.`:""}</div>
+      <button class="buy" data-gov="rpermit" data-fixed="1" ${has||rq?"":(S.cash<RSQ.fee||rcd?"disabled":"")}>${has?"Give up licence":rq?"Withdraw application":"Apply "+fmt(RSQ.fee)}</button></div></div>`}
+    if(S.pol&&S.pol.c===n&&S.pol.r>=0&&PM.inbox.length){h+=`<div class="sec">Permit requests</div><div class="list">`+PM.inbox.map(x=>`<div class="row"><div class="n">${onEsc(x.name)}</div><div class="d">${rsDoc(x)?`Asks for a research licence in ${n} (Tier IV and V research, paid ${fmt(RSQ.fee)}).`:`Asks for a nuclear mining permit in ${n} (paid ${fmt(fee)}).`}</div><span style="display:flex;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-gov="uok" data-id="${onEsc(x.id)}" data-fixed="1">Approve</button><button class="buy" data-gov="uno" data-id="${onEsc(x.id)}" data-fixed="1">Refuse</button></span></div>`).join("")+`</div>`}}
   h+=`<div class="sec">Laws</div><div class="list">`;
   for(const k in LAWS){const lawDef=LAWS[k],v=g.laws[k],want=PARTIES[g.party].pl[k],cost=lobbyCost(n);
     const btn=(d,lbl)=>g.ctrl?`<button class="buy" data-gov="set" data-k="${k}" data-dir="${d}" data-fixed="1" ${S.cash<donUnit(n)?"disabled":""}>Set ${lawDef.v[v+d]}</button>`:`<button class="buy" data-gov="lobby" data-k="${k}" data-dir="${d}" data-fixed="1" ${S.cash<cost?"disabled":""}>${lbl} ${lawDef.v[v+d]}</button>`;
@@ -2737,6 +2766,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)
   else if(a==="set"){const u=donUnit(c.country);if(S.cash<u||!g.ctrl)return;S.cash-=u;g.laws[b.dataset.k]+=+b.dataset.dir;logGov(`${c.country} decrees ${LAWS[b.dataset.k].n.toLowerCase()}: ${LAWS[b.dataset.k].v[g.laws[b.dataset.k]]}`);toast("Law changed")}
   else if(a==="upermit"){const n=c.country;if(uranPermit(n)){g.uPermit=0;toast("Permit given up")}else if(g.uReq)uranCancel(n);else uranApply(n)}
   else if(a==="uok"||a==="uno")uranRule(b.dataset.id,a==="uok")
+  else if(a==="rpermit"){const n=c.country;if(rsPermit(n)&&!devGod()){g.rPermit=0;toast("Research licence given up")}else if(g.rReq)rsCancel(n);else rsApply(n)}
   else if(a==="contract"){g.contract=g.contract?0:1;toast(g.contract?"Contract awarded":"Contract cancelled")}
   else if(a==="peace"||a==="stoke")warAct(+b.dataset.w,a);
   else if(a==="wsup")wsupSign(+b.dataset.w,b.dataset.s);
