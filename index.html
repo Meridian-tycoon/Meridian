@@ -2240,8 +2240,8 @@ function shopStep(h,t,now){const short=[];
     if(!S.auto2[key]||S.orders.some(o=>o.key===key)){delete S.mgrEmpty[key];continue}const r=uSum(id,b.k,l=>useRate(b,l,c)),stk=S.stock[key]||0;
     if(stk>0.5)delete S.mgrEmpty[key];else if(S.mgrEmpty[key]==null)S.mgrEmpty[key]=t;
     if(stk>=r*2){delete S.mgrShort[key];continue}
-    // free depot fuel goes in at once; buying at the market waits until the business has been empty for 1 hour
-    const q=Math.round(r*6),wait=S.mgrEmpty[key]==null||t-S.mgrEmpty[key]<MGR_WAIT;let gp=b.fuel?gasPlan(c,q,1.1):null;
+    // free depot fuel goes in at once; a fuel business buys at the market only after 1 h empty. Other stock can't come from the depot, so it is bought at < 2 h left
+    const q=Math.round(r*6),wait=!!b.fuel&&(S.mgrEmpty[key]==null||t-S.mgrEmpty[key]<MGR_WAIT);let gp=b.fuel?gasPlan(c,q,1.1):null;
     if(wait){if(gp&&gp.dep>0){gasTake(c,key,{dep:gp.dep,buy:0,p:gp.p});delete S.mgrEmpty[key]}continue}
     const cost=gp?gp.cost:q*unitCost(b,c)*1.1;
     if(S.cash<cost){const m=S.mgrShort[key]||(S.mgrShort[key]={n:0});
@@ -2268,7 +2268,8 @@ function stockAlerts(now,away){S.stAl=S.stAl||{};const hits=[];
     if(tier==="ok"){a.t="ok";continue}
     if(STAL_R[tier]<=STAL_R[a.t])continue;                                   // only warn when it gets worse
     const covered=S.orders.some(o=>o.key===key)||(S.mgr[c.id]&&S.auto2[key]&&!(S.mgrShort||{})[key]);
-    if(tier!=="empty"&&covered)continue;                                     // restock already handled
+    if(tier!=="empty"&&covered)continue;
+    if(tier==="empty"&&b.fuel&&S.mgr[c.id]&&S.auto2[key]&&!(S.mgrShort||{})[key])continue;   // manager is on it: depot fuel or a market buy within MGR_WAIT                                     // restock already handled
     a.t=tier;if(tier!=="empty"&&now-(a.n[tier]||0)<STAL_CD)continue;a.n[tier]=now;   // same tier not repeated within STAL_CD
     hits.push({tier,c,b,hrs})}}
   if(!hits.length)return;hits.sort((x,y)=>STAL_R[y.tier]-STAL_R[x.tier]);
@@ -2315,7 +2316,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-ops]");if(!b|
   else if(a==="shipout")shipOut(c,B,+b.dataset.q);
   else if(a==="staff"){const key=bkey(c,B.k);if(S.staff[key]){delete S.staff[key];toast("Staff let go. It only opens while you're here now.")}else{S.staff[key]=1;toast(`Hired ${uSum(c.id,B.k,l=>bizStaff(B.k,l))} staff. Wages start now.`)}}
   else return;commit()});
-sheet.addEventListener("change",e=>{const t=e.target;if(t.dataset.ops!=="auto"||!sel)return;const key=bkey(sel,t.dataset.k);S.auto2[key]=t.checked;save();toast(t.checked?"Manager will use depot stock first, and buy (+10% fee) only after 1 h empty":"Auto-restock off")});
+sheet.addEventListener("change",e=>{const t=e.target;if(t.dataset.ops!=="auto"||!sel)return;const key=bkey(sel,t.dataset.k),b0=BIZ.find(x=>x.k===t.dataset.k)||{};S.auto2[key]=t.checked;save();toast(t.checked?b0.fuel?"Manager will use depot fuel first, and buy (+10% fee) only after 1 h empty":"Manager will restock (+10% fee) before it runs out":"Auto-restock off")});
 /* production sites need a crew, or you working the site yourself; you can also pause them */
 const crewF=s=>s.paused?0:s.crew?1:(present(CITIES[s.city])?.4:0);
 /* one-time move for saves from before this update: keep existing businesses open */
