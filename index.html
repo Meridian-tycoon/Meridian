@@ -2485,7 +2485,7 @@ function renderPortfolio(){const{inc,nw}=totals();
   for(const g of GOALS){const done=S.goals.includes(g.id),p=Math.min(1,Math.max(0,g.v()/g.t));
     h+=`<div class="goal${done?" done":""}"><div class="n">${done?"✓ ":""}${g.n}</div><div style="font-family:var(--mono);font-size:12px">${g.r?"+"+fmt(g.r):"🏆"}</div>
     <div class="d">${g.d}</div><div></div>${done?"":`<div class="bar"><i style="width:${(p*100).toFixed(0)}%"></i></div>`}</div>`}
-  h+=`</div><div class="foot"><button id="tutreplay" data-tutx="replay">Replay guide &amp; tips</button> <button id="reset">Start a new game</button></div>`;
+  h+=`</div><div class="foot"><button id="tutreplay" data-tutx="replay">Replay guide &amp; tips</button> <button data-tutx="dvguide">Deliveries &amp; managers guide</button> <button id="reset">Start a new game</button></div>`;
   sheet.innerHTML=h;
   $("#cls").onclick=closeSheet;
   sheet.querySelectorAll("[data-go]").forEach(r=>r.onclick=()=>flyTo(CITIES[r.dataset.go]));
@@ -5348,7 +5348,7 @@ function propsApp(){const ss=S.sites.filter(s=>siteOp(s)&&CITIES[s.city]),fd=n=>
     <span>${S.aline?`<b style="color:#4ade80">On</b>`:`<b style="color:#f87171">Off</b>`} · ${lines} line${lines===1?"":"s"} running · ${idle} idle vehicle${idle===1?"":"s"}${more?` · <b style="color:#fbbf24">${more} more truck${more>1?"s":""} needed</b>`:S.aline&&gap.length?` · supply covered`:""}</span>
     <button class="buy" data-ph="propsal" style="width:100%;margin-top:6px;color:#fff;background:${S.aline?"#7f1d1d":"#166534"}!important;border-color:#f59e0b">${S.aline?"Turn Auto-line off":"Auto-line: calculate and fulfil what's needed"}</button>
     ${S.aline?`<button class="buy" data-ph="propsrun" style="width:100%;margin-top:6px">Recalculate now</button>`:""}
-    <button class="buy" data-ph="dvopen" style="width:100%;margin-top:6px">Open Deliveries dashboard</button></div>`;
+    <button class="buy" data-ph="dvopen" style="width:100%;margin-top:6px">Open Deliveries dashboard</button><button class="buy" data-tutx="dvguide" style="width:100%;margin-top:6px">📘 Guide: deliveries and managers</button></div>`;
   h+=`<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">${T.map(([k,n])=>`<button class="buy" data-ph="propstab" data-k="${k}" style="flex:1;${propsTab===k?"background:#166534!important;color:#fff":""}">${n} ${cnt(k)}</button>`).join("")}</div>`;
   const list=ss.filter(s=>propsTab==="all"||propsKind(siteOp(s))===propsTab);
   if(!list.length)h+=`<div class="ph-card"><span>No properties here yet. Buy land and build from a city's sheet on the map.</span></div>`;
@@ -7638,10 +7638,10 @@ function ctAct(a,b){const k=b.dataset.k;
   else if(a==="ctdep")ctDep();else if(a==="ctpay")ctPay();else if(a==="ctsay")ctSay();else if(a==="ctraid")ctRaid(k)}
 /* ---------- first-time guide (S.tut: 0 = not yet shown, 9 = done) + one-time tips (S.tips) ---------- */
 if(S.tut==null)S.tut=0;S.tips=S.tips&&typeof S.tips==="object"?S.tips:{};
-if(S.tut===0&&(nOwnedSafe()||(S.sites||[]).length||S.day>2))S.tut=9;
+if(S.tut===0&&S.tutK!=="dv"&&(nOwnedSafe()||(S.sites||[]).length||S.day>2))S.tut=9;
 /* action-driven guide: each step finishes when the player really does it (ok() polled by tutTick, called from commit, phone render, empire screen and a 2 s timer). S.tutS = current step; replayed steps already done show a Next button. */
 const tutUp=()=>{for(const id in S.own)for(const k in S.own[id])if(uLv(id,k).some(l=>l>=2))return true;return false};
-const TUT=[
+const TUT0=[
  {a:null,t:"1. Find a home",b:"Tap your city on the globe, open the Life tab and rent a home. A cheap room is fine to start.",ok:()=>!!S.home},
  {a:null,t:"2. Get a job",b:"On the same Life tab, apply for a job in your home city. Wages come in every second, even while you're away.",ok:()=>!!(S.job||S.app)},
  {a:null,t:"3. Buy your first business",b:"Open the Business tab and buy something small, like a cart. It earns profit every hour.",ok:()=>nOwnedSafe()},
@@ -7649,6 +7649,15 @@ const TUT=[
  {a:null,t:"5. Hire a city manager",b:"On the Business tab, hire the city manager: +20% sales on every business in that city, and auto-restocking.",ok:()=>Object.keys(S.mgr||{}).length>0},
  {a:"#phone",t:"6. Open your phone",b:"Tap the phone for apps: Work, Bank, Stocks, Market, Travel and Settings.",ok:()=>!!PH.open},
  {a:"#pfbtn",t:"7. Check your empire",b:"Open the empire screen for net worth, goals with cash rewards and city search. 1 real hour is 1 game day.",ok:()=>mode==="pf"&&sheet.classList.contains("open")}];
+/* second guide: deliveries and managers (Mark, 2026-10-26). Started from Settings or the Properties app. */
+const TUTDV=[
+ {a:null,t:"1. Open a depot",b:"Tap a city where you own businesses or land, open the Depot tab and open a warehouse. Trucks load and unload at depots, and your land's output is stored there.",ok:()=>Object.keys(S.wh||{}).some(i=>S.wh[i]!=null)},
+ {a:null,t:"2. Buy a truck",b:"On the same Depot tab, buy a truck. It waits parked at that depot until you give it work.",ok:()=>S.fleet.length>0},
+ {a:null,t:"3. Hire a city manager",b:"On the Business tab, hire the city manager. Managers restock your businesses from the depot on their own, and buy at the market if a business stays empty for an hour.",ok:()=>Object.keys(S.mgr||{}).length>0},
+ {a:null,t:"4. Open Deliveries",b:"Open the Deliveries dashboard from the Depot tab, or from the Properties app on your phone.",ok:()=>!!(typeof DV!=="undefined"&&DV.open)},
+ {a:null,t:"5. Turn on Auto-line",b:"In Deliveries, turn on Auto-line. It works out what your businesses and factories use each day and keeps your trucks running to supply them. The truck tracker shows if you need more trucks.",ok:()=>!!S.aline},
+ {a:null,t:"6. Lines by hand",b:"You can also make your own standing line in Deliveries: pick a vehicle, the depot to load at, the city to deliver to, a good and an amount. Turn on Auto-buy from market there if a depot runs dry.",ok:()=>true}];
+let TUT=S.tutK==="dv"?TUTDV:TUT0;
 const TIPS={
  land:"Deposits shows what is under this city's ground. Mines need a matching deposit, and oil wells need an oil deposit plus Oil drilling research. Search oil, coal, ore, sand or uranium on the empire screen to find cities that have one.",
  power:"“No power” is fine: the factory still runs. With electricity it makes +25%. Build a coal power plant (uses coal), a nuclear power plant (uses uranium, needs research) or a solar farm in the same city; its power goes into that city's depot and factories there use it automatically.",
@@ -7673,7 +7682,7 @@ html.set-rm #tutring{animation:none}@media (prefers-reduced-motion:reduce){#tutr
 html.th-ledger #tutbox,html.th-ledger #tipbox{border-radius:2px}html.th-command #tutbox,html.th-command #tipbox,html.th-command #tutbox button,html.th-command #tipbox button,html.th-command #tutring{border-radius:0}
 @media (max-width:819px){body:not(.sh-open):not(.ph-open) #tutbox,body:not(.sh-open):not(.ph-open) #tipbox{top:auto!important;bottom:calc(env(safe-area-inset-bottom,0px) + 150px);left:max(12px,env(safe-area-inset-left,0px));right:calc(max(12px,env(safe-area-inset-right,0px)) + 44px);margin:0;padding:8px 12px;font-size:12px;max-height:30vh;overflow:auto}body:not(.sh-open):not(.ph-open) #tutbox h4,body:not(.sh-open):not(.ph-open) #tipbox h4{font-size:13px}body:not(.sh-open):not(.ph-open) #tutbox .tb,body:not(.sh-open):not(.ph-open) #tipbox .tb{margin-top:6px}body:not(.sh-open):not(.ph-open) #tutbox button,body:not(.sh-open):not(.ph-open) #tipbox button{min-height:40px}}`;document.head.appendChild(st)})();
 let tutStep=-1,tutWas=false;
-function tutClose(done){const b=$("#tutbox"),r=$("#tutring");if(b)b.remove();if(r)r.remove();tutStep=-1;if(done){S.tut=9;delete S.tutS;save()}setTimeout(tipCheck,300)}
+function tutClose(done){const b=$("#tutbox"),r=$("#tutring");if(b)b.remove();if(r)r.remove();tutStep=-1;if(done){S.tut=9;delete S.tutS;delete S.tutK;TUT=TUT0;save()}setTimeout(tipCheck,300)}
 function tutShow(i){i=Math.max(0,+i||0);tutStep=i;const s=TUT[i];if(!s){tutClose(1);toast("Guide done. Replay it any time from Settings on your phone.");return}if(S.tutS!==i){S.tutS=i;save()}const tb=$("#tipbox");if(tb)tb.remove();
   let ok=false;try{ok=!!s.ok()}catch(e){}tutWas=ok;
   let b=$("#tutbox");if(!b){b=document.createElement("div");b.id="tutbox";b.setAttribute("role","status");b.setAttribute("aria-live","polite");document.body.appendChild(b)}
@@ -7685,7 +7694,7 @@ function tutPlace(){const b=$("#tutbox");if(!b||tutStep<0)return;const s=TUT[tut
 /* hook: re-check the current step after real player actions; advances on a not-done → done change */
 function tutTick(){if(tutStep<0||S.tut!==0)return;const s=TUT[tutStep];if(!s)return;tutPlace();let ok=false;try{ok=!!s.ok()}catch(e){}
   if(ok&&!tutWas){tutWas=true;try{vib(15)}catch(e){}setTimeout(()=>{if(S.tut===0&&TUT[tutStep]===s)tutShow(tutStep+1)},700)}else if(!ok&&tutWas)tutShow(tutStep)}
-function tutStart(){S.tips={};S.tut=0;S.tutS=0;save();tutShow(0)}
+function tutStart(k){if(tutStep>=0)tutClose(0);TUT=k==="dv"?TUTDV:TUT0;if(k==="dv")S.tutK="dv";else{delete S.tutK;S.tips={}}S.tut=0;S.tutS=0;save();tutShow(0)}
 function tipShow(k){if(S.tips[k]||tutStep>=0||!TIPS[k])return false;S.tips[k]=1;save();let b=$("#tipbox");if(!b){b=document.createElement("div");b.id="tipbox";b.setAttribute("role","status");document.body.appendChild(b)}
   b.innerHTML=`<h4>Tip</h4><p>${TIPS[k]}</p><div class="tb"><button class="go" data-tutx="tipok">Got it</button></div>`;return true}
 function tipCheck(){if(tutStep>=0||S.tut!==9||$("#tipbox"))return;const so=sheet.classList.contains("open");
@@ -7693,7 +7702,7 @@ function tipCheck(){if(tutStep>=0||S.tut!==9||$("#tipbox"))return;const so=sheet
   if(so&&mode==="city"&&sel){if(tab==="ind"&&/no power/.test(sheet.textContent)&&tipShow("power"))return;if(tab==="ind"&&tipShow("land"))return;if(tab==="biz"&&tipShow("biz"))return;if(tab==="wh"&&tipShow("depot"))return}
   if(PH.open){if(PH.app==="bank"&&tipShow("bank"))return;if(PH.app==="stocks"&&tipShow("stocks"))return;if(PH.app==="govt"&&govTab==="mil"&&tipShow("mil"))return}}
 document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("[data-tutx]");if(!b)return;const a=b.dataset.tutx;
-  if(a==="next")tutShow(tutStep+1);else if(a==="skip")tutClose(1);else if(a==="tipok"){const t=$("#tipbox");if(t)t.remove();setTimeout(tipCheck,300)}else if(a==="replay"){e.stopPropagation();closeSheet();tutStart()}},true);
+  if(a==="next")tutShow(tutStep+1);else if(a==="skip")tutClose(1);else if(a==="tipok"){const t=$("#tipbox");if(t)t.remove();setTimeout(tipCheck,300)}else if(a==="replay"){e.stopPropagation();closeSheet();tutStart()}else if(a==="dvguide"){e.stopPropagation();closeSheet();if(typeof DV!=="undefined"&&DV.open)dvClose();if(PH.open){PH.open=false;phRender()}tutStart("dv")}},true);
 setInterval(tutTick,2000);
 {let tq=0;const mo=new MutationObserver(()=>{if(tq)return;tq=setTimeout(()=>{tq=0;tipCheck()},400)});mo.observe(sheet,{childList:true});setTimeout(()=>mo.observe($("#phone"),{childList:true}),0)}
 addEventListener("resize",()=>{if(tutStep>=0)tutPlace()});
@@ -8684,6 +8693,7 @@ function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="g
   ${tog("tick","News ticker","Headline strip over the map")}
   <div class="ph-sub">Help</div>
   <button class="set-reset set-tut" data-ph="settut">Replay the starter guide</button>
+  <button class="set-reset set-tut" data-tutx="dvguide">Deliveries &amp; managers guide</button>
   <button class="set-reset" data-ph="setreset">Reset settings</button>
   <div class="ph-sub" style="opacity:.7">Settings are saved with your game.</div>`}
 setApply(1);
