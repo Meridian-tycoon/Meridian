@@ -9082,7 +9082,12 @@ function alGasRate(c,b){if(!(S.own[c.id]||{})[b.k])return 0;const op=isStaffed(c
 function alRates(){const r={},gs=alGas();for(const id in S.own){const c=CITIES[id];if(!c||unhOn(c))continue;const need={};   // units/h each city's businesses use
     if(hasWh(c))for(const b of BIZ){if(!USE[b.k])continue;const lv=uSum(id,b.k,l=>l);if(!lv)continue;for(const g in USE[b.k])need[g]=(need[g]||0)+USE[b.k][g]*lv}
     let f=0;for(const b of gs)f+=alGasRate(c,b);if(f>0)need.fuel=(need.fuel||0)+f;
-    if(hasWh(c)||f>0)r[id]=need}return r}
+    if(hasWh(c)||f>0)r[id]=need}
+  for(const st of S.sites||[]){const o=siteOp(st),c=CITIES[st.city];if(!o||!o.in||!c||unhOn(c))continue;   // land plots / factories (steel mill: ore + coal) draw from the city's depot
+    const ha=effHa(st)*thr(st)*ievM(st,o)*(typeof crewF==="function"?crewF(st):1);if(!(ha>0))continue;const need=r[c.id]=r[c.id]||{};for(const g in o.in)need[g]=(need[g]||0)+o.in[g]*ha}
+  for(const st of S.sites||[]){const o=siteOp(st),c=CITIES[st.city];if(!o||!o.out||!c||!r[c.id]||unhOn(c))continue;   // made in the same city (iron mine next to the steel mill): only the shortfall is shipped
+    const ha=effHa(st)*thr(st)*ievM(st,o)*(typeof crewF==="function"?crewF(st):1);for(const g in o.out)if(r[c.id][g]>0)r[c.id][g]=Math.max(0,r[c.id][g]-o.out[g]*ha)}
+  return r}
 /* units on hand + inbound for city c, good g (depot, cargo on the road, fetch trips not loaded yet; for fuel also station stock + orders) */
 function alHave(c,g){return alOnHand(c,g)+lxIncoming(c,g)+alPlanned(c,g)}
 /* hours until the first vehicle bringing g reaches c (Infinity when none is coming) */
