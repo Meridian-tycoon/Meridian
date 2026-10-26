@@ -5923,15 +5923,16 @@ const mxSeg=()=>`<div class="mdx-seg" role="tablist" aria-label="Dashboard page"
    The Leader may veto any open bill. Laws (tax included) apply on every member's save when passed; war, arms and take-over bills spend the shared funds
    and are carried out by the Leader, reusing the normal war, recruit and influence mechanics. */
 const CABCFG={billHrs:24,warWin:.42,warCost:.5,say:4000,maxFund:1e12};
-const CB={c:null,sub:{},fund:{war:0,arms:0,wto:0},msg:[],bills:[],gmsg:[],f:{say:"",gsay:"",k:"law",law:"tax",val:"0",tg:"",unit:"inf",amt:""},busy:{},last:0,err:""};
+const CB={c:null,sub:{},fund:{war:0,arms:0,wto:0},dep:{war:0,arms:0,wto:0},msg:[],bills:[],gmsg:[],f:{say:"",gsay:"",k:"law",law:"tax",val:"0",tg:"",unit:"inf",amt:""},busy:{},last:0,err:""};
 const cabUid=()=>typeof ON!=="undefined"&&ON.user?ON.user.uid:null;
 const cabMs=t=>t&&t.toMillis?t.toMillis():+t||0;
 const cabOn=()=>!!(typeof ON!=="undefined"&&ON.db&&ON.user&&window.firebase);
 function cabSeats(c){let n=0;for(let r=0;r<CAB.length;r++)n+=cabOthers(c,r).length;const p=pol();if(p.r>=0&&p.c===c)n++;return Math.max(1,n)}
 function cabUnsub(){for(const k in CB.sub){try{CB.sub[k]()}catch(_){}}CB.sub={}}
 function cabListen(){const p=S.pol,c=p&&p.r>=0&&p.c?p.c:null;if(!cabOn()||!c){if(CB.c){cabUnsub();CB.c=null;CB.msg=[];CB.bills=[];CB.gmsg=[]}return}if(CB.c===c&&CB.sub.b)return;
-  cabUnsub();CB.c=c;CB.msg=[];CB.bills=[];CB.gmsg=[];CB.fund={war:0,arms:0,wto:0};const db=ON.db,root=db.collection("cab").doc(c),er=w=>e=>{CB.err="Couldn't load "+w+": "+(e&&e.code||e)},arr=q=>{const a=[];q.forEach(d=>a.push(Object.assign({id:d.id},d.data()||{})));return a};
+  cabUnsub();CB.c=c;CB.msg=[];CB.bills=[];CB.gmsg=[];CB.fund={war:0,arms:0,wto:0};CB.dep={war:0,arms:0,wto:0};const db=ON.db,root=db.collection("cab").doc(c),er=w=>e=>{CB.err="Couldn't load "+w+": "+(e&&e.code||e)},arr=q=>{const a=[];q.forEach(d=>a.push(Object.assign({id:d.id},d.data()||{})));return a};
   CB.sub.f=root.onSnapshot(d=>{const x=d.exists?d.data():{};CB.fund={war:Math.max(0,+x.war||0),arms:Math.max(0,+x.arms||0),wto:Math.max(0,+x.wto||0)};cabPaint()},er("funds"));
+  CB.sub.d=root.collection("dep").doc(cabUid()).onSnapshot(d=>{const x=d.exists?d.data():{};CB.dep={war:Math.max(0,+x.war||0),arms:Math.max(0,+x.arms||0),wto:Math.max(0,+x.wto||0)};cabPaint()},er("your deposits"));
   CB.sub.m=root.collection("msg").orderBy("at","desc").limit(40).onSnapshot(q=>{CB.msg=arr(q).reverse();cabPaint()},er("cabinet chat"));
   CB.sub.b=root.collection("bill").orderBy("at","desc").limit(20).onSnapshot(q=>{CB.bills=arr(q);cabApply();cabPaint()},er("bills"));
   CB.sub.g=db.collection("govmsg").orderBy("at","desc").limit(40).onSnapshot(q=>{CB.gmsg=arr(q).reverse();cabPaint()},er("government chat"))}
@@ -5961,9 +5962,17 @@ function cabVote(id,yes){const b=CB.bills.find(x=>x.id===id),uid=cabUid(),p=pol(
   ON.db.collection("cab").doc(p.c).collection("bill").doc(id).update({[yes?"yes":"no"]:FV.arrayUnion(uid),st}).then(()=>toast(st==="open"?"Vote cast":`Bill ${st}`),e=>toast("Vote refused: "+(e&&e.code||e)))}
 function cabVeto(id){const b=CB.bills.find(x=>x.id===id),p=pol();if(!b||!polLeader()||cabState(b)!=="open")return;
   ON.db.collection("cab").doc(p.c).collection("bill").doc(id).update({st:"vetoed"}).then(()=>toast("Vetoed"),e=>toast("Veto refused: "+(e&&e.code||e)))}
-function cabFund(k){const p=pol(),amt=Math.floor(+String(CB.f.amt||"").replace(/[^0-9.]/g,"")||0);if(!["war","arms","wto"].includes(k)||!(p.r>=0&&p.c))return;if(!(amt>=1000))return toast("Enter at least 1,000");if(S.cash<amt)return toast("Not enough cash");if(CB.busy.fund)return;
-  CB.busy.fund=1;S.cash-=amt;save();hud();ON.db.collection("cab").doc(p.c).set({[k]:window.firebase.firestore.FieldValue.increment(amt)},{merge:true})
-    .then(()=>{delete CB.busy.fund;CB.f.amt="";toast(`${fmt(amt)} added to the fund`);mxRender()},e=>{delete CB.busy.fund;S.cash+=amt;save();hud();toast("Funding refused: "+(e&&e.code||e))})}
+/* deposits and withdrawals: each member's own deposit is kept in cab/{c}/dep/{uid}; a member can take back what they put in,
+   as long as the fund still holds it (the Leader may have spent it on a passed bill). Fund and deposit move together in one transaction. */
+function cabMove(k,out){const p=pol(),uid=cabUid(),want=Math.floor(+String(CB.f.amt||"").replace(/[^0-9.]/g,"")||0);if(!["war","arms","wto"].includes(k)||!(p.r>=0&&p.c)||!uid)return;if(!(want>=1000))return toast("Enter at least 1,000");
+  if(!out&&S.cash<want)return toast("Not enough cash");if(out&&Math.min(CB.dep[k],CB.fund[k])<1000)return toast("You have nothing to withdraw from this fund");if(CB.busy.fund)return;
+  CB.busy.fund=1;if(!out){S.cash-=want;save();hud()}const root=ON.db.collection("cab").doc(p.c),dr=root.collection("dep").doc(uid);
+  ON.db.runTransaction(async t=>{const a=await t.get(root),b=await t.get(dr),f=a.exists?+a.data()[k]||0:0,d=b.exists?+b.data()[k]||0:0;
+    const amt=out?Math.min(want,d,f):want;if(out&&amt<1)throw new Error("nothing to withdraw");if(!out&&f+amt>CABCFG.maxFund)throw new Error("fund is full");
+    t.set(root,{[k]:out?f-amt:f+amt},{merge:true});t.set(dr,{[k]:out?d-amt:d+amt},{merge:true});return amt})
+    .then(amt=>{delete CB.busy.fund;CB.f.amt="";if(out){S.cash+=amt;save();hud();toast(`${fmt(amt)} withdrawn`)}else toast(`${fmt(amt)} added to the fund`);mxRender()},
+      e=>{delete CB.busy.fund;if(!out){S.cash+=want;save();hud()}toast((out?"Withdrawal":"Funding")+" refused: "+(e&&(e.code||e.message)||e))})}
+const cabFund=k=>cabMove(k,false);
 /* cost of carrying out a passed bill, paid from the matching fund */
 function cabCost(b){return b.k==="war"?Math.round(milWarCost(b.tg)*CABCFG.warCost):b.k==="arms"?milBatchCost(b.key):b.k==="wto"?annexCost(b.tg):0}
 const cabFundOf=b=>b.k==="war"?"war":b.k==="arms"?"arms":"wto";
@@ -6002,11 +6011,13 @@ function cabDash(){const g=cabGate();if(g)return g;cabListen();const p=pol(),f=C
     card("💬 Cabinet chat",`<div style="max-height:240px;overflow:auto">${cabChat(CB.msg)}</div><div style="display:flex;gap:6px;margin-top:8px">${cabIn("say",f.say,"Message your cabinet")}${cabBtn("cbsay","Send")}</div>`)+
     card("📜 Bills and laws",`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${kind}${extra}${cabBtn("cbprop","Table bill")}</div>${bills}`)+
     card("💰 Funds",`<div class="ph-rows"><div><span>War fund (resolves wars at ${Math.round(CABCFG.warWin*100)}%)</span><b>${fmt(CB.fund.war)}</b></div><div><span>Arms fund</span><b>${fmt(CB.fund.arms)}</b></div><div><span>World take-over fund</span><b>${fmt(CB.fund.wto)}</b></div></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${cabIn("amt",f.amt,"Amount",100)}${cabBtn("cbfund","Fund wars","war")}${cabBtn("cbfund","Fund arms","arms")}${cabBtn("cbfund","Fund take-over","wto")}</div>`)+
+      <div class="ph-sub" style="margin-top:8px">Your deposits: wars ${fmt(CB.dep.war)} · arms ${fmt(CB.dep.arms)} · take-over ${fmt(CB.dep.wto)}. You can withdraw what you deposited while the fund still holds it.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${cabIn("amt",f.amt,"Amount",100)}${cabBtn("cbfund","Fund wars","war")}${cabBtn("cbfund","Fund arms","arms")}${cabBtn("cbfund","Fund take-over","wto")}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${cabBtn("cbwd","Withdraw wars","war",Math.min(CB.dep.war,CB.fund.war)<1000)}${cabBtn("cbwd","Withdraw arms","arms",Math.min(CB.dep.arms,CB.fund.arms)<1000)}${cabBtn("cbwd","Withdraw take-over","wto",Math.min(CB.dep.wto,CB.fund.wto)<1000)}</div>`)+
     card("🌍 World take-over",`<div class="ph-rows"><div><span>Countries under our control</span><b>${ctl} / ${goal} (${pct}%)</b></div><div><span>Influence cost for the rest</span><b>${fmt(wtoNeed)}</b></div><div><span>Take-over fund covers</span><b>${fpct}%</b></div></div><div style="height:8px;border-radius:4px;background:rgba(127,127,127,.2);margin-top:8px"><div style="height:100%;width:${fpct}%;border-radius:4px;background:#dc2626"></div></div><div class="ph-sub" style="margin-top:6px">Table "World take-over step" bills to spend the fund on influence campaigns, one country at a time.</div>`)}
 function govChatDash(){const g=cabGate();if(g)return g;cabListen();
   return `<div class="mdx-card" style="padding:14px"><div style="font-weight:600;margin-bottom:8px">🌐 Government chat: every office holder in the world</div><div style="max-height:420px;overflow:auto">${cabChat(CB.gmsg)}</div><div style="display:flex;gap:6px;margin-top:8px">${cabIn("gsay",CB.f.gsay,"Message all governments")}${cabBtn("cbgsay","Send")}</div></div>`}
-function cabAct(a,b){const v=b.dataset.v;if(a==="cbsay")cabSay(false);else if(a==="cbgsay")cabSay(true);else if(a==="cbprop")cabPropose();else if(a==="cbyes"||a==="cbno")cabVote(v,a==="cbyes");else if(a==="cbveto")cabVeto(v);else if(a==="cbfund")cabFund(v);else if(a==="cbrun")cabRun(v)}
+function cabAct(a,b){const v=b.dataset.v;if(a==="cbsay")cabSay(false);else if(a==="cbgsay")cabSay(true);else if(a==="cbprop")cabPropose();else if(a==="cbyes"||a==="cbno")cabVote(v,a==="cbyes");else if(a==="cbveto")cabVeto(v);else if(a==="cbfund")cabFund(v);else if(a==="cbwd")cabMove(v,true);else if(a==="cbrun")cabRun(v)}
 function mxGov(k){try{return k==="mil"?phInvCard()+milApp():k==="air"?airApp():k==="g1"?g1App():k==="s1"?s1App():officeApp()}catch(e){console.warn("mx",e);return `<div class="mdx-empty">This page couldn't load.</div>`}}
 /* run a phone-app button from the dashboard: copy the page (with typed values) into the hidden phone and click the same button there */
 function mxFwd(b){const con=b.closest(".bxd-con");if(!con||!PH.el)return;const all=[...con.querySelectorAll("[data-ph]")],i=all.indexOf(b);if(i<0)return;
