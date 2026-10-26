@@ -832,7 +832,7 @@ function buy(c,k){const b=BIZ.find(x=>x.k===k),p=cost(b,c);if(S.cash<p)return;{c
 function upgrade(c,k,i,quiet){i=+i||0;const b=BIZ.find(x=>x.k===k),x=XU(c.id,k),lv=i?x[i-1]:S.own[c.id][k];if(!lv)return;const p=upCost(b,c,lv);if(S.cash<p||lv>=MAXLV)return;
   S.cash-=p;if(i)x[i-1]=lv+1;else S.own[c.id][k]=lv+1;if(quiet)return;toast(`${b.n} in ${c.name} → Lv ${lv+1}`);commit()}
 // forget per-business manager state (auto-restock switch, cash-short flag) once it's no longer yours
-function clearBizState(c,k){const key=bkey(c,k);if(S.auto2)delete S.auto2[key];if(S.mgrShort)delete S.mgrShort[key];if(S.sched)delete S.sched[key];if(S.wadj)delete S.wadj[key];if(S.gasLast)delete S.gasLast[key]}
+function clearBizState(c,k){const key=bkey(c,k);if(S.auto2)delete S.auto2[key];if(S.mgrShort)delete S.mgrShort[key];if(S.mgrEmpty)delete S.mgrEmpty[key];if(S.sched)delete S.sched[key];if(S.wadj)delete S.wadj[key];if(S.gasLast)delete S.gasLast[key]}
 // remove the first unit of type k in c: the next extra unit (if any) takes its place, else the business is gone
 // drop S.xu[city][k] once it has no extra units, then the city's entry and S.xu itself once they're empty
 function xuTidy(id,k){if(!S.xu)return;const m=S.xu[id];if(m){if(k!=null&&m[k]&&!m[k].length)delete m[k];if(!S.own[id]||!Object.keys(m).length)delete S.xu[id]}if(!Object.keys(S.xu).length)delete S.xu}
@@ -1952,8 +1952,9 @@ function selfOp(c,b,lv){const k=bkey(c,b.k),st=S.staff[k],o=S.opf[k];S.staff[k]=
   return G>0?Math.max(0,Math.min(selfRate,.9*(1-.75*W/G))):0}
 // h = real hours elapsed (capped at SHOPCAP). Long gaps (offline catch-up) run in ≤1h steps so managers keep restocking
 // and orders that arrived while away are delivered at the step they land. Online ticks are one step.
+const MGR_WAIT=3600000; // manager buys at the market only after a business has been empty this long (ms)
 const SHOPCAP=48; // offline catch-up cap in game hours, same as earnings in accrue(): managers don't restock beyond it
-function runShops(h,now,quiet){now=now||Date.now();S.shopT=now;S.mgrShort=S.mgrShort||{};h=Math.min(Math.max(0,h||0),SHOPCAP);
+function runShops(h,now,quiet){now=now||Date.now();S.shopT=now;S.mgrShort=S.mgrShort||{};S.mgrEmpty=S.mgrEmpty||{};h=Math.min(Math.max(0,h||0),SHOPCAP);
   const n=h>1?Math.min(SHOPCAP,Math.ceil(h)):1,sh=h/n;
   for(let i=1;i<=n;i++)shopStep(sh,now-(n-i)*sh*DAYMS,now);if(!quiet)try{stockAlerts(now,h>1)}catch(e){console.warn("stockAlerts",e)}}
 function shopStep(h,t,now){const short=[];
@@ -1966,8 +1967,13 @@ function shopStep(h,t,now){const short=[];
   for(const o of S.orders.slice()){if(t<o.arr)continue;S.stock[o.key]=(S.stock[o.key]||0)+o.q;S.orders=S.orders.filter(x=>x!==o)}
   // managers restock automatically when stock drops under 2 hours
   for(const id in S.own){const c=CITIES[id];if(!S.mgr[c.id])continue;for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||!SUP[b.k])continue;const key=bkey(c,b.k);
-    if(!S.auto2[key]||S.orders.some(o=>o.key===key))continue;const r=uSum(id,b.k,l=>useRate(b,l,c));if((S.stock[key]||0)>=r*2){delete S.mgrShort[key];continue}
-    const q=Math.round(r*6),gp=b.fuel?gasPlan(c,q,1.1):null,cost=gp?gp.cost:q*unitCost(b,c)*1.1;
+    if(!S.auto2[key]||S.orders.some(o=>o.key===key)){delete S.mgrEmpty[key];continue}const r=uSum(id,b.k,l=>useRate(b,l,c)),stk=S.stock[key]||0;
+    if(stk>0.5)delete S.mgrEmpty[key];else if(S.mgrEmpty[key]==null)S.mgrEmpty[key]=t;
+    if(stk>=r*2){delete S.mgrShort[key];continue}
+    // free depot fuel goes in at once; buying at the market waits until the business has been empty for 1 hour
+    const q=Math.round(r*6),wait=S.mgrEmpty[key]==null||t-S.mgrEmpty[key]<MGR_WAIT;let gp=b.fuel?gasPlan(c,q,1.1):null;
+    if(wait){if(gp&&gp.dep>0){gasTake(c,key,{dep:gp.dep,buy:0,p:gp.p});delete S.mgrEmpty[key]}continue}
+    const cost=gp?gp.cost:q*unitCost(b,c)*1.1;
     if(S.cash<cost){const m=S.mgrShort[key]||(S.mgrShort[key]={n:0});
       if(!m.n||now-m.n>3*DAYMS){m.n=now;const msg=`Manager couldn't restock ${b.n} in ${c.name}: needs ${cost<100?fmtC(cost):fmt(cost)}`;S.log.unshift(msg);S.log=S.log.slice(0,3);short.push(msg)}
       continue}
@@ -2039,7 +2045,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-ops]");if(!b|
   else if(a==="shipout")shipOut(c,B,+b.dataset.q);
   else if(a==="staff"){const key=bkey(c,B.k);if(S.staff[key]){delete S.staff[key];toast("Staff let go. It only opens while you're here now.")}else{S.staff[key]=1;toast(`Hired ${uSum(c.id,B.k,l=>bizStaff(B.k,l))} staff. Wages start now.`)}}
   else return;commit()});
-sheet.addEventListener("change",e=>{const t=e.target;if(t.dataset.ops!=="auto"||!sel)return;const key=bkey(sel,t.dataset.k);S.auto2[key]=t.checked;save();toast(t.checked?"Manager will keep it stocked (+10% supplier fee)":"Auto-restock off")});
+sheet.addEventListener("change",e=>{const t=e.target;if(t.dataset.ops!=="auto"||!sel)return;const key=bkey(sel,t.dataset.k);S.auto2[key]=t.checked;save();toast(t.checked?"Manager will use depot stock first, and buy (+10% fee) only after 1 h empty":"Auto-restock off")});
 /* production sites need a crew, or you working the site yourself; you can also pause them */
 const crewF=s=>s.paused?0:s.crew?1:(present(CITIES[s.city])?.4:0);
 /* one-time move for saves from before this update: keep existing businesses open */
