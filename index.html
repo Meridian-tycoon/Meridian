@@ -5965,11 +5965,11 @@ function cabVeto(id){const b=CB.bills.find(x=>x.id===id),p=pol();if(!b||!polLead
 /* deposits and withdrawals: each member's own deposit is kept in cab/{c}/dep/{uid}; a member can take back what they put in,
    as long as the fund still holds it (the Leader may have spent it on a passed bill). Fund and deposit move together in one transaction. */
 function cabMove(k,out){const p=pol(),uid=cabUid(),want=Math.floor(+String(CB.f.amt||"").replace(/[^0-9.]/g,"")||0);if(!["war","arms","wto"].includes(k)||!(p.r>=0&&p.c)||!uid)return;if(!(want>=1000))return toast("Enter at least 1,000");
-  if(!out&&S.cash<want)return toast("Not enough cash");if(out&&Math.min(CB.dep[k],CB.fund[k])<1000)return toast("You have nothing to withdraw from this fund");if(CB.busy.fund)return;
+  if(!out&&S.cash<want)return toast("Not enough cash");const lead=polLeader();if(out&&(lead?CB.fund[k]:Math.min(CB.dep[k],CB.fund[k]))<1000)return toast("You have nothing to withdraw from this fund");if(CB.busy.fund)return;
   CB.busy.fund=1;if(!out){S.cash-=want;save();hud()}const root=ON.db.collection("cab").doc(p.c),dr=root.collection("dep").doc(uid);
   ON.db.runTransaction(async t=>{const a=await t.get(root),b=await t.get(dr),f=a.exists?+a.data()[k]||0:0,d=b.exists?+b.data()[k]||0:0;
-    const amt=out?Math.min(want,d,f):want;if(out&&amt<1)throw new Error("nothing to withdraw");if(!out&&f+amt>CABCFG.maxFund)throw new Error("fund is full");
-    t.set(root,{[k]:out?f-amt:f+amt},{merge:true});t.set(dr,{[k]:out?d-amt:d+amt},{merge:true});return amt})
+    const amt=out?Math.min(want,lead?f:d,f):want;if(out&&amt<1)throw new Error("nothing to withdraw");if(!out&&f+amt>CABCFG.maxFund)throw new Error("fund is full");
+    t.set(root,{[k]:out?f-amt:f+amt},{merge:true});if(!out||b.exists)t.set(dr,{[k]:out?Math.max(0,d-amt):d+amt},{merge:true});return amt})
     .then(amt=>{delete CB.busy.fund;CB.f.amt="";if(out){S.cash+=amt;save();hud();toast(`${fmt(amt)} withdrawn`)}else toast(`${fmt(amt)} added to the fund`);mxRender()},
       e=>{delete CB.busy.fund;if(!out){S.cash+=want;save();hud()}toast((out?"Withdrawal":"Funding")+" refused: "+(e&&(e.code||e.message)||e))})}
 const cabFund=k=>cabMove(k,false);
@@ -6011,9 +6011,9 @@ function cabDash(){const g=cabGate();if(g)return g;cabListen();const p=pol(),f=C
     card("💬 Cabinet chat",`<div style="max-height:240px;overflow:auto">${cabChat(CB.msg)}</div><div style="display:flex;gap:6px;margin-top:8px">${cabIn("say",f.say,"Message your cabinet")}${cabBtn("cbsay","Send")}</div>`)+
     card("📜 Bills and laws",`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${kind}${extra}${cabBtn("cbprop","Table bill")}</div>${bills}`)+
     card("💰 Funds",`<div class="ph-rows"><div><span>War fund (resolves wars at ${Math.round(CABCFG.warWin*100)}%)</span><b>${fmt(CB.fund.war)}</b></div><div><span>Arms fund</span><b>${fmt(CB.fund.arms)}</b></div><div><span>World take-over fund</span><b>${fmt(CB.fund.wto)}</b></div></div>
-      <div class="ph-sub" style="margin-top:8px">Your deposits: wars ${fmt(CB.dep.war)} · arms ${fmt(CB.dep.arms)} · take-over ${fmt(CB.dep.wto)}. You can withdraw what you deposited while the fund still holds it.</div>
+      <div class="ph-sub" style="margin-top:8px">Your deposits: wars ${fmt(CB.dep.war)} · arms ${fmt(CB.dep.arms)} · take-over ${fmt(CB.dep.wto)}. ${polLeader()?"As Leader you can withdraw anything in the funds.":"You can withdraw what you deposited while the fund still holds it."}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${cabIn("amt",f.amt,"Amount",100)}${cabBtn("cbfund","Fund wars","war")}${cabBtn("cbfund","Fund arms","arms")}${cabBtn("cbfund","Fund take-over","wto")}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${cabBtn("cbwd","Withdraw wars","war",Math.min(CB.dep.war,CB.fund.war)<1000)}${cabBtn("cbwd","Withdraw arms","arms",Math.min(CB.dep.arms,CB.fund.arms)<1000)}${cabBtn("cbwd","Withdraw take-over","wto",Math.min(CB.dep.wto,CB.fund.wto)<1000)}</div>`)+
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${["war","arms","wto"].map(k=>cabBtn("cbwd","Withdraw "+{war:"wars",arms:"arms",wto:"take-over"}[k],k,(polLeader()?CB.fund[k]:Math.min(CB.dep[k],CB.fund[k]))<1000)).join("")}</div>`)+
     card("🌍 World take-over",`<div class="ph-rows"><div><span>Countries under our control</span><b>${ctl} / ${goal} (${pct}%)</b></div><div><span>Influence cost for the rest</span><b>${fmt(wtoNeed)}</b></div><div><span>Take-over fund covers</span><b>${fpct}%</b></div></div><div style="height:8px;border-radius:4px;background:rgba(127,127,127,.2);margin-top:8px"><div style="height:100%;width:${fpct}%;border-radius:4px;background:#dc2626"></div></div><div class="ph-sub" style="margin-top:6px">Table "World take-over step" bills to spend the fund on influence campaigns, one country at a time.</div>`)}
 function govChatDash(){const g=cabGate();if(g)return g;cabListen();
   return `<div class="mdx-card" style="padding:14px"><div style="font-weight:600;margin-bottom:8px">🌐 Government chat: every office holder in the world</div><div style="max-height:420px;overflow:auto">${cabChat(CB.gmsg)}</div><div style="display:flex;gap:6px;margin-top:8px">${cabIn("gsay",CB.f.gsay,"Message all governments")}${cabBtn("cbgsay","Send")}</div></div>`}
