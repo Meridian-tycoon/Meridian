@@ -3004,7 +3004,7 @@ function story(){const s=S.story=S.story&&typeof S.story==="object"?S.story:{};i
   const y=s.ys=s.ys&&typeof s.ys==="object"?s.ys:{};if(!(y.st>=0&&y.st<=5))y.st=0;for(const k of ["d0","cd","z","d5"])if(!(y[k]>=0))y[k]=0;if(!YSK.includes(y.pair)){y.pair=null;if(y.st)y.st=0}
   if(typeof y.fav!=="string")y.fav=null;if(!y.ch||typeof y.ch!=="object")y.ch={};if(!Array.isArray(y.sk))y.sk=[];return s}
 /* one story line: the News app (S.news) and the World news list; `from` makes it a phone message from a character */
-function stNews(t,from){try{if(!Array.isArray(S.news))S.news=[];S.news.unshift(from?{t,at:Date.now(),f:from}:{t,at:Date.now()});S.news=S.news.slice(0,40);if(!from)dipSay(t,0,1)}catch(e){}}
+function stNews(t,from){try{stJournal(t,from);if(!Array.isArray(S.news))S.news=[];S.news.unshift(from?{t,at:Date.now(),f:from}:{t,at:Date.now()});S.news=S.news.slice(0,40);if(!from)dipSay(t,0,1)}catch(e){}}
 const YSC=["Japan","South Korea","China"],YSK=["China|Japan","China|South Korea","Japan|South Korea"],YSN=["","The Shoal","The Incident","Mobilisation","War","Aftermath"];
 function ysLv(k){const T=wf().tens[k],v=T?T.v:0,w=(S.wars||[]).find(x=>x&&x.l>0&&wfPair(x.a,x.b)===k);return{T,w,lv:Math.max(v>=80?3:v>=50?2:v>=25?1:0,w?w.l:0)}}
 function ysBeat(n,T){const ys=story().ys,[a,b]=ys.pair.split("|"),fav=ys.fav||a,oth=fav===a?b:a,jp=ys.pair.includes("Japan"),f=flNews(a,b,n,{fav,oth});
@@ -3042,7 +3042,23 @@ function stSeen(quiet){const s=story().seen,ys=story().ys,now={},fv={};
 const STF=[];
 function wfFeudEnd(x){try{const a=x.a,b=x.b;if(b===-1)stNews("No hard feelings. Profit in shared cities is back to normal.",STCEO[a]);
   else stNews(`${STCEO[a]} and ${STCEO[b]} shake hands at ${cap(wfHQ(a)).name}; the ${RIVALS[a].n}-${RIVALS[b].n} rivalry is over`)}catch(e){}}
-function stHour(quiet){const q=STF.splice(0);if(!quiet)q.forEach(wfFeudEnd);try{stRvHour(quiet,q)}catch(e){console.warn("story",e)}try{ysStep(quiet)}catch(e){console.warn("story",e)}try{stSeen(quiet)}catch(e){console.warn("story",e)}}
+function stHour(quiet){const q=STF.splice(0);if(!quiet)q.forEach(wfFeudEnd);try{stRvHour(quiet,q)}catch(e){console.warn("story",e)}try{ysStep(quiet)}catch(e){console.warn("story",e)}try{stSeen(quiet)}catch(e){console.warn("story",e)}try{stUnlock()}catch(e){}}
+/* Story app (phone): chapters of the storyline, unlocked by events the player has actually reached, plus a journal of story lines seen.
+   All chapter text lives in STORYCH below (edit here; background in docs/story/). Unlocks stick in S.story.u={<id>:day}; journal S.story.j=[{t,f,d}] (last 60). */
+const STORYCH=[
+ {id:"pro",t:"Prologue: the Long Calm is over",w:()=>1,x:"For thirty years after the Halden Accords the world traded more than it fought, and eight giant companies grew so large people joked they were the real governments. Then crop failures, a debt panic and close elections brought old border quarrels back. Money nobody will sign their name to now flows to whoever is ready to escalate. The press calls it the Quiet Ledger. You arrive with a food cart and a bank balance."},
+ {id:"mil",t:"Chapter 1: A name in the city",w:()=>totals().nw>=1e6,x:"Your first million. The boardrooms of the eight giants have started to notice a new name on the ledger, and so has a man who only calls himself Mr Gray."},
+ {id:"riv",t:"Chapter 2: Boardroom rivalries",w:()=>{const r=stRv();return Object.keys(r.feud).length>0},x:"Two of the giant companies are at each other's throats, and their chiefs settle scores in the cities you share. Profits there are never quite safe while a feud runs."},
+ {id:"ys",t:"Chapter 3: The Kestrel Shoal",w:()=>story().ys.st>=1,x:"A boat is rammed off the Kestrel Shoal in the Yellow Sea. Japan, South Korea and China trade protests, and Talia Okonjo in Busan writes down two facts and one rumour: the crew was not fishing."},
+ {id:"off",t:"Chapter 4: Mr Gray calls",w:()=>{const o=stRv().off||{};return !!(o.taken||o.declined||o.last)},x:"\"Good afternoon. No names. Six days.\" Mr Gray offers anonymous money to whoever will push a quarrel further. Taking it, or not, is now part of your story."},
+ {id:"gov",t:"Chapter 5: In office",w:()=>pol().r>=0,x:"You hold public office. Wars, taxes and treaties are no longer things that happen to your business; some of them are now your decision."},
+ {id:"war",t:"Chapter 6: The first war",w:()=>(S.wars||[]).some(w=>w&&w.l>0),x:"The Long Calm is properly over: two neighbours are at war. Generals report captures and holds, markets swing, and anonymous money clears the Notary on both sides of the line."},
+ {id:"aft",t:"Chapter 7: Aftermath",w:()=>story().ys.st===5||!!story().ys.ch.l,x:"The Yellow Sea war ends in an accord, a shaky ceasefire or a changed map. Nobody in Busan calls it peace, and the Counting House is already tallying who paid for what."}];
+function stUnlock(){try{const s=story(),u=s.u=s.u&&typeof s.u==="object"?s.u:{};for(const c of STORYCH)if(!u[c.id]){let ok=0;try{ok=c.w()}catch(e){}if(ok)u[c.id]=S.day||0}return u}catch(e){return{pro:0}}}
+function stJournal(t,f){try{const s=story();if(!Array.isArray(s.j))s.j=[];s.j.unshift(f?{t,f,d:S.day||0}:{t,d:S.day||0});s.j=s.j.slice(0,60)}catch(e){}}
+function storyApp(){const u=stUnlock(),s=story(),j=Array.isArray(s.j)?s.j:[],n=STORYCH.filter(c=>u[c.id]!=null).length,E=x=>String(x).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  return `<div class="ph-sub">Story so far · ${n} / ${STORYCH.length} chapters</div><div class="ph-list">${STORYCH.map(c=>u[c.id]!=null?`<div><b style="display:block">${E(c.t)}</b>${E(c.x)}${c.id!=="pro"?` <small style="opacity:.6">· Day ${u[c.id]}</small>`:""}</div>`:`<div style="opacity:.5"><b style="display:block">🔒 ${E(c.t.split(":")[0])}</b>Not reached yet.</div>`).join("")}</div>
+  <p class="ph-sub" style="margin-top:10px">Journal</p><div class="ph-list">${j.length?j.slice(0,30).map(x=>`<div>${x.f?`<b style="display:block">${E(x.f)}</b>`:""}${E(x.t)} <small style="opacity:.6">· Day ${x.d}</small></div>`).join(""):"<div>No story lines yet. They appear as the world moves.</div>"}</div>`}
 /* backer offer as a phone message from Mr Gray */
 function stOffer(o){try{const p=pol(),i=RIVALS.findIndex(r=>r.n===o.fr),g=o.fr.slice(14),who=o.ty==="co"&&i>=0?`${STFIG[i]} of ${o.fr}`:STMIN[g]?`The office of ${STMIN[g]}`:`A friend of the ${o.fr}`;
   stNews(`Good afternoon, ${GOVCFG.offices[p.r].n}. ${who} has ${fmt(o.amt)} available, should ${o.to} ${o.k==="w"?"press on against":"take a firmer line with"} ${o.vs}. No names. Six days.`,"Mr Gray")}catch(e){}}
@@ -9016,8 +9032,9 @@ const ICO={auction:`<path d="M14 4l6 6-3 3-6-6z M11 7l-6 6 M8 10l6 6 M4 20h9 M13
  cartel:'<path d="M12 3l8 3v6c0 4.5-3.2 7.7-8 9-4.8-1.3-8-4.5-8-9V6z M9 11h6 M9 14h6"/>',
  freight:'<path d="M2 7h12v9H2z M14 10h4l3 3v3h-7z M6 19a1.8 1.8 0 1 0 0-.01 M17 19a1.8 1.8 0 1 0 0-.01"/>',
  settings:'<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+ story:'<path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z M17 7h2v13 M8 8h6 M8 11h6 M8 14h4"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["pop","Population","#0369a1"],["trophy","Trophies","#a16207"],["lotto","Lottery","#9333ea"],["club","Sports","#16a34a"],["auction","Auction","#7c2d12"]];
+const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["pop","Population","#0369a1"],["trophy","Trophies","#a16207"],["story","Story","#6d28d9"],["lotto","Lottery","#9333ea"],["club","Sports","#16a34a"],["auction","Auction","#7c2d12"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 /* side gutter for floating widgets: 12px or the safe-area inset, whichever is larger (measured from a hidden probe) */
 let _gutEl=null;function gutLR(){if(!_gutEl){_gutEl=document.createElement("div");_gutEl.setAttribute("aria-hidden","true");_gutEl.style.cssText="position:fixed;visibility:hidden;pointer-events:none;top:0;height:0;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px))";document.body.appendChild(_gutEl)}const r=_gutEl.getBoundingClientRect();return[r.left||12,Math.max(12,innerWidth-r.right)||12]}
@@ -9054,6 +9071,7 @@ function appHtml(k){const {inc,nw}=totals();
   if(k==="hq")return hrApp();
   if(k==="pop")return popApp();
   if(k==="trophy")return achApp();
+  if(k==="story")return storyApp();
   if(k==="lotto")return ltApp();
   if(k==="auction")return aucApp();
   if(k==="club")return spApp();
