@@ -5677,6 +5677,9 @@ function intSt(){const x=S.intel=S.intel&&typeof S.intel==="object"&&!Array.isAr
     if(!(+x.nu[c]>0))x.nu[c]=now;while(lv>0&&now-x.nu[c]>D){lv--;x.nu[c]+=D}if(lv>0)x.net[c]=lv;else{delete x.net[c];delete x.nu[c]}}
   for(const c in x.intel){const v=x.intel[c];if(!COUNTRIES.includes(c)||!v||typeof v!=="object"||!["o","s","i"].some(k=>+v[k]>now))delete x.intel[c]}
   return x}
+// developer account only (signed in with a DEV_UIDS uid): every operation succeeds, spies are never caught, no cooldowns, tension can reach 100
+const intGod=()=>{try{return typeof ON!=="undefined"&&!!ON.user&&devUid(ON.user.uid)}catch(e){return false}};
+const intCap=()=>intGod()?100:INTCFG.cap;
 const intNet=n=>{const x=S.intel;return x&&x.net&&+x.net[n]>0?Math.min(INTCFG.maxNet,Math.floor(x.net[n])):0};
 const intKnow=(n,k)=>{const x=S.intel,v=x&&x.intel&&x.intel[n];return v&&+v[k]>Date.now()?v[k]:0};
 const intCiOn=()=>intLive()&&+((S.intel||{}).ci)>Date.now();
@@ -5684,21 +5687,21 @@ const intWarn=n=>intLive()&&intKnow(n,"s")?INTCFG.warn:0;
 const intRank=n=>COUNTRIES.slice().sort((a,b)=>dipPower(b)-dipPower(a)).indexOf(n);
 const intHard=n=>{const r=intRank(n);return r<0?0:INTCFG.hard*(1-r/Math.max(1,COUNTRIES.length-1))};
 const intCost=(k,n)=>Math.round(INTCFG.k*INTCFG.op[k].cost*Math.max(1,ctyScale(n||pol().c||"")));
-const intOdds=(k,n)=>{const T=INTCFG.op[k];if(T.self)return T.base;return Math.max(.05,Math.min(.95,T.base+INTCFG.netOdds*intNet(n)-intHard(n)+(intKnow(n,"o")?.03:0)))};
+const intOdds=(k,n)=>{const T=INTCFG.op[k];if(intGod())return 1;if(T.self)return T.base;return Math.max(.05,Math.min(.95,T.base+INTCFG.netOdds*intNet(n)-intHard(n)+(intKnow(n,"o")?.03:0)))};
 const intTens=(a,b)=>{const T=(wfView().tens||{})[wfPair(a,b)];return T?+T.v||0:0};
 const intAtWar=n=>!!((S.pol&&S.pol.mil&&S.pol.mil.wars&&S.pol.mil.wars[n])||(S.wars||[]).some(w=>w&&w.l>=4&&(w.a===n||w.b===n))||warLvl(n)>=3);
 // move the wf() meter for a pair by dv (never above INTCFG.cap, never lowers a meter funding already pushed higher)
 // online, a non-authority world can't write the shared meters: a rise goes out as anonymous wfund docs (same path as a donation;
 // the master's wfApply adds at most WFCFG.step per doc and hrCap per pair per hour), sized so the shared meter lands at ≤ INTCFG.cap
 const intRemote=()=>wfRemote()&&wwShared();
-function intAddTens(a,b,dv){if(intRemote()){const v0=intTens(a,b);if(!(dv>0))return v0;dv=Math.min(dv,INTCFG.cap-v0);if(!(dv>0))return v0;
+function intAddTens(a,b,dv){if(intRemote()){const v0=intTens(a,b);if(!(dv>0))return v0;dv=Math.min(dv,intCap()-v0);if(!(dv>0))return v0;
     try{let left=dv;while(left>=.1){const s=Math.min(WFCFG.step,left);left-=s;ON.db.collection("wfund").add({k:"e",to:String(a).slice(0,40),vs:String(b).slice(0,40),amt:Math.max(WFCFG.min,Math.min(1e13,Math.round(s*wfPt(a,b)))),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("int",e))}}catch(e){console.warn("int",e)}
     return v0+dv}
   const d=wf(),k=wfPair(a,b);let T=d.tens[k];if(dv<0&&!T)return 0;T=d.tens[k]=T||{v:0,f:{}};if(!T.f||typeof T.f!=="object")T.f={};const v0=+T.v||0,was=wfStage(v0)[1];
-  T.v=dv>0?Math.max(v0,Math.min(INTCFG.cap,v0+dv)):Math.max(0,v0+dv);T.t=Date.now();d.dirty=1;const v=T.v;if(v<=0)delete d.tens[k];
+  T.v=dv>0?Math.max(v0,Math.min(intCap(),v0+dv)):Math.max(0,v0+dv);T.t=Date.now();d.dirty=1;const v=T.v;if(v<=0)delete d.tens[k];
   const now=wfStage(v)[1];if(now!==was)wfSay(`Tensions ${dv>0?"rising":"easing"} between ${a} and ${b}: ${now}`);return v}
 function intCheck(k,n,b){const pc=pol().c;
-  if(k==="stir"){if(!b||b===n||b===pc||!COUNTRIES.includes(b))return "Pick a second country (not yours) for the false flag";if(wfAtWar(n,b))return `${n} and ${b} are already at war`;if(intTens(n,b)>=INTCFG.cap)return `${n} and ${b} are already at the brink`}
+  if(k==="stir"){if(!b||b===n||b===pc||!COUNTRIES.includes(b))return "Pick a second country (not yours) for the false flag";if(wfAtWar(n,b))return `${n} and ${b} are already at war`;if(intTens(n,b)>=intCap())return `${n} and ${b} are already at the brink`}
   if(k==="calm"){if(!b||b===n||!COUNTRIES.includes(b))return "Pick a second country";const w=(S.wars||[]).find(w=>w&&!w.gid&&w.l>=1&&w.l<=2&&wfPair(w.a,w.b)===wfPair(n,b));if(intTens(n,b)<=0&&!w)return `No tension between ${n} and ${b} to defuse`;if(intRemote()&&!w)return "Online, the world server runs tension meters: talks can only cool your own rivalries"}
   if(k==="sab"&&!intAtWar(n))return `${n} isn't at war: sabotage needs a country at war`;return ""}
 function intExpose(n,T){const x=intSt(),p=pol(),pc=p.c,C=INTCFG.expose,out=[];const lv=intNet(n);if(lv>0){x.net[n]=lv-1;if(!x.net[n]){delete x.net[n];delete x.nu[n]}out.push("asset lost")}
@@ -5725,10 +5728,10 @@ function intEffect(k,n,b,x,now){const d=dip(),K=v=>{const o=x.intel[n]=x.intel[n
 function intRun(k,n,b){const T=INTCFG.op[k],x=intSt(),now=Date.now(),p=pol(),pc=p.c;if(!T)return "❌ Unknown operation";
   if(!intOn())return "❌ Buy the Intelligence Agency in the presidential office shop first";if(!polLeader())return "❌ Only a Leader can order operations";
   if(T.self)n=pc;else if(!n||!COUNTRIES.includes(n)||n===pc)return "❌ Pick a foreign target";if(k==="calm"&&!b)b=pc;
-  if((x.cd[k]||0)>now)return `❌ ${T.n} ready in ${fmtDur(x.cd[k]-now)}`;const chk=intCheck(k,n,b);if(chk)return "❌ "+chk;
-  const c=intCost(k,n);if(S.cash<c)return `❌ Need ${fmt(c)}`;S.cash-=c;x.cd[k]=now+T.cd*60000;x.n++;if(!T.self&&x.net[n])x.nu[n]=now;
+  if(!intGod()&&(x.cd[k]||0)>now)return `❌ ${T.n} ready in ${fmtDur(x.cd[k]-now)}`;const chk=intCheck(k,n,b);if(chk)return "❌ "+chk;
+  const c=intCost(k,n);if(S.cash<c)return `❌ Need ${fmt(c)}`;S.cash-=c;if(intGod())delete x.cd[k];else x.cd[k]=now+T.cd*60000;x.n++;if(!T.self&&x.net[n])x.nu[n]=now;
   const ok=Math.random()<intOdds(k,n);let res,exp=0;
-  if(ok){x.ok++;res=intEffect(k,n,b,x,now)}else{res="operation failed";if(T.exp&&Math.random()<T.exp*(1-.1*intNet(n))){exp=1;res+=" · "+intExpose(n,T)}}
+  if(ok){x.ok++;res=intEffect(k,n,b,x,now)}else{res="operation failed";if(T.exp&&!intGod()&&Math.random()<T.exp*(1-.1*intNet(n))){exp=1;res+=" · "+intExpose(n,T)}}
   x.log.unshift({t:now,k,n,b:T.two?b:null,ok:ok?1:0,c,res,exp});x.log=x.log.slice(0,INTCFG.keep);
   const tx=`${T.s} ${T.n}${T.self?"":` · ${n}${T.two?" / "+b:""}`}: ${res}`;logPol(tx);save();hud();return (ok?"✅ ":"❌ ")+tx}
 // counterintelligence: a planned enemy strike on you is foiled (called from wpnRetal once k is rolled)
@@ -5766,8 +5769,8 @@ function intDash(){const hd=`<div class="mdx-hd"><h2>Intelligence Agency <span>�
     <div class="mdx-card"><div class="mdx-ch"><h3>📡 Signals intercepts</h3>${exp(n,"s")}</div>${sigint}</div>
     <div class="mdx-card"><div class="mdx-ch"><h3>🛰️ Satellite imagery</h3>${exp(n,"i")}</div>${imint}</div>`;
   // operations
-  const ops=Object.keys(O).map(k=>{const T=O[k],tn=T.self?pc:n,cd=Math.max(0,(x.cd[k]||0)-now),c=intCost(k,tn),bad=intCheck(k,n,k==="calm"?b:MX.ib),od=Math.round(intOdds(k,n)*100);
-    return `<button data-mx="intrun" data-k="${k}" ${cd||S.cash<c||bad?"disabled":""} title="${dxE(bad||T.d)}"><i style="background:#e0e7ff;color:#4338ca;font-size:18px">${T.ic}</i><span><small style="font-weight:700;opacity:.6;letter-spacing:.04em">${T.s}</small><br>${T.n}${T.self?` · ${dxE(pc)}`:""}</span><small style="font-weight:500;opacity:.75">${cd?"Ready in "+fmtDur(cd):`${fmt(c)} · ${od}% odds · ${T.cd} min cd`}</small><small style="font-weight:500;opacity:.6">${dxE(bad&&!cd?bad:T.d)}${T.exp?` · ${Math.round(T.exp*100)}% exposure risk on failure`:""}</small></button>`}).join("");
+  const ops=Object.keys(O).map(k=>{const T=O[k],tn=T.self?pc:n,cd=intGod()?0:Math.max(0,(x.cd[k]||0)-now),c=intCost(k,tn),bad=intCheck(k,n,k==="calm"?b:MX.ib),od=Math.round(intOdds(k,n)*100);
+    return `<button data-mx="intrun" data-k="${k}" ${cd||S.cash<c||bad?"disabled":""} title="${dxE(bad||T.d)}"><i style="background:#e0e7ff;color:#4338ca;font-size:18px">${T.ic}</i><span><small style="font-weight:700;opacity:.6;letter-spacing:.04em">${T.s}</small><br>${T.n}${T.self?` · ${dxE(pc)}`:""}</span><small style="font-weight:500;opacity:.75">${cd?"Ready in "+fmtDur(cd):`${fmt(c)} · ${od}% odds · ${intGod()?"no cooldown":T.cd+" min cd"}`}</small><small style="font-weight:500;opacity:.6">${dxE(bad&&!cd?bad:T.d)}${T.exp&&!intGod()?` · ${Math.round(T.exp*100)}% exposure risk on failure`:""}</small></button>`}).join("");
   const opsCard=`<div class="mdx-card"><div class="mdx-ch"><h3>Operations</h3></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px"><label style="display:flex;flex-direction:column;gap:4px;font:600 12px Figtree,sans-serif;color:var(--dxmut)">🎯 Target country<select class="mdx-sel" id="intf_it">${fx.map(c=>opt(c,c+(intNet(c)?` · net ${intNet(c)}`:""),c===n)).join("")}</select></label>
     <label style="display:flex;flex-direction:column;gap:4px;font:600 12px Figtree,sans-serif;color:var(--dxmut)">🎭 Second country (false flag / talks)<select class="mdx-sel" id="intf_ib">${opt("",pc?`${pc} (your country, talks only)`:"(none)",!MX.ib)}${COUNTRIES.filter(c=>c!==n&&c!==pc).sort().map(c=>opt(c,c+(intTens(n,c)>0?` · tension ${Math.round(intTens(n,c))}`:""),c===MX.ib)).join("")}</select></label></div>
