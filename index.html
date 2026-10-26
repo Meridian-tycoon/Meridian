@@ -10448,7 +10448,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
 const atHomeNow=()=>!!(S.home&&!S.trip&&S.loc.city===S.home.city);
 
 /* ---------- misc ---------- */
-let tt;function toast(m){const t=$("#toast");t.textContent=m;t.classList.remove("good","bad");t.classList.toggle("top",!!(typeof PH!=="undefined"&&PH&&PH.open));
+let tt;function toast(m){try{alPush(m)}catch(e){}const t=$("#toast");t.textContent=m;t.classList.remove("good","bad");t.classList.toggle("top",!!(typeof PH!=="undefined"&&PH&&PH.open));
   if(/^(Opened|Approved|You got the job|You earned|Bill passed|Bail posted|Law changed|Contract awarded|Talks worked|Arms sold|Bought|Card approved|Day \d+ streak|.*paid off)/.test(m)){t.classList.add("good");if(typeof confetti==="function"&&!/^Day/.test(m))confetti(28,innerWidth/2,innerHeight-80);if(typeof vib==="function")vib(20)}
   else if(/^(Denied|Scandal|Caught|Arrested|Application turned down|Bill failed|Talks collapsed|Need |You need|Not from prison|Out of stock|Stock critical|While you were away · Out of stock)/.test(m)){t.classList.add("bad");if(typeof vib==="function")vib([15,30,15])}
   if(S.set&&S.set.toast===0&&!t.classList.contains("good")&&!t.classList.contains("bad")&&!/^(Need|Not enough|Can't|Cannot|Settings)/.test(m))return;
@@ -10491,17 +10491,36 @@ function uiSync(){mqPump();const B=document.body.classList,so=sheet.classList.co
     if(dx!==cx||dy!==cy){el.dataset.dx=dx;el.dataset.dy=dy;el.style.translate=dx||dy?dx/sc+"px "+dy/sc+"px":""}};
   try{dock($("#statsw"),1,0);if(PH&&PH.el)dock(PH.el,phScale()||1,PH.open)}catch(e){}}
 setInterval(uiSync,250);
-/* new-version popup: GitHub Pages sends Last-Modified; if the live page is newer than the copy running here, offer a refresh (save first). */
-(()=>{let shown=0;const base=Date.parse(document.lastModified);
+/* new-version banner: GitHub Pages sends Last-Modified; if the live page is newer than the copy running here, show a slim Reload banner at the top (game saved first).
+   Checks every minute and when the tab comes back. "Later" hides it for 10 minutes. */
+(()=>{let shown=0,nextAt=0;const base=Date.parse(document.lastModified);
 function ask(){if(shown)return;shown=1;try{save()}catch(e){}
-  const d=document.createElement("div");d.id="newver";d.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px";
-  d.innerHTML='<div style="background:var(--panel,#fff);color:var(--ink,#111);max-width:340px;width:100%;border-radius:14px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.4)"><div style="font-weight:700;font-size:17px">New update available</div><p style="margin:8px 0 14px;font-size:14px;opacity:.8">A newer version of Meridian is live. Your game is saved. Refresh to get the update.</p><button class="buy" data-r="1" style="width:100%">Refresh page</button><button data-r="0" style="width:100%;margin-top:8px;background:none;border:0;color:inherit;opacity:.6;font-size:13px;padding:6px">Later</button></div>';
-  d.onclick=e=>{const r=e.target.dataset&&e.target.dataset.r;if(r==="1"){try{save()}catch(x){}location.reload()}else if(r==="0"){d.remove();shown=0;nextAt=Date.now()+60*60000}};
+  const d=document.createElement("div");d.id="newver";d.style.cssText="position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 8px);z-index:99999;display:flex;align-items:center;gap:10px;max-width:calc(100vw - 32px);padding:8px 10px 8px 14px;border-radius:999px;background:#1d4ed8;color:#fff;font-size:13px;font-weight:600;box-shadow:0 6px 24px rgba(0,0,0,.35)";
+  d.innerHTML='<span style="white-space:nowrap">🔄 Update ready · saved</span><button data-r="1" style="border:0;border-radius:999px;padding:6px 12px;background:#fff;color:#1d4ed8;font-weight:700;cursor:pointer">Reload</button><button data-r="0" aria-label="Later" style="border:0;background:transparent;color:#fff;opacity:.8;font-size:16px;cursor:pointer">×</button>';
+  d.onclick=e=>{const r=e.target.dataset&&e.target.dataset.r;if(r==="1"){try{save()}catch(x){}location.reload()}else if(r==="0"){d.remove();shown=0;nextAt=Date.now()+10*60000}};
   document.body.appendChild(d)}
-let nextAt=0;
 async function chk(){if(shown||Date.now()<nextAt||document.hidden||!/^https?:/.test(location.protocol)||!Number.isFinite(base))return;
   try{const r=await fetch(location.pathname,{method:"HEAD",cache:"no-store"});const t=Date.parse(r.headers.get("last-modified")||"");if(Number.isFinite(t)&&t-base>5000)ask()}catch(e){}}
-setInterval(chk,5*60000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)chk()});setTimeout(chk,20000)})();
+window.__verAsk=ask;setInterval(chk,60000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)chk()});setTimeout(chk,15000)})();
+/* alerts center: every toast is kept (last 50, this browser only) and listed under a bell; the badge counts unread ones */
+const AL={k:"meridian-alerts",list:[],seen:0,open:0};
+try{const x=JSON.parse(localStorage.getItem(AL.k)||"{}");AL.list=Array.isArray(x.l)?x.l.slice(0,50):[];AL.seen=+x.s||0}catch(e){}
+function alSave(){try{localStorage.setItem(AL.k,JSON.stringify({l:AL.list,s:AL.seen}))}catch(e){}}
+function alPush(m){m=String(m||"").trim();if(!m)return;const now=Date.now(),l=AL.list[0];if(l&&l.m===m&&now-l.t<3000)return;AL.list.unshift({t:now,m:m.slice(0,240)});AL.list=AL.list.slice(0,50);alSave();alPaint()}
+function alAgo(t){const s=Math.max(0,(Date.now()-t)/1000|0);return s<60?"just now":s<3600?(s/60|0)+"m ago":s<86400?(s/3600|0)+"h ago":(s/86400|0)+"d ago"}
+function alPaint(){let b=document.getElementById("albell");if(!b){b=document.createElement("button");b.id="albell";b.setAttribute("aria-label","Alerts");
+    b.style.cssText="position:fixed;right:calc(env(safe-area-inset-right,0px) + 12px);top:calc(env(safe-area-inset-top,0px) + 56px);z-index:9000;width:38px;height:38px;border-radius:50%;border:1px solid rgba(127,127,127,.4);background:rgba(15,23,42,.85);color:#fff;font-size:17px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3)";
+    b.onclick=e=>{e.stopPropagation();AL.open=!AL.open;if(AL.open){AL.seen=Date.now();alSave()}alPaint()};document.body.appendChild(b)}
+  const un=AL.list.filter(x=>x.t>AL.seen).length;b.innerHTML="🔔"+(un?`<span style="position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#dc2626;color:#fff;font-size:11px;font-weight:700;line-height:18px">${un>9?"9+":un}</span>`:"");
+  let p=document.getElementById("alpanel");if(!AL.open){if(p)p.remove();return}
+  if(!p){p=document.createElement("div");p.id="alpanel";p.onclick=e=>e.stopPropagation();document.body.appendChild(p)}
+  p.style.cssText="position:fixed;right:calc(env(safe-area-inset-right,0px) + 12px);top:calc(env(safe-area-inset-top,0px) + 100px);z-index:9001;width:min(340px,calc(100vw - 24px));max-height:60vh;overflow:auto;border-radius:14px;background:rgba(15,23,42,.96);color:#e5e7eb;box-shadow:0 10px 40px rgba(0,0,0,.45);font-size:13px";
+  const esc=t=>t.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  p.innerHTML=`<div style="display:flex;align-items:center;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.1);font-weight:700">Alerts<span style="margin-left:auto;display:flex;gap:6px"><button data-al="clr" style="border:0;background:transparent;color:#93c5fd;cursor:pointer">Clear</button><button data-al="x" style="border:0;background:transparent;color:#fff;font-size:16px;cursor:pointer">×</button></span></div>`+
+    (AL.list.length?AL.list.map(x=>`<div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.06)"><div>${esc(x.m)}</div><small style="opacity:.55">${alAgo(x.t)}</small></div>`).join(""):`<div style="padding:14px 12px;opacity:.6">No alerts yet.</div>`);
+  p.querySelectorAll("[data-al]").forEach(el=>el.onclick=()=>{if(el.dataset.al==="clr"){AL.list=[];alSave()}else AL.open=0;alPaint()})}
+document.addEventListener("click",()=>{if(AL.open){AL.open=0;alPaint()}});
+try{alPaint()}catch(e){}
 resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}try{wfTick()}catch(e){}try{cabTick()}catch(e){}},1000);
 if(!S.log.length){S.log=["You start with nothing. Tap a city, open Jobs & home, rent a room and apply for work."];hud()}
 if(!world)toast("Map outline didn't load. Cities still work.");
