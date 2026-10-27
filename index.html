@@ -842,7 +842,7 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   if(typeof airDraw==="function"&&z<11)try{airDraw(ctx,now)}catch(e){}
   if(typeof satDraw==="function"&&z<11)try{satDraw(ctx,now)}catch(e){}
   if(typeof drawRigs==="function")try{drawRigs(ctx)}catch(e){}
-  if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);ctx.restore()}
+  if(typeof drawTens==="function"&&z<11)try{drawTens(ctx)}catch(e){}if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);ctx.restore()}
   const dotA=1-smooth01(10.5,12,z),labA=1-smooth01(8.5,9.6,z);   // our city dots hand over to the real map as you get close
   if(dotA>0.02){ctx.globalAlpha=dotA;
   if(S.pol&&(S.pol.r>=0||S.pol.ctrl&&Object.keys(S.pol.ctrl).length)){const lead=S.pol.r>=0?S.pol.c:null;for(const c of CITIES){const mine=c.country===lead,inf=S.pol.ctrl&&S.pol.ctrl[c.country];if(!mine&&!inf||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]);
@@ -2913,6 +2913,11 @@ const _govCol={};function govFlagCol(n){if(_govCol[n])return _govCol[n];let col=
   const [r,g2,b]=pick.split(",").map(v=>Number(v)*16+8),L=x=>Math.round(x+(255-x)*.45);col=`rgb(${L(r)},${L(g2)},${L(b)})`}catch(e){}return _govCol[n]=col}
 function drawGovLine(ctx){const p=S.pol;if(!p||!(p.r>=0)||!p.c)return;const f=cfFeat(p.c);if(!f)return;const col=govFlagCol(p.c);
   ctx.save();ctx.beginPath();path(f);ctx.globalAlpha=.9;ctx.lineWidth=2.4;ctx.strokeStyle=col;ctx.setLineDash([]);ctx.stroke();ctx.globalAlpha=.08;ctx.fillStyle=col;ctx.fill();ctx.restore()}
+/* Rising tension meters (wf tens, before any war): a very faint dashed line between the two capitals, stage colour. Display only. */
+function drawTens(ctx){if(!cfOn())return;const T=(typeof wfView==="function"&&wfView().tens)||{},ws=S.wars||[];ctx.save();ctx.setLineDash([2,6]);
+  for(const k in T){const v=+T[k].v||0;if(v<=0)continue;const [a,b]=k.split("|");if(ws.some(w=>w.l>0&&((w.a===a&&w.b===b)||(w.a===b&&w.b===a))))continue;const A=cfCap(a),B=cfCap(b);if(!A||!B)continue;
+    ctx.beginPath();path({type:"LineString",coordinates:[[A.lon,A.lat],[B.lon,B.lat]]});ctx.globalAlpha=.12+Math.min(1,v/100)*.18;ctx.strokeStyle=wfStage(v)[2];ctx.lineWidth=1;ctx.stroke()}
+  ctx.restore()}
 function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filter(w=>w.l>0),pw=bgMilKeys();if((!ws.length&&!pw.length)||!cfOn())return;
   const mk=S.wmd&&S.wmd.h?Object.keys(S.wmd.h).filter(n=>S.wmd.h[n].u>S.day):[];
   const t=performance.now()/1000,lv=cfLevels(),zs=Math.min(1.6,.85+V.k*.08),anim=typeof reduce==="undefined"||!reduce;ctx.save();
