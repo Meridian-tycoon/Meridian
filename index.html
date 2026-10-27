@@ -7179,7 +7179,7 @@ function onScript(u){return new Promise((ok,no)=>{const s=document.createElement
 async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
   try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
-    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM){wrPublish(true);wwPublish(true)}else{wrMirror(true);try{wwMirror(true)}catch(e){}if(WRL)WRG=true}onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{WRG=false;CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);pmListen(u);gateSync();onRefresh()});
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){setGuest(false);WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM){wrPublish(true);wwPublish(true)}else{wrMirror(true);try{wwMirror(true)}catch(e){}if(WRL)WRG=true}onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{WRG=false;CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);pmListen(u);gateSync();onRefresh()});
     ON.unsubB=ON.db.collection("world").doc("bot").onSnapshot(d=>{if(WRM&&ON.user&&devUid(ON.user.uid))return;const v=d.exists?botClean(d.data()):null;if(!v)return;ON.bot=v;try{localStorage.setItem(BOTKEY,JSON.stringify(v))}catch(e){}draw();onRefresh();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)))phRender()},e=>{ON.err="Couldn't load the bot company: "+(e&&e.code||e)});
     ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;ON.gotPlayers=true;lbCache(a);try{ctCalc()}catch(e){}try{cabCheck()}catch(e){}draw();onRefresh()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
     try{wwListen()}catch(e){}ON.unsubW=ON.db.collection("world").doc("rivals").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list)||v.list.length!==RIVALS.length)return;
@@ -7235,7 +7235,7 @@ function onlineHtml(){if(!onEnabled())return"";const p=onProf(),u=ON.user,inp="w
     <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="onname" maxlength="20" value="${onEsc(p.name)}" placeholder="Display name" style="${inp};margin-top:0;flex:1;min-width:0"><input id="oncol" type="color" value="${p.col}" style="width:40px;height:36px;padding:0;border:1px solid var(--line);border-radius:4px;background:none"></div>
     <div style="display:flex;gap:8px;margin-top:8px"><button class="buy" data-on="save" style="flex:1">Save profile</button><button class="buy" data-on="out">Sign out</button></div>
     <div class="d" style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="min-width:0">Your player ID: <code id="onuid" style="font-family:var(--mono);font-size:11px;word-break:break-all;user-select:all">${onEsc(u.uid)}</code></span><button class="buy up" data-on="copyid" style="flex:none">Copy</button></div>${csHtml()}`}
-  else h+=`<div class="d">Signed out. Sign in to keep playing.</div>
+  else h+=`<div class="d">${isGuest()?"Playing as guest. Your game is saved on this device only. Create an account to keep it online and play with others: your current game carries over.":"Signed out. Sign in to keep playing."}</div>
     <input id="onname" maxlength="20" value="${onEsc(ON.draft.n||p.name)}" placeholder="Display name" style="${inp}">
     <input id="onemail" type="email" autocomplete="email" value="${onEsc(ON.draft.e)}" placeholder="Email" style="${inp}">
     <input id="onpass" type="password" autocomplete="current-password" placeholder="Password (6+ characters)" style="${inp}">
@@ -7250,7 +7250,7 @@ function onlineWire(){if(!onEnabled())return;csWire();const v=s=>{const e=$(s);r
       else if(a==="copyid"){const id=ON.user?ON.user.uid:"";let ok=false;try{await navigator.clipboard.writeText(id);ok=true}catch(e){}
         if(!ok){try{const t=document.createElement("textarea");t.value=id;t.style.cssText="position:fixed;opacity:0";document.body.appendChild(t);t.select();ok=document.execCommand("copy");t.remove()}catch(e){}}
         toast(ok?"Player ID copied":"Select the ID and copy it")}
-      else if(a==="out"){await ON.auth.signOut()}
+      else if(a==="out"){setGuest(false);await ON.auth.signOut()}
       else{if(nm)onProf().name=nm;
         if(a==="g")await ON.auth.signInWithPopup(new window.firebase.auth.GoogleAuthProvider());
         else{const e=v("#onemail").trim(),pw=$("#onpass")?$("#onpass").value:"";if(!e||pw.length<6){ON.err="Enter an email and a password of 6+ characters";ON.busy=false;onRefresh();return}
@@ -7295,14 +7295,18 @@ async function delAccount(){if(DA.busy||!ON.user)return;const u=ON.user,uid=u.ui
     DA.err=c==="auth/wrong-password"||c==="auth/invalid-credential"||c==="auth/invalid-login-credentials"?"Wrong password":c==="auth/popup-closed-by-user"?"Google confirmation was cancelled":"Couldn't delete: "+String(e&&e.message||e).replace(/^Firebase:\s*/,"").slice(0,140);
     if(ON.user){onPublish(true)}renderSaves()}}
 /* ---------- sign-in gate: every player must be signed in (email account) to play while Firebase is on ---------- */
-const GATE={busy:false,err:"",msg:"",up:false};
-function gateSync(){const need=onEnabled()&&!ON.user;let ov=document.getElementById("gate");
+const GATE={busy:false,err:"",msg:"",up:false},GUESTKEY="meridian-guest";
+/* guest mode: play without an account. The game is kept on this device only; online features stay gated until the guest creates an account (their local game carries over). */
+const isGuest=()=>{try{return localStorage.getItem(GUESTKEY)==="1"}catch(e){return false}};
+function setGuest(on){try{if(on)localStorage.setItem(GUESTKEY,"1");else localStorage.removeItem(GUESTKEY)}catch(e){}}
+function gateSync(){const need=onEnabled()&&!ON.user&&!isGuest();let ov=document.getElementById("gate");
   if(!need){if(ov)ov.remove();return}
   if(!ov){ov=document.createElement("div");ov.id="gate";ov.setAttribute("role","dialog");ov.setAttribute("aria-modal","true");
     ov.style.cssText="position:fixed;inset:0;z-index:10000;background:var(--space);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto";document.body.appendChild(ov)}
   const inp="width:100%;box-sizing:border-box;font:inherit;padding:10px;margin-top:8px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink)",
     keep=id=>{const e=document.getElementById(id);return e?e.value:""},em=keep("gemail")||ON.draft.e||"",nm=keep("gname")||ON.draft.n||(S.online&&S.online.name)||S.name||"";
   let body;
+  const guestFoot=`<div class="d" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><a href="#" data-g="guest">Play as guest</a> · no account needed. Your game is saved on this device only, and online features (other players, trading, leaderboard) stay off until you create an account.</div>`;
   if(!ON.ready&&!ON.err)body=`<div class="d">Connecting…</div>`;
   else if(!ON.ready)body=`<div class="d" style="color:var(--bad)">${onEsc(ON.err)}</div><div class="d" style="margin-top:6px">Meridian needs an internet connection to sign in.</div><button class="buy" data-g="retry" style="width:100%;margin-top:10px">Try again</button>`;
   else if(!ON.authKnown)body=`<div class="d">Checking your account…</div>`;
@@ -7313,7 +7317,9 @@ function gateSync(){const need=onEnabled()&&!ON.user;let ov=document.getElementB
     <button class="buy" data-g="${GATE.up?"up":"in"}" style="width:100%;margin-top:10px">${GATE.up?"Create account":"Sign in"}</button>
     <button class="buy up" data-g="g" style="width:100%;margin-top:8px">Sign in with Google</button>
     <div class="d" style="margin-top:10px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
-      <a href="#" data-g="mode">${GATE.up?"I already have an account":"New here? Create an account"}</a>${GATE.up?"":`<a href="#" data-g="reset">Forgot password?</a>`}</div>`;
+      <a href="#" data-g="mode">${GATE.up?"I already have an account":"New here? Create an account"}</a>${GATE.up?"":`<a href="#" data-g="reset">Forgot password?</a>`}</div>
+    ${guestFoot}`;
+  if(!ON.ready&&ON.err)body+=guestFoot;
   ov.innerHTML=`<div style="background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:20px;max-width:380px;width:100%;box-sizing:border-box">
     <div class="n" style="font-weight:800;font-size:20px;margin-bottom:8px">Meridian Tycoon</div>${body}
     ${GATE.err?`<div class="d" style="color:var(--bad);margin-top:8px">${onEsc(GATE.err)}</div>`:""}${GATE.msg?`<div class="d" style="color:var(--good,#16a34a);margin-top:8px">${onEsc(GATE.msg)}</div>`:""}</div>`;
@@ -7322,6 +7328,7 @@ function gateSync(){const need=onEnabled()&&!ON.user;let ov=document.getElementB
     ON.draft.e=keep("gemail");if(GATE.up)ON.draft.n=keep("gname");
     if(a==="retry"){ON.err="";onInit();gateSync();return}
     if(a==="mode"){GATE.up=!GATE.up;gateSync();return}
+    if(a==="guest"){setGuest(true);gateSync();toast("Playing as guest: saved on this device only. Create an account any time in Saves > Online.");return}
     const e=keep("gemail").trim(),p=keep("gpass");
     try{GATE.busy=true;
       if(a==="g")await ON.auth.signInWithPopup(new window.firebase.auth.GoogleAuthProvider());
