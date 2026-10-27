@@ -3811,7 +3811,7 @@ const obLX=()=>Math.max(0,S.ob.lm-BANKCFG.lmFair),obCX=()=>Math.max(0,S.ob.cm-BA
 const obPick=x=>{const o=S.ob;for(let j=0;j<4;j++){const c=o.customers.length&&Math.random()<.5?o.customers[Math.random()*o.customers.length|0]:obCust();
   if(Math.random()>=Math.min(.9,x*BANKCFG.advSel*(1-c.risk)))return c}return null}; // adverse selection: overpriced credit loses good borrowers
 const obDem=x=>Math.max(BANKCFG.demMin,(1-x*BANKCFG.rateDem)*obPh().dem);
-const obEquity=()=>S.ob?S.ob.reserves+obLoanBal()-S.ob.deposits-S.ob.emerg:0;
+const obEquity=()=>S.ob?S.ob.reserves+obLoanBal()+(S.ob.mg&&S.ob.mg.book>0?S.ob.mg.book:0)-S.ob.deposits-S.ob.emerg:0;
 const obAppeal=()=>{const o=S.ob,C=BANKCFG;return Math.max(.05,Math.min(2.5,1+(o.depRate-S.econ.base*C.rateRef)*C.rateSens+(o.rep-50)/100))};
 const OBN1=["Alex","Sam","Maria","Chen","Priya","Omar","Lena","Jules","Kofi","Yuki","Ivan","Sofia","Noah","Aisha","Mateo","Hana"],OBN2=["Smith","Tremblay","Garcia","Wong","Patel","Haddad","Muller","Rossi","Mensah","Sato","Novak","Silva","Kim","Diallo","Lopez","Berg"],OBCO=["Logistics","Foods","Tech","Holdings","Motors","Textiles","Media","Pharma","Energy","Retail"];
 function obCust(){const t=obT(),corp=t.corp&&Math.random()<.12,r=Math.random(),cr=Math.round(300+550*Math.pow(Math.random(),.7));
@@ -3842,6 +3842,19 @@ function obDefault(src,x){const o=S.ob,C=BANKCFG;x.st="defaulted";o.wo=(o.wo||0)
    The owner can do this any time; with autoCut on (default) the manager does it automatically after 3 missed payments. */
 /* founder borrows from the bank's reserves at any time and repays it later */
 function obPull(v){const o=S.ob;if(!o||!(v>0))return;if(o.reserves<v)return toast(`Reserves only hold ${fmt(o.reserves)}`);o.reserves-=v;S.cash+=v;o.owed=(o.owed||0)+v;toast(`Withdrew ${fmt(v)} from ${o.name}'s reserves · you owe ${fmt(o.owed)}`);try{logBank(`Founder withdrew ${fmt(v)} from reserves`)}catch(e){}}
+/* Margin desk: AI investors borrow from the bank to buy stocks. Interest goes straight to the profit account.
+   A stock crash (index down more than 8% in a month) triggers margin calls and some of the book is lost. If you own the NYC exchange, margin traders trade there too. */
+const OBMG={rates:[.08,.12,.18],cap:.25,per:25000,grow:.3,crash:.08,exVol:.5};
+function obMgS(){const o=S.ob;let g=o.mg;if(!g||typeof g!=="object")g=o.mg={on:0,book:0,r:1,ix:0,int:0,tot:0,loss:0,n:0};return g}
+function obMargin(){const o=S.ob,g=obMgS(),ix=exIndex();const drop=g.ix>0?1-ix/g.ix:0;g.ix=ix;g.int=0;
+  if(!g.on){if(g.book>0){o.reserves+=g.book;g.book=0}g.n=0;return}
+  if(drop>OBMG.crash&&g.book>0&&!spDev()){const l=g.book*Math.min(.5,(drop-OBMG.crash)*2);g.book-=l;g.loss+=l;obNote("mg",`📉 Margin calls: stocks fell ${Math.round(drop*100)}% and ${o.name} lost ${fmt(l)} on margin loans`)}
+  const rate=OBMG.rates[g.r]||.12,int=g.book*rate/12;if(int>0){o.pacct=(o.pacct||0)+int;o.ptot=(o.ptot||0)+int;g.int=int;g.tot+=int}
+  const dem=[1.4,1,.6][g.r]||1,want=Math.max(0,(o.nc||0)*OBMG.per*dem*(exOwn()?1.5:1));
+  let step=(want-g.book)*OBMG.grow;if(step>0)step=Math.min(step,obFree()*OBMG.cap,Math.max(0,o.reserves-o.deposits*BANKCFG.reqRes*1.1));
+  if(step>0||step<0){o.reserves-=step;g.book+=step}g.n=Math.round(g.book/OBMG.per);o.capital=obEquity()}
+function obMgSet(a,v){const g=obMgS();if(a==="on")g.on=v?1:0;else if(a==="r")g.r=Math.max(0,Math.min(2,v|0))}
+const obMgVol=()=>S.ob&&S.ob.mg&&S.ob.mg.on&&S.ob.mg.book>0?S.ob.mg.book*OBMG.exVol:0;
 function obPWd(v){const o=S.ob;if(!o)return;v=Math.min(v,o.pacct||0);if(!(v>=1))return toast("The profit account is empty");o.pacct-=v;if(o.pacct<.01)o.pacct=0;S.cash+=v;toast(`💰 Withdrew ${fmt(v)} profit from ${o.name}`);try{logBank(`Founder took ${fmt(v)} from the profit account`)}catch(e){}}
 function obPBack(){const o=S.ob;if(!o||!(o.pacct>=1))return;const v=o.pacct;o.pacct=0;o.reserves+=v;o.capital=obEquity();toast(`Moved ${fmt(v)} back into ${o.name}'s reserves`)}
 function obRepay(){const o=S.ob;if(!o||!(o.owed>0))return;const v=Math.min(o.owed,S.cash);if(v<1)return toast("No cash to repay with");S.cash-=v;o.reserves+=v;o.owed=Math.max(0,o.owed-v);if(o.owed<.01)o.owed=0;toast(`Repaid ${fmt(v)} to ${o.name}${o.owed?` · ${fmt(o.owed)} still owed`:" · all paid back"}`);try{logBank(`Founder repaid ${fmt(v)} to reserves`)}catch(e){}}
@@ -3903,6 +3916,7 @@ function obMonth(){econMonth();try{obMgrPrice()}catch(e){}if(S.ob.at)S.ob.depRat
   o.reserves+=inc-ci-exp;o.capital=obEquity();o.m++;obGenApps();obGenCApps();
   // profit account: a share of a profitable month moves out of reserves for the founder, never below the reserve and capital requirements
   let sw=0;if(p>0&&!o.run&&!o.emerg&&o.reserves>0){const share=o.psweep==null?.5:o.psweep;sw=Math.max(0,Math.min(p*share,obFree(),o.reserves-o.deposits*C.reqRes*1.1));if(sw>=1){o.reserves-=sw;o.pacct=(o.pacct||0)+sw;o.ptot=(o.ptot||0)+sw;o.capital=obEquity()}else sw=0} // card interest is charged onto balances, so it isn't cash yet
+  try{obMargin()}catch(e){}
   const rr=obRR();o.rep=Math.max(0,Math.min(100,o.rep+(p>0?.4:-.8)+(a-1)*.5-(o.emerg>0?1:0)-(o.reserves<0?5:0)-(rr<C.reqRes?C.confLow:0)
     -(p<-Math.max(1e5,o.capital*C.bigLoss)?3:0)-(o.run?2:0)+(rr>=C.reqRes&&p>0&&!o.emerg?C.confUp:0)));
   if(!o.run&&o.deposits>0&&(rr<C.runRR||o.reserves<0)&&o.rep<C.runRep&&Math.random()<C.runP){o.run=obRnd(C.runDur);obNote("run",`⚠️ Bank run! Depositors are pulling money out of ${o.name}`)}
@@ -4127,6 +4141,9 @@ function obAppFull(){const C=BANKCFG,o=S.ob;
   <div class="ph-card"><b>💰 Profit account</b><span>Each profitable month, ${Math.round((o.psweep==null?.5:o.psweep)*100)}% of the profit moves here for you to take, as long as the bank keeps its reserve and capital requirements. Withdrawals are yours: nothing is owed back.</span></div>
   <div class="ph-rows"><div><span>Balance</span><b style="color:var(--good)">${fmt(o.pacct||0)}</b></div><div><span>Added last month</span><b>${fmt(l&&l.sw||0)}</b></div><div><span>Paid in all time</span><b>${fmt(o.ptot||0)}</b></div></div>
   <div style="display:flex;gap:5px">${obBtn("obpw",(o.pacct||0)/2,"Withdraw half",!(o.pacct>=2),"#14532d")}${obBtn("obpw",o.pacct||0,"Withdraw all "+fmt(o.pacct||0),!(o.pacct>=1),"#14532d")}${obBtn("obpback",0,"Back to reserves",!(o.pacct>=1),"#1e3a8a")}</div>
+  ${(()=>{const g=obMgS();return `<div class="ph-card"><b>📈 Margin desk</b><span>AI investors borrow from ${devEsc(o.name)} to buy stocks. Their interest goes straight into the profit account. If stocks crash more than 8% in a month, margin calls cost the bank part of the book.${exOwn()?" They trade on your NYC exchange too, adding fee volume.":""}</span></div>
+  <div class="ph-rows"><div><span>Margin loans out</span><b>${fmt(g.book)}</b></div><div><span>Borrowers</span><b>${g.n||0}</b></div><div><span>Interest last month</span><b style="color:var(--good)">${fmt(g.int||0)}</b></div><div><span>Interest all time</span><b>${fmt(g.tot||0)}</b></div>${g.loss?`<div><span>Lost to margin calls</span><b style="color:var(--bad)">${fmt(g.loss)}</b></div>`:""}</div>
+  <div style="display:flex;gap:5px;flex-wrap:wrap">${obBtn("obmg","on:"+(g.on?0:1),g.on?"Close margin desk":"Open margin desk",0,g.on?"#7f1d1d":"#14532d")}${OBMG.rates.map((r,i)=>obBtn("obmg","r:"+i,Math.round(r*100)+"% a year"+(g.r===i?" ✓":""),0,g.r===i?"#14532d":"#334155")).join("")}</div>`})()}
   <div style="display:flex;gap:5px">${[0,.25,.5,1].map(v=>obBtn("obpsw",v,(v?Math.round(v*100)+"%":"Off")+((o.psweep==null?.5:o.psweep)===v?" ✓":""),0,(o.psweep==null?.5:o.psweep)===v?"#14532d":"#334155")).join("")}</div>
   <div class="ph-rows"><div><span>You owe your bank</span><b style="color:${o.owed>0?"#fbbf24":"var(--good)"}">${fmt(o.owed||0)}</b></div></div>
   <div style="display:flex;gap:5px">${[1e6,1e7,1e8].map(v=>obBtn("obpull",v,"Withdraw "+fmt(v),o.reserves<v,"#92400e")).join("")}</div>
@@ -10656,7 +10673,7 @@ sheet.addEventListener("click",e=>{const a=e.target.closest("[data-ipoapp]");if(
 var EXC={city:"New York",cost:2e9,base:15e6,take:.0005,com:.001,mgrHire:100e6,mgrSal:750e3,mgrBoost:1.25,pub:5*60000,ai:15e9,lfee:.01};
 // AI investors: funds trade through your exchange all day (EXC.ai of volume an hour at normal activity), paying the 0.1% commission
 const EXAIF=["Atlas Capital","Northwind Fund","Blue Harbor","Kestrel Partners","Meridian Pension","Orion Quant","Silverline AM","Granite Ridge"];
-function exAiVol(){return exOwn()?EXC.ai*exAct()*exBoost()*(.85+.3*ipoHash("exai:"+Math.floor(Date.now()/36e5))):0}
+function exAiVol(){return exOwn()?EXC.ai*exAct()*exBoost()*(.85+.3*ipoHash("exai:"+Math.floor(Date.now()/36e5)))+(typeof obMgVol==="function"?obMgVol():0):0}
 function exOwn(){return !!(EXC&&S.exch&&S.exch.name)}
 const exName=s=>String(s==null?"":s).replace(/<[^>]*>/g,"").replace(/[^A-Za-z0-9 &.'-]/g,"").replace(/\s+/g," ").trim().slice(0,30);
 function exFix(){const x=S.exch;if(!x||typeof x!=="object")return null;if(!x.d||typeof x.d!=="object")x.d={day:0,vol:0,fee:0,com:0,n:0};if(!Array.isArray(x.h))x.h=[];if(!(x.tot>=0))x.tot=0;if(!Number.isFinite(x.cap))x.cap=0;x.mgr=x.mgr?1:0;return x}
@@ -11476,7 +11493,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="dvopen"){dvOpen();return}
   else if(a==="hrdepot"){const c=CITIES[b.dataset.k];if(!c)return;tab="wh";PH.open=false;phRender();openCity(c);return}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
-  else if(a==="obpull"){obPull(+b.dataset.x);save();hud()}else if(a==="obrepay"){obRepay();save();hud()}else if(a==="obpw"){obPWd(+b.dataset.x);save();hud()}else if(a==="obpback"){obPBack();save();hud()}else if(a==="obpsw"){if(S.ob)S.ob.psweep=+b.dataset.x;save();hud()}else if(a==="obrevd"){if(S.ob)obRevokeCust(b.dataset.x);save();hud()}else if(a==="obauto"){if(S.ob)S.ob.autoCut=+b.dataset.x;save()}else if(a==="obrev"){if(S.ob){const [k,id]=String(b.dataset.x).split("|");obRevoke(k,id)}save();hud()}else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
+  else if(a==="obpull"){obPull(+b.dataset.x);save();hud()}else if(a==="obrepay"){obRepay();save();hud()}else if(a==="obmg"){const[k,v]=String(b.dataset.x).split(":");obMgSet(k,+v);save();hud()}else if(a==="obpw"){obPWd(+b.dataset.x);save();hud()}else if(a==="obpback"){obPBack();save();hud()}else if(a==="obpsw"){if(S.ob)S.ob.psweep=+b.dataset.x;save();hud()}else if(a==="obrevd"){if(S.ob)obRevokeCust(b.dataset.x);save();hud()}else if(a==="obauto"){if(S.ob)S.ob.autoCut=+b.dataset.x;save()}else if(a==="obrev"){if(S.ob){const [k,id]=String(b.dataset.x).split("|");obRevoke(k,id)}save();hud()}else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
   else if(a==="obat"){if(S.ob){S.ob.at=+b.dataset.x;if(S.ob.at)S.ob.depRate=Math.round(S.econ.base*S.ob.at*1e4)/1e4}save()}
   else if(a==="obem"){obEmerg(+b.dataset.x);save()}
   else if(a==="obmgr"){obMgrSet(+b.dataset.x);save();hud()}
