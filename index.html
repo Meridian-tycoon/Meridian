@@ -10738,8 +10738,24 @@ function pfxGlow(ctx,map,col,zs){const L=[[1,.05],[.62,.08],[.32,.14]],pts=[];
   if(!pts.length)return;ctx.fillStyle=col;for(const [f,a] of L){ctx.globalAlpha=a;ctx.beginPath();for(const [x,y,r] of pts){ctx.moveTo(x+r*f,y);ctx.arc(x,y,r*f,0,7)}ctx.fill()}ctx.globalAlpha=1}
 function pfxHemi(){if(PFX.hf||!world)return PFX.hf;const n=[],s=[];for(const f of world.features){try{const la=d3.geoCentroid(f)[1];if(la>18&&la<62)n.push(f);else if(la<-18&&la>-62)s.push(f)}catch(e){}}
   return PFX.hf={n:{type:"FeatureCollection",features:n},s:{type:"FeatureCollection",features:s}}}
-function pfxSeasons(ctx,z){if(typeof ssnIdx!=="function"||z>=7)return;const ni=ssnIdx(null),si=(ni+2)%4,R=[24,18,24,33];   // spring, summer, autumn, winter cap radius (deg from pole)
-  ctx.fillStyle="#ffffff";ctx.globalAlpha=.15;for(const [lat,i] of [[90,ni],[-90,si]]){ctx.beginPath();path(d3.geoCircle().center([0,lat]).radius(R[i]).precision(6)());ctx.fill()}
+// real polar ice: Greenland + Antarctic ice sheets, and NSIDC-median-like sea-ice edges (lat per 10° lon, from -180) eased between max and min by the game's year phase
+const ICE={land:null,an:[[0,-70],[10,-70],[20,-70],[30,-69.5],[40,-69],[50,-67],[60,-67.5],[70,-69.5],[80,-67],[90,-66.5],[100,-66],[110,-66.2],[120,-66.5],[130,-66.2],[140,-66.7],[150,-68.5],[160,-70.5],[170,-72],[180,-78],[-170,-78.3],[-160,-78],[-150,-77],[-140,-75],[-130,-74],[-120,-73.5],[-110,-74],[-100,-73],[-90,-72.5],[-80,-73],[-75,-71],[-70,-69],[-67,-67],[-64,-65.2],[-60,-63.6],[-57,-63.3],[-57.5,-64.3],[-60,-66.5],[-62,-69],[-62.5,-72],[-61,-74.5],[-55,-77.5],[-45,-78.2],[-35,-77.5],[-28,-76],[-20,-74],[-10,-71.5]],
+ nMax:[60,58,57,59,67,68,68,66,58,52,52,55,52,61,63,66,72,76,78,79,77,76,74,71,70,67,68,70,70,70,68,64,52,58,60,59],
+ nMin:[75,74,74,73,72,73,74,74,75,75,76,76,77,80,82,83,82,80,78,80,81,81,81,82,82,82,82,82,81,80,79,79,79,78,76,75],
+ sMax:[-63,-64,-64.5,-65,-65.5,-66,-66,-65.5,-64,-62,-60,-58.5,-56,-55.5,-55,-55,-55,-55.5,-55,-55.5,-56,-56.5,-57,-57.5,-58,-59,-60,-61,-62,-63,-63,-63,-62.5,-62,-62,-62.5],
+ sMin:[-74,-74.5,-74,-73,-72,-71.5,-71,-70.5,-70,-69.5,-69,-67,-66,-68,-70,-71.5,-72,-71,-69.5,-69.5,-69.5,-69,-68.5,-67.5,-67,-66,-65.5,-65.5,-66,-66,-66,-66,-66.5,-69,-71.5,-73.5],k:null,g:null};
+function iceRing(a,b,w){const r=[];for(let lo=-180;lo<=180;lo+=2){const u=(lo+180)/10,i=Math.floor(u)%36,j=(i+1)%36,f=u-Math.floor(u),
+  la=(a[i]+(a[j]-a[i])*f)*w+(b[i]+(b[j]-b[i])*f)*(1-w);r.push([lo,la])}r[r.length-1]=[180,r[0][1]];return iceFix([r])}
+function iceFix(c){const g={type:"Polygon",coordinates:c};if(d3.geoArea(g)>2*Math.PI)c[0].reverse();return g}
+function iceGeo(){const L=GXCFG.ssn.len*4,ph=(Math.max(0,(S.day||1)-1)%L)/L,k=Math.round(ph*400);if(ICE.k===k&&ICE.g)return ICE.g;
+  const e=t=>{const c=(1+Math.cos(2*Math.PI*t))/2;return c*c*(3-2*c)},wn=e(ph+.02),ws=e(ph-.52);
+  if(!ICE.an.g){const r=ICE.an.slice();r.push(r[0]);ICE.an.g=iceFix([r])}
+  ICE.k=k;return ICE.g={n:iceRing(ICE.nMax,ICE.nMin,wn),s:iceRing(ICE.sMax,ICE.sMin,ws),an:ICE.an.g,gl:typeof cfFeat==="function"?cfFeat("Greenland"):null}}
+function iceLand(){if(ICE.land||!world)return ICE.land;const a=[];for(const f of world.features){try{let m=-90;const w=a=>{if(typeof a[0]==="number"){if(a[1]>m)m=a[1]}else for(const x of a)w(x)};w(f.geometry.coordinates);if(m>42)a.push(f)}catch(e){}}return ICE.land={type:"FeatureCollection",features:a}}
+function pfxSeasons(ctx,z){if(typeof ssnIdx!=="function"||z>=7)return;const ni=ssnIdx(null),si=(ni+2)%4,g=iceGeo();if(!g.gl)g.gl=cfFeat("Greenland");
+  ctx.save();ctx.beginPath();path({type:"Sphere"});const ld=iceLand();if(ld)path(ld);ctx.clip("evenodd");   // sea ice stays on the sea
+  ctx.beginPath();path(g.n);path(g.s);ctx.fillStyle="#edf3f8";ctx.globalAlpha=.7;ctx.fill();ctx.strokeStyle="#ffffff";ctx.lineWidth=.8;ctx.globalAlpha=.4;ctx.stroke();ctx.restore();
+  ctx.beginPath();path(g.an);if(g.gl)path(g.gl);ctx.fillStyle="#f4f8fc";ctx.globalAlpha=.94;ctx.fill();ctx.strokeStyle="#cfdde9";ctx.lineWidth=.6;ctx.globalAlpha=.6;ctx.stroke();
   const h=pfxHemi();if(h){ctx.fillStyle="#4ade80";ctx.globalAlpha=.07;if(ni===1){ctx.beginPath();path(h.n);ctx.fill()}if(si===1){ctx.beginPath();path(h.s);ctx.fill()}}ctx.globalAlpha=1}
 function pfxDraw(ctx,now,z){if(!pfxOn())return;const zs=Math.min(1.6,.8+(typeof V!=="undefined"?V.k:1)*.08),still=typeof reduce!=="undefined"&&reduce;ctx.save();
   try{pfxSeasons(ctx,z)}catch(e){}
