@@ -876,6 +876,7 @@ MM.on("click",e=>{const x=e.point.x,y=e.point.y;
   if(offer){closeOffer();return}
   if(typeof _rigPick!=="undefined"&&_rigPick){rigPlace([e.lngLat.lng,e.lngLat.lat]);return}
   if(typeof _wtPick!=="undefined"&&_wtPick){const g=[e.lngLat.lng,e.lngLat.lat];if(visible(g[0],g[1])){wtPlayer(_wtPick,g);save();hud()}return}
+  if(typeof satTap==="function"&&satTap(x,y))return;
   let best=null,bd=26*26;for(const c of CITIES){const d=(c.sx-x)**2+(c.sy-y)**2;if(d<bd){bd=d;best=c}}
   if(typeof cfTap==="function"&&cfTap(x,y,best,bd))return;
   if(best)openCity(best)});
@@ -8620,17 +8621,23 @@ const SATORB=[[51.6,-40,0,90],[28.5,70,2.1,110],[97.4,160,4.2,100]];   // [incli
 function satPt(o,t){const i=o[0]*Math.PI/180,a=o[2]+t*2*Math.PI/(o[3]*60000),x=Math.cos(a),y=Math.sin(a)*Math.cos(i),zz=Math.sin(a)*Math.sin(i);
   return [((Math.atan2(y,x)*180/Math.PI+o[1]+540)%360)-180,Math.asin(Math.max(-1,Math.min(1,zz)))*180/Math.PI]}
 function satHash(u){let h=2166136261;for(const ch of String(u))h=Math.imul(h^ch.charCodeAt(0),16777619);return h>>>0}
-function satList(){const L=[],n=Math.min(3,Math.floor(+S.sats||0));for(let k=0;k<n;k++)L.push({o:SATORB[k]});
+const SPAICOL=["#3b82f6","#ef4444","#f59e0b","#6366f1","#f97316","#ec4899","#dc2626","#10b981"];
+function satList(){const L=[],n=Math.min(3,Math.floor(+S.sats||0)),fl=S.space&&Array.isArray(S.space.fl)?S.space.fl:[];
+  for(let k=0;k<n;k++){const f=fl[k],ty=f&&typeof SPT!=="undefined"&&SPT[f.t]?SPT[f.t][0]:"Satellite";L.push({o:SATORB[k],own:1,nm:"You",ty})}
   const P=typeof ON!=="undefined"&&Array.isArray(ON.players)?ON.players:[],me=typeof ON!=="undefined"&&ON.user?ON.user.uid:null;
-  for(const p of P){if(L.length>=60)break;if(!p||p.uid===me)continue;const m=Math.min(3,Math.floor(+p.sats||0));if(!(m>0))continue;const h=satHash(p.uid),col=/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#94a3b8";
-    for(let k=0;k<m&&L.length<60;k++){const r=satHash(p.uid+":"+k);L.push({o:[20+(r%800)/10,((h>>>3)%360)-180+k*120,(r>>>10)%628/100,85+(r>>>20)%40],col})}}
-  return L}
-function satDraw(ctx,now){window.__satN=0;if(S.set&&S.set.sat===0)return;const L=satList();if(!L.length)return;ctx.save();ctx.font="13px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
-  for(const s of L){const o=s.o,c=[];if(!s.col)for(let j=0;j<=72;j++)c.push(satPt([o[0],o[1],0,1],j*60000/72));
-    if(!s.col){ctx.beginPath();path({type:"LineString",coordinates:c});ctx.setLineDash([2,5]);ctx.strokeStyle="#94a3b8";ctx.globalAlpha=.3;ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([])}
+  for(const p of P){if(L.length>=66)break;if(!p||p.uid===me)continue;const m=Math.min(3,Math.floor(+p.sats||0));if(!(m>0))continue;const h=satHash(p.uid),col=/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#94a3b8";
+    for(let k=0;k<m&&L.length<66;k++){const r=satHash(p.uid+":"+k);L.push({o:[20+(r%800)/10,((h>>>3)%360)-180+k*120,(r>>>10)%628/100,85+(r>>>20)%40],col,nm:String(p.name||"A player").slice(0,40),ty:"Satellite"})}}
+  if(typeof SPAI!=="undefined")SPAI.forEach((a,i)=>{const h=satHash("ai:"+a[0]);for(let k=0;k<3;k++){const r=satHash("ai:"+a[0]+":"+k);
+    L.push({o:[20+(r%800)/10,((h>>>3)%360)-180+k*120,(r>>>10)%628/100,85+(r>>>20)%40],col:SPAICOL[i%SPAICOL.length],nm:a[0],fl:a[1],cn:a[2],ai:1,ty:a[1]==="🤖"?"AI satellite":"Government satellite"})}});
+  return L.slice(0,90)}
+function satDraw(ctx,now){window.__satN=0;window.__satHit=[];if(S.set&&S.set.sat===0)return;const L=satList();if(!L.length)return;ctx.save();ctx.font="13px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
+  for(const s of L){const o=s.o,c=[];if(s.own)for(let j=0;j<=72;j++)c.push(satPt([o[0],o[1],0,1],j*60000/72));
+    if(s.own){ctx.beginPath();path({type:"LineString",coordinates:c});ctx.setLineDash([2,5]);ctx.strokeStyle="#94a3b8";ctx.globalAlpha=.3;ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([])}
     const g=satPt(o,now);if(!visible(g[0],g[1]))continue;const [x,y]=proj(g);ctx.globalAlpha=1;ctx.fillText("🛰️",x,y);
-    if(s.col){ctx.beginPath();ctx.arc(x+7,y+6,2.5,0,6.2832);ctx.fillStyle=s.col;ctx.fill()}window.__satN++}
+    if(s.col){ctx.beginPath();ctx.arc(x+7,y+6,2.5,0,6.2832);ctx.fillStyle=s.col;ctx.fill()}window.__satHit.push({x,y,s});window.__satN++}
   ctx.restore()}
+function satTap(x,y){const H=window.__satHit||[];let b=null,bd=100;for(const h of H){const d=(h.x-x)**2+(h.y-y)**2;if(d<=bd){bd=d;b=h.s}}if(!b)return false;
+  toast(b.own?`🛰️ Your ${b.ty.toLowerCase()} satellite · launched by you`:b.ai?`🛰️ ${b.fl} ${b.nm} (${b.cn}) · ${b.ty} · launched by ${b.nm}`:`🛰️ ${b.ty} · launched by ${b.nm}`);return true}
 function airDraw(ctx,now){const a=S.air;if(!a||!Array.isArray(a.pl)||!a.pl.length)return;const dn={};ctx.save();ctx.font="12px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
   for(const p of a.pl){if(!p||!p.nx||p.r==null)continue;const r=airRt(p.r);if(!r||!airIsHub(p.hub))continue;const A=CITIES[p.dir?r.b:r.a],B=CITIES[p.dir?r.a:r.b];if(!A||!B)continue;
     if(!dn[r.id]){dn[r.id]=1;ctx.beginPath();path({type:"LineString",coordinates:[[A.lon,A.lat],[B.lon,B.lat]]});ctx.setLineDash([2,6]);ctx.strokeStyle="#2563eb";ctx.globalAlpha=.35;ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([])}
