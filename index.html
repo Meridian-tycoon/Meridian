@@ -840,6 +840,7 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   if(typeof drawGovLine==="function"&&z<11)try{drawGovLine(ctx)}catch(e){}
   if(typeof drawEvac==="function")try{drawEvac(ctx)}catch(e){}
   if(typeof airDraw==="function"&&z<11)try{airDraw(ctx,now)}catch(e){}
+  if(typeof satDraw==="function"&&z<11)try{satDraw(ctx,now)}catch(e){}
   if(typeof drawRigs==="function")try{drawRigs(ctx)}catch(e){}
   if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);ctx.restore()}
   const dotA=1-smooth01(10.5,12,z),labA=1-smooth01(8.5,9.6,z);   // our city dots hand over to the real map as you get close
@@ -8613,6 +8614,15 @@ function airTick(now){const a=AIR();if(!a.pl.length)return;let got=0;
 /* fleet value = what the planes would sell for (list price x ALC.sell), counted in net worth */
 function airFleetVal(){const a=S.air;if(!a||!Array.isArray(a.pl))return 0;let v=0;for(const p of a.pl)if(p&&ALP[p.k])v+=ALP[p.k].cost*ALC.sell;return v}
 /* map: each plane on a route as a small ✈ along its great circle at its leg progress; routes as faint dashes */
+/* player's launched satellites: up to 3 drawn on inclined great-circle orbits, steady real-time speed */
+const SATORB=[[51.6,-40,0,90],[28.5,70,2.1,110],[97.4,160,4.2,100]];   // [inclination°, node lon°, phase, minutes per orbit]
+function satPt(o,t){const i=o[0]*Math.PI/180,a=o[2]+t*2*Math.PI/(o[3]*60000),x=Math.cos(a),y=Math.sin(a)*Math.cos(i),zz=Math.sin(a)*Math.sin(i);
+  return [((Math.atan2(y,x)*180/Math.PI+o[1]+540)%360)-180,Math.asin(Math.max(-1,Math.min(1,zz)))*180/Math.PI]}
+function satDraw(ctx,now){const n=Math.min(3,Math.floor(+S.sats||0));window.__satN=0;if(!(n>0)||(S.set&&S.set.sat===0))return;ctx.save();ctx.font="13px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
+  for(let k=0;k<n;k++){const o=SATORB[k],c=[];for(let j=0;j<=72;j++)c.push(satPt([o[0],o[1],0,1],j*60000/72));
+    ctx.beginPath();path({type:"LineString",coordinates:c});ctx.setLineDash([2,5]);ctx.strokeStyle="#94a3b8";ctx.globalAlpha=.3;ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([]);
+    const g=satPt(o,now);if(!visible(g[0],g[1]))continue;const [x,y]=proj(g);ctx.globalAlpha=1;ctx.fillText("🛰️",x,y);window.__satN++}
+  ctx.restore()}
 function airDraw(ctx,now){const a=S.air;if(!a||!Array.isArray(a.pl)||!a.pl.length)return;const dn={};ctx.save();ctx.font="12px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
   for(const p of a.pl){if(!p||!p.nx||p.r==null)continue;const r=airRt(p.r);if(!r||!airIsHub(p.hub))continue;const A=CITIES[p.dir?r.b:r.a],B=CITIES[p.dir?r.a:r.b];if(!A||!B)continue;
     if(!dn[r.id]){dn[r.id]=1;ctx.beginPath();path({type:"LineString",coordinates:[[A.lon,A.lat],[B.lon,B.lat]]});ctx.setLineDash([2,6]);ctx.strokeStyle="#2563eb";ctx.globalAlpha=.35;ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([])}
@@ -8940,7 +8950,7 @@ setInterval(()=>{try{if(_cfPop){const el=document.getElementById("cfpop");if(el&
     if((card?card.dataset.bgsig:"")!==sig){if(Date.now()-(PH.touched||0)>=3000&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)))phRender()}
     else bgFill(PH.el)}}catch(e){console.warn("bgfill",e)}},2000);
 /* ---------- Settings app (device prefs in S.set; UI theme mirrored to localStorage for first paint) ---------- */
-var SET_DEF={ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5};
+var SET_DEF={ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,sat:1};
 var SET_UI=[["classic","Classic","The original look"],["glass","Glass","Frosted dark panels, violet glow"],["ledger","Ledger","Cream paper, ink and serif type"],["command","Command","Neon HUD, cyan and magenta"]];
 var SET_FONT="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@500;700&family=Playfair+Display:wght@700;900&family=Source+Serif+4:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Chakra+Petch:wght@500;700&display=swap";
 var _setSig="";
@@ -8962,6 +8972,7 @@ function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="g
   <div class="set-themes">${SET_UI.map(([k,n,d])=>`<button class="set-th set-th-${k}" data-ph="setv" data-k="ui" data-v="${k}" aria-pressed="${s.ui===k}"><i></i><span><b>${n}</b><small>${d}</small></span></button>`).join("")}</div>
   ${s.ui==="classic"?`<div class="set-row"><span>Light or dark<small>Classic theme only</small></span>${seg("mode",[["light","Light"],["dark","Dark"]],themeGet())}</div>`:""}
   <div class="set-row"><span>Text size<small>Panels, ticker and pop-ups</small></span>${seg("fs",[[.9,"Small"],[1,"Normal"],[1.15,"Large"]],s.fs)}</div>
+  ${tog("sat","Satellites","Your launched satellites orbiting the globe")}
   <div class="ph-sub">Comfort</div>
   ${tog("rm","Reduce motion","No confetti, fly-overs or animations")}
   ${tog("vib","Vibration","Buzz on wins and warnings (phones)")}
