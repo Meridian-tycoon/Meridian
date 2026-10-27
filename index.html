@@ -2721,7 +2721,7 @@ function govHour(quiet){const now=Date.now();if(!quiet)cabCheck();
     if(g.laws.wage===0&&g.appr<40&&!(g.strike>now)&&Math.random()<.04){g.strike=now+(6+Math.random()*6)*DAYMS;if(!quiet&&ownsIn(n))logGov(`General strike in ${n}: businesses earn 30% less for a while`)}
     if(g.ctrl){if(g.contract){const v=contractPay(n);S.cash+=v;S.earned=(S.earned||0)+v}
       if(Math.random()<(.004+(g.contract?.006:0))*lawRisk())exposed(n,quiet)}
-    if(now>=g.next)election(n,quiet)}
+    if(now>=g.next&&!(wwShared()&&WW.gp&&WW.gp[n]))election(n,quiet)}
   warHour(quiet);try{dipDay(quiet)}catch(e){}try{wsupDay(quiet)}catch(e){console.warn("wsup",e)}}
 function ownsIn(n){return ctyCities(n).some(c=>S.own[c.id]||S.hq&&S.hq[c.id]||S.sites.some(s=>s.city===c.id)||(S.props||[]).some(p=>p.city===c.id))}
 function election(n,quiet){const g=gov(n),ks=Object.keys(PARTIES);
@@ -3192,13 +3192,13 @@ function wlHtml(w){if(!w.tr||w.l<3)return "";const pc=dipPlayerC(),A=wlSide(w,"a
 const WWKEY="meridian-world-wars";let WW=null;try{const c=JSON.parse(localStorage.getItem(WWKEY)||"null");if(c&&Array.isArray(c.list))WW=c}catch(e){}
 const wwShared=()=>!!WW&&!WRM;
 function wwPubData(){const d=dip(),keep=["id","a","b","l","att","d0","tr","t0","fp","pu","bt","cc","ev","al","at","inv","ls"];
-  return JSON.parse(JSON.stringify({list:(S.wars||[]).filter(w=>w.l>0&&!w.gid).slice(0,30).map(w=>{const o={};for(const k of keep)if(w[k]!=null)o[k]=w[k];return o}),ruler:d.ruler||{},
+  return JSON.parse(JSON.stringify({list:(S.wars||[]).filter(w=>w.l>0&&!w.gid).slice(0,30).map(w=>{const o={};for(const k of keep)if(w[k]!=null)o[k]=w[k];return o}),ruler:d.ruler||{},gp:Object.fromEntries(COUNTRIES.map(n=>{const g=gov(n);return [n,[g.party,Math.round(g.next||0)]]})),
     tl:((S.wtest&&S.wtest.l)||[]).filter(x=>x.ai&&x.t>Date.now()-DAYMS).slice(-6).map(x=>{const o={};for(const k of ["k","by","lat","lon","t","until","fail","hit","ia"])if(x[k]!=null)o[k]=x[k];return o})}))}
 function wwPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;const d=wwPubData(),sig=JSON.stringify(d),n=Date.now();
   if(!force&&(n-(ON.wwPub||0)<(sig!==ON.wwSig?15000:300000)))return;if(sig===ON.wwSig&&!force)return;
   ON.wwPub=n;ON.wwSig=sig;d.updated=window.firebase.firestore.FieldValue.serverTimestamp();
   ON.db.collection("world").doc("wars").set(d).catch(e=>{ON.err="Couldn't publish world wars: "+(e&&e.code||e)})}
-function wwMirror(quiet){if(!wwShared())return;const pc=dipPlayerC(),d=dip(),old=S.wars||[];
+function wwMirror(quiet){if(!wwShared())return;try{wwGovMirror(quiet)}catch(e){console.warn("gov mirror",e)}const pc=dipPlayerC(),d=dip(),old=S.wars||[];
   const list=WW.list.filter(x=>x&&x.a&&x.b&&x.a!==pc&&x.b!==pc&&COUNTRIES.includes(x.a)&&COUNTRIES.includes(x.b)).map(x=>{const id=100000+(+x.id||0),o=old.find(w=>w.id===id),w=Object.assign({},x,{id,gid:+x.id||0,inv:0});
     if(o&&o.al&&pc&&o.al[pc]){w.al=Object.assign({},w.al||{},{[pc]:o.al[pc]});w.at=Object.assign({},w.at||{},{[pc]:wlPT()})}else if(pc&&w.al&&w.al[pc]){delete w.al[pc];if(w.at)delete w.at[pc]}
     if(o&&o.pin)w.pin=o.pin;
@@ -3209,11 +3209,15 @@ function wwMirror(quiet){if(!wwShared())return;const pc=dipPlayerC(),d=dip(),old
       if(!quiet&&now-x.t<WPNCFG.animMs+WMDOUT){const t=`${x.by} ${x.fail?"failed a":"tested a"} ${WPNCFG.w[x.k].n.toLowerCase()}`;dipSay(t,1,0);toast((x.fail?"⚠ ":"☢ ")+t)}}
     W.l.sort((a,b)=>a.t-b.t);W.l=W.l.slice(-WTCFG.keep);if(typeof draw==="function")draw()}
   if(WW.ruler&&typeof WW.ruler==="object"){const mine=pc&&d.ruler[pc];for(const n in d.ruler)if(n!==pc&&!WW.ruler[n])delete d.ruler[n];for(const n in WW.ruler)if(n!==pc&&COUNTRIES.includes(n)&&COUNTRIES.includes(WW.ruler[n])){if(!d.ruler[n])d.rsince[n]=d.day;d.ruler[n]=WW.ruler[n]}if(mine)d.ruler[pc]=mine}}
+/* governments follow the master world: same ruling party and next election date for every player */
+function wwGovMirror(quiet){if(!wwShared()||!WW.gp)return;for(const n in WW.gp){const x=WW.gp[n];if(!COUNTRIES.includes(n)||!Array.isArray(x)||!PARTIES[x[0]])continue;const g=gov(n);
+  if(+x[1]>0)g.next=+x[1];if(g.party===x[0])continue;g.party=x[0];g.appr=Math.max(g.appr,55);const pl=PARTIES[x[0]].pl;for(const k in LAWS)g.laws[k]=pl[k];
+  if(!quiet&&ownsIn(n))logGov(`${PARTIES[x[0]].n} now governs ${n}`)}}
 function wjPub(w,s){try{if(!ON.ready||!ON.user)return;const gid=w.gid||(WRM?w.id:0);if(!gid)return;const r=ON.db.collection("wjoin").doc(ON.user.uid);
   if(!s)return void r.delete().catch(()=>{});
   r.set({w:gid,s,n:wlPT(),name:wlName().slice(0,20),c:String(dipPlayerC()||"").slice(0,40),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't share your troops: "+(e&&e.code||e)})}catch(e){}}
 function wwListen(){try{evListen()}catch(e){}try{g1Listen()}catch(e){}try{mkwListen()}catch(e){}try{lnListen()}catch(e){}if(ON.unsubWW)return;
-  ON.unsubWW=ON.db.collection("world").doc("wars").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list))return;WW={list:v.list,ruler:v.ruler||{},tl:Array.isArray(v.tl)?v.tl:[]};
+  ON.unsubWW=ON.db.collection("world").doc("wars").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list))return;WW={list:v.list,ruler:v.ruler||{},tl:Array.isArray(v.tl)?v.tl:[],gp:v.gp&&typeof v.gp==="object"?v.gp:null};
     try{localStorage.setItem(WWKEY,JSON.stringify(WW))}catch(e){}if(ON.authKnown&&!WRM){wwMirror(false);draw();onRefresh()}},e=>{ON.err="Couldn't load world wars: "+(e&&e.code||e)});
   ON.unsubWJ=ON.db.collection("wjoin").onSnapshot(q=>{const a=[],old=Date.now()-3*864e5;q.forEach(x=>{const v=x.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():Date.now();if(ON.user&&x.id===ON.user.uid)return;if(at<old||!Number.isInteger(v.w)||(v.s!=="a"&&v.s!=="b"))return;a.push({uid:x.id,w:v.w,s:v.s,n:+v.n||0,name:v.name,c:v.c,at})});
     const seen=new Set((ON.wj||[]).map(j=>j.uid+":"+j.w));ON.wj=a;for(const j of a)if(!seen.has(j.uid+":"+j.w)&&ON.wjGot){const w=(S.wars||[]).find(x=>wlGid(x)===j.w);if(w&&COUNTRIES.includes(j.c))wlMarch(w,j.c,j.s)}ON.wjGot=true;draw()},e=>{ON.err="Couldn't load war joins: "+(e&&e.code||e)})}
