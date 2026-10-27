@@ -131,6 +131,16 @@ service cloud.firestore {
         && request.resource.data.c is string && request.resource.data.c.size() > 0 && request.resource.data.c.size() <= 40
         && request.resource.data.at == request.time;
       // The leader's decree: only the holder, only the "dec" field, for the current week, pass (1) or block (0) per rule.
+      // Hand-over: the holder gives the seat to another player whose own profile shows a government office in that country.
+      allow update: if request.auth != null && resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'c', 'at']) && request.resource.data.keys().hasAll(['uid', 'name', 'c', 'at'])
+        && request.resource.data.uid is string && request.resource.data.uid != request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 40
+        && request.resource.data.c is string && request.resource.data.c.size() > 0 && request.resource.data.c.size() <= 40
+        && request.resource.data.at == request.time
+        && exists(/databases/$(database)/documents/players/$(request.resource.data.uid))
+        && get(/databases/$(database)/documents/players/$(request.resource.data.uid)).data.get('govR', -1) >= 0
+        && get(/databases/$(database)/documents/players/$(request.resource.data.uid)).data.get('govC', '') == request.resource.data.c;
       allow update: if request.auth != null && resource.data.uid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dec'])
         && request.resource.data.dec is map && request.resource.data.dec.keys().hasOnly(['w', 'v'])
