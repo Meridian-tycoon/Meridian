@@ -86,7 +86,7 @@ canvas#map{position:absolute;inset:0;z-index:1;pointer-events:none}
 #ticker div{background:var(--panel);padding:5px 10px;border:1px solid var(--line);border-radius:8px;max-width:100%;box-sizing:border-box;color:var(--muted)}
 #cfbox{position:absolute;z-index:3;left:max(12px,env(safe-area-inset-left,0px));bottom:90px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none}
 #cfbox>*{pointer-events:auto}
-#cfchip{display:flex;align-items:center;gap:6px}#cfchip[aria-pressed=false]{opacity:.7}#cfchip i{font-style:normal;background:var(--bad);color:#fff;border-radius:999px;padding:0 6px;font-size:11px}
+#cfchip{display:flex;align-items:center;gap:6px}#cfchip[aria-pressed=false],#satchip[aria-pressed=false]{opacity:.7}#cfchip i{font-style:normal;background:var(--bad);color:#fff;border-radius:999px;padding:0 6px;font-size:11px}
 #cfleg{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:11px;color:var(--ink);display:grid;gap:3px;box-shadow:0 1px 4px rgba(0,0,0,.15)}
 #cfleg span{display:flex;align-items:center;gap:6px;white-space:nowrap}#cfleg b{width:10px;height:10px;border-radius:3px;display:inline-block}
 #cfpop{position:absolute;z-index:6;width:min(290px,calc(100% - 24px));box-sizing:border-box;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px 14px;box-shadow:0 12px 30px rgba(0,0,0,.25);font-size:13px;line-height:1.4}
@@ -452,7 +452,7 @@ html.th-ledger #dcard>div{border-radius:2px;box-shadow:6px 6px 0 rgba(31,26,20,.
     <button id="tostreet" class="chip" hidden>View streets</button>
     <div id="hint">Drag to spin · scroll or pinch to zoom from the planet down to the streets · tap a city</div>
     <div id="toast"></div>
-    <div id="cfbox" hidden><div id="cfleg" aria-hidden="true"></div><button id="cfchip" class="chip" aria-pressed="true"></button></div>
+    <div id="cfbox" hidden><div id="cfleg" aria-hidden="true"></div><button id="cfchip" class="chip" aria-pressed="true"></button><button id="satchip" class="chip" aria-pressed="true">🛰️ Satellites</button></div>
     <div id="cfpop" hidden role="dialog" aria-label="Conflict details"></div>
     <button id="daily" hidden>🎁 Daily reward</button>
     <aside id="sheet" aria-live="polite"></aside>
@@ -2907,10 +2907,10 @@ function cfLevels(){const o={};for(const w of S.wars||[])if(w.l>0)for(const n of
 function cfMid(w){const A=cfCap(w.a),B=cfCap(w.b);return d3.geoInterpolate([A.lon,A.lat],[B.lon,B.lat])(.5)}
 function cfChip(){const el=document.getElementById("cfbox");if(!el)return;const ws=(S.wars||[]).filter(w=>w.l>0),pw=bgMilKeys(),st=typeof inStreet!=="undefined"&&inStreet,npl=typeof plWars==="function"?plWars().length:0,
   k=[ws.length,pw.join("|"),cfOn(),st,ws.map(w=>w.l).join(""),npl].join();if(k===_cfKey)return;_cfKey=k;
-  el.hidden=!(ws.length||pw.length||npl)||st;if(!ws.length&&!pw.length&&_cfPop)cfClose();const hot=ws.filter(w=>w.l>=3).length;
+  const any=!!(ws.length||pw.length||npl);el.hidden=st;document.getElementById("cfchip").hidden=!any;satChip();if(!ws.length&&!pw.length&&_cfPop)cfClose();const hot=ws.filter(w=>w.l>=3).length;
   const ch=document.getElementById("cfchip");ch.setAttribute("aria-pressed",cfOn());ch.title=cfOn()?"Hide conflicts on the map":"Show conflicts on the map";
   ch.innerHTML=`⚔ Conflicts${cfOn()?"":" (hidden)"} <i>${ws.length+pw.length+npl}</i>`;if(!hot&&!pw.length&&!npl)ch.querySelector("i").style.background=WARC[1];
-  const lg=document.getElementById("cfleg");lg.hidden=!cfOn();lg.innerHTML=[1,2,3,4].map(l=>`<span><b style="background:${WARC[l]}"></b>${WARL[l]}</span>`).join("")}
+  const lg=document.getElementById("cfleg");lg.hidden=!cfOn()||!any;lg.innerHTML=[1,2,3,4].map(l=>`<span><b style="background:${WARC[l]}"></b>${WARL[l]}</span>`).join("")}
 /* Governing country outline: only on this player's own map, while they hold an office. Light tint of the flag's main colour. */
 const _govCol={};function govFlagCol(n){if(_govCol[n])return _govCol[n];let col="#93c5fd";try{const c=presFlagCv(n),g=c.getContext("2d"),d=g.getImageData(0,0,c.width,c.height).data,cnt={};
   for(let i=0;i<d.length;i+=16){const k=(d[i]>>4)+","+(d[i+1]>>4)+","+(d[i+2]>>4);cnt[k]=(cnt[k]||0)+1}
@@ -2983,6 +2983,9 @@ function cfOpen(w,x,y){const el=document.getElementById("cfpop");_cfPop={id:w.id
   const pw=el.parentElement.clientWidth,ph=el.parentElement.clientHeight,bw=el.offsetWidth,bh=el.offsetHeight;
   el.style.left=Math.max(12,Math.min(pw-bw-12,x-bw/2))+"px";el.style.top=Math.max(52,Math.min(ph-bh-12,y+18>ph-bh-12?y-bh-18:y+18))+"px";draw()}
 function cfClose(){_cfPop=null;const el=document.getElementById("cfpop");if(el)el.hidden=true;draw()}
+/* satellites on/off chip: same switch as Settings › Satellites (S.set.sat) */
+function satChip(){const b=document.getElementById("satchip");if(!b)return;const on=!(S.set&&S.set.sat===0);b.setAttribute("aria-pressed",on);b.title=on?"Hide satellites on the globe":"Show satellites on the globe";b.textContent="🛰️ Satellites"+(on?"":" (hidden)")}
+document.getElementById("satchip").addEventListener("click",()=>{S.set=S.set||{};S.set.sat=S.set.sat===0?1:0;satChip();draw();save()});
 document.getElementById("cfchip").addEventListener("click",()=>{S.cfOff=cfOn()?1:0;if(!S.cfOff)delete S.cfOff;_cfKey="";if(!cfOn())cfClose();cfChip();draw();save()});
 document.getElementById("cfpop").addEventListener("click",e=>{const b=e.target.closest("[data-cf]");if(!b||!_cfPop)return;const w=(S.wars||[]).find(x=>x.id===_cfPop.id);
   if(b.dataset.cf==="mil"){cfClose();PH.open=true;PH.app="govt";govTab="mil";phRender();return}
@@ -9030,6 +9033,7 @@ function setApply(force){const s=setG(),sig=JSON.stringify(s);if(!force&&sig===_
   try{reduce=REDUCE_OS||!!s.rm}catch(e){}
   try{localStorage.setItem("meridian-uitheme",s.ui)}catch(e){}
   const m=document.querySelector('meta[name="theme-color"]');if(m&&s.ui!=="classic")m.content={glass:"#0b1020",ledger:"#fbf5e6",command:"#000000"}[s.ui];else if(m)m.content=themeGet()==="light"?"#fbfaf5":"#141f21";
+  try{if(typeof satChip==="function")satChip()}catch(e){}
   try{if(typeof draw==="function")draw()}catch(e){}}
 function setPut(k,v){const s=setG();if(k==="mode"){themeSet(v);setApply(1);return}
   s[k]=k==="ui"?v:+v;setApply();save();if(k==="snd"||k==="vol"){try{sndApply();if(k==="snd"&&s.snd)sfx("click")}catch(e){}}if(k==="ui")toast(`Settings: ${SET_UI.find(u=>u[0]===v)[1]} theme`)}
