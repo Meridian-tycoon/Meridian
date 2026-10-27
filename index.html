@@ -5860,7 +5860,7 @@ const dxE=s=>String(s).replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;"
 function dxRegAny(){for(const id in S.own){const c=CITIES[id];if(!c)continue;for(const b of BIZ)if(S.own[id][b.k]&&bizReg(c,b.k))return true}return false}
 /* every owned business with its real hourly money flows; reg=true keeps registered ones only */
 function dxData(reg){const rows=[];const cats={wages:0,stock:0,rent:0,tax:0};
-  for(const id in S.own){const c=CITIES[id];if(!c)continue;const o=S.own[id];
+  for(const id in S.own){const c=CITIES[id];if(!c)continue;if(DX.co&&document.body.classList.contains("ofc-desk")&&c.country!==DX.co)continue;const o=S.own[id];
     for(const b of BIZ){const lv=o[b.k];if(!lv)continue;const r=bizReg(c,b.k);if(reg&&!r)continue;const key=bkey(c,b.k);
       const nu=uLv(id,b.k).length,wage=uSum(id,b.k,l=>bizWage(b,c,l)),p=uSum(id,b.k,l=>profit(b,c,l)),rev=Math.max(0,p+wage),sup=!!SUP[b.k],st=sup?stockOf(c,b.k):0,use=sup?uSum(id,b.k,l=>useRate(b,l,c)):0;
       const stock=sup?use*(S.opf[key]||0)*unitCost(b,c):0,rent=isLeased(c,b.k)?bizRent(b,c):0,tax=uSum(id,b.k,l=>Math.max(0,profit(b,c,l)))*(r?taxRateC(c):taxRateC(c)+.2);
@@ -6706,7 +6706,7 @@ function ofEnter(hc,pres){if(OFC.on||(!hc&&!pres))return;OFC.on=true;OFC.mode=pr
 /* the 3D scene follows html[data-theme]: bright day in light, night sky and dimmer lights in dark */
 function ofSceneTheme(){if(!OFC.scene||!OFC.lt)return;const dk=document.documentElement.getAttribute("data-theme")!=="light",k=OFC.lt;OFC.scene.background.setHex(dk?0x111827:0xbcd3ea);k.hl.intensity=dk?.42:.55;k.dl.intensity=dk?.32:.55;k.al.intensity=dk?.14:.18}
 new MutationObserver(()=>{if(typeof OFC!=="undefined"&&OFC.on)ofSceneTheme()}).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
-function ofExit(classic){if(!OFC.on)return;OFC.on=false;cancelAnimationFrame(OFC.raf);OFC.raf=0;
+function ofExit(classic){if(!OFC.on)return;try{pcClose()}catch(e){}OFC.on=false;cancelAnimationFrame(OFC.raf);OFC.raf=0;
   if(OFC.scene){OFC.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();const m=o.material;if(m)(Array.isArray(m)?m:[m]).forEach(x=>{if(x.map)x.map.dispose();x.dispose()})})}
   if(OFC.ren){OFC.ren.dispose();try{OFC.ren.forceContextLoss()}catch(e){}}
   OFC.ren=OFC.scene=OFC.cam=null;OFC.objs=[];OFC.place=null;if(OFC.el)OFC.el.remove();OFC.el=null;
@@ -6805,7 +6805,7 @@ function ofBlocked(x,z){const R=OFC_ROOM,r=.3;if(x<-R.w/2+r||x>R.w/2-r||z<-R.d/2
 function ofResize(){if(!OFC.ren||!OFC.el)return;const w=OFC.el.clientWidth||innerWidth,h=OFC.el.clientHeight||innerHeight;OFC.ren.setSize(w,h,false);OFC.cam.aspect=w/h;OFC.cam.updateProjectionMatrix()}
 function ofLoop(t){if(!OFC.on||!OFC.ren){OFC.raf=0;return}OFC.raf=requestAnimationFrame(ofLoop);if(document.hidden)return;
   const dt=Math.min(.05,Math.max(0,(t-OFC.last)/1000));OFC.last=t;ofStep(dt);OFC.ren.render(OFC.scene,OFC.cam)}
-function ofStep(dt){const P=OFC.p,k=OFC.keys,busy=document.body.classList.contains("ofc-pc")||document.body.classList.contains("ofc-gov");
+function ofStep(dt){const P=OFC.p,k=OFC.keys,busy=document.body.classList.contains("ofc-pc")||document.body.classList.contains("ofc-gov")||document.body.classList.contains("ofc-desk");
   let f=0,s=0,turn=0;if(!busy){if(k.w||k.arrowup)f+=1;if(k.s||k.arrowdown)f-=1;if(k.d)s+=1;if(k.a)s-=1;if(k.arrowleft)turn+=1;if(k.arrowright)turn-=1;if(OFC.joy){f-=OFC.joy.y;s+=OFC.joy.x}}
   P.yaw+=turn*2.2*dt;const m=Math.hypot(f,s);let moving=false;
   if(m>.05){const sp=(k.shift?5:3.2)*Math.min(1,m)*dt/m,fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw),rx=Math.cos(P.yaw),rz=-Math.sin(P.yaw);
@@ -6918,8 +6918,8 @@ function ofBindUI(){const el=OFC.el;
   el.addEventListener("wheel",e=>{if(e.target!==OFC.cv)return;OFC.camD=Math.max(2.5,Math.min(8,OFC.camD+e.deltaY*.004));e.preventDefault()},{passive:false})}
 window.addEventListener("keydown",e=>{if(!OFC.on)return;const tg=e.target;if(tg&&/^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName))return;const k=e.key.toLowerCase();
   if(k==="escape"){e.stopImmediatePropagation();e.preventDefault();
-    if(typeof DX!=="undefined"&&DX.open)dxClose();else if(document.body.classList.contains("ofc-pc"))ofPcClose();else if(document.body.classList.contains("ofc-gov"))presGovClose();else if(OFC.panel)ofPanel(null);else if(OFC.place)ofCancel();else ofExit();return}
-  if(document.body.classList.contains("ofc-pc")||document.body.classList.contains("ofc-gov")||(typeof DX!=="undefined"&&DX.open))return;
+    if(typeof MX!=="undefined"&&MX.open&&document.body.classList.contains("ofc-desk"))mxClose();else if(typeof DX!=="undefined"&&DX.open)dxClose();else if(document.body.classList.contains("ofc-gov"))presGovClose();else if(document.body.classList.contains("ofc-desk"))pcClose();else if(document.body.classList.contains("ofc-pc"))ofPcClose();else if(document.body.classList.contains("ofc-gov"))presGovClose();else if(OFC.panel)ofPanel(null);else if(OFC.place)ofCancel();else ofExit();return}
+  if(document.body.classList.contains("ofc-pc")||document.body.classList.contains("ofc-gov")||document.body.classList.contains("ofc-desk")||(typeof DX!=="undefined"&&DX.open))return;
   const mv=["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright","shift"];
   if(mv.includes(k)){OFC.keys[k]=1}
   else if(k==="e"||k==="enter"){if(OFC.place)ofConfirm();else if(!OFC.panel)ofUse();else return}
@@ -7062,7 +7062,40 @@ function presEnter(){if(OFC.on)return toast(OFC.mode==="pres"?"You're already in
 /* after the office closes: put the phone back where it was (or open the government app if 3D failed) */
 function presLeft(classic){const st=OFC.phs;OFC.phs=null;if(classic){PH.open=true;PH.app="govt";govTab="pol"}else if(st){PH.open=st.open;PH.app=st.app;govTab=st.tab}else PH.open=false;phRender()}
 /* the desk: the phone's own Government app opens on top of the office. Same render, same click handler, same state. */
-function presDesk(){if(!polLeader())return;govTab="pol";OFC.keys={};OFC.joy=null;document.body.classList.add("ofc-gov");PH.open=true;PH.app="govt";phRender();ofPanel(null)}
+/* Presidential computer: a desktop with apps; each app opens its dashboard for the company picked in the taskbar (DX.co = HQ country, "" = all) */
+const PCAPPS=[["fin","📊","Finance","#2563eb"],["off","👥","Office","#0e7490"],["log","📦","Logistics","#b45309"],["truck","🚚","Trucking","#15803d"],["air","✈️","Airline","#0369a1"],["ind","🏭","Industrial Shop","#7c3aed"],
+  ["stocks","📈","Stocks","#16a34a"],["props","🏠","Properties","#166534"],["govt","🏛","Government","#7c2d12"],
+  ["mil","🪖","Military","#991b1b",1],["int","🕵️","Intelligence","#4338ca",1],["wcl","🌍","World Council","#0f766e",1],["wf","🕶","Anonymous Funding","#6d28d9",1]];
+const pcCos=()=>Object.keys(S.hq||{}).filter(id=>S.hq[id]&&CITIES[id]).map(id=>CITIES[id]).sort((a,b)=>b.size-a.size);
+function pcCss(){if(document.getElementById("pcd-css"))return;const st=document.createElement("style");st.id="pcd-css";st.textContent=`#pcd{position:fixed;inset:0;z-index:36;display:flex;flex-direction:column;font-family:Figtree,ui-sans-serif,system-ui,sans-serif;color:#fff;background:radial-gradient(ellipse at 30% 20%,#1e3a8a 0%,#0b1430 55%,#05080f 100%)}
+#pcd .pcd-wm{position:absolute;right:24px;bottom:64px;font:700 13px var(--mono,monospace);opacity:.35;letter-spacing:.12em;text-transform:uppercase}
+#pcd .pcd-grid{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));align-content:start;gap:10px;padding:22px max(16px,env(safe-area-inset-left,0px));overflow:auto}
+#pcd .pcd-app{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border:0;border-radius:12px;background:transparent;color:#fff;cursor:pointer;font:600 12px Figtree,sans-serif;text-align:center;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+#pcd .pcd-app:hover,#pcd .pcd-app:focus-visible{background:rgba(255,255,255,.12);outline:none}
+#pcd .pcd-ic{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;font-size:28px;box-shadow:0 6px 16px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.25)}
+#pcd .pcd-sec{grid-column:1/-1;font:700 11px Figtree,sans-serif;letter-spacing:.14em;text-transform:uppercase;opacity:.6;margin-top:6px}
+#pcd .pcd-bar{display:flex;align-items:center;gap:8px;padding:8px max(12px,env(safe-area-inset-left,0px)) calc(8px + env(safe-area-inset-bottom,0px));background:rgba(8,12,24,.82);backdrop-filter:blur(10px);border-top:1px solid rgba(255,255,255,.1)}
+#pcd .pcd-bar b{font-size:13px;white-space:nowrap}#pcd select{min-width:0;flex:1;max-width:280px;background:#111a2e;color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 8px;font:600 12px Figtree,sans-serif}
+#pcd .pcd-clk{margin-left:auto;font:600 12px var(--mono,monospace);opacity:.85;white-space:nowrap}#pcd .pcd-x{border:0;border-radius:8px;background:#dc2626;color:#fff;font:700 12px Figtree,sans-serif;padding:7px 12px;cursor:pointer}
+body.ofc-desk .mdx-win{z-index:50}`;document.head.appendChild(st)}
+function pcDesk(){pcCss();OFC.keys={};OFC.joy=null;try{if(OFC.on)ofPanel(null)}catch(e){}let el=document.getElementById("pcd");
+  if(!el){el=document.createElement("div");el.id="pcd";el.setAttribute("role","dialog");el.setAttribute("aria-label","Presidential computer");document.body.appendChild(el);
+    el.addEventListener("click",e=>{const b=e.target.closest("[data-pc]");if(!b)return;const a=b.dataset.pc;if(a==="x"){pcClose();return}pcApp(a)});
+    document.addEventListener("keydown",e=>{if(e.key!=="Escape"||!document.body.classList.contains("ofc-desk")||OFC.on)return;if(MX.open)mxClose();else if(DX.open)dxClose();else pcClose()});
+    el.addEventListener("change",e=>{if(e.target.id==="pcd-co"){DX.co=e.target.value||"";if(DX.open)dxRender();toast(DX.co?`Managing ${DX.co} company`:"Managing all companies")}})}
+  document.body.classList.add("ofc-desk");el.style.display="flex";pcRender()}
+function pcRender(){const el=document.getElementById("pcd");if(!el)return;const cos=pcCos();if(DX.co&&!cos.some(c=>c.country===DX.co))DX.co="";
+  const ap=x=>`<button class="pcd-app" data-pc="${x[0]}"><span class="pcd-ic" style="background:${x[3]}">${x[1]}</span>${x[2]}</button>`;
+  el.innerHTML=`<div class="pcd-grid"><div class="pcd-sec">Companies</div>${PCAPPS.filter(x=>!x[4]).map(ap).join("")}<div class="pcd-sec">Government · ${wfE(pol().c||"")}</div>${PCAPPS.filter(x=>x[4]).map(ap).join("")}</div>
+  <div class="pcd-wm">Presidential office · secure terminal</div>
+  <div class="pcd-bar"><b>🏛 Company</b><select id="pcd-co" aria-label="Company to manage"><option value="">All companies</option>${cos.map(c=>`<option value="${wfE(c.country)}"${DX.co===c.country?" selected":""}>${wfE(c.name)} HQ · ${wfE(c.country)}</option>`).join("")}</select><span class="pcd-clk" id="pcd-clk">${new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span><button class="pcd-x" data-pc="x">Shut down</button></div>`}
+function pcApp(a){const dxp={fin:"fin",off:"off",log:"log",truck:"truck",air:"air",ind:"ind"};
+  if(dxp[a]){if(MX.open)mxClose();DX.page=dxp[a]==="fin"?null:dxp[a];if(DX.page&&typeof dxPageOk==="function"&&!dxPageOk(DX.page)){toast("You don't run that business yet");DX.page=null}dxOpen();return}
+  if(["mil","int","wcl","wf"].includes(a)){if(DX.open)dxClose();if(a==="int"&&!intOn())return toast("Buy the Intelligence Agency in the office shop first");if(a!=="int"&&!misOn()&&!intOn())return toast("Buy Military Intelligence in the office shop first");MX.page=a;mxOpen();return}
+  if(a==="govt"){govTab="pol";document.body.classList.add("ofc-gov")}PH.open=true;PH.app=a;phRender()}
+function pcClose(){const el=document.getElementById("pcd");if(el)el.style.display="none";document.body.classList.remove("ofc-desk");if(DX.open)dxClose();if(MX.open)mxClose();if(OFC.cv)OFC.cv.focus({preventScroll:true})}
+function presDesk(){if(!polLeader())return;pcDesk()}
+function presDeskPhone(){if(!polLeader())return;govTab="pol";OFC.keys={};OFC.joy=null;document.body.classList.add("ofc-gov");PH.open=true;PH.app="govt";phRender();ofPanel(null)}
 function presGovClose(){if(!document.body.classList.contains("ofc-gov"))return;document.body.classList.remove("ofc-gov");PH.open=false;PH.app=null;phRender();if(OFC.cv)OFC.cv.focus({preventScroll:true})}
 /* every frame: closing the phone closes the desk; losing the Leader job ends the visit */
 function presTick(dt){if(OFC.fx.kick)return;if(document.body.classList.contains("ofc-gov")&&!PH.open)presGovClose();
