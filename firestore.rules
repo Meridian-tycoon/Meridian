@@ -942,6 +942,59 @@ service cloud.firestore {
     match /{path=**}/hold/{h} {
       allow read: if request.auth != null;
     }
+    // Moon and Mars colonies: one doc per site, id "<planet>_<site>". Owned by a country, run by its governing player (uid).
+    // Update: the runner; a new governor of the same country (inherit); a conqueror whose atk beats the stored def (takeover);
+    // or a repelled attacker that may only lower the garrison.
+    function validColony(d) {
+      return d.keys().hasOnly(['p', 's', 'c', 'uid', 'name', 'col', 'lv', 'sup', 'supAt', 'gar', 'ore', 'oreAt', 'auto', 'def', 'atk', 'updated'])
+        && d.keys().hasAll(['p', 's', 'c', 'uid', 'lv', 'sup', 'supAt', 'gar', 'ore', 'def', 'updated'])
+        && d.p in ['moon', 'mars'] && d.s is int && d.s >= 0 && d.s < 12
+        && d.c is string && d.c.size() > 0 && d.c.size() <= 40
+        && d.uid is string && d.uid.size() <= 128
+        && (!('name' in d) || (d.name is string && d.name.size() <= 20))
+        && (!('col' in d) || (d.col is string && d.col.size() <= 7))
+        && d.lv is int && d.lv >= 1 && d.lv <= 5
+        && d.sup is number && d.sup >= 0 && d.sup <= 120
+        && d.supAt is int && (!('oreAt' in d) || d.oreAt is int)
+        && d.gar is map && d.gar.keys().hasOnly(['armored', 'drones'])
+        && d.gar.armored is int && d.gar.armored >= 0 && d.gar.armored <= 100000
+        && d.gar.drones is int && d.gar.drones >= 0 && d.gar.drones <= 100000
+        && d.ore is number && d.ore >= 0 && d.ore <= 100000
+        && (!('auto' in d) || (d.auto is int && d.auto >= 0 && d.auto <= 1))
+        && d.def is number && d.def >= 0 && d.def <= 10000000
+        && (!('atk' in d) || (d.atk is number && d.atk >= 0 && d.atk <= 10000000))
+        && d.updated is int;
+    }
+    match /colonies/{id} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid
+        && validColony(request.resource.data)
+        && id == request.resource.data.p + '_' + string(request.resource.data.s);
+      allow update: if request.auth != null && validColony(request.resource.data)
+        && request.resource.data.p == resource.data.p && request.resource.data.s == resource.data.s
+        && (resource.data.uid == request.auth.uid
+          || (request.resource.data.uid == request.auth.uid && request.resource.data.atk is number && request.resource.data.atk > resource.data.def)
+          || (request.resource.data.uid == request.auth.uid && request.resource.data.c == resource.data.c)
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gar', 'updated'])
+              && request.resource.data.gar.armored <= resource.data.gar.armored
+              && request.resource.data.gar.drones <= resource.data.gar.drones));
+    }
+
+    // Colony missions in flight (public so every player sees ships heading for a site). Created and deleted by the sender.
+    match /cmission/{id} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['c', 'uid', 'p', 'site', 't', 'eta', 'atk', 'updated'])
+        && request.resource.data.c is string && request.resource.data.c.size() > 0 && request.resource.data.c.size() <= 40
+        && request.resource.data.p in ['moon', 'mars']
+        && request.resource.data.site is int && request.resource.data.site >= 0 && request.resource.data.site < 12
+        && request.resource.data.t in ['found', 'supply', 'expand', 'garrison', 'assault']
+        && request.resource.data.eta is int
+        && request.resource.data.atk is number && request.resource.data.atk >= 0 && request.resource.data.atk <= 10000000
+        && request.resource.data.updated is int;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
