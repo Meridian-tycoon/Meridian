@@ -59,7 +59,7 @@ Each upgrade goes to level 3; level N needs a level N colony. One Build mission 
 
 | Number | Value |
 |---|---|
-| Crew rotation | ×1.5 ore and research for 10 days after landing |
+| Crew rotation | ×1.5 ore and research for 180 days (6 game months) after landing |
 | Tourist flight | pays level × $5M (Moon) or level × $15M (Mars) on landing |
 | Tourists per flight | level × 10 (counted in "Space tourists flown") |
 | Achievement / goal | **Space tourism**: fly 100 tourists (goal pays $25M) |
