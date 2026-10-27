@@ -657,7 +657,7 @@ function menuNet(c,b,lv,id){menuOv={[c.id+":"+b.k]:id};try{return profit(b,c,lv)
 const USE={cart:{burgers:2},coffeecart:{bread:1},icecream:{bread:1},taco:{beef:1,bread:1},pretzel:{bread:2},noodle:{beef:1},smoothie:{bread:1},kiosk:{bread:3},shop:{bread:4},rest:{burgers:5,beef:3},hotel:{bread:8}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
-function profit(b,c,lv){if(unhOn(c))return 0;if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round((typeof ofP==="function"?1+.03*ofP("mkt"):1)*b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof mktMult==="function"?mktMult(c):1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(typeof gxMult==="function"?gxMult(c,b):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)*(typeof ishBiz==="function"?ishBiz(b):1)*(typeof pandMult==="function"?pandMult(b):1)*techBiz(b)*wevBiz(b)*(typeof ctTurf==="function"?ctTurf(c):1)*(typeof aucMult==="function"?aucMult(c):1)-bizWage(b,c,lv))}
+function profit(b,c,lv){if(unhOn(c))return 0;if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round((typeof ofP==="function"?(1+.06*ofP("mkt"))*(ofCampOn()?1.1:1):1)*b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof mktMult==="function"?mktMult(c):1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(typeof gxMult==="function"?gxMult(c,b):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)*(typeof ishBiz==="function"?ishBiz(b):1)*(typeof pandMult==="function"?pandMult(b):1)*techBiz(b)*wevBiz(b)*(typeof ctTurf==="function"?ctTurf(c):1)*(typeof aucMult==="function"?aucMult(c):1)-bizWage(b,c,lv))}
 // hourly wages a business is charged inside profit(); HQ Employees shows the same figure
 function bizWage(b,c,lv){return b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1))*(typeof hrPay==="function"?hrPay(c,b):1)*techWage()}
 const cityUnitsP=(b,c)=>uSum(c.id,b.k,l=>profit(b,c,l));
@@ -2275,7 +2275,7 @@ function shopStep(h,t,now){const short=[];
     if(S.cash<cost){const m=S.mgrShort[key]||(S.mgrShort[key]={n:0});
       if(!m.n||now-m.n>3*DAYMS){m.n=now;const msg=`Manager couldn't restock ${b.n} in ${c.name}: needs ${cost<100?fmtC(cost):fmt(cost)}`;S.log.unshift(msg);S.log=S.log.slice(0,3);short.push(msg)}
       continue}
-    delete S.mgrShort[key];S.cash-=cost;try{ofRep("log",1,cost)}catch(e){}if(gp){gasTake(c,key,gp);if(gp.buy>0)S.orders.push({key,q:gp.buy,arr:t+ORDER_MIN*60000,auto:1})}else S.orders.push({key,q,arr:t+ORDER_MIN*60000,auto:1})}}
+    delete S.mgrShort[key];S.cash-=cost;try{ofRep("log",1,cost);ofSav("log",cost*(1.1/mf-1))}catch(e){}if(gp){gasTake(c,key,gp);if(gp.buy>0)S.orders.push({key,q:gp.buy,arr:t+ORDER_MIN*60000,auto:1})}else S.orders.push({key,q,arr:t+ORDER_MIN*60000,auto:1})}}
   if(short.length)toast(short.length>1?`Manager couldn't restock ${short.length} businesses — not enough cash`:short[0])}
 /* ---------- stock alerts: tiered low / critical / empty notices ----------
    Every stocked business (SUP types) gets a tier from the hours of stock left at its current selling speed:
@@ -4304,7 +4304,7 @@ function acceptOffer(id,quiet){const l=LG(),o=l.offers.find(x=>x.id===id);if(!o|
 function trPick(id,pol){const os=LG().offers.filter(o=>o.from===id);if(!os.length)return null;
   const key={pay:o=>-o.pay,rate:o=>-o.pay/jobDur(o),near:o=>o.km,fast:o=>jobDur(o)}[pol];return key?os.sort((a,b)=>key(a)-key(b))[0]:null}
 function runLogi(){const l=LG(),now=Date.now();
-  for(const j of l.jobs.filter(j=>now>=j.arr)){const h=HB(j.from);if(j.late&&lvl("insure"))j.pay=Math.round(j.pay*(1+.25*lvl("insure")));if(typeof ofP==="function"&&ofP("truck"))j.pay=Math.round(j.pay*(1+.08*ofP("truck")));S.cash+=j.pay;try{ofRep("truck",1,j.pay)}catch(e){}S.earned=(S.earned||0)+j.pay;l.earned+=j.pay;l.done++;l.tons+=j.tons;l.rep[j.ri]=Math.min(50,repOf(j.ri)+1);
+  for(const j of l.jobs.filter(j=>now>=j.arr)){const h=HB(j.from);if(j.late&&lvl("insure"))j.pay=Math.round(j.pay*(1+.25*lvl("insure")));if(typeof ofP==="function"&&ofP("truck")){const p0=j.pay;j.pay=Math.round(j.pay*(1+.08*ofP("truck")));try{ofSav("truck",j.pay-p0)}catch(e){}}S.cash+=j.pay;try{ofRep("truck",1,j.pay)}catch(e){}S.earned=(S.earned||0)+j.pay;l.earned+=j.pay;l.done++;l.tons+=j.tons;l.rep[j.ri]=Math.min(50,repOf(j.ri)+1);
     h.done++;h.earned+=j.pay;h.tons+=j.tons;if(j.late){l.late++;h.late++;try{crtLate(j,now-j.arr>60000)}catch(e){}}
     l.hist.unshift({t:now,day:S.day||1,hub:j.from,to:j.to,g:j.g,tons:j.tons,ri:j.ri,pay:j.pay,late:!!j.late});l.hist.length=Math.min(l.hist.length,60);
     S.log.unshift(`Trucking: delivered ${j.tons} t of ${j.g} for ${RIVALS[j.ri].n}, +${fmt(j.pay)}`);S.log=S.log.slice(0,3)}
@@ -6716,13 +6716,25 @@ function ofStaffSig(){if(!ofIsStaffOffice())return"";try{return OFD.map((d,i)=>{
 function ofStaffDesk(T,i,h,ghost){const d=OFD[i],g=new T.Group();
   ofBox(T,g,1.3,.06,.7,0x8b6b4a,0,.72,.15,{r:.7});ofBox(T,g,.06,.72,.6,0x5b412b,-.6,0,.15);ofBox(T,g,.06,.72,.6,0x5b412b,.6,0,.15);
   ofBox(T,g,.4,.28,.04,0x111827,0,.78,.1);ofBox(T,g,.3,.2,.02,h?0x60a5fa:0x334155,0,.82,.12,{e:h?0x3b82f6:0,ei:h?.6:0});
-  if(h){const p=new T.Group();p.position.set(0,0,-.55);g.add(p);ofBox(T,p,.13,.5,.15,0x111827,-.1,0,0);ofBox(T,p,.13,.5,.15,0x111827,.1,0,0);ofBox(T,p,.42,.55,.26,ofStaffCol[i],0,.5,0);ofBox(T,p,.1,.3,.02,0xffffff,0,.72,.13);ofSph(T,p,.17,0xf1c27d,0,1.22,0);ofBox(T,p,.36,.07,.36,0x3f2a1d,0,1.32,-.02)}
+  g.userData={i,k:d[0]};if(h){const p=new T.Group();p.position.set(0,0,-.55);g.add(p);g.userData.p=p;ofBox(T,p,.13,.5,.15,0x111827,-.1,0,0);ofBox(T,p,.13,.5,.15,0x111827,.1,0,0);ofBox(T,p,.42,.55,.26,ofStaffCol[i],0,.5,0);ofBox(T,p,.1,.3,.02,0xffffff,0,.72,.13);ofSph(T,p,.17,0xf1c27d,0,1.22,0);ofBox(T,p,.36,.07,.36,0x3f2a1d,0,1.32,-.02)}
   if(!ghost){const cv=document.createElement("canvas");cv.width=256;cv.height=64;const c=cv.getContext("2d");c.fillStyle="rgba(15,23,42,.85)";c.fillRect(0,0,256,64);c.fillStyle="#f8fafc";c.textAlign="center";c.font="bold 22px sans-serif";c.fillText((h?h.nm:"Vacant").slice(0,18),128,28);c.font="16px sans-serif";c.fillStyle="#93c5fd";c.fillText(d[1]+" Head of "+d[2],128,52);
     const sp=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(cv),depthTest:false}));sp.scale.set(1.5,.375,1);sp.position.set(0,h?2:1.4,-.2);sp.renderOrder=5;g.add(sp)}
   return g}
 function ofStaffBuild(){const T=OFC.T;if(!T||!OFC.scene||OFC.mode!=="hq")return;if(OFC.staff){OFC.scene.remove(OFC.staff);OFC.staff.traverse(x=>{if(x.geometry)x.geometry.dispose();if(x.material){if(x.material.map)x.material.map.dispose();x.material.dispose()}})}
   OFC.staff=null;OFC.ssig=ofStaffSig();if(!OFC.ssig)return;const G=new T.Group();OFC.scene.add(G);OFC.staff=G;OFC.fix=ofHqFixtures();ofObstacles();
   OFD.forEach((d,i)=>{const q=ofStaffPos(i),g=ofStaffDesk(T,i,ofHas(d[0])?ofS().d[d[0]]:null,false);g.position.set(q.x,0,q.z);g.rotation.y=q.r*Math.PI/2;G.add(g)})}
+/* heads turn to face you when you come near, breathe, and show their daily report in a speech bubble */
+function ofStaffAnim(dt){const T=OFC.T,P=OFC.p,t=performance.now()/1000;let near=null,nd=3.6;
+  for(const g of OFC.staff.children){const u=g.userData,p=u.p;if(!p||!g.visible)continue;const wx=g.position.x+Math.sin(g.rotation.y)*-.55,wz=g.position.z+Math.cos(g.rotation.y)*-.55,dx=P.x-wx,dz=P.z-wz,dd=Math.hypot(dx,dz);
+    const want=dd<4?Math.atan2(dx,dz)-g.rotation.y:0;let df=((want-p.rotation.y+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;p.rotation.y+=df*Math.min(1,dt*4);
+    p.position.y=Math.sin(t*2+u.i)*.012;if(dd<nd){nd=dd;near=g}}
+  for(const g of OFC.staff.children){const u=g.userData;if(g!==near){if(u.bub)u.bub.visible=false;continue}
+    if(!u.bub||Date.now()-u.bt>5000){const h=ofS().d[u.k];if(!h)continue;let tx="";try{tx=ofLine(u.k,h)}catch(e){}
+      const cv=document.createElement("canvas");cv.width=512;cv.height=128;const c=cv.getContext("2d");c.fillStyle="rgba(255,255,255,.95)";c.fillRect(0,0,512,112);c.beginPath();c.moveTo(240,112);c.lineTo(256,128);c.lineTo(272,112);c.fill();
+      c.fillStyle="#0f172a";c.font="20px sans-serif";c.textAlign="center";const w=tx.split(" "),ln=[""];for(const x of w){if(c.measureText(ln[ln.length-1]+" "+x).width>480&&ln.length<4)ln.push(x);else ln[ln.length-1]+=(ln[ln.length-1]?" ":"")+x}
+      ln.slice(0,4).forEach((l,j)=>c.fillText(l,256,28+j*24));
+      if(u.bub){u.bub.material.map.dispose();u.bub.material.map=new T.CanvasTexture(cv);u.bub.material.needsUpdate=true}else{u.bub=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(cv),depthTest:false}));u.bub.scale.set(3.2,.8,1);u.bub.position.set(0,2.8,-.55);u.bub.renderOrder=6;g.add(u.bub)}u.bt=Date.now()}
+    if(u.bub)u.bub.visible=true}}
 /* moving a department desk: same ghost + confirm flow as furniture, position kept in S.off.pos */
 function ofStaffMove(o){const T=OFC.T,P=OFC.p,i=OFD.findIndex(x=>x[0]===o.k);if(!T||i<0)return;const g=ofStaffDesk(T,i,ofHas(o.k)?ofS().d[o.k]:null,true);
   g.traverse(x=>{if(x.material){x.material=x.material.clone();x.material.transparent=true;x.material.opacity=.6;x.material.depthWrite=false}});
@@ -6759,6 +6771,7 @@ function ofStep(dt){const P=OFC.p,k=OFC.keys,busy=document.body.classList.contai
   const R=OFC_ROOM,D=OFC.camD;let cx=P.x+Math.sin(P.yaw)*D,cz=P.z+Math.cos(P.yaw)*D;cx=Math.max(-R.w/2+.25,Math.min(R.w/2-.25,cx));cz=Math.max(-R.d/2+.25,Math.min(R.d/2-.25,cz));
   OFC.cam.position.set(cx,OFC.camH,cz);OFC.cam.lookAt(P.x-Math.sin(P.yaw)*1.2,.9,P.z-Math.cos(P.yaw)*1.2);
   if(OFC.mode==="hq"&&ofStaffSig()!==OFC.ssig)ofStaffBuild();
+  if(OFC.staff)ofStaffAnim(dt);
   if(OFC.place)ofGhostStep();else ofNearStep();
   if((OFC.fx.cash=(OFC.fx.cash||0)+dt)>.5){OFC.fx.cash=0;ofCash()}
   if(busy&&!sheet.classList.contains("open"))ofPcClose();
@@ -8704,7 +8717,7 @@ function airEst(k,r,dir){const P=ALP[k],A=CITIES[r.a],B=CITIES[r.b],km=distKm(A,
   lf*=Math.pow(r.p,-1.3)/(1+.12*Math.max(0,same-1));lf=Math.max(.15,Math.min(.98,lf));
   const fare=(50+.14*km)*r.p*(1+.03*aLv("loyal"))*(1+.05*(lv-1));
   const pax=Math.round(P.seats*lf),tons=P.cargo?Math.round(P.cargo*Math.min(.95,lf+.05)):0;
-  const rev=pax*fare+tons*.5*km*r.p,fuel=P.burn*km*(1-.06*aLv("hedge"))*(typeof ofP==="function"?1-.1*ofP("air"):1),fees=(airOwnAp(to.id)?0:P.fee)+(airOwnAp(from.id)?0:P.fee)*.5;
+  const rev=pax*fare+tons*.5*km*r.p,fuel=P.burn*km*(1-.06*aLv("hedge"))*(typeof ofP==="function"?1-.2*ofP("air"):1),fees=(airOwnAp(to.id)?0:P.fee)+(airOwnAp(from.id)?0:P.fee)*.5;
   const ms=km/P.spd*DAYMS/24+ALC.turn*(1-.15*hb.crew);
   return {km,lf,pax,tons,fare,rev,cost:fuel+fees,fuel,fees,net:rev-fuel-fees,ms}}
 function airHrRow(now){const a=AIR(),h=Math.floor(now/DAYMS);let e=a.hh[0];if(!e||e.h!==h){e={h,rev:0,cost:0,pax:0,legs:0};a.hh.unshift(e);a.hh=a.hh.slice(0,ALC.hist)}return e}
@@ -8713,7 +8726,7 @@ function airTick(now){const a=AIR();if(!a.pl.length)return;let got=0;
     if(!p.nx){const e=airEst(p.k,r,p.dir);p.dep=now;p.nx=now+e.ms;continue}
     if(now-p.nx>2*DAYMS)p.nx=now-2*DAYMS;
     for(let i=0;i<300&&p.nx<=now;i++){const e=airEst(p.k,r,p.dir),late=Math.random()<Math.max(.01,.08-.02*aLv("mro"));let net=e.net*(late?.95:1);
-      const rev=e.rev*(late?.95:1);if(devGod()&&net<0)net=0;S.cash+=net;got+=net;try{ofRep("air",1,net)}catch(e){}
+      const rev=e.rev*(late?.95:1);if(devGod()&&net<0)net=0;S.cash+=net;got+=net;try{ofRep("air",1,net);const fp=ofP("air");if(fp)ofSav("air",e.fuel/(1-.2*fp)*.2*fp)}catch(e){}
       a.legs++;a.pax+=e.pax;a.tons+=e.tons;a.rev+=rev;a.cost+=rev-net;if(late)a.late++;
       const hr=airHrRow(p.nx);hr.rev+=rev;hr.cost+=rev-net;hr.pax+=e.pax;hr.legs++;
       const f=p.dir?r.b:r.a,t=p.dir?r.a:r.b;a.log.unshift({t:p.nx,f,to:t,k:p.k,pax:e.pax,tons:e.tons,net:Math.round(net),late:late?1:0});
@@ -8807,8 +8820,8 @@ function axPage(ag){const now=Date.now();if(!airHubs().length)return axEmpty();c
    A head costs a salary per game day (taken with upkeep in totals) and makes their department's automation cheaper.
    Live: Logistics (restock surcharge 10% -> 5%), Space (Space manager surcharges halved), Trucking (+8% contract pay), Airline (-10% fuel), Marketing (+3% business profit), HR (other salaries -15%, calmer raise requests). Perks grow with level (phase 3). Dev account pays no salaries. */
 const OFD=[["log","📦","Logistics","Runs your city managers' restocking.",1000,"City managers restock at +5% instead of +10%."],
-  ["space","🚀","Space","Runs the Space manager for your colonies.",20000,"Space manager buys cargo at +5% (space freight +15%) instead of +10% / +25%."],
-  ["truck","🚚","Trucking","Runs hubs and contracts.",3000,"Delivered trucking contracts pay 8% more."],["air","✈️","Airline","Runs routes and the fleet.",8000,"Airline fuel costs 10% less on every flight."],["mkt","📣","Marketing","Campaigns that lift business income.",5000,"All businesses earn 3% more."],["hr","🧑‍💼","HR","Hiring and wages for the whole team.",4000,"Other heads cost 15% less, ask for raises half as often and never quit over a refused raise."]];
+  ["space","🚀","Space","Runs the Space manager for your colonies.",8000,"Space manager buys cargo at +5% (space freight +15%) instead of +10% / +25%."],
+  ["truck","🚚","Trucking","Runs hubs and contracts.",3000,"Delivered trucking contracts pay 8% more."],["air","✈️","Airline","Runs routes and the fleet.",5000,"Airline fuel costs 20% less on every flight."],["mkt","📣","Marketing","Campaigns that lift business income.",3000,"All businesses earn 6% more, and can run 3-day ad campaigns for +10%."],["hr","🧑‍💼","HR","Hiring and wages for the whole team.",4000,"Other heads cost 15% less and sign for 25% less, ask for raises half as often and never quit over a refused raise."]];
 const OFN=[["Ava","Liam","Noah","Mia","Zoe","Omar","Lina","Kai","Sofia","Ravi","Elena","Jonah","Priya","Mateo","Hana","Leo","Nadia","Theo","Aisha","Felix"],["Moreau","Chen","Okafor","Silva","Novak","Haddad","Tanaka","Brennan","Rossi","Kowalski","Dubois","Mensah","Lindqvist","Park","Ortiz","Reyes","Weber","Ito","Nair","Laurent"]],OFAV=["👩‍💼","👨‍💼","🧑‍💼","👩🏽‍💼","👨🏿‍💼","👩🏻‍💼","🧑🏾‍💼","👨🏽‍💼"];
 function ofS(){const o=S.off=S.off&&typeof S.off==="object"?S.off:{};o.d=o.d&&typeof o.d==="object"?o.d:{};for(const k in o.d)if(!OFD.some(x=>x[0]===k&&x[4]>0)||!o.d[k]||typeof o.d[k].nm!=="string")delete o.d[k];return o}
 const ofHas=k=>{try{return !!ofS().d[k]}catch(e){return false}};
@@ -8830,26 +8843,41 @@ function ofAsk(k,yes,late){const h=ofS().d[k];if(!h||!h.ask)return"";delete h.as
   if(!ofHas("hr")&&!(typeof devGod==="function"&&devGod())&&Math.random()<.4){delete ofS().d[k];const t=`${h.nm} quit after the raise was ${late?"ignored":"refused"}. The ${d[2]} desk is empty.`;try{toast(t)}catch(e){}return t}
   return`${h.nm} accepted the answer and stays.`}
 function ofRep(k,n,v){const h=ofS().d[k];if(!h)return;const now=Date.now();if(!h.rep||now-h.rep.t>=864e5){if(h.rep&&h.rep.n)h.prev=h.rep;h.rep={t:now,n:0,v:0}}h.rep.n+=n||0;h.rep.v+=v||0}
-function ofHire(k){const d=OFD.find(x=>x[0]===k);if(!d||!d[4]||ofHas(k))return"";if(!ofHq())return"Open an HQ first: the office lives in your HQ";const sign=(typeof devGod==="function"&&devGod())?0:d[4]*5;if(S.cash<sign)return`Signing bonus is ${fmt(sign)}`;
+/* what each head earned the company this game day (tracked where the perk applies; marketing and HR are worked out from current numbers) */
+function ofSav(k,v){const h=ofS().d[k];if(!h||!(v>0))return;const d=Math.floor(Date.now()/DAYMS);if(!h.sv||h.sv.d!==d){h.svp=h.sv&&h.sv.d===d-1?h.sv.v:0;h.sv={d,v:0}}h.sv.v+=v}
+function ofGain(k){const h=ofS().d[k];if(!h)return 0;if(k==="hr"){let sv=0;for(const x in ofS().d)if(x!=="hr")sv+=ofPay(x)/.85*.15;return sv}
+  if(k==="mkt"){let b=0;for(const c of CITIES){const o=S.own[c.id];if(!o)continue;for(const x of BIZ)if(o[x.k])b+=Math.max(0,uSum(c.id,x.k,l=>profit(x,c,l)))}const f=(1+.06*ofP("mkt"))*(ofCampOn()?1.1:1);return b-b/f}
+  const d=Math.floor(Date.now()/DAYMS);return h.sv&&h.sv.d===d?h.sv.v:0}
+function ofGainY(k){const h=ofS().d[k];if(!h||k==="hr"||k==="mkt")return null;const d=Math.floor(Date.now()/DAYMS);return h.sv?(h.sv.d===d?(h.svp||0):h.sv.d===d-1?h.sv.v:0):0}
+/* marketing campaign: +10% business profit for 3 game days, costs 5 days of the Marketing head's salary */
+const ofCampOn=()=>{try{return !!(S.off&&S.off.camp&&S.off.camp>Date.now()&&ofHas("mkt"))}catch(e){return false}};
+const ofCampCost=()=>(typeof devGod==="function"&&devGod())?0:ofPay("mkt")*5;
+function ofCamp(){if(!ofHas("mkt"))return"Hire a Marketing head first";if(ofCampOn())return"A campaign is already running";const c=ofCampCost();if(S.cash<c)return`A campaign costs ${fmt(c)}`;
+  S.cash-=c;ofS().camp=Date.now()+3*DAYMS;try{if(c)dxTx({d:"Ad campaign",s:"Marketing",ty:"exp",a:-c})}catch(e){}return"Ad campaign launched: businesses earn 10% more for 3 game days."}
+/* HR head cuts signing bonuses 25% per perk level (max 50%) */
+const ofSign=k=>{const d=OFD.find(x=>x[0]===k);if(!d||(typeof devGod==="function"&&devGod()))return 0;return Math.round(d[4]*5*(k!=="hr"&&ofHas("hr")?Math.max(.5,1-.25*ofP("hr")):1))};
+function ofHire(k){const d=OFD.find(x=>x[0]===k);if(!d||!d[4]||ofHas(k))return"";if(!ofHq())return"Open an HQ first: the office lives in your HQ";const sign=ofSign(k);if(S.cash<sign)return`Signing bonus is ${fmt(sign)}`;
   S.cash-=sign;const r=n=>Math.floor(Math.random()*n),nm=OFN[0][r(OFN[0].length)]+" "+OFN[1][r(OFN[1].length)];ofS().d[k]={nm,av:OFAV[r(OFAV.length)],at:Date.now()};
   try{dxTx({d:"Hired "+d[2]+" head",s:nm,ty:"exp",a:-sign})}catch(e){}toast(`${nm} joined as head of ${d[2]}`);return""}
 function ofFire(k){const h=ofS().d[k];if(!h)return;delete ofS().d[k];toast(`${h.nm} left the company`)}
 function ofLine(k,h){if(k==="space"){const m=COLS().mgr;if(!m.on)return"Space manager is off. Turn it on in Mission control › Colonies.";colMgrRep(m);const r=m.rep;return`Today: ${r.crew} crew, ${r.sup} supply runs, bought ${fmt(r.spent)}, sold ${fmt(r.sold)}. ${m.st||""}`}
   if(k==="truck"){ofRep(k);const r=h.rep,j=(LG().jobs||[]).length;return`Today: ${r.n} contract${r.n===1?"":"s"} delivered for ${fmt(r.v)}. ${j} on the road now.`}
   if(k==="air"){ofRep(k);const r=h.rep,n=AIR().pl.length;return n?`Today: ${r.n} flight${r.n===1?"":"s"}, ${r.v<0?"lost":"netted"} ${fmt(Math.abs(r.v))}. ${n} plane${n===1?"":"s"} in the fleet.`:"No planes yet. Buy one on the Airline tab."}
-  if(k==="mkt"){let b=0;for(const c of CITIES){const o=S.own[c.id];if(!o)continue;for(const x of BIZ)if(o[x.k])b+=uSum(c.id,x.k,l=>profit(x,c,l))}const m=.03*ofP("mkt");return`Campaigns add about ${fmt(b*m/(1+m))}/day to business profit.`}
+  if(k==="mkt"){let b=0;for(const c of CITIES){const o=S.own[c.id];if(!o)continue;for(const x of BIZ)if(o[x.k])b+=uSum(c.id,x.k,l=>profit(x,c,l))}return`Marketing adds about ${fmt(ofGain("mkt"))}/day to business profit.${ofCampOn()?` Ad campaign running: ${dxIn(S.off.camp-Date.now())} left.`:""}`}
   if(k==="hr"){const n=Object.keys(ofS().d).filter(x=>x!=="hr").length;let sv=0;for(const x in ofS().d)if(x!=="hr")sv+=ofPay(x)/.85*.15;return`Looking after ${n} head${n===1?"":"s"}, saving ${fmt(sv)}/day on salaries.`}
   const n=Object.keys(S.mgr||{}).filter(i=>S.mgr[i]&&S.own[i]).length;ofRep(k);const r=h.rep;return n?`Today: ${r.n} restock${r.n===1?"":"s"} for ${fmt(r.v)} across ${n} city manager${n===1?"":"s"}.`:"No city managers yet. Hire one in a city where you own businesses."}
 const OF={note:"",nt:0,force:false};
+function ofGainRow(k){const g=ofGain(k),y=ofGainY(k),pay=(typeof devGod==="function"&&devGod())?0:ofPay(k),good=g>=pay||(y!=null&&y>=pay);
+  return`<div class="mdx-note" style="margin:0;color:${good?"#16a34a":"var(--dxmut)"}">💰 ${y==null?`Worth about ${fmt(g)}/day`:`Saved or earned ${fmt(g)} this game day (last day ${fmt(y)})`} · salary ${fmt(pay)}/day</div>`}
 function ofPage(){const hq=ofHq(),o=ofS(),E=dxE,team=OFD.filter(d=>o.d[d[0]]).length,pay=ofUpk();
   if(!hq)return`<div class="mdx-card"><div class="mdx-ch"><h3>🏢 Head office</h3></div><div class="mdx-empty">Your office opens with your first HQ. Buy an HQ in a city (Business tab) and your team moves in.</div></div>`;
   const room=d=>{const k=d[0],h=o.d[k],live=d[4]>0;
     const desk=h?`<div style="display:flex;gap:10px;align-items:center"><span style="font-size:34px;line-height:1">${h.av}</span><span style="min-width:0"><b style="overflow-wrap:anywhere">${E(h.nm)}</b><br><small style="color:var(--dxmut)">Head of ${d[2]} · Level ${ofLv(h)}${ofLv(h)<OFMAX?` · next in ${Math.ceil((24*DAYMS-((Date.now()-h.at)%(24*DAYMS)))/DAYMS)} days`:" · max"}</small></span></div>`
       :`<div style="display:flex;gap:10px;align-items:center;opacity:.6"><span style="font-size:34px;line-height:1;filter:grayscale(1)">🪑</span><span>${live?"Empty desk":"Coming soon"}</span></div>`;
-    const btn=!live?"":h?`<button class="lx-btn" data-of="fire" data-k="${k}">Let go</button>`:`<button class="lx-btn" data-of="hire" data-k="${k}"${S.cash<d[4]*5&&!(typeof devGod==="function"&&devGod())?` aria-disabled="true" title="Need ${fmt(d[4]*5)}"`:""}>Hire · ${fmt(d[4]*5)} signing</button>`;
+    const btn=!live?"":h?`<button class="lx-btn" data-of="fire" data-k="${k}">Let go</button>`:`<button class="lx-btn" data-of="hire" data-k="${k}"${S.cash<ofSign(k)?` aria-disabled="true" title="Need ${fmt(ofSign(k))}"`:""}>Hire · ${fmt(ofSign(k))} signing</button>`;
     return`<div class="mdx-card" style="margin:0;display:flex;flex-direction:column;gap:8px;${live?"":"opacity:.7"}"><div class="mdx-ch" style="margin:0"><h3>${d[1]} ${d[2]}</h3>${live?`<small style="margin-left:auto;color:var(--dxmut)">${fmt(h?ofPay(k):Math.round(d[4]*(k!=="hr"&&ofHas("hr")?.85:1)))}/day</small>`:""}</div>
-      <small style="color:var(--dxmut)">${d[3]}</small>${desk}${h&&h.ask?`<div class="mdx-note" style="margin:0;color:#d97706">💼 Asking for a 10% raise (${fmt(Math.round(ofPay(k)*.1))}/day more). <span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="lx-btn" data-of="yes" data-k="${k}">Give raise</button><button class="lx-btn" data-of="no" data-k="${k}">Refuse</button></span></div>`:""}${h?`<div class="mdx-note" style="margin:0;overflow-wrap:anywhere">📝 ${E(ofLine(k,h))}</div>`:live?`<small><b>Perk:</b> ${d[5]}</small>`:""}<div>${btn}</div></div>`};
-  return`<div class="mdx-card"><div class="mdx-ch"><h3>🏢 Head office · ${E(hq.name)}</h3></div><div class="mdx-rows"><div><span>Team</span><b>${team} of ${OFD.filter(d=>d[4]>0).length} heads hired</b></div><div><span>Payroll</span><b>${fmt(pay)}/day</b></div></div>
+      <small style="color:var(--dxmut)">${d[3]}</small>${desk}${h&&h.ask?`<div class="mdx-note" style="margin:0;color:#d97706">💼 Asking for a 10% raise (${fmt(Math.round(ofPay(k)*.1))}/day more). <span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="lx-btn" data-of="yes" data-k="${k}">Give raise</button><button class="lx-btn" data-of="no" data-k="${k}">Refuse</button></span></div>`:""}${h?`<div class="mdx-note" style="margin:0;overflow-wrap:anywhere">📝 ${E(ofLine(k,h))}</div>${ofGainRow(k)}`:live?`<small><b>Perk:</b> ${d[5]}</small>`:""}<div style="display:flex;gap:6px;flex-wrap:wrap">${btn}${k==="mkt"&&h?(ofCampOn()?`<small style="align-self:center;color:var(--dxmut)">📣 Campaign: ${dxIn(S.off.camp-Date.now())} left</small>`:`<button class="lx-btn" data-of="camp"${S.cash<ofCampCost()?' aria-disabled="true"':""}>📣 Run campaign · ${fmt(ofCampCost())}</button>`):""}</div></div>`};
+  return`<div class="mdx-card"><div class="mdx-ch"><h3>🏢 Head office · ${E(hq.name)}</h3><button class="lx-btn" style="margin-left:auto" data-of="visit">🚶 Visit office</button></div><div class="mdx-rows"><div><span>Team</span><b>${team} of ${OFD.filter(d=>d[4]>0).length} heads hired</b></div><div><span>Payroll</span><b>${fmt(pay)}/day</b></div></div>
     ${OF.note&&Date.now()-OF.nt<8000?`<div class="mdx-note">${E(OF.note)}</div>`:""}<div class="mdx-note" style="color:var(--dxmut)">Each head runs their department's automation for less and levels up every 24 game days (perks +25% per level, salary +10%). Salaries are paid every game day with your HQ upkeep.</div></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:12px">${OFD.map(room).join("")}</div>`}
 function ofRender(){const main=DX.el&&DX.el.querySelector("#mdx-main");if(!main)return;DX.el.classList.add("lx-on");
@@ -8857,7 +8885,7 @@ function ofRender(){const main=DX.el&&DX.el.querySelector("#mdx-main");if(!main)
   DX.el.querySelectorAll("[data-lx=page]").forEach(b=>b.classList.toggle("on",b.dataset.v==="off"));if(main.dataset.mode!=="of"){main.dataset.mode="of";main._lxh=""}
   let h;try{h=ofPage()}catch(e){console.warn("of",e);h=`<div class="mdx-card"><div class="mdx-empty">The office page hit a snag (${dxE(e.message)}).</div></div>`}if(h!==main._lxh){main._lxh=h;main.innerHTML=h}}
 function ofWire(el){el.addEventListener("click",e=>{const b=e.target.closest("[data-of]");if(!b||b.getAttribute("aria-disabled")==="true")return;const a=b.dataset.of,k=b.dataset.k;
-  if(a==="hire"){OF.note=ofHire(k);OF.nt=Date.now()}else if(a==="yes"||a==="no"){OF.note=ofAsk(k,a==="yes");OF.nt=Date.now()}else if(a==="fire"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to let go";return}ofFire(k);OF.note="";}
+  if(a==="hire"){OF.note=ofHire(k);OF.nt=Date.now()}else if(a==="yes"||a==="no"){OF.note=ofAsk(k,a==="yes");OF.nt=Date.now()}else if(a==="camp"){OF.note=ofCamp();OF.nt=Date.now()}else if(a==="visit"){const hq=ofHq();if(hq){dxClose();ofEnter(hq,false)}return}else if(a==="fire"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to let go";return}ofFire(k);OF.note="";}
   save();hud();if(PH.open)phRender();ofRender()})}
 function axRender(){const main=DX.el&&DX.el.querySelector("#mdx-main");if(!main)return;const ag=AGS();
   DX.el.classList.add("lx-on");const dt=DX.el.querySelector("#mdx-dt");if(dt)dt.textContent=`Day ${S.day||1} · next day in ${dxIn((S.hour+1)*DAYMS-Date.now())}`;
@@ -11153,8 +11181,8 @@ function colMgrLog(m,txt){const now=Date.now();if(m.log.some(e=>e.txt===txt&&now
 /* daily report: counters for the current 24 real hours (m.rep) and the finished period before it (m.prev) */
 function colMgrRep(m,k,n){const now=Date.now();if(!m.rep||now-m.rep.t>=864e5){if(m.rep&&(m.rep.crew||m.rep.sup||m.rep.spent||m.rep.sold))m.prev=m.rep;m.rep={t:now,crew:0,sup:0,spent:0,sold:0,ore:0}}if(k)m.rep[k]=(m.rep[k]||0)+n}
 function colMgrPorts(m){const P=spPorts();P.sort((a,b)=>(b.c.id===m.hub)-(a.c.id===m.hub)||b.st.launches-a.st.launches);return P}
-function colMgrBuyAt(c,g){if(!G[g])return null;const ok=w=>w&&alMkt(g)&&!unhOn(w)&&px(w,g)>0;if(ok(c))return{w:c,u:px(c,g)*(1+ofSpFee(COLCFG.mgr.fee))};
-  const ws=Object.keys(S.wh||{}).map(i=>CITIES[i]).filter(w=>w&&w!==c&&S.wh[w.id]!=null&&ok(w)).sort((a,b)=>distKm(a,c)-distKm(b,c)||a.id-b.id);return ws.length?{w:ws[0],u:px(ws[0],g)*(1+ofSpFee(COLCFG.mgr.far))}:null}
+function colMgrBuyAt(c,g){if(!G[g])return null;const ok=w=>w&&alMkt(g)&&!unhOn(w)&&px(w,g)>0;if(ok(c))return{w:c,u:px(c,g)*(1+ofSpFee(COLCFG.mgr.fee)),full:px(c,g)*(1+COLCFG.mgr.fee)};
+  const ws=Object.keys(S.wh||{}).map(i=>CITIES[i]).filter(w=>w&&w!==c&&S.wh[w.id]!=null&&ok(w)).sort((a,b)=>distKm(a,c)-distKm(b,c)||a.id-b.id);return ws.length?{w:ws[0],u:px(ws[0],g)*(1+ofSpFee(COLCFG.mgr.far)),full:px(ws[0],g)*(1+COLCFG.mgr.far)}:null}
 function colMgr(now){now=now||Date.now();const s=COLS(),m=s.mgr,K=COLCFG.mgr;if(!m.on){m.st="Off";return}
   if(!hasTech("lunar")){m.st="Off · research Lunar outpost";return}const g=colGov();if(!g){m.st="Paused · you don't hold office";return}
   const mine=s.list.filter(x=>x.c===g),P=colMgrPorts(m),ready=P.reduce((t,p)=>t+Math.floor(p.st.launches),0);
@@ -11167,7 +11195,7 @@ function colMgr(now){now=now||Date.now();const s=COLS(),m=s.mgr,K=COLCFG.mgr;if(
     const hub=P.find(p=>p.c.id===m.hub),dep=hub?[hub]:P.filter(p=>p.st.launches>=1);
     for(const p of dep){const c=p.c,inv=S.inv[c.id]=S.inv[c.id]||{};for(const k in need){const want=Math.ceil(need[k]-(+inv[k]||0));if(want<1)continue;
       const b=colMgrBuyAt(c,k);if(!b){colMgrLog(m,`Can't buy ${G[k][0].toLowerCase()} for ${c.name}: no market sells it`);continue}
-      const q=Math.min(want,Math.floor(Math.max(0,S.cash-m.keep)/b.u));if(q<want)poor=true;if(q<1)continue;const v=q*b.u;S.cash-=v;colMgrRep(m,"spent",v);inv[k]=(+inv[k]||0)+q;
+      const q=Math.min(want,Math.floor(Math.max(0,S.cash-m.keep)/b.u));if(q<want)poor=true;if(q<1)continue;const v=q*b.u;S.cash-=v;colMgrRep(m,"spent",v);try{if(b.full>b.u)ofSav("space",q*(b.full-b.u))}catch(e){}inv[k]=(+inv[k]||0)+q;
       try{dxTx({d:"Space manager · "+G[k][0],s:c.name,ty:"exp",a:-v})}catch(e){}
       colMgrLog(m,`Bought ${q.toLocaleString("en-US")} ${G[k][0].toLowerCase()} ${b.w===c?"in "+c.name:"in "+b.w.name+" (space freight to "+c.name+")"} for ${fmt(v)}`)}}}
   const go=(x,t)=>{if(sent>=K.maxPerTick)return false;if(s.ms.some(q=>!q.ret&&q.t===t&&q.p===x.p&&q.site===x.s))return false;let why="";
