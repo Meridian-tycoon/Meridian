@@ -94,3 +94,24 @@ Selling: pick an ore in one of your spaceport depots, the units and a price. The
 - When someone launches an assault at one of your country's colonies you get an alert, a news item and a red banner in the Colonies tab and the phone's Space app.
 - News reports colonies being founded, conquered and levelled up.
 - The globe shows a small 🌙/🔴 badge with colony counts next to each colony-holding country's capital (Settings › Display › Colony badges; tap the badge for the list).
+
+## Space manager
+
+Top of the Colonies tab: **🤖 Space manager**. Turn it on and the only thing left to do is keep your spaceports producing orbital launches. Every 20 seconds (and during offline catch-up) it:
+
+1. **Auto-sell** (off by default): sells any ore stack over 20 units in a spaceport depot to the Space broker.
+2. **Stock**: tops up medicine, bread and fuel for the next 2 crew + 2 supply runs per colony (capped at 6 colonies). It stocks the preferred hub, or every spaceport with a launch ready when no hub is set. It buys at that city's market price +10%. If the city can't sell the good, it buys at the nearest other depot city's price +25% ("space freight", no vehicles).
+3. **Crew**: sends a crew rotation to every colony whose crew time left is under the one-way flight time + 1 day.
+4. **Supply**: flies a supply run to any colony under 15 days (each colony's own auto-supply still works too).
+
+It never spends below the cash reserve, sends at most 6 missions per check, waits for the Mars window, and never founds, expands, builds, assaults or flies tourists. It only runs while you hold office and have Lunar outpost. With no launches ready it does nothing and says so. The card shows a status (Running / Waiting for launches / Out of cash reserve / Off), the settings and the last 20 log lines. The phone's Space app shows "Space manager ON · last: …".
+
+| Number | Value |
+|---|---|
+| Check interval | 20 s |
+| Stock target | 2 × (crew + supply cargo) × colonies (max 6) |
+| Handling fee | +10% of the market price |
+| Space freight (other city) | +25% of that city's price |
+| Auto-sell threshold | stacks over 20 units |
+| Default cash reserve | $10M |
+| Missions per check | 6 max |
