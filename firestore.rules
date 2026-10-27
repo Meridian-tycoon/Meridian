@@ -362,22 +362,43 @@ service cloud.firestore {
     // exch/{uid}: the owner's public listing. excom/{id}: a 0.1% commission written by a trader for exchange owner `to`; the owner claims it by deleting it
     // (cash moves only inside the owner's own save). amt is capped and tied to the reported trade volume (amt <= vol / 1000).
     // world/nyse: the one New York Stock Exchange on the server. The first player to claim it owns it; nobody else can take it over.
-    // Only the owner can update (rename) or release (delete) it.
+    // The owner can rename it, release it (delete) or offer it to one player (to, toName, price). That player buys it by writing
+    // exsale/{sellerUid} (the payment, collected by the seller) and taking over world/nyse in the same transaction.
+    function nyseOk(d) {
+      return d.keys().hasOnly(['uid', 'name', 'own', 'at', 'to', 'toName', 'price'])
+        && d.name is string && d.name.size() >= 3 && d.name.size() <= 30
+        && d.own is string && d.own.size() <= 20
+        && d.at == request.time;
+    }
     match /world/nyse {
       allow read: if true;
-      allow create: if request.auth != null
-        && request.resource.data.keys().hasOnly(['uid', 'name', 'own', 'at'])
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.name is string && request.resource.data.name.size() >= 3 && request.resource.data.name.size() <= 30
-        && request.resource.data.own is string && request.resource.data.own.size() <= 20
-        && request.resource.data.at == request.time;
-      allow update: if request.auth != null && resource.data.uid == request.auth.uid
-        && request.resource.data.keys().hasOnly(['uid', 'name', 'own', 'at'])
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.name is string && request.resource.data.name.size() >= 3 && request.resource.data.name.size() <= 30
-        && request.resource.data.own is string && request.resource.data.own.size() <= 20
-        && request.resource.data.at == request.time;
+      allow create: if request.auth != null && nyseOk(request.resource.data)
+        && request.resource.data.uid == request.auth.uid && !('to' in request.resource.data);
+      allow update: if request.auth != null && nyseOk(request.resource.data) && (
+        (resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid
+          && (!('to' in request.resource.data)
+            || (request.resource.data.to is string && request.resource.data.to != request.auth.uid && request.resource.data.to.size() <= 128
+              && request.resource.data.toName is string && request.resource.data.toName.size() <= 20
+              && request.resource.data.price is int && request.resource.data.price >= 1 && request.resource.data.price <= 1000000000000000)))
+        || ('to' in resource.data && resource.data.to == request.auth.uid
+          && request.resource.data.uid == request.auth.uid && request.resource.data.name == resource.data.name
+          && !('to' in request.resource.data) && !('price' in request.resource.data) && !('toName' in request.resource.data)
+          && getAfter(/databases/$(database)/documents/exsale/$(resource.data.uid)).data.by == request.auth.uid
+          && getAfter(/databases/$(database)/documents/exsale/$(resource.data.uid)).data.amt == resource.data.price));
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+    // exsale/{sellerUid}: the buyer's payment for the exchange; the seller claims it by deleting it (cash moves only inside the seller's own save)
+    match /exsale/{seller} {
+      allow read: if request.auth != null && (request.auth.uid == seller || resource.data.by == request.auth.uid);
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['by', 'byName', 'to', 'amt', 'at'])
+        && request.resource.data.by == request.auth.uid && request.resource.data.to == seller
+        && request.resource.data.byName is string && request.resource.data.byName.size() <= 20
+        && get(/databases/$(database)/documents/world/nyse).data.uid == seller
+        && get(/databases/$(database)/documents/world/nyse).data.to == request.auth.uid
+        && request.resource.data.amt == get(/databases/$(database)/documents/world/nyse).data.price
+        && request.resource.data.at == request.time;
+      allow delete: if request.auth != null && request.auth.uid == seller;
     }
     match /exch/{uid} {
       allow read: if request.auth != null;
