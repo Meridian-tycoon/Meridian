@@ -2755,7 +2755,7 @@ function govHtml(c){const n=c.country,g=gov(n),P=PARTIES[g.party];let h=cityHead
   h+=`<div class="sec">Government of ${n}</div><div class="list"><div class="row"><div class="n"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${P.col};margin-right:6px"></span>${P.n}</div>
     <div class="d">${P.d} Approval ${Math.round(g.appr)}% · next election in ${fmtDur(g.next-Date.now()).replace(/^(\d+)h/,(m,x)=>x>=48?Math.floor(x/24)+"d "+(x%24)+"h":m)}${g.favor?` · you have their ear (+${Math.round(g.favor*100)}% lobbying)`:""}</div></div></div>`;{const p=S.pol,gn=p&&p.c===n?govNotesHtml():"";if(gn)h+=`<div class="sec">Government notices</div><div class="list"><div class="row"><div class="d">${gn}</div></div></div>`}
   if(g.strike>Date.now())h+=`<p class="d" style="color:#c33;font-size:13px;margin:6px 0">⚠ General strike: businesses earn 30% less for ${fmtDur(g.strike-Date.now())}.</p>`;
-  h+=conflictHtml(n)+dipHtml(n);
+  h+=conflictHtml(n)+tensHtml(n)+dipHtml(n);
   if(g.ctrl){h+=`<div class="sec">You control this government</div><div class="list"><div class="row"><div class="n">Puppet government</div><div class="d">Set any law for ${fmt(donUnit(n))} with no vote. Control lasts until the next election; fund the party again to keep it. Each hour there's a small chance a journalist exposes you.</div></div>
     <div class="row"><div class="n">State contract ${g.contract?"<b>ACTIVE</b>":""}</div><div class="d">Pays you ${fmt(contractPay(n))} an hour from public money, but more than doubles the exposure risk.</div><button class="buy" data-gov="contract" data-fixed="1">${g.contract?"Cancel":"Award to yourself"}</button></div></div>`}
   {const has=uranPermit(n),fee=uranFee(),q=g.uReq,o=uranGov(n),mine=uranIGov(n),cd=urqCdOn()&&g.uDen>Date.now();
@@ -2782,10 +2782,10 @@ function govHtml(c){const n=c.country,g=gov(n),P=PARTIES[g.party];let h=cityHead
     h+=`</div><div class="meta" style="margin-top:6px"><div><span>Control the next government </span>${top?`${PARTIES[top].n} ${fmt(have)} / ${fmt(need)}`:`give ${fmt(need)} to one party`}</div></div><div style="height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:4px 0"><div style="height:100%;width:${Math.min(100,have/need*100)}%;background:var(--own)"></div></div><div>`}
   h+=`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Donations raise a party's odds at the next election. If the party you funded most wins, lobbying gets easier for their whole term.</p>`;
   sheet.innerHTML=h}
-function govSummary(){const ns=COUNTRIES.filter(ownsIn);if(!ns.length)return conflictHtml(null)+dipHtml(null);
-  return conflictHtml(null)+dipHtml(null)+`<div class="sec">Governments</div><div class="list">`+ns.map(n=>{const g=gov(n),p=PARTIES[g.party],c=ctyCities(n)[0];
+function govSummary(){const ns=COUNTRIES.filter(ownsIn);if(!ns.length)return conflictHtml(null)+tensHtml(null)+dipHtml(null);
+  return conflictHtml(null)+tensHtml(null)+dipHtml(null)+`<div class="sec">Governments</div><div class="list">`+ns.map(n=>{const g=gov(n),p=PARTIES[g.party],c=ctyCities(n)[0];
     return `<div class="row link" data-go="${c.id}"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${p.col};margin-right:6px"></span>${n}</div><div class="d">${p.n} · tax ${LAWS.tax.v[g.laws.tax]} · min wage ${LAWS.wage.v[g.laws.wage].toLowerCase()}${g.laws.casino?" · casinos banned":""}${g.laws.rent?" · rent control":""}</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`}
-sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)return;if(!sel&&/peace|stoke|rally|join|leave|wsup|pdeal/.test(b.dataset.gov)){if(b.dataset.gov=="rally")dipRally();else if(b.dataset.gov=="pdeal")peaceOffer(+b.dataset.w);else if(b.dataset.gov=="wsup")wsupSign(+b.dataset.w,b.dataset.s);else if(b.dataset.gov=="join")warJoin(+b.dataset.w,b.dataset.s);else if(b.dataset.gov=="leave")warJoin(+b.dataset.w,"leave");else warAct(+b.dataset.w,b.dataset.gov);hud();renderSheet();return}if(!sel)return;const c=sel;
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)return;if(b.dataset.gov==="tpeace"||b.dataset.gov==="tarms"){tensAct(b.dataset.k,b.dataset.gov);return}if(!sel&&/peace|stoke|rally|join|leave|wsup|pdeal/.test(b.dataset.gov)){if(b.dataset.gov=="rally")dipRally();else if(b.dataset.gov=="pdeal")peaceOffer(+b.dataset.w);else if(b.dataset.gov=="wsup")wsupSign(+b.dataset.w,b.dataset.s);else if(b.dataset.gov=="join")warJoin(+b.dataset.w,b.dataset.s);else if(b.dataset.gov=="leave")warJoin(+b.dataset.w,"leave");else warAct(+b.dataset.w,b.dataset.gov);hud();renderSheet();return}if(!sel)return;const c=sel;
   const g=gov(c.country),a=b.dataset.gov;
   if(a==="lobby")lobby(c,b.dataset.k,+b.dataset.dir);
   else if(a==="set"){const u=donUnit(c.country);if(S.cash<u||!g.ctrl)return;S.cash-=u;g.laws[b.dataset.k]+=+b.dataset.dir;logGov(`${c.country} decrees ${LAWS[b.dataset.k].n.toLowerCase()}: ${LAWS[b.dataset.k].v[g.laws[b.dataset.k]]}`);toast("Law changed")}
@@ -2852,6 +2852,16 @@ function warAct(id,a){const w=(S.wars||[]).find(x=>x.id===id);if(!w)return;const
   else{if(Math.random()<.12*lawRisk()){const f=cst*3;S.cash-=f;logGov(`Arms dealing exposed: fined ${fmt(f)}`);toast(`Caught! Fined ${fmt(f)}`);arrest("arms trafficking",36,cap(w.a),0,1);return}
     S.cash+=cst*1.6;if(w.l<4&&Math.random()<.6){w.l++;logGov(`${w.a}–${w.b} escalates to ${WARL[w.l].toLowerCase()}`)}toast(`Arms sold: +${fmt(cst*.6)} profit`)}
   S.wars=S.wars.filter(x=>x.l>0)}
+function tensHtml(n){try{if(!COUNTRIES.some(ownsIn)&&!spDev())return "";const T=wfView().tens||{},ks=Object.keys(T).filter(k=>{const [a,b]=k.split("|");return (+T[k].v||0)>0&&(!n||a===n||b===n)&&!wfAtWar(a,b)}).sort((x,y)=>T[y].v-T[x].v).slice(0,n?6:8);if(!ks.length)return "";
+  return `<div class="sec">Rising tensions</div><div class="list">`+ks.map(k=>{const [a,b]=k.split("|"),v=+T[k].v||0,st=wfStage(v),c=tensCost(a,b);
+    return `<div class="row cfrow"><div class="n">${wfE(a)} – ${wfE(b)} <span class="tag" style="background:${st[2]};color:#fff">${st[1].toUpperCase()} ${Math.round(v)}/100</span></div><div class="d">Shared with every player. At 100 it turns into a war. Talks lower it; selling arms raises it and pays 60% profit.</div>
+    <div class="cfbt"><button class="buy" data-gov="tpeace" data-k="${wfE(k)}" data-fixed="1" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="buy" data-gov="tarms" data-k="${wfE(k)}" data-fixed="1" ${S.cash<c?"disabled":""}>Sell arms ${fmt(c)}</button></div></div>`}).join("")+`</div>`}catch(e){return ""}}
+const tensCost=(a,b)=>Math.max(WFCFG.min,Math.round(wfPt(a,b)*6));
+function tensAct(k,a){const [x,y]=String(k).split("|");if(!COUNTRIES.includes(x)||!COUNTRIES.includes(y))return;const T=(wfView().tens||{})[k];if(!T)return toast("That tension has cooled down");const c=tensCost(x,y);if(S.cash<c)return toast(`Need ${fmt(c)}`);
+  S.cash-=c;if(a==="tpeace"){wfPush({k:"p",to:x,vs:y,amt:c});logGov(`You funded peace talks between ${x} and ${y}`);toast("Talks funded: tension goes down")}
+  else{const f=T.f||{},to=(f[x]||0)>=(f[y]||0)?x:y,vs=to===x?y:x;if(!spDev()&&Math.random()<.12*lawRisk()){const fn=c*3;S.cash-=fn;logGov(`Arms dealing exposed: fined ${fmt(fn)}`);toast(`Caught! Fined ${fmt(fn)}`);save();hud();renderSheet();return}
+    wfPush({k:"e",to,vs,amt:c});S.cash+=Math.round(c*1.6);logGov(`You sold arms to ${to} against ${vs}`);toast(`Arms sold: +${fmt(Math.round(c*.6))} profit · tension up`)}
+  save();hud();renderSheet()}
 function conflictHtml(n){const wsT=S.wsupT?`<p class="d" style="font-size:12px">War profits so far: ${fmt(S.wsupT)} from supply contracts${(S.wsup||[]).length?` · ${S.wsup.length} active`:""}</p>`:"";const ws=(S.wars||[]).filter(w=>!n||w.a===n||w.b===n).sort((a,b)=>b.l-a.l);
   if(!ws.length)return n?"":`<div class="sec">World conflicts</div><p class="d" style="color:var(--muted);font-size:13px">The world is calm. For now.</p>`;
   let h=`<div class="sec">${n?"Conflicts":"World conflicts · global tension "+tension()+"%"}</div>${n?"":wsT}<div class="list">`;
@@ -2922,9 +2932,10 @@ const _govCol={};function govFlagCol(n){if(_govCol[n])return _govCol[n];let col=
 function drawGovLine(ctx){const p=S.pol;if(!p||!(p.r>=0)||!p.c)return;const f=cfFeat(p.c);if(!f)return;const col=govFlagCol(p.c);
   ctx.save();ctx.beginPath();path(f);ctx.globalAlpha=.9;ctx.lineWidth=2.4;ctx.strokeStyle=col;ctx.setLineDash([]);ctx.stroke();ctx.globalAlpha=.08;ctx.fillStyle=col;ctx.fill();ctx.restore()}
 /* Rising tension meters (wf tens, before any war): a very faint dashed line between the two capitals, stage colour. Display only. */
-function drawTens(ctx){if(!cfOn())return;const T=(typeof wfView==="function"&&wfView().tens)||{},ws=S.wars||[];ctx.save();ctx.setLineDash([2,6]);
+function drawTens(ctx){if(!cfOn())return;const T=(typeof wfView==="function"&&wfView().tens)||{},ws=S.wars||[];ctx.save();ctx.setLineDash([6,4]);
   for(const k in T){const v=+T[k].v||0;if(v<=0)continue;const [a,b]=k.split("|");if(ws.some(w=>w.l>0&&((w.a===a&&w.b===b)||(w.a===b&&w.b===a))))continue;const A=cfCap(a),B=cfCap(b);if(!A||!B)continue;
-    ctx.beginPath();path({type:"LineString",coordinates:[[A.lon,A.lat],[B.lon,B.lat]]});ctx.globalAlpha=.12+Math.min(1,v/100)*.18;ctx.strokeStyle=wfStage(v)[2];ctx.lineWidth=1;ctx.stroke()}
+    const st=wfStage(v);ctx.beginPath();path({type:"LineString",coordinates:[[A.lon,A.lat],[B.lon,B.lat]]});ctx.globalAlpha=.5+Math.min(1,v/100)*.4;ctx.strokeStyle=st[2];ctx.lineWidth=v>=50?2.6:1.8;ctx.stroke();
+    try{const m=d3.geoInterpolate([A.lon,A.lat],[B.lon,B.lat])(.5);if(visible(m[0],m[1])){const [x,y]=proj(m);ctx.setLineDash([]);ctx.globalAlpha=.95;ctx.font="bold 11px system-ui, sans-serif";ctx.textAlign="center";ctx.lineWidth=3;ctx.strokeStyle="rgba(0,0,0,.55)";const tx=`⚠ ${st[1]} ${Math.round(v)}`;ctx.strokeText(tx,x,y-4);ctx.fillStyle=st[2];ctx.fillText(tx,x,y-4);ctx.textAlign="start";ctx.setLineDash([6,4])}}catch(e){}}
   ctx.restore()}
 /* Other players' Leader wars (profile lw + govC), so everyone sees them: war-red line between capitals and a ⚔ badge. Display only. */
 function plWars(){const out=[],P=(typeof ON!=="undefined"&&ON.players)||[],old=Date.now()-3*864e5;for(const p of P){if(!p||!p.govC||!Array.isArray(p.lw))continue;
@@ -3274,6 +3285,8 @@ function wfApply(o,quiet){const d=wf(),C=WFCFG,amt=Math.round(+o.amt||0);if(!(am
   if(o.k==="w"){const w=wfActive().find(x=>wlGid(x)===+o.w);if(!w||(o.s!=="a"&&o.s!=="b"))return false;const id=wlGid(w);
     const t=d.tot[id]=d.tot[id]||{a:0,b:0},q=d.q[id]=d.q[id]||{a:0,b:0};t[o.s]+=amt;q[o.s]+=amt;
     wfSay(`Anonymous donor sent ${fmt(amt)} to ${w[o.s]}`);return true}
+  if(o.k==="p"){const k=wfPair(o.to,o.vs),T=d.tens[k];if(!T)return false;const cut=Math.min(C.step,amt/wfPt(o.to,o.vs));T.v=Math.max(0,(+T.v||0)-cut);T.t=Date.now();
+    wfSay(`Peace talks funded between ${o.to} and ${o.vs}: tension down ${Math.round(cut)}`);if(T.v<=0)delete d.tens[k];return true}
   if(o.k==="e"){const a=o.to,b=o.vs;if(!COUNTRIES.includes(a)||!COUNTRIES.includes(b)||a===b||wfAtWar(a,b))return false;
     const k=wfPair(a,b),T=d.tens[k]=d.tens[k]||{v:0,f:{}},hr=S.hour||0;if(T.hr!==hr){T.hr=hr;T.hv=0}
     const was=wfStage(T.v)[1],add=Math.max(0,Math.min(C.step,amt/wfPt(a,b),C.hrCap-(T.hv||0)));
@@ -3297,14 +3310,17 @@ function wfHour(quiet){if(!wfAuth())return;const d=wf(),C=WFCFG,act=wfActive();
   const live=new Set((S.wars||[]).filter(w=>w.l>0).map(wlGid));for(const k of ["tot","q","g"])for(const id in d[k])if(!live.has(+id))delete d[k][id];
   for(const k in d.tens){const T=d.tens[k];T.v=Math.max(0,(+T.v||0)-C.cool);if(T.v<=0)delete d.tens[k]}
   for(const k of Object.keys(d.tens).sort((x,y)=>d.tens[y].v-d.tens[x].v).slice(C.pairs))delete d.tens[k];
-  wfAI(quiet);d.dirty=1}
+  wfHot(d);wfAI(quiet);d.dirty=1}
+/* real-world hotspots: the authority world keeps these meters at least at their floor, so the map, the funding page and the Gov tab show today's real tensions */
+const WFHOT=[["USA","China",45],["Russia","Poland",42],["USA","Russia",40],["China","Philippines",38],["China","Japan",34],["China","India",32],["USA","Colombia",30],["Russia","UK",28],["USA","Mexico",24],["China","Australia",22],["Saudi Arabia","Iraq",20],["Egypt","Saudi Arabia",15]];
+function wfHot(d){d=d||wf();for(const [a,b,f] of WFHOT){if(!COUNTRIES.includes(a)||!COUNTRIES.includes(b)||wfAtWar(a,b))continue;const k=wfPair(a,b),T=d.tens[k]=d.tens[k]||{v:0,f:{}};if(!T.f||typeof T.f!=="object")T.f={};if((+T.v||0)<f){T.v=f;T.t=Date.now();d.dirty=1}}}
 function wfAI(quiet){const A=WFCFG.ai;if(Math.random()>A.p||!Array.isArray(S.rivals)||!S.rivals.length)return null;const i=Math.floor(Math.random()*S.rivals.length),r=S.rivals[i];if(!r||!(r.nw>0))return null;
   const amt=Math.round(r.nw*(A.min+Math.random()*(A.max-A.min))/1e5)*1e5;if(amt<WFCFG.min)return null;const act=wfActive(),d=wf(),pick=x=>x[Math.floor(Math.random()*x.length)];let o;
   if(act.length&&Math.random()<A.war){const w=pick(act);o={k:"w",w:wlGid(w),s:Math.random()<.5?"a":"b",amt}}
   else{let a,b;const ks=Object.keys(d.tens),lo=(S.wars||[]).filter(w=>w.l>0&&w.l<3);
     const fp=wfFeudPair(i);if(fp&&Math.random()<.7)[a,b]=fp;else if(ks.length&&Math.random()<.7)[a,b]=pick(ks).split("|");else if(lo.length&&Math.random()<.6){const w=pick(lo);a=w.a;b=w.b}
     else{a=pick(COUNTRIES);const near=COUNTRIES.filter(x=>x!==a&&kmBetween(cap(a),cap(x))<5000&&!wfAtWar(a,x));if(!near.length)return null;b=pick(near)}
-    if(!fp&&Math.random()<.5)[a,b]=[b,a];o={k:"e",to:a,vs:b,amt}}
+    if(!fp&&Math.random()<.5)[a,b]=[b,a];o={k:!fp&&d.tens[wfPair(a,b)]&&Math.random()<.3?"p":"e",to:a,vs:b,amt}}
   if(!wfApply(o,quiet))return null;if(fp&&o.k==="e"&&o.to===fp[0]&&o.vs===fp[1])stNeedle(i);if(!wrShared())r.nw=Math.max(rivalSeed(i)*.35,r.nw-amt);return o}
 /* Backer offers and company rivalries (local to each save). Only a player holding a government office gets offers:
    an AI company or a foreign AI government pays cash to stir tension (or fund the war) of the country they govern.
@@ -3336,7 +3352,7 @@ function wfBack(quiet){const p=pol(),off=wfOff(),B=WFCFG.back;if(!(p.r>=0&&p.c)|
   const x=Object.assign(o,{id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),fr,ty,amt,exp:Date.now()+B.exp*DAYMS});off.push(x);
   if(!quiet)stOffer(x);return x}
 /* deliver backer money as anonymous funding (local authority, or the online queue like a player donation) */
-function wfPush(o){const w=o.k==="w"?wfActive().find(x=>wlGid(x)===o.w):null,remote=wfRemote()&&(o.k==="e"?wwShared():!!(w&&w.gid));
+function wfPush(o){const w=o.k==="w"?wfActive().find(x=>wlGid(x)===o.w):null,remote=wfRemote()&&(o.k==="e"||o.k==="p"?wwShared():!!(w&&w.gid));
   if(!remote){if(wfApply(o))wfPublish(true);return}
   const doc={k:o.k,amt:Math.min(1e13,Math.round(o.amt)),to:String(o.to).slice(0,40),vs:String(o.vs).slice(0,40),at:window.firebase.firestore.FieldValue.serverTimestamp()};if(o.k==="w"){doc.w=o.w;doc.s=o.s}
   ON.db.collection("wfund").add(doc).catch(e=>console.warn("wf",e))}
@@ -3508,7 +3524,7 @@ function wfSend(){const f=WF.f,C=WFCFG,amt=Math.floor(+String(f.amt||"").replace
   if(!(amt>=C.min))return toast(`Minimum donation is ${fmt(C.min)}`);if(S.cash<amt)return toast("Not enough cash");
   let o,w=null;if(f.k==="w"){w=wfActive().find(x=>String(wlGid(x))===String(f.w));if(!w)return toast("Pick an active war");const s=f.s==="b"?"b":"a";o={k:"w",w:wlGid(w),s,amt,to:w[s],vs:w[s==="a"?"b":"a"]}}
   else{const a=f.to,b=f.vs;if(!COUNTRIES.includes(a)||!COUNTRIES.includes(b)||a===b)return toast("Pick two different countries");if(wfAtWar(a,b))return toast(`${a} and ${b} are already at war: fund the war instead`);o={k:"e",to:a,vs:b,amt}}
-  const d=wf(),rec={t:Date.now(),k:o.k,to:o.to,vs:o.vs,amt,st:"sent"},remote=wfRemote()&&(o.k==="e"?wwShared():!!(w&&w.gid));
+  const d=wf(),rec={t:Date.now(),k:o.k,to:o.to,vs:o.vs,amt,st:"sent"},remote=wfRemote()&&(o.k==="e"||o.k==="p"?wwShared():!!(w&&w.gid));
   if(!remote&&!wfApply(o))return toast("That target is no longer available");
   S.cash-=amt;d.mine.unshift(rec);d.mine.length=Math.min(d.mine.length,C.mine);f.amt="";
   if(remote){const doc={k:o.k,amt,at:window.firebase.firestore.FieldValue.serverTimestamp()};if(o.k==="w"){doc.w=o.w;doc.s=o.s}doc.to=o.to;doc.vs=o.vs;
@@ -3569,7 +3585,8 @@ function wfDash(){const v=wfView(),C=WFCFG,act=wfActive(),f=WF.f,now=Date.now(),
     <div class="mdx-card"><div class="mdx-ch"><h3>Rising tensions · escalation meters</h3></div>${tk.length?`<div class="mdx-rows">${tk.map(k=>{const T=v.tens[k],[a,b]=k.split("|"),st=wfStage(T.v),fa=(T.f||{})[a]||0,fb=(T.f||{})[b]||0;
       return `<div style="display:block"><div style="display:flex;justify-content:space-between;gap:6px"><span><b style="color:inherit">${wfE(a)}</b> – <b style="color:inherit">${wfE(b)}</b></span><b style="color:${st[2]}">${st[1]} · ${Math.floor(T.v)}/100</b></div>
         <div style="height:8px;border-radius:4px;background:var(--dxsoft);margin:6px 0"><div style="height:8px;border-radius:4px;width:${Math.min(100,T.v)}%;background:${st[2]}"></div></div>
-        <small style="opacity:.75">funding: ${wfE(a)} ${fmt(fa)} · ${wfE(b)} ${fmt(fb)}</small></div>`}).join("")}</div>`:`<div class="mdx-empty">All calm. No rivalry is being funded.</div>`}</div></div>
+        <small style="opacity:.75">funding: ${wfE(a)} ${fmt(fa)} · ${wfE(b)} ${fmt(fb)}</small>
+        <div style="display:flex;gap:6px;margin-top:6px"><button style="flex:1;min-width:0;padding:6px;border-radius:8px;border:1px solid var(--dxsoft);font:600 12px Figtree,sans-serif;cursor:pointer" data-mx="wft" data-v="tpeace" data-k="${wfE(k)}">🕊 Fund talks ${fmt(tensCost(a,b))}</button><button style="flex:1;min-width:0;padding:6px;border-radius:8px;border:1px solid var(--dxsoft);font:600 12px Figtree,sans-serif;cursor:pointer" data-mx="wft" data-v="tarms" data-k="${wfE(k)}">🔫 Sell arms ${fmt(tensCost(a,b))}</button></div></div>`}).join("")}</div>`:`<div class="mdx-empty">All calm. No rivalry is being funded.</div>`}</div></div>
   <div class="mdx-col mdx-c3">
     <div class="mdx-card"><div class="mdx-ch"><h3>Live feed</h3><span style="margin-left:auto;display:flex;align-items:center;gap:6px;font:600 12px Figtree,sans-serif;color:#7c3aed"><span class="mdx-live"></span>Live</span></div>${fd.length?`<div class="mdx-rows">${fd.map(x=>`<div><span style="white-space:normal">${wfE(x.x)}</span><small style="opacity:.6;white-space:nowrap">${ago(x.t)}</small></div>`).join("")}</div>`:`<div class="mdx-empty">Nothing yet.</div>`}</div></div></div>`}
 const dipWarOf=(n,by)=>(S.wars||[]).find(w=>(w.a===n&&w.b===by)||(w.a===by&&w.b===n));
@@ -6211,7 +6228,7 @@ function mxOpen(){if(!misOn()&&!intOn())return toast("Buy Military Intelligence 
     el.addEventListener("click",e=>{const b=e.target.closest("[data-mx]");if(!b){const f=e.target.closest(".bxd-con [data-ph]");if(f&&!f.disabled){if(mxFwd(f)!=="armed")mxRender()}return}const a=b.dataset.mx;
       if(a==="close"){mxClose();return}if(a==="theme"){themeSet(themeGet()==="dark"?"light":"dark");b.innerHTML=themeIco();return}
       if(a==="tg"){MX.tg=b.dataset.v;mxRender();return}if(a==="run"){MX.note=misRun(b.dataset.k,MX.tg);mxRender();return}if(a==="intrun"){MX.inote=intRun(b.dataset.k,MX.it,MX.ib);mxRender();return}
-      if(a==="pg"){MX.page=MXPAGES.some(p=>p[0]===b.dataset.v)?b.dataset.v:"war";mxRender();return}if(a.slice(0,2)==="cb"){cabAct(a,b);return}if(a==="wclb"){wclBuy();mxRender();return}if(a==="wclg"){const sel=document.getElementById("wclheir");const u=sel&&sel.value;wclGive(u,WCLD.arm===u);mxRender();return}if(a==="wcld"){const[k,x]=String(b.dataset.v).split(":");wclSet(k,x==="x"?null:+x);mxRender();return}if(a==="wcy"||a==="wcn"){wcVote(b.dataset.v,a==="wcy");mxRender();return}if(a==="wfk"){WF.f.k=b.dataset.k==="e"?"e":"w";mxRender();return}if(a==="wfsend"){wfSend();mxRender();return}if(a==="wfacc"||a==="wfdec"){wfOffer(b.dataset.v,a==="wfacc");mxRender();return}
+      if(a==="pg"){MX.page=MXPAGES.some(p=>p[0]===b.dataset.v)?b.dataset.v:"war";mxRender();return}if(a.slice(0,2)==="cb"){cabAct(a,b);return}if(a==="wclb"){wclBuy();mxRender();return}if(a==="wclg"){const sel=document.getElementById("wclheir");const u=sel&&sel.value;wclGive(u,WCLD.arm===u);mxRender();return}if(a==="wcld"){const[k,x]=String(b.dataset.v).split(":");wclSet(k,x==="x"?null:+x);mxRender();return}if(a==="wcy"||a==="wcn"){wcVote(b.dataset.v,a==="wcy");mxRender();return}if(a==="wfk"){WF.f.k=b.dataset.k==="e"?"e":"w";mxRender();return}if(a==="wfsend"){wfSend();mxRender();return}if(a==="wft"){tensAct(b.dataset.k,b.dataset.v==="tarms"?"tarms":"tpeace");mxRender();return}if(a==="wfacc"||a==="wfdec"){wfOffer(b.dataset.v,a==="wfacc");mxRender();return}
       if(a==="milapp"){mxClose();PH.open=true;PH.app="govt";govTab="mil";phRender();return}if(a==="wars"){mxClose();openPortfolio();return}});
     const cbIn=e=>{const t=e.target;if(t.matches&&t.matches("[data-wmdc]")){if(e.type==="change"){_wmdC=t.value;t.blur();mxRender()}return 1}if(t.id==="intf_it"||t.id==="intf_ib"){const k=t.id.slice(5);if(MX[k]!==t.value){MX[k]=t.value;MX.inote="";t.blur();mxRender()}return 1}if(t.id&&t.id.slice(0,4)==="cbf_"){CB.f[t.id.slice(4)]=t.value;if(t.tagName==="SELECT")mxRender();return 1}};el.addEventListener("change",cbIn);el.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="cbf_say")cabSay(false);if(e.key==="Enter"&&e.target.id==="cbf_gsay")cabSay(true)});
     el.addEventListener("input",e=>{if(cbIn(e))return;const t=e.target;if(!t.id||t.id.slice(0,4)!=="wff_")return;const k=t.id.slice(4);WF.f[k]=t.value;if(k!=="amt")mxRender()})}
