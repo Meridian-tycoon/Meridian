@@ -618,3 +618,11 @@ Columns: *Payback cum* = cumulative cost to reach that level ÷ net/day at that 
 | International airport | 72.7 / 103.7 | blocked | never / 526.4 |
 | Casino | 52.7 / 80.2 | blocked | blocked |
 
+
+### 2026-10-27 — applied (branch claude/payback-tune)
+
+- `compMult` rival floor 0.4 → 0.6 (rivals cut income to no less than 60%).
+- `upCost` cart growth 1.7× → 1.5× per level (the 7 carts in `CARTS` only; others stay 1.4×).
+- `supCost` for the Lv3→Lv4 site upgrade ×0.7 (30% cheaper); output unchanged.
+- Research lab / Advanced R&D center now show upkeep $/day and RP/day in the build list and on the site row.
+- International airport cost $15,000,000 → $13,500,000 (−10%).
