@@ -6208,7 +6208,7 @@ function mxOpen(){if(!misOn()&&!intOn())return toast("Buy Military Intelligence 
     el.addEventListener("click",e=>{const b=e.target.closest("[data-mx]");if(!b){const f=e.target.closest(".bxd-con [data-ph]");if(f&&!f.disabled){if(mxFwd(f)!=="armed")mxRender()}return}const a=b.dataset.mx;
       if(a==="close"){mxClose();return}if(a==="theme"){themeSet(themeGet()==="dark"?"light":"dark");b.innerHTML=themeIco();return}
       if(a==="tg"){MX.tg=b.dataset.v;mxRender();return}if(a==="run"){MX.note=misRun(b.dataset.k,MX.tg);mxRender();return}if(a==="intrun"){MX.inote=intRun(b.dataset.k,MX.it,MX.ib);mxRender();return}
-      if(a==="pg"){MX.page=MXPAGES.some(p=>p[0]===b.dataset.v)?b.dataset.v:"war";mxRender();return}if(a.slice(0,2)==="cb"){cabAct(a,b);return}if(a==="wclb"){wclBuy();mxRender();return}if(a==="wcy"||a==="wcn"){wcVote(b.dataset.v,a==="wcy");mxRender();return}if(a==="wfk"){WF.f.k=b.dataset.k==="e"?"e":"w";mxRender();return}if(a==="wfsend"){wfSend();mxRender();return}if(a==="wfacc"||a==="wfdec"){wfOffer(b.dataset.v,a==="wfacc");mxRender();return}
+      if(a==="pg"){MX.page=MXPAGES.some(p=>p[0]===b.dataset.v)?b.dataset.v:"war";mxRender();return}if(a.slice(0,2)==="cb"){cabAct(a,b);return}if(a==="wclb"){wclBuy();mxRender();return}if(a==="wcld"){const[k,x]=String(b.dataset.v).split(":");wclSet(k,x==="x"?null:+x);mxRender();return}if(a==="wcy"||a==="wcn"){wcVote(b.dataset.v,a==="wcy");mxRender();return}if(a==="wfk"){WF.f.k=b.dataset.k==="e"?"e":"w";mxRender();return}if(a==="wfsend"){wfSend();mxRender();return}if(a==="wfacc"||a==="wfdec"){wfOffer(b.dataset.v,a==="wfacc");mxRender();return}
       if(a==="milapp"){mxClose();PH.open=true;PH.app="govt";govTab="mil";phRender();return}if(a==="wars"){mxClose();openPortfolio();return}});
     const cbIn=e=>{const t=e.target;if(t.matches&&t.matches("[data-wmdc]")){if(e.type==="change"){_wmdC=t.value;t.blur();mxRender()}return 1}if(t.id==="intf_it"||t.id==="intf_ib"){const k=t.id.slice(5);if(MX[k]!==t.value){MX[k]=t.value;MX.inote="";t.blur();mxRender()}return 1}if(t.id&&t.id.slice(0,4)==="cbf_"){CB.f[t.id.slice(4)]=t.value;if(t.tagName==="SELECT")mxRender();return 1}};el.addEventListener("change",cbIn);el.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="cbf_say")cabSay(false);if(e.key==="Enter"&&e.target.id==="cbf_gsay")cabSay(true)});
     el.addEventListener("input",e=>{if(cbIn(e))return;const t=e.target;if(!t.id||t.id.slice(0,4)!=="wff_")return;const k=t.id.slice(4);WF.f[k]=t.value;if(k!=="amt")mxRender()})}
@@ -11510,7 +11510,7 @@ function wcFresh(w){const d=WC.doc;return d&&d.season===w&&Date.now()-d.at<60*60
 /* tally of season w: the master's (fresh, current season) or AI + my own vote */
 function wcTally(w){const d=wcFresh(w);if(d&&d.tally)return d.tally;if(d&&w===d.season-1&&d.last)return d.last;const d1=wcFresh(w+1);if(d1&&d1.last)return d1.last;return wcAdd(wcAI(w),wcMine(w))}
 function wcPass(t){const o={};for(const k of WCK)o[k]=!!(t[k]&&t[k][0]>t[k][1]);return o}
-function wcActive(){const w=wevWk(),d=wcFresh(w);if(d&&d.active)return d.active;return wcPass(wcTally(w-1))}
+function wcActive(){const w=wevWk(),d=wcFresh(w);if(d&&d.active)return d.active;return wclApply(wcPass(wcTally(w-1)),wclDec(w-1))}
 function wcOn(k){try{return !!wcActive()[k]}catch(e){return false}}
 function wcBiz(b){if(!wcOn("carbon"))return 1;if(WCDIRTY.includes(b.k))return spDev()?1:.85;return WCGREEN.includes(b.k)?1.1:1}
 function wcUp(o){if(!o||!wcOn("carbon"))return 1;if(WCDOP.includes(o.k))return spDev()?1:1.25;return WCGOP.includes(o.k)?.9:1}
@@ -11525,7 +11525,7 @@ function wcClean(v){if(!v||!Number.isInteger(v.season))return null;const t=x=>{i
   const ac={};for(const k of WCK)ac[k]=!!(v.active&&v.active[k]);return{season:v.season,active:ac,tally:t(v.tally),last:t(v.last),n:Math.max(0,+v.n|0),at:Date.now()}}
 function wcMaster(now){const db=wcBE();if(!db||!DEV_UIDS.includes(ON.user.uid)||WC.mbusy||now-WC.mpub<5*60000)return;WC.mbusy=1;WC.mpub=now;const w=wevWk(now);
   const get=x=>db.collection("wcvote").where("w","==",x).get().then(q=>{const t=wcAI(x);let n=0;q.forEach(d=>{n++;wcAdd(t,(d.data()||{}).v)});return{t,n}});
-  Promise.all([get(w),get(w-1)]).then(([a,b])=>{const active=wcPass(b.t);
+  Promise.all([get(w),get(w-1),db.collection("world").doc("wcleader").get().then(d=>d.exists?d.data():null,()=>null)]).then(([a,b,ld])=>{const dc=ld&&wclDecClean(ld.dec),active=wclApply(wcPass(b.t),dc&&dc.w===w-1?dc.v:null);
     return db.collection("world").doc("council").set({season:w,rules:WCK,active,tally:a.t,last:b.t,n:a.n,updated:window.firebase.firestore.FieldValue.serverTimestamp()})})
     .then(()=>{WC.mbusy=0},e=>{WC.mbusy=0;WC.err="Couldn't publish the council: "+(e&&e.code||e)})}
 function wcTick(){try{wclTick();const now=Date.now(),E=wcS(),w=wevWk(now),db=wcBE();
@@ -11537,7 +11537,7 @@ function wcDash(){const p=pol(),w=wevWk(),a=wcActive(),t=wcTally(w),lt=wcTally(w
   const card=(h,body)=>`<div class="mdx-card" style="padding:14px;margin-bottom:12px"><div style="font-weight:600;margin-bottom:8px">${h}</div>${body}</div>`;
   const row=k=>{const R=WCR[k];return `<div><span>${R.i} ${R.n}<br><small style="opacity:.75">${R.fx}</small></span><b style="color:${a[k]?"#dc2626":"#64748b"}">${a[k]?"In force":"Not in force"}</b></div>`};
   const bal=WCK.map(k=>{const R=WCR[k],x=t[k]||[0,0],v=mine[k],done=v===0||v===1;
-    return `<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.15)"><div><b>${R.i} ${R.n}</b> <small style="opacity:.7">· ${x[0].toLocaleString()} yes / ${x[1].toLocaleString()} no${x[0]>x[1]?" · passing":" · failing"}</small></div><div style="font-size:12px;opacity:.8;margin-top:2px">${R.fx}</div><div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${done?`<small>You voted ${v?"YES":"NO"}</small>`:off?cabBtn("wcy","Yes",k)+" "+cabBtn("wcn","No",k):"<small>Only office holders vote</small>"}</div></div>`}).join("");
+    return `<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.15)"><div><b>${R.i} ${R.n}</b> <small style="opacity:.7">· ${x[0].toLocaleString()} yes / ${x[1].toLocaleString()} no${(()=>{const dv=wclDec(w);return dv&&(dv[k]===0||dv[k]===1)?(dv[k]?" · 🌐 leader: pass":" · 🌐 leader: block"):x[0]>x[1]?" · passing":" · failing"})()}</small></div><div style="font-size:12px;opacity:.8;margin-top:2px">${R.fx}</div><div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${done?`<small>You voted ${v?"YES":"NO"}</small>`:off?cabBtn("wcy","Yes",k)+" "+cabBtn("wcn","No",k):"<small>Only office holders vote</small>"}</div></div>`}).join("");
   const last=WCK.map(k=>{const x=lt[k]||[0,0];return `<div><span>${WCR[k].i} ${WCR[k].n}</span><b>${x[0].toLocaleString()} – ${x[1].toLocaleString()} · ${x[0]>x[1]?"passed":"rejected"}</b></div>`}).join("");
   return (WC.err?`<div class="mdx-empty">${onEsc(WC.err)}</div>`:"")+
     card(`🌍 Rules in force · season ${w}`,`<div class="ph-rows">${WCK.map(row).join("")}</div><div class="ph-sub" style="margin-top:8px">Rules apply to every player until the season ends in ${fmtDur(wcEnd(w)-Date.now())}.</div>`)+
@@ -11550,7 +11550,7 @@ function wclMine(){return !!(S.wcl&&S.wcl.at)}
 function wclHolder(){const d=WCLD.doc;return d&&typeof d.uid==="string"?d:null}
 function wclTaken(){const h=wclHolder();if(!h)return false;return !(wcBE()&&ON.user&&h.uid===ON.user.uid)}
 function wclTick(){try{const db=wcBE();
-  if(db&&!WCLD.unsub)WCLD.unsub=db.collection("world").doc("wcleader").onSnapshot(d=>{const v=d.exists?d.data():null;WCLD.doc=v&&typeof v.uid==="string"?{uid:v.uid,name:String(v.name||"").slice(0,40),c:String(v.c||"").slice(0,40)}:null;
+  if(db&&!WCLD.unsub)WCLD.unsub=db.collection("world").doc("wcleader").onSnapshot(d=>{const v=d.exists?d.data():null;WCLD.doc=v&&typeof v.uid==="string"?{uid:v.uid,name:String(v.name||"").slice(0,40),c:String(v.c||"").slice(0,40),dec:wclDecClean(v.dec)}:null;
     if(wclMine()&&ON.user&&WCLD.doc&&WCLD.doc.uid!==ON.user.uid){delete S.wcl;toast("Another player holds the World Council Leader seat.")}if(typeof cabPaint==="function")cabPaint()},()=>{});
   if(!db&&WCLD.unsub){try{WCLD.unsub()}catch(e){}WCLD.unsub=null;WCLD.doc=null}}catch(e){console.warn("wclTick",e)}}
 function wclBuy(){const p=pol();if(WCLD.busy)return;if(wclMine())return toast("You already hold the seat.");
@@ -11562,10 +11562,18 @@ function wclBuy(){const p=pol();if(WCLD.busy)return;if(wclMine())return toast("Y
   WCLD.busy=1;const ref=db.collection("world").doc("wcleader"),uid=ON.user.uid;
   db.runTransaction(t=>t.get(ref).then(d=>{if(d.exists)throw new Error("taken");t.set(ref,{uid,name:String(S.name||"Player").slice(0,40),c:String(p.c).slice(0,40),at:firebase.firestore.FieldValue.serverTimestamp()})}))
     .then(()=>{WCLD.busy=0;done()}).catch(e=>{WCLD.busy=0;toast(e&&e.message==="taken"?"Too late, another player took the seat.":"Couldn't claim the seat. Try again.");cabPaint()})}
+function wclDecClean(x){if(!x||typeof x!=="object"||!Number.isInteger(x.w)||!x.v||typeof x.v!=="object")return null;const v={};for(const k of WCK)if(x.v[k]===0||x.v[k]===1)v[k]=x.v[k];return{w:x.w,v}}
+function wclDec(w){const d=WCLD.doc&&WCLD.doc.dec;if(d&&d.w===w)return d.v;const m=S.wcl&&wclDecClean(S.wcl.dec);return m&&m.w===w?m.v:null}
+function wclApply(o,v){if(v)for(const k of WCK)if(v[k]===0||v[k]===1)o[k]=!!v[k];return o}
+function wclSet(k,val){if(!wclMine()||!WCR[k])return;const w=wevWk(),cur=wclDecClean(S.wcl.dec),v=cur&&cur.w===w?{...cur.v}:{};if(val===0||val===1)v[k]=val;else delete v[k];
+  S.wcl.dec={w,v};commit();const db=wcBE();if(db)db.collection("world").doc("wcleader").update({dec:{w,v}}).then(()=>toast("Decree sent to the council."),()=>toast("Couldn't send the decree. Try again."));else toast("Decree set.")}
+function wclDecHtml(){const w=wevWk(),m=wclDecClean(S.wcl&&S.wcl.dec),v=m&&m.w===w?m.v:{};
+  return `<div style="margin-top:10px;font-weight:600">Your decree for next season</div><div style="font-size:12px;opacity:.8;margin-bottom:6px">Your decision overrides the vote.</div>`+WCK.map(k=>{const R=WCR[k],x=v[k],b=(t,val,on)=>`<button data-mx="wcld" data-v="${k}:${val}" style="padding:4px 8px;border-radius:8px;border:1px solid rgba(127,127,127,.35);background:${on?"#2563eb":"transparent"};color:${on?"#fff":"inherit"}">${t}</button>`;
+    return `<div style="padding:6px 0;border-bottom:1px solid rgba(127,127,127,.15)"><div><b>${R.i} ${R.n}</b></div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${b("Pass",1,x===1)}${b("Block",0,x===0)}${b("Let the vote decide","x",x!==0&&x!==1)}</div></div>`}).join("")}
 function wclCard(){const p=pol(),h=wclHolder(),mine=wclMine(),off=p.r>=0&&p.c;
   const who=mine?"<b>You</b> hold the seat.":h?`Held by <b>${onEsc(h.name||"a player")}</b>${h.c&&CITIES[h.c]?"":""}.`:"The seat is empty.";
-  const btn=mine?"":wclTaken()?"<small>Only one player can hold it.</small>":!off?"<small>Join a government first (any office).</small>":`<button class="buy" data-mx="wclb" style="width:100%">Take the seat · ${fmt(WCLCFG.price)}</button>`;
-  return `<div class="mdx-card" style="padding:14px;margin-bottom:12px"><div style="font-weight:600;margin-bottom:8px">${WCLCFG.ic} ${WCLCFG.n}</div><div style="font-size:13px;margin-bottom:8px">${who} One seat in the whole world. Needs a government office and ${fmt(WCLCFG.price)}. The holder gets the highest status in the game.</div>${btn}</div>`}
+  const btn=mine?"":wclTaken()?"<small>Only one player can hold it.</small>":!off?"<small>Join a government first (any office).</small>":`<button class="buy" data-mx="wclb" style="width:100%">Take the seat · ${fmt(WCLCFG.price)}</button>`;const dec=mine?wclDecHtml():"";
+  return `<div class="mdx-card" style="padding:14px;margin-bottom:12px"><div style="font-weight:600;margin-bottom:8px">${WCLCFG.ic} ${WCLCFG.n}</div><div style="font-size:13px;margin-bottom:8px">${who} One seat in the whole world. Needs a government office and ${fmt(WCLCFG.price)}. The holder gets the highest status in the game and the final say on every council rule.</div>${btn}${dec}</div>`}
 /* ---- board of directors: quarterly shareholder meetings once listed (S.brd, local to the save) ---- */
 const BDQ=30*DAYMS,BDWAIT=3*DAYMS,BDPOL={low:[.5,"Low payout","50% of the normal dividend: more cash for growth, shareholders grumble",-.03],normal:[1,"Normal payout","the standard public share of every hour of profit",0],high:[1.5,"High payout","150% of the normal dividend: shareholders cheer, less cash for you",.03]};
 const BDTG={inc:["Profit growth","grow 24 h average profit by 10%"],nw:["Net worth","grow net worth by 15%"],city:["Expansion","run businesses in one more city"]};
