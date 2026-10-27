@@ -840,6 +840,7 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   if(typeof drawGovLine==="function"&&z<11)try{drawGovLine(ctx)}catch(e){}
   if(typeof drawEvac==="function")try{drawEvac(ctx)}catch(e){}
   if(typeof airDraw==="function"&&z<11)try{airDraw(ctx,now)}catch(e){}
+  if(typeof pfxDraw==="function"&&z<11)try{pfxDraw(ctx,now,z)}catch(e){}
   if(typeof satDraw==="function"&&z<11)try{satDraw(ctx,now)}catch(e){}
   if(typeof drawRigs==="function")try{drawRigs(ctx)}catch(e){}
   if(typeof drawTens==="function"&&z<11)try{drawTens(ctx)}catch(e){}if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);if(typeof drawPlWars==="function"&&z<11)try{drawPlWars(ctx)}catch(e){}ctx.restore()}
@@ -2733,7 +2734,7 @@ function election(n,quiet){const g=gov(n),ks=Object.keys(PARTIES);
   const wasCtrl=g.ctrl,donC=backed===win&&g.don[win]>=ctrlNeed(n),ldC=!!(g.polCtrl&&S.pol&&S.pol.c===n&&S.pol.r===GOVCFG.offices.length-1&&Date.now()>=(S.pol.exCd||0));
   g.ctrl=donC||ldC;g.polCtrl=donC?0:ldC?1:0;if(!g.ctrl)g.contract=0;
   if(!quiet&&g.ctrl&&!wasCtrl)logGov(`You now control the government of ${n}`);else if(!quiet&&wasCtrl&&!g.ctrl)logGov(`You lost control of ${n}`);
-  const changed=win!==g.party;g.party=win;g.appr=changed?55+Math.random()*15:Math.min(90,g.appr+5);g.don={};
+  const changed=win!==g.party;if(changed)try{pfxElect(n,win)}catch(e){}g.party=win;g.appr=changed?55+Math.random()*15:Math.min(90,g.appr+5);g.don={};
   g.next=g.next+ELECT>Date.now()?g.next+ELECT:Date.now()+ELECT;
   if(changed){const pl=PARTIES[win].pl,diff=Object.keys(LAWS).filter(k=>g.laws[k]!==pl[k]);if(diff.length){const k=diff[0];g.laws[k]=pl[k]}}
   if(!quiet&&(ownsIn(n)||backed))logGov(`${PARTIES[win].n} ${changed?"wins":"re-elected in"} ${n}${changed?" election":""} with ${pct}%`)}
@@ -3211,7 +3212,7 @@ function wwMirror(quiet){if(!wwShared())return;try{wwGovMirror(quiet)}catch(e){c
   if(WW.ruler&&typeof WW.ruler==="object"){const mine=pc&&d.ruler[pc];for(const n in d.ruler)if(n!==pc&&!WW.ruler[n])delete d.ruler[n];for(const n in WW.ruler)if(n!==pc&&COUNTRIES.includes(n)&&COUNTRIES.includes(WW.ruler[n])){if(!d.ruler[n])d.rsince[n]=d.day;d.ruler[n]=WW.ruler[n]}if(mine)d.ruler[pc]=mine}}
 /* governments follow the master world: same ruling party and next election date for every player */
 function wwGovMirror(quiet){if(!wwShared()||!WW.gp)return;for(const n in WW.gp){const x=WW.gp[n];if(!COUNTRIES.includes(n)||!Array.isArray(x)||!PARTIES[x[0]])continue;const g=gov(n);
-  if(+x[1]>0)g.next=+x[1];if(g.party===x[0])continue;g.party=x[0];g.appr=Math.max(g.appr,55);const pl=PARTIES[x[0]].pl;for(const k in LAWS)g.laws[k]=pl[k];
+  if(+x[1]>0)g.next=+x[1];if(g.party===x[0])continue;try{pfxElect(n,x[0])}catch(e){}g.party=x[0];g.appr=Math.max(g.appr,55);const pl=PARTIES[x[0]].pl;for(const k in LAWS)g.laws[k]=pl[k];
   if(!quiet&&ownsIn(n))logGov(`${PARTIES[x[0]].n} now governs ${n}`)}}
 function wjPub(w,s){try{if(!ON.ready||!ON.user)return;const gid=w.gid||(WRM?w.id:0);if(!gid)return;const r=ON.db.collection("wjoin").doc(ON.user.uid);
   if(!s)return void r.delete().catch(()=>{});
@@ -5612,9 +5613,9 @@ function trjDraw(ctx,now,zs){for(let i=_trj.length-1;i>=0;i--){const f=_trj[i];i
   ctx.globalAlpha=.28*fa;ctx.lineWidth=1.2;ctx.setLineDash([4,4]);ctx.beginPath();let pen=false;for(const p of P){if(!p){pen=false;continue}const [x,y]=pt(p);pen?ctx.lineTo(x,y):ctx.moveTo(x,y);pen=true}ctx.stroke();ctx.setLineDash([]);
   let last=null;for(const p of P){if(!p||p[2]>shown)break;if(last){const [x0,y0]=pt(last),[x1,y1]=pt(p);ctx.globalAlpha=(.25+.75*(p[2]/Math.max(.01,shown)))*fa;ctx.lineWidth=1.5+2*(p[2]/Math.max(.01,shown));ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.stroke()}last=p}
   const hl=f.g(shown);if(visible(hl[0],hl[1])){const [hx,hy0]=proj(hl),hy=hy0-4*shown*(1-shown)*hgt;
-    ctx.globalAlpha=fa;ctx.shadowColor=W.col;ctx.shadowBlur=10;ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(hx,hy,3.2*Math.min(1.4,zs),0,7);ctx.fill();ctx.shadowBlur=0;
+    ctx.fillStyle=W.col;ctx.globalAlpha=.3*fa;ctx.beginPath();ctx.arc(hx,hy,7*Math.min(1.4,zs),0,7);ctx.fill();ctx.globalAlpha=fa;ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(hx,hy,3.2*Math.min(1.4,zs),0,7);ctx.fill();
     if(u<1){const eta=Math.max(0,Math.ceil((f.t0+f.dur-now)/1000)),tx=W.ico+" "+eta+"s";ctx.font="bold 11px system-ui, sans-serif";ctx.textAlign="center";ctx.lineWidth=3;ctx.strokeStyle="rgba(0,0,0,.6)";ctx.strokeText(tx,hx,hy-9);ctx.fillStyle="#fff";ctx.fillText(tx,hx,hy-9)}}
-  if(f.sp&&u>=1&&visible(f.b[0],f.b[1])){const w=Math.min(1,(now-f.t0-f.dur)/f.fade),[bx,by]=proj(f.b),R=(W.r||10)*zs;ctx.globalAlpha=Math.max(0,1-w);ctx.lineWidth=3*(1-w)+1;ctx.beginPath();ctx.arc(bx,by,R*(.3+2.2*w),0,7);ctx.stroke();ctx.fillStyle="#fff7d6";ctx.globalAlpha=Math.max(0,(1-w)*.9);ctx.beginPath();ctx.arc(bx,by,R*(.9-.6*w),0,7);ctx.fill()}
+  if((f.sp||WPNCFG.w[f.k])&&u>=1&&visible(f.b[0],f.b[1])){const w=Math.min(1,(now-f.t0-f.dur)/f.fade),[bx,by]=proj(f.b),R=(W.r||10)*zs;ctx.globalAlpha=Math.max(0,1-w);ctx.lineWidth=3*(1-w)+1;ctx.beginPath();ctx.arc(bx,by,R*(.3+2.2*w),0,7);ctx.stroke();ctx.fillStyle="#fff7d6";ctx.globalAlpha=Math.max(0,(1-w)*.9);ctx.beginPath();ctx.arc(bx,by,R*(.9-.6*w),0,7);ctx.fill()}
   ctx.restore()}}
 /* red launch banner under the header: ms = lifetime; at = impact time for a live countdown (visual only) */
 const WBN={msl:"MISSILE LAUNCH",gas:"CHEMICAL ATTACK",nuke:"NUCLEAR LAUNCH",icbm:"ICBM LAUNCH"};const WMDBANNER_MS=60000;let _wbT=0;
@@ -8985,7 +8986,7 @@ setInterval(()=>{try{if(_cfPop){const el=document.getElementById("cfpop");if(el&
     if((card?card.dataset.bgsig:"")!==sig){if(Date.now()-(PH.touched||0)>=3000&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)))phRender()}
     else bgFill(PH.el)}}catch(e){console.warn("bgfill",e)}},2000);
 /* ---------- Settings app (device prefs in S.set; UI theme mirrored to localStorage for first paint) ---------- */
-var SET_DEF={ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,sat:1};
+var SET_DEF={ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,sat:1,pfx:1};
 var SET_UI=[["classic","Classic","The original look"],["glass","Glass","Frosted dark panels, violet glow"],["ledger","Ledger","Cream paper, ink and serif type"],["command","Command","Neon HUD, cyan and magenta"]];
 var SET_FONT="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@500;700&family=Playfair+Display:wght@700;900&family=Source+Serif+4:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Chakra+Petch:wght@500;700&display=swap";
 var _setSig="";
@@ -9008,6 +9009,7 @@ function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="g
   ${s.ui==="classic"?`<div class="set-row"><span>Light or dark<small>Classic theme only</small></span>${seg("mode",[["light","Light"],["dark","Dark"]],themeGet())}</div>`:""}
   <div class="set-row"><span>Text size<small>Panels, ticker and pop-ups</small></span>${seg("fs",[[.9,"Small"],[1,"Normal"],[1.15,"Large"]],s.fs)}</div>
   ${tog("sat","Satellites","Your launched satellites orbiting the globe")}
+  ${tog("pfx","Planet effects","Wealth glow, election flashes, rocket launches and seasons")}
   <div class="ph-sub">Comfort</div>
   ${tog("rm","Reduce motion","No confetti, fly-overs or animations")}
   ${tog("vib","Vibration","Buzz on wins and warnings (phones)")}
@@ -10643,7 +10645,7 @@ function spLaunch(cid,ty){if(!hasTech("spaceport"))return toast("Research Launch
   if(ok||!dev)inv.launches-=1;
   if(ok){S.sats=(+S.sats||0)+1;s.fl.push({id:++s.seq,t:ty,at:now,o:s.fl.length%3});if(s.fl.length>SPC.cap)s.fl.shift();S.cash+=pay;S.earned=(S.earned||0)+pay;toast(`🚀 ${SPT[ty][0]} satellite in orbit from ${c.name}: government paid ${fmt(pay)}`)}
   else toast(dev?"💥 Launch failed — dev account: the rocket is refunded":`💥 Launch failed over ${c.name}. The rocket and payload were lost`);
-  s.log.unshift({t:now,ty,city:c.id,ok,pay:ok?pay:0,dev:!ok&&dev?1:0});s.log.length=Math.min(s.log.length,40);
+  try{pfxLaunch(c,ok)}catch(e){}s.log.unshift({t:now,ty,city:c.id,ok,pay:ok?pay:0,dev:!ok&&dev?1:0});s.log.length=Math.min(s.log.length,40);
   try{S.log.unshift(ok?`Launched a ${SPT[ty][0].toLowerCase()} satellite from ${c.name}`:`A launch from ${c.name} failed`);S.log=S.log.slice(0,3)}catch(e){}
   if(ok&&typeof confetti==="function")confetti(40,innerWidth/2,innerHeight/3);save();hud();spRefresh()}
 function spDeorbit(id,rep){const s=SP(),i=s.fl.findIndex(x=>x.id===+id);if(i<0)return;const x=s.fl[i];
@@ -10713,6 +10715,44 @@ function spDraw(){const s=SP(),now=Date.now(),P=spPorts(),E=dxE,tabs=[["ov","Ove
       +`<div style="margin-top:16px"></div>`+card("Player space programs",pl.length?`<div class="mdx-rows">${pl.map(p=>`<div><span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#94a3b8"}"></span> ${E(String(p.name||"Tycoon").slice(0,20))}</span><b>${Math.floor(+p.sats)}${+p.sats>=3?"+":""} 🛰️</b></div>`).join("")}</div>`:`<div class="mdx-rows"><div><span>${typeof ON!=="undefined"&&ON.user?"No other online player has satellites yet.":"Sign in (Saves › Online) to see other players' satellites."}</span><b></b></div></div>`)}
   SPW.el.innerHTML=`<div class="mdx-bar"><span class="mdx-logo" style="background:#312e81;font-size:15px">🚀</span><b>Mission control</b><div class="mdx-seg" style="overflow-x:auto;max-width:60%">${tabs.map(t=>`<button data-sp="tab" data-k="${t[0]}" class="${s.tab===t[0]?"on":""}">${t[1]}</button>`).join("")}</div><button class="mdx-th" data-sp="theme" aria-label="Switch light or dark theme">${themeIco()}</button><button class="mdx-x" data-sp="close" aria-label="Close dashboard">×</button></div>
   <div class="mdx-body"><div class="mdx-in"><div class="mdx-hd"><h2>Space program <span>🛰️</span></h2><div class="mdx-date"><span class="mdx-live"></span>${ready?ready+" launch"+(ready===1?"":"es")+" ready":P.length?"Next launch "+spDur(eta):"No spaceport"}</div></div>${body}</div></div>`}
+/* ===== Planet visuals (display only, toggle S.set.pfx): wealth glow, election flashes, rocket launches, seasons =====
+   Transient lists only (never saved). pfxDraw(ctx,now,z) is called from drawNow() inside the globe clip. */
+const PFX={el:[],ln:[],ws:null,wt:0,sats:{},ai:{},hf:null,raf:0,lt:0};
+function pfxOn(){return !(S.set&&S.set.pfx===0)}
+function pfxElect(n,party){if(!pfxOn()||!PARTIES[party])return;PFX.el=PFX.el.filter(e=>e.n!==n);PFX.el.push({n,col:PARTIES[party].col,t:Date.now()});if(PFX.el.length>12)PFX.el.shift();pfxAnim()}
+function pfxLaunch(c,ok){if(!pfxOn()||!c||!isFinite(c.lon))return;PFX.ln.push({lon:c.lon,lat:c.lat,t:Date.now(),ok:ok!==false});if(PFX.ln.length>8)PFX.ln.shift();pfxAnim()}
+function pfxAnim(){if(PFX.raf||(typeof reduce!=="undefined"&&reduce)){try{draw()}catch(e){}return}
+  const step=ts=>{PFX.raf=0;const now=Date.now();if(!(PFX.el.some(e=>now-e.t<6000)||PFX.ln.some(e=>now-e.t<8000)))return;if(ts-PFX.lt>32){PFX.lt=ts;try{draw()}catch(e){}}PFX.raf=requestAnimationFrame(step)};PFX.raf=requestAnimationFrame(step)}
+// other players' satellite counts rising and AI space agencies' scheduled launches become rocket trails
+function pfxScan(now){const P=typeof ON!=="undefined"&&Array.isArray(ON.players)?ON.players:[];
+  for(const p of P){if(!p||!p.uid)continue;const s=+p.sats||0,o=PFX.sats[p.uid];PFX.sats[p.uid]=s;if(o!=null&&s>o){const id=Array.isArray(p.hq)&&p.hq[0]!=null?p.hq[0]:p.home;pfxLaunch(CITIES[id])}}
+  if(typeof spFeed==="function"&&typeof SPAI!=="undefined")try{for(const e of spFeed(now,-1,6)){if(now-e.t>8000)continue;const k=e.a[0]+e.t;if(PFX.ai[k])continue;PFX.ai[k]=1;const c=COUNTRIES.includes(e.a[2])?cap(e.a[2]):null;if(c){PFX.ln.push({lon:c.lon,lat:c.lat,t:e.t,ok:e.ok});if(PFX.ln.length>8)PFX.ln.shift();pfxAnim()}}}catch(e){}}
+function pfxWealth(now){if(PFX.ws&&now-PFX.wt<5000)return PFX.ws;const m={},o={};
+  for(const id in S.own||{}){const b=S.own[id];if(!b||typeof b!=="object")continue;let v=0;for(const k in b)v+=+b[k]||0;if(v>0)m[id]=v}
+  for(const id in S.hq||{})if(S.hq[id])m[id]=(m[id]||0)+5;
+  for(const s of S.sites||[])if(s&&CITIES[s.city])m[s.city]=(m[s.city]||0)+1;
+  const P=typeof ON!=="undefined"&&Array.isArray(ON.players)?ON.players:[];for(const p of P){if(!p)continue;if(Array.isArray(p.biz))for(const id of p.biz)o[id]=(o[id]||0)+1;if(Array.isArray(p.hq))for(const id of p.hq)o[id]=(o[id]||0)+3}
+  PFX.wt=now;return PFX.ws={m,o}}
+function pfxGlow(ctx,map,col,zs){const L=[[1,.05],[.62,.08],[.32,.14]],pts=[];
+  for(const id in map){const c=CITIES[id];if(!c||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]);pts.push([x,y,(5+4*Math.log2(1+map[id]))*zs])}
+  if(!pts.length)return;ctx.fillStyle=col;for(const [f,a] of L){ctx.globalAlpha=a;ctx.beginPath();for(const [x,y,r] of pts){ctx.moveTo(x+r*f,y);ctx.arc(x,y,r*f,0,7)}ctx.fill()}ctx.globalAlpha=1}
+function pfxHemi(){if(PFX.hf||!world)return PFX.hf;const n=[],s=[];for(const f of world.features){try{const la=d3.geoCentroid(f)[1];if(la>18&&la<62)n.push(f);else if(la<-18&&la>-62)s.push(f)}catch(e){}}
+  return PFX.hf={n:{type:"FeatureCollection",features:n},s:{type:"FeatureCollection",features:s}}}
+function pfxSeasons(ctx,z){if(typeof ssnIdx!=="function"||z>=7)return;const ni=ssnIdx(null),si=(ni+2)%4,R=[24,18,24,33];   // spring, summer, autumn, winter cap radius (deg from pole)
+  ctx.fillStyle="#ffffff";ctx.globalAlpha=.15;for(const [lat,i] of [[90,ni],[-90,si]]){ctx.beginPath();path(d3.geoCircle().center([0,lat]).radius(R[i]).precision(6)());ctx.fill()}
+  const h=pfxHemi();if(h){ctx.fillStyle="#4ade80";ctx.globalAlpha=.07;if(ni===1){ctx.beginPath();path(h.n);ctx.fill()}if(si===1){ctx.beginPath();path(h.s);ctx.fill()}}ctx.globalAlpha=1}
+function pfxDraw(ctx,now,z){if(!pfxOn())return;const zs=Math.min(1.6,.8+(typeof V!=="undefined"?V.k:1)*.08),still=typeof reduce!=="undefined"&&reduce;ctx.save();
+  try{pfxSeasons(ctx,z)}catch(e){}
+  try{pfxScan(now)}catch(e){}
+  try{const w=pfxWealth(now);pfxGlow(ctx,w.o,"#93c5fd",zs);pfxGlow(ctx,w.m,"#fbbf24",zs)}catch(e){}
+  try{PFX.el=PFX.el.filter(e=>now-e.t<6000);for(const e of PFX.el){const f=cfFeat(e.n);if(!f)continue;const u=(now-e.t)/6000,p=still?.7:.55+.45*Math.cos(u*Math.PI*6);
+    ctx.beginPath();path(f);ctx.fillStyle=e.col;ctx.globalAlpha=.4*(1-u)*p;ctx.fill();ctx.strokeStyle=e.col;ctx.lineWidth=1.5;ctx.globalAlpha=.8*(1-u);ctx.stroke()}}catch(e){}
+  try{PFX.ln=PFX.ln.filter(e=>now-e.t<8000);ctx.lineCap="round";for(const e of PFX.ln){if(!visible(e.lon,e.lat))continue;const [x,y]=proj([e.lon,e.lat]),u=still?.6:(now-e.t)/8000,H=150*zs,
+    q=e.ok?u:Math.min(u,.45),tip=t=>[x+28*zs*t*t,y-H*t],[tx,ty]=tip(q),fa=Math.min(1,(1-u)*3);
+    ctx.strokeStyle="#e5e7eb";ctx.globalAlpha=.5*fa;ctx.lineWidth=2.2;ctx.beginPath();ctx.moveTo(x,y);for(let j=1;j<=12;j++){const p=tip(q*j/12);ctx.lineTo(p[0],p[1])}ctx.stroke();
+    ctx.globalAlpha=fa;if(!e.ok&&u>.45){const b=(u-.45)/.55;ctx.strokeStyle="#f87171";ctx.lineWidth=2;ctx.beginPath();ctx.arc(tx,ty,4+18*b*zs,0,7);ctx.stroke()}
+    else{ctx.fillStyle="#fb923c";ctx.beginPath();ctx.arc(tx,ty,4.5*zs,0,7);ctx.fill();ctx.fillStyle="#fff7d6";ctx.beginPath();ctx.arc(tx,ty,2*zs,0,7);ctx.fill()}}}catch(e){}
+  ctx.restore()}
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();try{airTick(Date.now())}catch(e){console.warn("air",e)}if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
