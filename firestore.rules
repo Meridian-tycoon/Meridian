@@ -84,6 +84,60 @@ service cloud.firestore {
         && request.resource.data.at == request.time;
       allow read, delete: if request.auth != null && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1';
     }
+    // Shared Mars terraforming meter: written only by the master world, read by everyone.
+    match /world/terra {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1'
+        && request.resource.data.keys().hasOnly(['tot', 'top', 'feed', 'updated'])
+        && request.resource.data.tot is number && request.resource.data.tot >= 0
+        && request.resource.data.top is map && request.resource.data.top.size() <= 30
+        && request.resource.data.feed is list && request.resource.data.feed.size() <= 20
+        && request.resource.data.updated == request.time;
+    }
+    // Terraforming contributions (no sender uid): any signed-in player creates one; only the master world reads and deletes them.
+    match /terra/{id} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['c', 'amt', 'at']) && request.resource.data.keys().hasAll(['c', 'amt', 'at'])
+        && request.resource.data.c is string && request.resource.data.c.size() > 0 && request.resource.data.c.size() <= 40
+        && request.resource.data.amt in [10000000, 100000000, 1000000000, 10000000000]
+        && request.resource.data.at == request.time;
+      allow read, delete: if request.auth != null && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1';
+    }
+
+    // World council: one season per real UTC week (week 0 = Mon 5 Jan 1970). Written only by the master world, read by everyone.
+    match /world/council {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1'
+        && request.resource.data.keys().hasOnly(['season', 'rules', 'active', 'tally', 'last', 'n', 'updated'])
+        && request.resource.data.season is int
+        && request.resource.data.rules is list && request.resource.data.rules.size() <= 6
+        && request.resource.data.active is map && request.resource.data.active.size() <= 6
+        && request.resource.data.tally is map && request.resource.data.tally.size() <= 6
+        && request.resource.data.last is map && request.resource.data.last.size() <= 6
+        && request.resource.data.n is int
+        && request.resource.data.updated == request.time;
+    }
+    // World council votes: doc id "<week>_<uid>", own doc only, only in the current week, yes/no per rule; an update may only add rules.
+    // Only the master world reads them (to tally).
+    match /wcvote/{id} {
+      function wcOk(d) {
+        return d.keys().hasOnly(['w', 'c', 'v', 'at']) && d.keys().hasAll(['w', 'c', 'v', 'at'])
+          && d.w is int && d.w == math.floor((request.time.toMillis() / 86400000 - 4) / 7)
+          && id == string(d.w) + '_' + request.auth.uid
+          && d.c is string && d.c.size() > 0 && d.c.size() <= 40
+          && d.v is map && d.v.size() >= 1 && d.v.keys().hasOnly(['nuke', 'carbon', 'arms'])
+          && d.v.values().hasOnly([0, 1])
+          && d.at == request.time;
+      }
+      allow create: if request.auth != null && wcOk(request.resource.data);
+      allow update: if request.auth != null && wcOk(request.resource.data)
+        && request.resource.data.w == resource.data.w
+        && request.resource.data.v.diff(resource.data.v).changedKeys().size() == 0
+        && request.resource.data.v.diff(resource.data.v).removedKeys().size() == 0;
+      allow read: if request.auth != null && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1';
+    }
     // Shared war funding totals, escalation meters and feed: written only by the master world, read by everyone. No donor ids.
     match /world/wfund {
       allow read: if true;
@@ -953,7 +1007,7 @@ service cloud.firestore {
     function validColony(d) {
       return d.keys().hasOnly(['p', 's', 'c', 'uid', 'name', 'col', 'lv', 'sup', 'supAt', 'gar', 'ore', 'oreAt', 'auto', 'def', 'atk', 'updated', 'up', 'tour', 'crewTo'])
         && d.keys().hasAll(['p', 's', 'c', 'uid', 'lv', 'sup', 'supAt', 'gar', 'ore', 'def', 'updated'])
-        && d.p in ['moon', 'mars'] && d.s is int && d.s >= 0 && d.s < 12
+        && d.p in ['moon', 'mars'] && d.s is int && d.s >= 0 && d.s < 16
         && d.c is string && d.c.size() > 0 && d.c.size() <= 40
         && d.uid is string && d.uid.size() <= 128
         && (!('name' in d) || (d.name is string && d.name.size() <= 20))
@@ -1021,7 +1075,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['c', 'uid', 'p', 'site', 't', 'eta', 'atk', 'updated'])
         && request.resource.data.c is string && request.resource.data.c.size() > 0 && request.resource.data.c.size() <= 40
         && request.resource.data.p in ['moon', 'mars']
-        && request.resource.data.site is int && request.resource.data.site >= 0 && request.resource.data.site < 12
+        && request.resource.data.site is int && request.resource.data.site >= 0 && request.resource.data.site < 16
         && request.resource.data.t in ['found', 'supply', 'expand', 'garrison', 'assault', 'build', 'crew', 'tour']
         && request.resource.data.eta is int
         && request.resource.data.atk is number && request.resource.data.atk >= 0 && request.resource.data.atk <= 10000000
