@@ -678,6 +678,7 @@ function totals(){let inc=0,assets=0;
   const upk=typeof indUpkeep==="function"?indUpkeep():0;assets+=typeof indAssets==="function"?indAssets():0;
   const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof exIncome==="function"){assets+=exAssets()+exCap()}if(typeof flipUpk==="function"){inc-=flipUpk();assets+=flipAssets()}if(typeof polIncome==="function")inc+=polIncome();if(typeof luxIncome==="function"){inc+=luxIncome();assets+=luxAssets()}if(typeof gxUpk==="function")inc-=gxUpk();if(typeof ofUpk==="function")inc-=ofUpk();if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
   if(typeof airFleetVal==="function")assets+=airFleetVal();if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity()+(S.ob&&S.ob.pacct>0?S.ob.pacct:0);if(typeof gearAssets==="function")assets+=gearAssets();if(typeof ishIncome==="function"){inc+=ishIncome();assets+=ishAssets()}if(typeof rigIncome==="function"){inc+=rigIncome();assets+=rigAssets()}if(typeof aucIncome==="function"){inc+=aucIncome();assets+=aucAssets()+aucEscrow()}if(typeof franIncome==="function")inc+=franIncome();
+  if(typeof futEquity==="function")assets+=futEquity(); // margin held in open futures + unrealized P/L (never below 0 per position)
   let owed=0;try{assets+=ipoHoldVal();owed=ipoOwed()}catch(e){}
   return{inc:inc-(typeof bankPayHr==="function"?0:interest)-upk-rent,interest,upk,rent,owed,nw:S.cash+assets-S.debt-owed}}
 
@@ -11600,11 +11601,13 @@ const futPxS=v=>v>=100?futD(v):"$"+v.toFixed(2);
 function futPnl(p,now){return (futPx(p.k,p.e,now)-p.px)*FUTC.k[p.k].sz*p.n}
 function futOpen(k,e,n){const f=FUT(),C=FUTC.k[k],now=Date.now();n=Math.round(n);if(!C||!n||!(e>now))return toast("That contract has expired");
   if(f.pos.reduce((t,p)=>t+Math.abs(p.n),0)+Math.abs(n)>FUTC.max)return toast(`Position limit is ${FUTC.max} contracts`);
+  if(f.pos.some(p=>p.k===k&&p.e===e&&Math.sign(p.n)!==Math.sign(n)))return toast("Close your opposite position in this contract first"); // no long+short in one contract: losses stop at margin, so a hedge would be a free bet
   const F=futPx(k,e,now),nv=F*C.sz*Math.abs(n),m=nv*FUTC.m,fe=nv*FUTC.fee;if(S.cash<m+fe)return toast(`Need ${futD(m+fe)} (margin + fee)`);
   S.cash-=m+fe;exOnTrade({s:k.toUpperCase()+"-F",n:C.n+" futures",t:"f"},nv);futVol(nv);
   const ex=f.pos.find(p=>p.k===k&&p.e===e&&Math.sign(p.n)===Math.sign(n));
   if(ex){ex.px=(ex.px*Math.abs(ex.n)+F*Math.abs(n))/(Math.abs(ex.n)+Math.abs(n));ex.n+=n;ex.m+=m}else f.pos.push({id:++f.seq,k,e,n,px:F,m,at:now});
   toast(`${n>0?"Bought (long)":"Sold (short)"} ${Math.abs(n)} ${C.n} contract${Math.abs(n)>1?"s":""} at ${futPxS(F)}`);save();hud();phRender()}
+function futEquity(){const f=S.fut;if(!f||!Array.isArray(f.pos))return 0;const now=Date.now();let t=0;for(const p of f.pos){try{const v=p.m+futPnl(p,now);if(v>0&&isFinite(v))t+=v}catch(e){}}return t}
 function futVol(v){const f=FUT(),d=Math.floor(Date.now()/DAYMS);if(f.d.day!==d)f.d={day:d,vol:0,n:0};f.d.vol+=v;f.d.n++}
 /* why: "close" (player), "exp" (expiry, at spot), "call" (margin call). Dev account never loses: losses are waived. */
 function futClose(id,why){const f=FUT(),i=f.pos.findIndex(p=>p.id===id);if(i<0)return;const p=f.pos[i],C=FUTC.k[p.k],now=Date.now();
@@ -11658,6 +11661,7 @@ function fchFree(k,cid){return !(S.own[cid]&&S.own[cid][k])&&!FRAN().l.some(x=>x
 function frStart(k){const b=BIZ.find(y=>y.k===k),f=FRAN();if(!b||f.p[k])return"Already running";if(frCities(k).length<FRC.need)return`Run ${b.n.toLowerCase()} in ${FRC.need} cities first`;const p=frSetup(b);if(S.cash<p)return`Need ${fmt(p)}`;S.cash-=p;f.p[k]=1;f.log.unshift({t:Date.now(),m:`Launched a ${b.n} franchise program`});return""}
 function frSign(k,cid){const b=BIZ.find(y=>y.k===k),f=FRAN();if(!b||!f.p[k])return"Start a franchise program first";const o=frOffers(k).find(x=>x.c===cid);if(!o)return"That offer is gone";
   if(f.l.filter(x=>x.k===k).length>=frMax(k))return`Limit reached: ${frMax(k)} ${b.n} franchises (own it in more cities to raise it)`;
+  const O=f.o[k];if(O&&Array.isArray(O.l))O.l=O.l.filter(x=>x.c!==cid); // an offer can be signed once: ending it never brings the fee back
   const now=Date.now();f.l.push({id:f.nid++,k,c:cid,op:o.op,r:o.r,fee:o.fee,s:now,e:now+o.days*DAYMS});S.cash+=o.fee;f.tot+=o.fee;S.earned=(S.earned||0)+o.fee;
   f.log.unshift({t:now,m:`${o.op} opened a ${b.n} in ${CITIES[cid].name} (+${fmt(o.fee)} fee)`});f.log.length=Math.min(f.log.length,20);return""}
 function frBuyCost(x){const b=BIZ.find(y=>y.k===x.k),c=CITIES[x.c];return b&&c?Math.round(cost(b,c)*1.1):0}
