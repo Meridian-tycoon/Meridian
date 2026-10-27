@@ -139,6 +139,20 @@ service cloud.firestore {
         && request.resource.data.dec.v.values().hasOnly([0, 1]);
       allow delete: if request.auth != null && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1';
     }
+    // Shared strike feed: a player posts strikes fired by or at them; everyone reads; the poster or Mark deletes.
+    match /strikes/{id} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['uid', 'nm', 'k', 'f', 'c', 'i', 'at']) && request.resource.data.keys().hasAll(['uid', 'nm', 'k', 'f', 'c', 'i', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.nm is string && request.resource.data.nm.size() <= 40
+        && request.resource.data.k in ['msl', 'gas', 'nuke', 'icbm']
+        && request.resource.data.f is string && request.resource.data.f.size() <= 40
+        && request.resource.data.c is int && request.resource.data.c >= 0 && request.resource.data.c < 10000
+        && request.resource.data.i in [0, 1]
+        && request.resource.data.at == request.time;
+      allow delete: if request.auth != null && (resource.data.uid == request.auth.uid || request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1');
+    }
     // World council votes: doc id "<week>_<uid>", own doc only, only in the current week, yes/no per rule; an update may only add rules.
     // Only the master world reads them (to tally).
     match /wcvote/{id} {

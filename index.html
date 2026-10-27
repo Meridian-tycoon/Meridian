@@ -5028,7 +5028,7 @@ function wpnFire(k,id,sure,go){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id]
   if(!go)lnFlyPub(k,c,1);
   m.wpn[k]--;if(k==="msl"&&w.peace){wpnSanction("msl");if(!devGod())p.appr=Math.max(0,p.appr-2)}if(k!=="msl"){w.wmd=1;if(k==="nuke"||k==="icbm")w.nk=1;if(k==="icbm")w.ic=1;wpnSanction(k);try{xrpBoomGo(p.c)}catch(e){}}const kill=Math.max(0,Math.min(w.enemyMax*W.enemy,w.enemyStr-w.enemyMax*WPNCFG.strFloor)),f0=w.front;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.max(f0,Math.min(k==="nuke"||k==="icbm"?WPNCFG.nukeCap:WPNCFG.frontCap,f0+W.front));const push=Math.round((w.front-f0)*10)/10;w.weariness=Math.min(100,w.weariness+W.wear);
   if(!devGod()){p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const n in p.ctrl)p.ctrl[n].loy=Math.max(0,p.ctrl[n].loy+W.loy);for(const n in m.occ)m.occ[n].resist=Math.min(100,m.occ[n].resist+W.resist)}
-  m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*WPNCFG.ownHit,from:p.c});
+  m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*WPNCFG.ownHit,from:p.c});sfPost(k,p.c,c.id,0);
   const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,dead=dmgStrike(k,c,1),dl=dmgLvl(c);
   const t=`${W.ico} ${W.n} hit ${c.name}, ${c.country}: ${fmtPop(dead)} killed, city ${dmgWord(dl)} ${dmgPct(dl)}, enemy −${Math.round(kill)}, front +${push}${W.appr&&!devGod()?`, approval ${W.appr}`:""}${W.loy&&!devGod()?`, allies' loyalty ${W.loy}`:""}`;logPol(t);milLog(m,t);
   toast(t+(mine?` · your businesses in ${c.name} lose ${Math.round(W.city*WPNCFG.ownHit*100)}% demand for a while`:""));
@@ -5069,9 +5069,9 @@ function wpnRetal(n,w,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,now=Date.now();i
   const t=`⚠ ${n} launched a ${W.n.toLowerCase()} at ${c.name}: impact in ${wn}s${wn>BUNKCFG.warn[k]?" (SIGINT early warning)":""}${present(c)?" · you are there, get to your bunker":""}`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);toast(t);wpnAnim();wmdBanner(k,`${WBN[k]}: ${n} → ${c.country} (${c.name}) · {s}`,Math.max(WMDBANNER_MS,wn*1000+1500),now+wn*1000)}
 // an enemy strike lands on city cid (n = attacker). Air defense may shoot a missile down first.
 function wpnLand(n,k,cid,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,W=WPNCFG.w[k],E=C.hit[k],c=CITIES[cid],now=Date.now();if(!W||!E||!c)return;const w=m.wars[n];
-  if(bunkIntercept(k,null,c)){if(!Array.isArray(m.icpt))m.icpt=[];m.icpt=m.icpt.filter(x=>now-x.t<WPNCFG.animMs).concat([{city:c.id,t:now}]);
+  if(bunkIntercept(k,null,c)){if(!quiet)sfPost(k,n,c.id,1);if(!Array.isArray(m.icpt))m.icpt=[];m.icpt=m.icpt.filter(x=>now-x.t<WPNCFG.animMs).concat([{city:c.id,t:now}]);
     const t=`🛡 ${W.n} intercepted over ${c.name}${ironDome(c)?" by Iron Dome":""}`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);if(!quiet){toast(t);if(typeof wpnAnim==="function")wpnAnim()}return {icpt:1}}
-  m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*E.city,from:n,foe:1});
+  m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*E.city,from:n,foe:1});if(!quiet)sfPost(k,n,c.id,0);
   const dead=dmgStrike(k,c,0);if(k==="icbm"){if(w)w.rcd=now+C.cd.icbm*DAYMS;unhStrike(c,n)}if(w)w.front=Math.max(0,w.front-E.front);p.appr=Math.max(0,p.appr+E.appr);if(p.ctrl[c.country])p.ctrl[c.country].loy=Math.max(0,p.ctrl[c.country].loy+E.loy);
   const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,t=`${W.ico} ${n} struck ${c.name} with a ${W.n.toLowerCase()}: ${fmtPop(dead)} killed${w?`, front −${E.front}`:""}, approval ${E.appr}${mine?" · your businesses there are hit":""}`;
   S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);if(!quiet){toast(t);if(typeof wpnAnim==="function")wpnAnim()}
@@ -5677,6 +5677,7 @@ function drawStrikes(ctx){const now=Date.now(),zs=Math.min(2.5,.7+V.k*.3),m=S.po
   if(m&&Array.isArray(m.inc))for(const x of m.inc){const c=CITIES[x.city];if(c&&x.n&&COUNTRIES.includes(x.n))trjAdd(x.n,c,x.k,x.t,x.at-x.t,"i"+x.n+x.city+x.k+x.t)}
   if(_trj.length)trjDraw(ctx,now,zs);
   wtDraw(ctx,now,zs);
+  if(typeof sfDraw==="function")sfDraw(ctx,now,zs);
   if(!m)return;
   if(Array.isArray(m.icpt))for(const x of m.icpt){const c=CITIES[x.city],u=(now-x.t)/WPNCFG.animMs;if(!c||u<0||u>=1||!visible(c.lon,c.lat))continue;const [ix,iy]=proj([c.lon,c.lat]),R=14*zs;
     ctx.beginPath();ctx.arc(ix,iy-R*1.4,R*(.3+1.4*u),0,7);ctx.strokeStyle="#38bdf8";ctx.globalAlpha=1-u;ctx.lineWidth=2.5;ctx.stroke();ctx.font="bold 11px system-ui, sans-serif";ctx.textAlign="center";ctx.fillStyle="#38bdf8";ctx.fillText("🛡 INTERCEPTED",ix,iy-R*2.6);ctx.textAlign="start";ctx.globalAlpha=1}
@@ -11528,7 +11529,7 @@ function wcMaster(now){const db=wcBE();if(!db||!DEV_UIDS.includes(ON.user.uid)||
   Promise.all([get(w),get(w-1),db.collection("world").doc("wcleader").get().then(d=>d.exists?d.data():null,()=>null)]).then(([a,b,ld])=>{const dc=ld&&wclDecClean(ld.dec),active=wclApply(wcPass(b.t),dc&&dc.w===w-1?dc.v:null);
     return db.collection("world").doc("council").set({season:w,rules:WCK,active,tally:a.t,last:b.t,n:a.n,updated:window.firebase.firestore.FieldValue.serverTimestamp()})})
     .then(()=>{WC.mbusy=0},e=>{WC.mbusy=0;WC.err="Couldn't publish the council: "+(e&&e.code||e)})}
-function wcTick(){try{wclTick();const now=Date.now(),E=wcS(),w=wevWk(now),db=wcBE();
+function wcTick(){try{wclTick();sfTick();const now=Date.now(),E=wcS(),w=wevWk(now),db=wcBE();
   if(db&&!WC.unsub)WC.unsub=db.collection("world").doc("council").onSnapshot(d=>{WC.doc=d.exists?wcClean(d.data()):null;if(typeof cabPaint==="function")cabPaint()},()=>{});
   if(!db&&WC.unsub){try{WC.unsub()}catch(e){}WC.unsub=null;WC.doc=null}
   if(db)wcMaster(now);
@@ -11543,6 +11544,25 @@ function wcDash(){const p=pol(),w=wevWk(),a=wcActive(),t=wcTally(w),lt=wcTally(w
     card(`🌍 Rules in force · season ${w}`,`<div class="ph-rows">${WCK.map(row).join("")}</div><div class="ph-sub" style="margin-top:8px">Rules apply to every player until the season ends in ${fmtDur(wcEnd(w)-Date.now())}.</div>`)+
     card(`🗳️ Ballot for next season`,bal+`<div class="ph-sub" style="margin-top:8px">${d?`${d.n.toLocaleString()} player government${d.n===1?"":"s"} and ${WCAI} AI governments voting.`:`${WCAI} AI governments${wcBE()?" (live player votes once the council publishes)":" (offline: simulated council)"}.`} A rule passes with more yes than no; one vote per rule per season.</div>`)+
     card(`📜 Last season's result`,`<div class="ph-rows">${last}</div>`)}
+/* ---- shared strike feed: every online player sees strikes fired by or at any player (Firestore "strikes", kept 15 minutes) ---- */
+const SFCFG={keep:15*60000,show:10*60000,gap:20000,fx:6000,max:30};
+const SF={unsub:null,seen:{},fx:[],last:0,t0:Date.now()};
+function sfBE(){return typeof ON!=="undefined"&&ON.db&&ON.user&&window.firebase?ON.db:null}
+function sfPost(k,from,cid,icpt){try{const db=sfBE(),now=Date.now();if(!db||!WPNCFG.w[k]||!CITIES[cid]||now-SF.last<SFCFG.gap)return;SF.last=now;
+  db.collection("strikes").add({uid:ON.user.uid,nm:String(S.name||"Player").slice(0,40),k,f:String(from||"").slice(0,40),c:cid,i:icpt?1:0,at:window.firebase.firestore.FieldValue.serverTimestamp()}).then(r=>{SF.seen[r.id]=1},()=>{})}catch(e){}}
+function sfShow(id,d){const c=CITIES[d.c],W=WPNCFG.w[d.k];if(!c||!W||SF.seen[id])return;SF.seen[id]=1;const now=Date.now();
+  if(d.f&&COUNTRIES.includes(d.f))try{trjAdd(d.f,c,d.k,now,WPNCFG.animMs,"sf"+id)}catch(e){}
+  SF.fx.push({c:d.c,k:d.k,i:d.i,t:now+WPNCFG.animMs});SF.fx=SF.fx.slice(-20);
+  const who=onEsc(d.nm||"A player"),t=d.i?`🛡 ${W.n} from ${d.f} intercepted over ${c.name} (${c.country}) · ${who}`:`💥 ${W.n} from ${d.f} hit ${c.name} (${c.country}) · ${who}`;
+  try{wmdBanner(d.k,t,SFCFG.fx+WPNCFG.animMs)}catch(e){}S.log.unshift("World: "+t.replace(/<[^>]*>/g,""));S.log=S.log.slice(0,3)}
+function sfTick(){try{const db=sfBE();
+  if(db&&!SF.unsub){const since=window.firebase.firestore.Timestamp.fromMillis(Date.now()-SFCFG.keep);
+    SF.unsub=db.collection("strikes").where("at",">",since).orderBy("at","desc").limit(SFCFG.max).onSnapshot(q=>{const now=Date.now();
+      q.docChanges().forEach(ch=>{if(ch.type!=="added")return;const d=ch.doc.data()||{},at=d.at&&d.at.toMillis?d.at.toMillis():now;
+        if(d.uid===ON.user.uid||now-at>SFCFG.show||at<SF.t0-60000){SF.seen[ch.doc.id]=1;return}sfShow(ch.doc.id,{c:+d.c|0,k:String(d.k||""),i:d.i?1:0,f:String(d.f||"").slice(0,40),nm:String(d.nm||"").slice(0,40)})})},()=>{})}
+  if(!db&&SF.unsub){try{SF.unsub()}catch(e){}SF.unsub=null}}catch(e){console.warn("sfTick",e)}}
+function sfDraw(ctx,now,zs){SF.fx=SF.fx.filter(x=>now-x.t<SFCFG.fx);for(const x of SF.fx){const c=CITIES[x.c];if(!c||now<x.t||!visible(c.lon,c.lat))continue;const u=(now-x.t)/SFCFG.fx,[ix,iy]=proj([c.lon,c.lat]),R=16*zs,col=x.i?"#38bdf8":"#ef4444";
+  ctx.beginPath();ctx.arc(ix,iy,R*(.4+2*u),0,7);ctx.strokeStyle=col;ctx.globalAlpha=1-u;ctx.lineWidth=3;ctx.stroke();ctx.font="bold 11px system-ui, sans-serif";ctx.textAlign="center";ctx.fillStyle=col;ctx.fillText(x.i?"🛡 INTERCEPTED":"💥 STRIKE",ix,iy-R*1.6);ctx.textAlign="start";ctx.globalAlpha=1}}
 /* ---- World Council Leader: one seat in the whole world, $10,000,000,000,000, needs a government office; gives the top status ---- */
 const WCLCFG={price:10000000000000,ic:"🌐",n:"World Council Leader"};
 const WCLD={doc:null,unsub:null,busy:0,err:""};
