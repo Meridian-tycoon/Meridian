@@ -1063,7 +1063,7 @@ const TECH=[
  {k:"drones",t:3,n:"Military drones",d:"Unlocks drone factories: chips, plastics and aerospace parts.",rp:2500,cash:1e7,req:["govlic"]},
  {k:"rocketry",t:4,n:"Rocketry",d:"Unlocks rocket engine works.",rp:5000,cash:2.5e7,req:["govlic","aero"]},
  {k:"satellites",t:4,n:"Satellites",d:"Unlocks satellite assembly.",rp:6000,cash:3e7,req:["rocketry","semis"]},
- {k:"spaceport",t:4,n:"Launch complex",d:"Unlocks spaceports. Every launch you sell puts a satellite in orbit: +0.5% demand at all your businesses (up to +50%).",rp:10000,cash:6e7,req:["rocketry","satellites"]},
+ {k:"spaceport",t:4,n:"Launch complex",d:"Unlocks spaceports. Every launch from the Space app puts a satellite in orbit: +0.5% demand at all your businesses (up to +50%).",rp:10000,cash:6e7,req:["rocketry","satellites"]},
  {k:"mars",t:4,n:"Mars colony",d:"The final project. Everything you run earns 25% more.",rp:50000,cash:1e9,req:["spaceport"]},
  {k:"autofreight",t:5,n:"Autonomous freight",d:"Self-driving trucks and crewless ships. Trucks and ships move 20% faster.",rp:12000,cash:5e7,req:["robotics","container"]},
  {k:"hypersonic",t:5,n:"Hypersonic cargo",d:"Scramjet freighters. Cargo planes fly 25% faster.",rp:15000,cash:8e7,req:["aero","rocketry"]},
@@ -1181,7 +1181,7 @@ function runIndustry(hours){let sold=0;const step=.25;let left=hours;
       for(const b of BIZ){const lv=uSum(id,b.k,l=>l);if(!lv||!USE[b.k]){continue}if(!inv){su[b.k]=0;continue}
         let f=1;for(const g in USE[b.k]){const need=USE[b.k][g]*lv*h;f=Math.min(f,(inv[g]||0)/need)}
         for(const g in USE[b.k])inv[g]=(inv[g]||0)-USE[b.k][g]*lv*h*f;su[b.k]=f}}
-    for(const id in S.auto){const c=CITIES[id],inv=S.inv[id]||{};if(unhOn(c))continue;for(const g in S.auto[id]){if(!S.auto[id][g]||!(inv[g]>0)||(G[g][2]==="gov"&&!govOK(c))||!hasHQ(c))continue;sold+=sellGood(c,g,inv[g])*.97;inv[g]=0}}}
+    for(const id in S.auto){const c=CITIES[id],inv=S.inv[id]||{};if(unhOn(c))continue;for(const g in S.auto[id]){if(noSell(g)||!S.auto[id][g]||!(inv[g]>0)||(G[g][2]==="gov"&&!govOK(c))||!hasHQ(c))continue;sold+=sellGood(c,g,inv[g])*.97;inv[g]=0}}}
   rpPay();for(const id in S.inv)for(const g in S.inv[id])if(S.inv[id][g]<1e-6)delete S.inv[id][g];
   S.cash+=sold;S.earned=(S.earned||0)+sold;return sold}
 /* travel time of one leg in ms (trucking company / port bonuses included); shared by depart() and the Logistics hub's quotes */
@@ -1207,7 +1207,8 @@ function driftPrices(){for(const c of CITIES){const p=S.px[c.id]=S.px[c.id]||{};
 /* selling floods a local market; buying tightens it. Bigger cities absorb more. */
 const depth=(c,g)=>(G[g][2]==="raw"?3000:G[g][2]==="mid"?800:400)*(.5+.3*c.size);
 function govOK(c){return hasTech("govlic")&&c.size>=4}
-function sellGood(c,g,q){if(G[g][2]==="gov"){if(g==="launches")S.sats+=q;return G[g][1]*q}const p=S.px[c.id]=S.px[c.id]||{},m0=p[g]||1,m1=Math.max(.4,m0*Math.exp(-q/depth(c,g)));
+const noSell=g=>g==="launches"; // orbital launches have no buyer: launch them from the Space app
+function sellGood(c,g,q){if(noSell(g))return 0;if(G[g][2]==="gov")return G[g][1]*q;const p=S.px[c.id]=S.px[c.id]||{},m0=p[g]||1,m1=Math.max(.4,m0*Math.exp(-q/depth(c,g)));
   const v=G[g][1]*cityF(c,g)*(m0+m1)/2*q;p[g]=m1;if(typeof mFill==="function")mFill(c,g,q);const r=v*(typeof siteLaw==="function"?siteLaw(c):1)*(typeof ctSellMult==="function"?ctSellMult(c,g):1);wevAdd(g==="oil"||g==="fuel"?"oil":"harvest",g==="oil"||g==="fuel"||wevHarv(g)?r:0);return r}
 function buyGood(c,g,q){const p=S.px[c.id]=S.px[c.id]||{},m0=p[g]||1,m1=Math.min(1.6,m0*Math.exp(q/depth(c,g)));const v=G[g][1]*cityF(c,g)*(m0+m1)/2*q*1.15;return{v,commit:()=>p[g]=m1}}
 const distKm=(a,b)=>d3.geoDistance([a.lon,a.lat],[b.lon,b.lat])*6371;
@@ -1254,8 +1255,8 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
       if(!have.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">Empty. Production lands here, and shipments arrive here.</p>`;
       for(const g of have){const p=px(c,g),au=(S.auto[c.id]||{})[g];
         h+=`<div class="row own"><div class="n">${G[g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(inv[g])} · ${fmtT(inv[g]*tpu(g))}</span></div>
-        <div class="d">${G[g][2]==="gov"?(govOK(c)?"Government buyer pays ":"<b style='color:var(--bad)'>No government buyer here.</b> Worth "):"Sells here for "}<b>${fmt(p)}</b> each · worth <b>${fmt(inv[g]*p)}</b> ${hasHQ(c)?` · <label><input type="checkbox" data-act="auto" data-g="${g}" ${au?"checked":""}> auto-sell</label>`:" · street sale only: 20 at a time, 70% price"}</div>
-        <button class="buy up" data-act="sell" data-g="${g}">${hasHQ(c)?"Sell all":"Sell 20"}</button></div>`}
+        <div class="d">${noSell(g)?`No buyer: launch it from the 🚀 Space app to put a satellite in orbit (government pays ${fmt(G[g][1])} per successful launch)</div></div>`:G[g][2]==="gov"?(govOK(c)?"Government buyer pays ":"<b style='color:var(--bad)'>No government buyer here.</b> Worth "):"Sells here for "}<b>${fmt(p)}</b> each · worth <b>${fmt(inv[g]*p)}</b> ${hasHQ(c)?` · <label><input type="checkbox" data-act="auto" data-g="${g}" ${au?"checked":""}> auto-sell</label>`:" · street sale only: 20 at a time, 70% price"}</div>
+        ${noSell(g)?"":`<button class="buy up" data-act="sell" data-g="${g}">${hasHQ(c)?"Sell all":"Sell 20"}</button></div>`}`}
       h+=`</div><div class="row"><div class="n">Expand warehouse</div><div class="d">Doubles space to ${fmtT(cap*2)}. Goods are weighed in tonnes (armoured vehicles 20 t each, microchips 0.05 t).</div><button class="buy up" data-act="whup" ${S.cash<whUp(c)?"disabled":""}>${fmt(whUp(c))}</button></div>`;
       h+=marketHtml(c);h+=`<button class="sec" data-act="lmfold" aria-expanded="${!!S.lmOpen}" style="display:flex;width:100%;align-items:center;background:none;border:0;padding-left:0;padding-right:0;font:inherit;color:inherit;text-align:left;cursor:pointer">Local market · buy at +15%<span style="margin-left:auto">${S.lmOpen?"▾ Hide":"▸ Show"}</span></button>`;
       if(S.lmOpen){h+=`${hasHQ(c)?"":`<p class="d" style="color:var(--bad);font-size:12px;margin:0 0 4px">No registered company here. Open an HQ in ${c.name} to sell in bulk, auto-sell, buy by the hundred, and sell to the government.</p>`}<div class="list">`;
@@ -1311,7 +1312,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="aline"){S.aline=!S.aline;if(S.aline)alTick(Date.now());toast(S.aline?"Auto-line on":"Auto-line off")}
   else if(a==="lmfold"){S.lmOpen=!S.lmOpen;renderSheet();return}
   else if(a==="whup"){const p=whUp(c);if(S.cash<p)return;S.cash-=p;S.wh[c.id]++;toast("Warehouse expanded")}
-  else if(a==="sell"){if(G[b.dataset.g][2]==="gov"&&!govOK(c)){toast(hasTech("govlic")?"Government buyers are only in cities of size 4+":"Research the Defense contractor licence to sell this");return}if(G[b.dataset.g][2]==="gov"&&!hasHQ(c)){toast("Government contracts need a registered company: open an HQ here");return}const g=b.dataset.g,street=!hasHQ(c),q=street?Math.min(20,S.inv[c.id][g]||0):(S.inv[c.id][g]||0),v=sellGood(c,g,q)*(street?.7:1);S.cash+=v;S.earned=(S.earned||0)+v;S.inv[c.id][g]-=q;if(S.inv[c.id][g]<1e-6)delete S.inv[c.id][g];toast(`Sold ${gq(q)} ${G[g][0].toLowerCase()} for ${fmt(v)}`)}
+  else if(a==="sell"){if(noSell(b.dataset.g)){toast("Orbital launches can't be sold. Launch them from the Space app");return}if(G[b.dataset.g][2]==="gov"&&!govOK(c)){toast(hasTech("govlic")?"Government buyers are only in cities of size 4+":"Research the Defense contractor licence to sell this");return}if(G[b.dataset.g][2]==="gov"&&!hasHQ(c)){toast("Government contracts need a registered company: open an HQ here");return}const g=b.dataset.g,street=!hasHQ(c),q=street?Math.min(20,S.inv[c.id][g]||0):(S.inv[c.id][g]||0),v=sellGood(c,g,q)*(street?.7:1);S.cash+=v;S.earned=(S.earned||0)+v;S.inv[c.id][g]-=q;if(S.inv[c.id][g]<1e-6)delete S.inv[c.id][g];toast(`Sold ${gq(q)} ${G[g][0].toLowerCase()} for ${fmt(v)}`)}
   else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q;if(g==="uranium"&&!uranAnyPermit()){toast("Needs a uranium permit: apply to a government in the Gov tab first");return}const B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q*tpu(g)>whCap(c)+1e-9){toast(`Not enough warehouse space: ${fmtT(whRoom(c))} free, ${q} ${G[g][0].toLowerCase()} weigh ${fmtT(q*tpu(g))}`);return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
   else if(a==="veh"){const k=b.dataset.k,V=VEH[k];if(S.cash<V.cost)return;S.cash-=V.cost;S.fleet.push({id:S.nid++,type:k,city:c.id,paid:V.cost,cond:100});toast(`${V.n} ready in ${c.name}`)}
   else if(a==="ship"){shipForm=shipForm===id?null:id;renderSheet();shipInfo();return}
@@ -2446,7 +2447,7 @@ const GOALS=[
  {id:"g12",n:"Industrialist",d:"Run 6 production sites",t:6,v:()=>S.sites.filter(s=>s.op).length,r:60000},
  {id:"g13",n:"Supply chain",d:"Own 3 vehicles",t:3,v:()=>S.fleet.length,r:40000},
  {id:"g14",n:"Eureka",d:"Research 3 technologies",t:3,v:()=>Object.keys(S.tech).length,r:25000},
- {id:"g15",n:"Into orbit",d:"Sell an orbital launch",t:1,v:()=>S.sats||0,r:5e6},
+ {id:"g15",n:"Into orbit",d:"Launch a satellite from the Space app",t:1,v:()=>S.sats||0,r:5e6},
  {id:"g10",n:"Billionaire",d:"Reach $1B net worth",t:1e9,v:()=>totals().nw,r:0}
 ];
 function checkGoals(){for(const g of GOALS){if(S.goals.includes(g.id))continue;if(g.v()>=g.t){S.goals.push(g.id);S.cash+=g.r;
@@ -8019,7 +8020,7 @@ function lxLog(m){S.log.unshift(m);S.log=S.log.slice(0,3)}
 function lxAssets(){const X=S.lx;let a=0;if(!X)return 0;for(const j of X.jobs||[])if(G[j.g])a+=j.left*G[j.g][1]*.9;for(const s of X.sh||[])if(s.k==="g"&&G[s.g])a+=s.q*G[s.g][1]*.9;return a}
 function lxGoodsOf(sel){if(!sel||sel[0]!=="*")return G[sel]?[sel]:[];const cat=lxc().grp[sel];if(!cat)return[];const set=new Set();
   for(const o of OPS)if(o.cat===cat[1]||(sel==="*farm"&&o.cat==="Ranch"))for(const g in o.out)if(g!=="power"&&G[g])set.add(g);return [...set]}
-function lxCanSell(d,g){return !!(d&&hasHQ(d)&&(G[g][2]!=="gov"||govOK(d)))}
+function lxCanSell(d,g){return !noSell(g)&&!!(d&&hasHQ(d)&&(G[g][2]!=="gov"||govOK(d)))}
 function lxSellEst(d,g,q){if(G[g][2]==="gov")return G[g][1]*q;const m0=((S.px[d.id]||{})[g])||1,m1=Math.max(.4,m0*Math.exp(-q/depth(d,g)));return G[g][1]*cityF(d,g)*(m0+m1)/2*q*(typeof siteLaw==="function"?siteLaw(d):1)}
 function lxStockAvail(c,bk){const b=BIZ.find(x=>x.k===bk),lv=(S.own[c.id]||{})[bk]||0;if(!b||!lv||!SUP[bk])return 0;const key=bkey(c,bk),
   pend=S.shopT?uSum(c.id,bk,l=>useRate(b,l,c))*(S.opf[key]||0)*Math.max(0,Date.now()-S.shopT)/DAYMS:0;return Math.max(0,Math.floor(stockOf(c,bk)-pend))}
@@ -9081,7 +9082,7 @@ const ACH=[
  ["tech1","🔬","Eureka","Research a technology",()=>achTech()>=1],
  ["tech5","🧪","R&D lab","Research 5 technologies",()=>achTech()>=5],
  ["tech15","🧠","Innovator","Research 15 technologies",()=>achTech()>=15],
- ["sat","🛰️","Into orbit","Sell an orbital launch",()=>(S.sats||0)>=1],
+ ["sat","🛰️","Into orbit","Launch a satellite from the Space app",()=>(S.sats||0)>=1],
  ["pand","😷","Weathered the storm","Live through a pandemic",()=>!!(S.pand&&(S.pand.hist||[]).length)],
  ["war","⚔️","War profiteer","Earn from a war supply contract",()=>(S.wsupT||0)>0],
  ["bunk","🛡️","Prepper","Build a bunker",()=>!!(S.bunk&&S.bunk.lv>=1)],
@@ -10587,7 +10588,7 @@ function exDraw(){const x=exDay();if(!x){exClose();return}const m=MK(),now=Date.
   </div></div></div></div>`}
 /* ---------- Space program (phone app "Space" + dashboard window) ----------
    S.space={fl:[{id,t,at,o}],log:[{t,ty,city,ok,pay}],seq,tab,ty,pt,t}. S.sats stays the satellite count used for the demand bonus.
-   Launching from the app uses one orbital launch from a spaceport's stock instead of selling it: the government still pays the contract price. */
+   Launching from the app uses one orbital launch from a spaceport's stock (launches can't be sold to any market): the government pays the contract price. */
 const SPC={fail:.03,navCut:.005,navMax:4,marsCut:.01,life:200,comms:2000,eo:4,cap:120};
 const SPT={comms:["Comms","📡","+0.5% demand (like every satellite) and "+"$2,000/hr data fees at full health"],eo:["Earth observation","🌍","+4 research points/hr at full health"],nav:["Navigation","🧭","−0.5% launch failure chance each (up to 4 sats)"],spy:["Spy","🕵️","Shows the exact payloads and outcomes of rival programs' launches"]};
 const SPAI=[["NASA","🇺🇸","United States",5200,30],["CNSA","🇨🇳","China",900,24],["Roscosmos","🇷🇺","Russia",1600,10],["ESA","🇪🇺","Europe",320,8],["ISRO","🇮🇳","India",120,6],["JAXA","🇯🇵","Japan",220,5],["CSA","🇨🇦","Canada",60,2],["Orbitron AI","🤖","Private AI consortium",2400,26]];
@@ -10669,7 +10670,7 @@ function spDraw(){const s=SP(),now=Date.now(),P=spPorts(),E=dxE,tabs=[["ov","Ove
     body=card("1 · Choose payload",`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">${Object.keys(SPT).map(t=>`<button data-sp="ty" data-k="${t}" aria-pressed="${s.ty===t}" style="text-align:left;cursor:pointer;padding:12px;border-radius:12px;border:2px solid ${s.ty===t?"#4338ca":"var(--dxline)"};background:${s.ty===t?"var(--dxtint)":"var(--dxcard)"};color:var(--dxink);font:500 13px Figtree,sans-serif"><b style="font-size:15px">${SPT[t][1]} ${SPT[t][0]}</b><br><small style="color:var(--dxmut)">${SPT[t][2]}</small></button>`).join("")}</div>`)
       +`<div style="margin-top:16px"></div>`+card("2 · Pick a spaceport",P.length?`<div class="mdx-rows">${P.map(p=>`<div><span><b>${E(p.c.name)}</b> <small>${f1(p.st.launches)} launches in stock · ${p.rate>0?spDur((1-(p.st.launches%1))/p.rate)+" to next":"stalled"+(p.why?": "+E(p.why):"")}</small></span>${pt&&pt.c.id===p.c.id?"<b style='color:#16a34a'>✓ Selected</b>":btn("pt",p.c.id,"Select",0,"#475569")}</div>`).join("")}</div>`:`<div class="mdx-rows"><div><span>You have no spaceport. Build one from an industrial site (Spaceport factory).</span><b></b></div></div>`)
       +`<div style="margin-top:16px"></div>`+card("3 · Launch",`<div class="mdx-rows"><div><span>Payload</span><b>${SPT[s.ty][1]} ${SPT[s.ty][0]}</b></div><div><span>From</span><b>${pt?E(pt.c.name):"—"}</b></div><div><span>Failure chance</span><b>${(spFail()*100).toFixed(1)}%${spDev()?" (dev: refunded)":""}</b></div><div><span>Government pays on success</span><b>${fmt(G.launches[1])}</b></div></div>
-        <div style="margin-top:10px">${btn("go",pt?pt.c.id:"",`🚀 Launch ${SPT[s.ty][0].toLowerCase()} satellite`,!pt||pt.st.launches<1,"#4338ca")}</div><div class="mdx-note" style="color:var(--dxmut)">Uses one orbital launch from that spaceport's stock instead of selling it. A failed launch loses the rocket and pays nothing.</div>`)
+        <div style="margin-top:10px">${btn("go",pt?pt.c.id:"",`🚀 Launch ${SPT[s.ty][0].toLowerCase()} satellite`,!pt||pt.st.launches<1,"#4338ca")}</div><div class="mdx-note" style="color:var(--dxmut)">Uses one orbital launch from that spaceport's stock (launches can't be sold). A failed launch loses the rocket and pays nothing.</div>`)
       +`<div style="margin-top:16px"></div>`+card("Launch log",s.log.length?`<table class="mdx-tbl"><tr><th>When</th><th>Payload</th><th>From</th><th>Outcome</th></tr>${s.log.map(x=>`<tr><td>${new Date(x.t).toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}<br><small>${spAgo(x.t)}</small></td><td>${SPT[x.ty]?SPT[x.ty][1]+" "+SPT[x.ty][0]:"?"}</td><td>${CITIES[x.city]?E(CITIES[x.city].name):"?"}</td><td style="color:${x.ok?"#16a34a":"#dc2626"}"><b>${x.ok?"Success":"Failed"}</b>${x.ok?` · ${fmt(x.pay||0)}`:x.dev?" · refunded":""}</td></tr>`).join("")}</table>`:`<div class="mdx-rows"><div><span>No launches from mission control yet.</span><b></b></div></div>`)}
   else if(s.tab==="fl"){const fl=s.fl.slice().reverse();
     body=card(`Your satellites · ${fl.length}`,fl.length?`<table class="mdx-tbl"><tr><th>#</th><th>Type</th><th>Orbit</th><th>Age</th><th>Health</th><th></th></tr>${fl.map(x=>{const o=SATORB[(x.o|0)%3],hp=spHp(x,now),hc=hp>60?"#16a34a":hp>25?"#d97706":"#dc2626";
