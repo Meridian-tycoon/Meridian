@@ -677,7 +677,7 @@ function totals(){let inc=0,assets=0;
   const interest=typeof bankPayHr==="function"?Math.round(bankPayHr()):Math.round(S.debt*0.003);
   const upk=typeof indUpkeep==="function"?indUpkeep():0;assets+=typeof indAssets==="function"?indAssets():0;
   const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof exIncome==="function"){assets+=exAssets()+exCap()}if(typeof flipUpk==="function"){inc-=flipUpk();assets+=flipAssets()}if(typeof polIncome==="function")inc+=polIncome();if(typeof luxIncome==="function"){inc+=luxIncome();assets+=luxAssets()}if(typeof gxUpk==="function")inc-=gxUpk();if(typeof ofUpk==="function")inc-=ofUpk();if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
-  if(typeof airFleetVal==="function")assets+=airFleetVal();if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity();if(typeof gearAssets==="function")assets+=gearAssets();if(typeof ishIncome==="function"){inc+=ishIncome();assets+=ishAssets()}if(typeof rigIncome==="function"){inc+=rigIncome();assets+=rigAssets()}if(typeof aucIncome==="function"){inc+=aucIncome();assets+=aucAssets()+aucEscrow()}
+  if(typeof airFleetVal==="function")assets+=airFleetVal();if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity()+(S.ob&&S.ob.pacct>0?S.ob.pacct:0);if(typeof gearAssets==="function")assets+=gearAssets();if(typeof ishIncome==="function"){inc+=ishIncome();assets+=ishAssets()}if(typeof rigIncome==="function"){inc+=rigIncome();assets+=rigAssets()}if(typeof aucIncome==="function"){inc+=aucIncome();assets+=aucAssets()+aucEscrow()}
   let owed=0;try{assets+=ipoHoldVal();owed=ipoOwed()}catch(e){}
   return{inc:inc-(typeof bankPayHr==="function"?0:interest)-upk-rent,interest,upk,rent,owed,nw:S.cash+assets-S.debt-owed}}
 
@@ -3842,6 +3842,8 @@ function obDefault(src,x){const o=S.ob,C=BANKCFG;x.st="defaulted";o.wo=(o.wo||0)
    The owner can do this any time; with autoCut on (default) the manager does it automatically after 3 missed payments. */
 /* founder borrows from the bank's reserves at any time and repays it later */
 function obPull(v){const o=S.ob;if(!o||!(v>0))return;if(o.reserves<v)return toast(`Reserves only hold ${fmt(o.reserves)}`);o.reserves-=v;S.cash+=v;o.owed=(o.owed||0)+v;toast(`Withdrew ${fmt(v)} from ${o.name}'s reserves · you owe ${fmt(o.owed)}`);try{logBank(`Founder withdrew ${fmt(v)} from reserves`)}catch(e){}}
+function obPWd(v){const o=S.ob;if(!o)return;v=Math.min(v,o.pacct||0);if(!(v>=1))return toast("The profit account is empty");o.pacct-=v;if(o.pacct<.01)o.pacct=0;S.cash+=v;toast(`💰 Withdrew ${fmt(v)} profit from ${o.name}`);try{logBank(`Founder took ${fmt(v)} from the profit account`)}catch(e){}}
+function obPBack(){const o=S.ob;if(!o||!(o.pacct>=1))return;const v=o.pacct;o.pacct=0;o.reserves+=v;o.capital=obEquity();toast(`Moved ${fmt(v)} back into ${o.name}'s reserves`)}
 function obRepay(){const o=S.ob;if(!o||!(o.owed>0))return;const v=Math.min(o.owed,S.cash);if(v<1)return toast("No cash to repay with");S.cash-=v;o.reserves+=v;o.owed=Math.max(0,o.owed-v);if(o.owed<.01)o.owed=0;toast(`Repaid ${fmt(v)} to ${o.name}${o.owed?` · ${fmt(o.owed)} still owed`:" · all paid back"}`);try{logBank(`Founder repaid ${fmt(v)} to reserves`)}catch(e){}}
 /* close a customer's deposit account (their "debit card"): their deposit is paid out of reserves, they leave, and their credit is set to 300 */
 function obCloseDep(cu){const o=S.ob;if(!cu||cu.rev)return 0;const d=Math.max(0,Math.min(cu.dep||0,o.deposits));o.deposits-=d;o.reserves-=d;o.nc=Math.max(0,o.nc-1);cu.dep=0;cu.cr=300;cu.risk=1;cu.rev=1;return d}
@@ -3898,13 +3900,15 @@ function obMonth(){econMonth();try{obMgrPrice()}catch(e){}if(S.ob.at)S.ob.depRat
     obNote("shk",sh)}const ry=Math.max(0,o.reserves)*b*C.yieldShare/12,li=obLoanMonth(),nl=o.nl||0;o.nl=0;
   const cm=obCardMonth(),ci=cm.ci,inc=ry+li+ci+cm.ix,wo=o.wo,rc=o.rcv,cf=o.cfee;o.rcv=o.cfee=0;
   const exp=o.deposits*o.depRate/12+t.opex+o.nc*C.custCost+o.emerg*(b+C.emergPen)/12,p=inc-exp-wo+rc-cf;
-  o.reserves+=inc-ci-exp;o.capital=obEquity();o.m++;obGenApps();obGenCApps(); // card interest is charged onto balances, so it isn't cash yet
+  o.reserves+=inc-ci-exp;o.capital=obEquity();o.m++;obGenApps();obGenCApps();
+  // profit account: a share of a profitable month moves out of reserves for the founder, never below the reserve and capital requirements
+  let sw=0;if(p>0&&!o.run&&!o.emerg&&o.reserves>0){const share=o.psweep==null?.5:o.psweep;sw=Math.max(0,Math.min(p*share,obFree(),o.reserves-o.deposits*C.reqRes*1.1));if(sw>=1){o.reserves-=sw;o.pacct=(o.pacct||0)+sw;o.ptot=(o.ptot||0)+sw;o.capital=obEquity()}else sw=0} // card interest is charged onto balances, so it isn't cash yet
   const rr=obRR();o.rep=Math.max(0,Math.min(100,o.rep+(p>0?.4:-.8)+(a-1)*.5-(o.emerg>0?1:0)-(o.reserves<0?5:0)-(rr<C.reqRes?C.confLow:0)
     -(p<-Math.max(1e5,o.capital*C.bigLoss)?3:0)-(o.run?2:0)+(rr>=C.reqRes&&p>0&&!o.emerg?C.confUp:0)));
   if(!o.run&&o.deposits>0&&(rr<C.runRR||o.reserves<0)&&o.rep<C.runRep&&Math.random()<C.runP){o.run=obRnd(C.runDur);obNote("run",`⚠️ Bank run! Depositors are pulling money out of ${o.name}`)}
   if(o.nd)obNote("def",`${o.nd} account${o.nd>1?"s":""} defaulted at ${o.name} (${fmt(wo)} written off)`);
   if(o.deposits>0&&rr<C.reqRes){if(!o.loW){o.loW=1;obNote("lo",`${o.name} reserves are below the ${Math.round(C.reqRes*100)}% requirement`)}}else o.loW=0;
-  o.last={p,inc,exp,add,lose,li,wo,nl,ry,ci,ix:cm.ix,rc,cf,ro,sh};o.hist.push({m:o.m,p:Math.round(p),r:Math.round(o.reserves),d:Math.round(wo),li:Math.round(li),nl:Math.round(nl),dep:Math.round(o.deposits),c:o.nc,ci:Math.round(ci),recov:Math.round(rc)});
+  o.last={p,inc,exp,add,lose,li,wo,nl,ry,ci,ix:cm.ix,rc,cf,ro,sh,sw};o.hist.push({m:o.m,p:Math.round(p),r:Math.round(o.reserves),d:Math.round(wo),li:Math.round(li),nl:Math.round(nl),dep:Math.round(o.deposits),c:o.nc,ci:Math.round(ci),recov:Math.round(rc)});
   while(o.hist.length>C.histKeep){const h=o.hist.shift(),y=Math.floor((h.m-1)/12)+1;let Y=o.yrs.find(x=>x.y===y);if(!Y){Y={y,p:0,d:0};o.yrs.push(Y)}Y.p+=h.p;Y.d+=h.d}
   if(o.yrs.length>50)o.yrs.shift();obTierUp(true);if(o.mgr)obMgr()}
 /* ---------- bank manager: hired staff who runs the bank every month ----------
@@ -4120,6 +4124,10 @@ function obAppFull(){const C=BANKCFG,o=S.ob;
   <div style="display:flex;gap:5px">${obBtn("obmoney",1e6,"Inject "+fmt(1e6),S.cash<1e6)}${obBtn("obmoney",1e7,"Inject "+fmt(1e7),S.cash<1e7)}</div>
   <div style="display:flex;gap:5px">${obBtn("obem",Math.max(1e6,Math.round(o.deposits*.1/1e5)*1e5),"Borrow "+fmt(Math.max(1e6,Math.round(o.deposits*.1/1e5)*1e5)),0,"#92400e")}${obBtn("obem",-1,"Repay "+fmt(Math.min(o.emerg,Math.max(0,o.reserves))),!o.emerg||o.reserves<1,"#1e3a8a")}</div>
   <div style="display:flex;gap:5px">${obBtn("obmoney",-fr/4,"Dividend "+fmt(fr/4),fr<1,"#1e3a8a")}${obBtn("obmoney",-fr,"Pay all "+fmt(fr),fr<1,"#1e3a8a")}</div>
+  <div class="ph-card"><b>💰 Profit account</b><span>Each profitable month, ${Math.round((o.psweep==null?.5:o.psweep)*100)}% of the profit moves here for you to take, as long as the bank keeps its reserve and capital requirements. Withdrawals are yours: nothing is owed back.</span></div>
+  <div class="ph-rows"><div><span>Balance</span><b style="color:var(--good)">${fmt(o.pacct||0)}</b></div><div><span>Added last month</span><b>${fmt(l&&l.sw||0)}</b></div><div><span>Paid in all time</span><b>${fmt(o.ptot||0)}</b></div></div>
+  <div style="display:flex;gap:5px">${obBtn("obpw",(o.pacct||0)/2,"Withdraw half",!(o.pacct>=2),"#14532d")}${obBtn("obpw",o.pacct||0,"Withdraw all "+fmt(o.pacct||0),!(o.pacct>=1),"#14532d")}${obBtn("obpback",0,"Back to reserves",!(o.pacct>=1),"#1e3a8a")}</div>
+  <div style="display:flex;gap:5px">${[0,.25,.5,1].map(v=>obBtn("obpsw",v,(v?Math.round(v*100)+"%":"Off")+((o.psweep==null?.5:o.psweep)===v?" ✓":""),0,(o.psweep==null?.5:o.psweep)===v?"#14532d":"#334155")).join("")}</div>
   <div class="ph-rows"><div><span>You owe your bank</span><b style="color:${o.owed>0?"#fbbf24":"var(--good)"}">${fmt(o.owed||0)}</b></div></div>
   <div style="display:flex;gap:5px">${[1e6,1e7,1e8].map(v=>obBtn("obpull",v,"Withdraw "+fmt(v),o.reserves<v,"#92400e")).join("")}</div>
   <div style="display:flex;gap:5px">${obBtn("obrepay",0,"Repay "+fmt(Math.min(o.owed||0,S.cash)),!(o.owed>0)||S.cash<1,"#14532d")}</div>
@@ -11457,7 +11465,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="dvopen"){dvOpen();return}
   else if(a==="hrdepot"){const c=CITIES[b.dataset.k];if(!c)return;tab="wh";PH.open=false;phRender();openCity(c);return}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
-  else if(a==="obpull"){obPull(+b.dataset.x);save();hud()}else if(a==="obrepay"){obRepay();save();hud()}else if(a==="obrevd"){if(S.ob)obRevokeCust(b.dataset.x);save();hud()}else if(a==="obauto"){if(S.ob)S.ob.autoCut=+b.dataset.x;save()}else if(a==="obrev"){if(S.ob){const [k,id]=String(b.dataset.x).split("|");obRevoke(k,id)}save();hud()}else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
+  else if(a==="obpull"){obPull(+b.dataset.x);save();hud()}else if(a==="obrepay"){obRepay();save();hud()}else if(a==="obpw"){obPWd(+b.dataset.x);save();hud()}else if(a==="obpback"){obPBack();save();hud()}else if(a==="obpsw"){if(S.ob)S.ob.psweep=+b.dataset.x;save();hud()}else if(a==="obrevd"){if(S.ob)obRevokeCust(b.dataset.x);save();hud()}else if(a==="obauto"){if(S.ob)S.ob.autoCut=+b.dataset.x;save()}else if(a==="obrev"){if(S.ob){const [k,id]=String(b.dataset.x).split("|");obRevoke(k,id)}save();hud()}else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
   else if(a==="obat"){if(S.ob){S.ob.at=+b.dataset.x;if(S.ob.at)S.ob.depRate=Math.round(S.econ.base*S.ob.at*1e4)/1e4}save()}
   else if(a==="obem"){obEmerg(+b.dataset.x);save()}
   else if(a==="obmgr"){obMgrSet(+b.dataset.x);save();hud()}
