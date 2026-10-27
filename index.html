@@ -4267,7 +4267,23 @@ const LU={trucks:{n:"Buy a truck",d:"+1 truck in your shared contract fleet.",ba
 const HU={dep:{n:"Hub depot",d:"+1 contract offer on this hub's board.",base:60000,g:1.8,max:5},
   drv:{n:"Driver training",d:"+6% pay and 5% quicker trips on contracts from this hub, fewer delays.",base:80000,g:2,max:4},
   dock:{n:"Loading docks",d:"+15% cargo (and pay) on new contracts from this hub.",base:90000,g:1.9,max:4},
-  fuel:{n:"Fuel station",d:"+5% pay on contracts from this hub (cheaper fuel).",base:70000,g:1.8,max:4}};
+  fuel:{n:"Fuel station",d:"+5% pay on contracts from this hub (cheaper fuel).",base:70000,g:1.8,max:4},
+
+  ref:{n:"Booking office",d:"New offers arrive 10% sooner on this hub's board.",base:70000,g:1.9,max:4},
+  hold:{n:"Client hotline",d:"Offers stay on this hub's board 20% longer.",base:50000,g:1.8,max:4},
+  route:{n:"Route planner",d:"Trips from this hub run 4% faster.",base:85000,g:1.9,max:5},
+  ins:{n:"Cargo insurance",d:"Late delivery chance from this hub drops by 1.5 points.",base:75000,g:2,max:3},
+  range:{n:"Long-haul permits",d:"Offers can reach cities 500 km further away (longer trips pay more).",base:100000,g:2,max:4},
+  rep:{n:"Client relations",d:"+1 extra client reputation per delivery from this hub.",base:120000,g:2.5,max:2},
+  bonus:{n:"On-time bonus",d:"On-time deliveries from this hub pay a 3% bonus.",base:95000,g:1.9,max:5},
+  cold:{n:"Cold storage",d:"+12% pay on bread, beef and medicine contracts from this hub.",base:80000,g:2,max:3},
+  haz:{n:"Hazmat licence",d:"+15% pay on fuel contracts from this hub.",base:70000,g:2,max:3},
+  heavy:{n:"Heavy-haul bay",d:"+12% pay on steel and furniture contracts from this hub.",base:80000,g:2,max:3},
+  sec:{n:"Secure lockup",d:"+12% pay on electronics contracts from this hub.",base:75000,g:2,max:3},
+  city:{n:"City runs",d:"+10% pay on short contracts (under 600 km) from this hub.",base:60000,g:1.9,max:3},
+  rest:{n:"Rest areas",d:"Long trips (over 1,500 km) from this hub run 6% faster.",base:80000,g:2,max:3},
+  bulk:{n:"Bulk freight desk",d:"+10% pay on big loads (45 t or more) from this hub.",base:85000,g:2,max:3},
+  prem:{n:"Premium clients",d:"5% chance per level that a new offer is a premium job paying +50%.",base:150000,g:2.2,max:4}};
 const TPOL=[["off","Manual only"],["pay","Best pay"],["rate","Best pay per hour"],["near","Nearest cargo"],["fast","Quickest trip"]];
 const TGOODS=["electronics","steel","bread","beef","fuel","furniture","medicine"];
 /* every S.logi object (fresh, loaded or imported) is sanitised once, the first time LG() sees it */
@@ -4286,11 +4302,11 @@ function LG(){const l=S.logi=S.logi&&typeof S.logi==="object"&&!Array.isArray(S.
   if(!l.hub||typeof l.hub!=="object")l.hub={};for(const id in l.hub){if(!CITIES[id]||!l.hub[id]||typeof l.hub[id]!=="object"||Array.isArray(l.hub[id])){delete l.hub[id];continue}hubFix(l.hub[id],l)}
   l.sv=2;lgOk=l;return l}
 function hubFix(h,l){const num=(v,d,lo,hi)=>Number.isFinite(+v)&&v!==null&&v!==""&&v!==false?Math.max(lo,Math.min(hi,+v)):d;
-  h.res=Math.floor(num(h.res,0,0,l.trucks));h.cap=Math.floor(num(h.cap,0,0,l.trucks));h.dep=Math.floor(num(h.dep,0,0,HU.dep.max));h.drv=Math.floor(num(h.drv,0,0,HU.drv.max));h.dock=Math.floor(num(h.dock,0,0,HU.dock.max));h.fuel=Math.floor(num(h.fuel,0,0,HU.fuel.max));
+  h.res=Math.floor(num(h.res,0,0,l.trucks));h.cap=Math.floor(num(h.cap,0,0,l.trucks));for(const k in HU)h[k]=Math.floor(num(h[k],0,0,HU[k].max));
   h.last=num(h.last,0,0,1e15);h.done=Math.floor(num(h.done,0,0,1e9));h.earned=num(h.earned,0,0,1e15);h.tons=num(h.tons,0,0,1e12);h.late=Math.floor(num(h.late,0,0,1e9));
   if(h.pol!==""&&!TPOL.some(p=>p[0]===h.pol))h.pol="";return h}
 /* the hub record of a city (created on first use); reservations are kept within the fleet size */
-function HB(id){const l=LG();let h=l.hub[id];if(!h)h=l.hub[id]={res:0,cap:0,pol:"",dep:0,drv:0,dock:0,fuel:0,last:0,done:0,earned:0,tons:0,late:0};
+function HB(id){const l=LG();let h=l.hub[id];if(!h){h=l.hub[id]={res:0,cap:0,pol:"",last:0,done:0,earned:0,tons:0,late:0};for(const k in HU)h[k]=0}
   if(h.res>l.trucks)h.res=l.trucks;return h}
 const lvl=k=>LG().up[k]||0;
 /* trucks: original 1.35^n curve up to 40 bought, then linear: +5% of the 40th-truck price per extra truck (always finite) */
@@ -4315,27 +4331,30 @@ function hubRoom(id){const l=LG(),hs=hubs().map(c=>c.id);let R=0,over=0;const by
   return Math.max(0,Math.min(room,l.trucks-l.jobs.length))}
 const hubSlots=id=>4+2*lvl("depot")+HB(id).dep;
 function makeOffer(from){const l=LG();if(!from||!S.rivals||!S.rivals.length)return null;
-  const near=CITIES.filter(c=>c!==from&&distKm(from,c)<3500&&distKm(from,c)>150);if(!near.length)return null;const to=near[Math.floor(Math.random()*near.length)];
-  const ri=Math.floor(Math.random()*S.rivals.length),km=distKm(from,to),h=HB(from.id),tons=Math.round((20+Math.random()*40)*(1+.15*(h.dock||0)));
+  const h=HB(from.id),near=CITIES.filter(c=>c!==from&&distKm(from,c)<3500+500*h.range&&distKm(from,c)>150);if(!near.length)return null;const to=near[Math.floor(Math.random()*near.length)];
+  const ri=Math.floor(Math.random()*S.rivals.length),km=distKm(from,to),tons=Math.round((20+Math.random()*40)*(1+.15*h.dock));
   const lvTr=(S.own[from.id]||{}).trucking||1;
-  let pay=Math.round(km*tons*.05*(1+.25*lvl("trailer"))*(1+repOf(ri)*.02)*(1+.1*(lvTr-1))*(1+.06*h.drv)*(.8+Math.random()*.5)*PRICE[from.size]*ishPay());
-  const g=TGOODS[Math.floor(Math.random()*TGOODS.length)];pay=Math.round(pay*(1+.05*(h.fuel||0))*(["bread","beef","medicine"].includes(g)?1+.3*lvl("reefer"):1));
-  return{id:l.nid++,ri,from:from.id,to:to.id,km,tons,g,pay,exp:Date.now()+(20+Math.random()*40)*60000*(1+.25*lvl("broker"))}}
-const jobDur=o=>Math.max(8*60000,o.km/legPace("truck")*DAYMS/4/Math.pow(1.15,lvl("engine"))*Math.pow(.95,HB(o.from).drv)/ishSpd());
+  const pay0=(km*tons*.05*(1+.25*lvl("trailer"))*(1+repOf(ri)*.02)*(1+.1*(lvTr-1))*(1+.06*h.drv)*(.8+Math.random()*.5)*PRICE[from.size]*ishPay());
+  const g=TGOODS[Math.floor(Math.random()*TGOODS.length)],prem=Math.random()<.05*h.prem;
+  const pay=Math.round(pay0*(1+.05*h.fuel)*(["bread","beef","medicine"].includes(g)?1+.3*lvl("reefer"):1)*hubPayX(h,g,km,tons)*(prem?1.5:1));
+  return{id:l.nid++,ri,from:from.id,to:to.id,km,tons,g,pay,prem,exp:Date.now()+(20+Math.random()*40)*60000*(1+.25*lvl("broker"))*(1+.2*h.hold)}}
+/* pay multiplier from a hub's depot upgrades for a cargo type and distance */
+const hubPayX=(h,g,km,t)=>(t>=45?1+.1*h.bulk:1)*(["bread","beef","medicine"].includes(g)?1+.12*h.cold:1)*(g==="fuel"?1+.15*h.haz:1)*(g==="steel"||g==="furniture"?1+.12*h.heavy:1)*(g==="electronics"?1+.12*h.sec:1)*(km<600?1+.1*h.city:1);
+const jobDur=o=>Math.max(8*60000,o.km/legPace("truck")*DAYMS/4/Math.pow(1.15,lvl("engine"))*Math.pow(.95,HB(o.from).drv)*Math.pow(.96,HB(o.from).route)*(o.km>1500?Math.pow(.94,HB(o.from).rest):1)/ishSpd());
 function acceptOffer(id,quiet){const l=LG(),o=l.offers.find(x=>x.id===id);if(!o||hubRoom(o.from)<1)return false;
-  l.offers=l.offers.filter(x=>x!==o);const late=Math.random()<Math.max(.01,.08-.015*HB(o.from).drv-.015*lvl("gps")),d=jobDur(o)*(late?1.4:1);l.jobs.push({...o,dep:Date.now(),arr:Date.now()+d,late});
+  l.offers=l.offers.filter(x=>x!==o);const late=Math.random()<Math.max(0,.08-.015*HB(o.from).drv-.015*lvl("gps")-.015*HB(o.from).ins),d=jobDur(o)*(late?1.4:1);l.jobs.push({...o,dep:Date.now(),arr:Date.now()+d,late});
   if(!quiet)toast(`Contract accepted: ${CITIES[o.from].name} → ${CITIES[o.to].name}`);return true}
 /* which offer of a hub the auto-dispatch policy takes first */
 function trPick(id,pol){const os=LG().offers.filter(o=>o.from===id);if(!os.length)return null;
   const key={pay:o=>-o.pay,rate:o=>-o.pay/jobDur(o),near:o=>o.km,fast:o=>jobDur(o)}[pol];return key?os.sort((a,b)=>key(a)-key(b))[0]:null}
 function runLogi(){const l=LG(),now=Date.now();
-  for(const j of l.jobs.filter(j=>now>=j.arr)){const h=HB(j.from);if(j.late&&lvl("insure"))j.pay=Math.round(j.pay*(1+.25*lvl("insure")));if(typeof ofP==="function"&&ofP("truck")){const p0=j.pay;j.pay=Math.round(j.pay*(1+.08*ofP("truck")));try{ofSav("truck",j.pay-p0)}catch(e){}}S.cash+=j.pay;try{ofRep("truck",1,j.pay)}catch(e){}S.earned=(S.earned||0)+j.pay;l.earned+=j.pay;l.done++;l.tons+=j.tons;l.rep[j.ri]=Math.min(50,repOf(j.ri)+1);
+  for(const j of l.jobs.filter(j=>now>=j.arr)){const h=HB(j.from);if(!j.late&&h.bonus)j.pay=Math.round(j.pay*(1+.03*h.bonus));if(j.late&&lvl("insure"))j.pay=Math.round(j.pay*(1+.25*lvl("insure")));if(typeof ofP==="function"&&ofP("truck")){const p0=j.pay;j.pay=Math.round(j.pay*(1+.08*ofP("truck")));try{ofSav("truck",j.pay-p0)}catch(e){}}S.cash+=j.pay;try{ofRep("truck",1,j.pay)}catch(e){}S.earned=(S.earned||0)+j.pay;l.earned+=j.pay;l.done++;l.tons+=j.tons;l.rep[j.ri]=Math.min(50,repOf(j.ri)+1+h.rep);
     h.done++;h.earned+=j.pay;h.tons+=j.tons;if(j.late){l.late++;h.late++;try{crtLate(j,now-j.arr>60000)}catch(e){}}
     l.hist.unshift({t:now,day:S.day||1,hub:j.from,to:j.to,g:j.g,tons:j.tons,ri:j.ri,pay:j.pay,late:!!j.late});l.hist.length=Math.min(l.hist.length,60);
     S.log.unshift(`Trucking: delivered ${j.tons} t of ${j.g} for ${RIVALS[j.ri].n}, +${fmt(j.pay)}`);S.log=S.log.slice(0,3)}
   l.jobs=l.jobs.filter(j=>now<j.arr);l.offers=l.offers.filter(o=>o.exp>now&&(S.own[o.from]||{}).trucking);
   const H=hubs();if(!H.length)return;
-  for(const c of H){const h=HB(c.id);if(now-h.last>90000/(1+.2*lvl("broker"))&&l.offers.filter(o=>o.from===c.id).length<hubSlots(c.id)){h.last=now;const o=makeOffer(c);if(o)l.offers.push(o)}}
+  for(const c of H){const h=HB(c.id);if(now-h.last>90000*Math.pow(.9,h.ref)/(1+.2*lvl("broker"))&&l.offers.filter(o=>o.from===c.id).length<hubSlots(c.id)){h.last=now;const o=makeOffer(c);if(o)l.offers.push(o)}}
   if(lvl("dispatch")&&l.auto)for(const c of H){const pol=hubPol(c.id);if(pol==="off")continue;let o;while(hubRoom(c.id)>0&&(o=trPick(c.id,pol))){if(!acceptOffer(o.id,true))break}}}
 /* ---------- hire an AI logistics company instead of using your own network ---------- */
 const CARR=i=>{const h=hashS(RIVALS[i].n);return{rate:.0093*(.8+(h%50)/100),spd:.8+((h>>4)%60)/100,rel:.92+((h>>9)%8)/100}};
@@ -8637,7 +8656,7 @@ function txHubCard(c,row){const l=LG(),h=HB(c.id),lv=(S.own[c.id]||{}).trucking|
   <div class="lx-it"><div class="m"><b>Trucks</b><span>${b} busy here · ${room} can start now · ${nOff} offer${nOff===1?"":"s"} on the board</span><small>${own?`${own} of your own vehicle${own===1?"":"s"} based here run 25% faster. `:""}${lv>1?`Level ${lv} pays ${10*(lv-1)}% more on contracts.`:"Higher levels pay more on contracts."}</small></div></div>
   <div class="lx-it"><div class="m"><b>Reserved for this hub</b><span>${h.res} truck${h.res===1?"":"s"} always available to it</span></div><div class="a"><button class="lx-btn" data-tx="res" data-id="${c.id}" data-d="-1" ${h.res<1?"disabled":""} aria-label="Reserve fewer trucks">−</button><button class="lx-btn" data-tx="res" data-id="${c.id}" data-d="1" ${rm+h.res>=l.trucks?"disabled":""} aria-label="Reserve more trucks">+</button></div></div>
   <div class="lx-it"><div class="m"><b>Most at once</b><span>${h.cap?h.cap+" truck"+(h.cap===1?"":"s"):"No limit (shared pool)"}</span></div><div class="a"><button class="lx-btn" data-tx="cap" data-id="${c.id}" data-d="-1" ${h.cap<1?"disabled":""} aria-label="Lower limit">−</button><button class="lx-btn" data-tx="cap" data-id="${c.id}" data-d="1" ${h.cap>=l.trucks?"disabled":""} aria-label="Raise limit">+</button></div></div>
-  <div class="lx-it"><div class="m"><b>Auto-dispatch</b><span>${lvl("dispatch")?(l.auto?"Takes offers by this policy when trucks are free.":"Master switch is off (Board tab)."):"Buy Dispatch software in the Fleet tab to unlock."}</span><select class="lx-in" data-txp="${c.id}" ${lvl("dispatch")?"":"disabled"} style="margin-top:6px">${TPOL.map(p=>lxOpt(p[0],p[1],pol)).join("")}</select></div></div>${up("dep")}${up("drv")+up("dock")+up("fuel")}</div>`}
+  <div class="lx-it"><div class="m"><b>Auto-dispatch</b><span>${lvl("dispatch")?(l.auto?"Takes offers by this policy when trucks are free.":"Master switch is off (Board tab)."):"Buy Dispatch software in the Fleet tab to unlock."}</span><select class="lx-in" data-txp="${c.id}" ${lvl("dispatch")?"":"disabled"} style="margin-top:6px">${TPOL.map(p=>lxOpt(p[0],p[1],pol)).join("")}</select></div></div>${up("dep")}${up("drv")+up("dock")+up("fuel")}<details class="lx-it" style="display:block" ${(window.hdOpen||{})[c.id]?"open":""} ontoggle="(window.hdOpen=window.hdOpen||{})[${c.id}]=this.open"><summary style="cursor:pointer;font-weight:600">More depot upgrades (${Object.keys(HU).slice(4).filter(k=>h[k]>=HU[k].max).length}/${Object.keys(HU).length-4} maxed)</summary>${Object.keys(HU).slice(4).map(up).join("")}</details></div>`}
 function txHubs(tg){const H=hubs(),D=dxData(false),by={};for(const r of D.rows)if(r.b.k==="trucking")by[r.c.id]=r;
   let h=txKpis();for(const c of H)h+=txHubCard(c,by[c.id]);
   return h+`<div class="mdx-card"><div class="mdx-ch"><h3>Open another hub</h3></div>${txBuyList(5,"Cheapest cities to open a Trucking company")}</div>`}
