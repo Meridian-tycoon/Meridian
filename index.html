@@ -10413,7 +10413,7 @@ function ipoHqNote(){const o=S.ipo;if(o&&o.st==="live")return`<p class="d" style
   if(o&&o.st==="road")return`<p class="d" style="font-size:12px;color:var(--muted);margin:4px 0">${o.tk} roadshow: lists in ${fmtDur(o.t0+IPOC.road-Date.now())}.</p>`;
   return`<p class="d" style="font-size:12px;color:var(--muted);margin:4px 0">Company IPO: sell up to 49% of your company for cash in <a href="#" data-ipoapp="1">Stocks › My IPO</a>.</p>`}
 sheet.addEventListener("click",e=>{const a=e.target.closest("[data-ipoapp]");if(!a)return;e.preventDefault();mkTab="i";mkSel=null;IPO.sel=null;if(innerWidth<820)closeSheet();PH.open=true;PH.app="stocks";phSave();phRender()});
-/* ---------- Stock Exchange (New York, one per player) ----------
+/* ---------- Stock Exchange (New York, one server-wide: world/nyse {uid,name,own,at} names the owner) ----------
    S.exch = {name, at, mgr, d:{day,vol,fee,com,n}, h:[{vol,fee}] last 14 game days, t (last tick), tot (lifetime fees+commissions)}.
    Base fee income goes through totals().inc (exIncome); it scales with how much the market moves today (exAct). A hired manager adds 25% and auto-collects commissions.
    S.exVia = "" (game market) | "me" (your own exchange: you keep the 0.1% commission) | another player's uid (0.1% of the trade value is paid to that owner).
@@ -10439,7 +10439,14 @@ function exIndexOpen(){const m=MK();let s=0,n=0;for(const a of ASSETS)if(a.t==="
 function exDay(now){const x=exFix();if(!x)return null;const d=Math.floor((now||Date.now())/DAYMS);if(x.d.day!==d){if(x.d.day)x.h.push({vol:Math.round(x.d.vol),fee:Math.round(x.d.fee+x.d.com)});if(x.h.length>14)x.h=x.h.slice(-14);x.d={day:d,vol:0,fee:0,com:0,n:0}}return x}
 function exBuy(c,nm){if(!c||c.name!==EXC.city)return toast(`The stock exchange can only be opened in ${EXC.city}`);if(exOwn())return toast("You already own a stock exchange");
   const n=exName(nm);if(n.length<3)return toast("Name your exchange: 3 to 30 letters or numbers");if(S.cash<EXC.cost)return toast(`The exchange costs ${fmt(EXC.cost)}`);
-  S.cash-=EXC.cost;S.exch={name:n,at:Date.now(),mgr:0,t:Date.now(),tot:0,city:c.id};exDay();EX.last=0;toast(`🏛 ${n} opens its doors on Wall Street`);try{S.log.unshift(`Founded the ${n} stock exchange in New York`);S.log=S.log.slice(0,3)}catch(e){}commit()}
+  if(!exOk())return toast("Sign in (Saves › Online) to buy the exchange: there is only one on the server");if(!EX.nyOk)return toast("Checking who owns the exchange, try again in a moment");
+  if(exTaken())return toast(`${EX.ny.name} is already owned by ${EX.ny.own||"another player"}. There is only one exchange on the server`);if(EX.claiming)return;EX.claiming=1;
+  exClaim(n).then(()=>{EX.claiming=0;if(exOwn())return;if(S.cash<EXC.cost)return toast(`The exchange costs ${fmt(EXC.cost)}`);exFound(c,n)},e=>{EX.claiming=0;toast(e&&e.message==="taken"?"Someone else just bought the exchange":"Couldn't buy the exchange: "+(e&&e.code||e))})}
+/* claim world/nyse in a transaction: only succeeds if nobody (or you) owns it */
+function exClaim(n){const ref=ON.db.collection("world").doc("nyse"),uid=ON.user.uid;return ON.db.runTransaction(async t=>{const d=await t.get(ref);if(d.exists&&d.data().uid!==uid)throw new Error("taken");
+  t.set(ref,{uid,name:n,own:String(onProf().name||"Tycoon").slice(0,20),at:window.firebase.firestore.FieldValue.serverTimestamp()})})}
+const exTaken=()=>!!(EX.ny&&EX.ny.uid&&(!exOk()||EX.ny.uid!==ON.user.uid));
+function exFound(c,n){S.cash-=EXC.cost;S.exch={name:n,at:Date.now(),mgr:0,t:Date.now(),tot:0,city:c.id};exDay();EX.last=0;toast(`🏛 ${n} opens its doors on Wall Street`);try{S.log.unshift(`Founded the ${n} stock exchange in New York`);S.log=S.log.slice(0,3)}catch(e){}commit()}
 function exMgr(on){const x=exFix();if(!x)return;if(!on){x.mgr=0;toast("Exchange manager let go");return}if(x.mgr)return;if(S.cash<EXC.mgrHire)return toast(`Hiring costs ${fmt(EXC.mgrHire)}`);S.cash-=EXC.mgrHire;x.mgr=1;toast(`👔 Manager hired at ${x.name}`)}
 /* every trade() calls this with the asset and trade value (after the trade went through) */
 function exOnTrade(a,v){const via=S.exVia;if(!via||!(v>0))return;const c=v*EXC.com;
@@ -10447,11 +10454,12 @@ function exOnTrade(a,v){const via=S.exVia;if(!via||!(v>0))return;const c=v*EXC.c
   const amt=Math.floor(c);if(amt<1||!exOk())return;const ex=EX.list.find(e=>e.id===via);if(!ex)return;
   ON.db.collection("excom").add({by:ON.user.uid,byName:String(onProf().name||"Tycoon").slice(0,20),to:via,amt:Math.min(50000000,amt),vol:Math.min(1e15,Math.max(amt*1000,Math.floor(v))),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{EX.err="Commission not sent: "+(e&&e.code||e)})}
 /* online */
-const EX={on:0,sub:{},list:[],inb:[],last:0,busy:{},err:"",sel:"AAPL",q:""};
+const EX={on:0,sub:{},list:[],inb:[],last:0,busy:{},err:"",sel:"AAPL",q:"",ny:null,nyOk:0};
 const exOk=()=>!!(typeof ON!=="undefined"&&ON.db&&ON.user&&window.firebase);
 function exEnsure(){if(!exOk()){if(EX.on){for(const k in EX.sub)try{EX.sub[k]()}catch(e){}EX.sub={};EX.on=0}return}const uid=ON.user.uid,now=Date.now();
   if(!EX.on){EX.on=1;const arr=q=>{const a=[];q.forEach(d=>a.push(Object.assign({id:d.id},d.data()||{})));return a},er=w=>e=>{EX.err="Couldn't load "+w+": "+(e&&e.code||e)};
     EX.sub.l=ON.db.collection("exch").orderBy("at","desc").limit(30).onSnapshot(q=>{EX.list=arr(q).filter(x=>x.id!==uid&&typeof x.name==="string");exRefresh()},er("exchanges"));
+    EX.sub.n=ON.db.collection("world").doc("nyse").onSnapshot(d=>{EX.ny=d.exists?d.data():null;EX.nyOk=1;if(!EX.ny&&exOwn())exClaim(S.exch.name).catch(()=>{});exRefresh()},er("exchange owner"));
     EX.sub.i=ON.db.collection("excom").where("to","==",uid).onSnapshot(q=>{EX.inb=arr(q);if(exFix()&&S.exch.mgr)exCollect(1);exRefresh()},er("commissions"))}
   if(exOwn()&&now-EX.last>EXC.pub){EX.last=now;const x=exDay(now);
     ON.db.collection("exch").doc(uid).set({name:x.name,own:String(onProf().name||"Tycoon").slice(0,20),fee:EXC.com,vol:Math.min(1e15,Math.round(x.d.vol+x.d.fee/EXC.take)),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{EX.err="Couldn't list your exchange: "+(e&&e.code||e)})}}
@@ -10469,7 +10477,8 @@ function exViaHtml(){const n=exViaName();return `<div class="ph-sub" style="marg
 function exApp(){exTick();const x=exFix(),b=(a,k,t,dis,bg)=>`<button class="buy" data-ph="${a}" data-k="${k}" ${dis?"disabled":""} style="min-width:0;color:#fff;background:${bg||"#1e40af"}!important;border-color:#93c5fd">${t}</button>`;let h="";
   if(x){h+=`<div class="ph-card"><b>🏛 ${devEsc(x.name)}</b><span>Your stock exchange on Wall Street. Today: ${fmt(x.d.vol)} traded · ${fmt(x.d.fee+x.d.com)} in fees${x.mgr?" · manager on duty":""}.</span>
       <div style="margin-top:8px">${b("exdash","", "📊 Open exchange dashboard",0,"#1e3a8a")}</div></div>`}
-  else h+=`<div class="ph-card"><b>🏛 Stock exchange</b><span>Own the trading floor: open your own exchange in ${EXC.city} (one per player, ${fmt(EXC.cost)}). It earns fees from every trade on it, and other players can route their trades through it.</span><span style="display:block;margin-top:6px;color:#cbd5e1">Open ${EXC.city} on the map › Business tab to buy it.</span></div>`;
+  else if(exTaken())h+=`<div class="ph-card"><b>🏛 ${devEsc(EX.ny.name||"Stock exchange")}</b><span>The server's only stock exchange is owned by <b>${devEsc(EX.ny.own||"another player")}</b>. You can route your trades through it below.</span></div>`;
+  else h+=`<div class="ph-card"><b>🏛 Stock exchange</b><span>Own the trading floor: open your own exchange in ${EXC.city} (only one on the server, ${fmt(EXC.cost)}). It earns fees from every trade on it, and other players can route their trades through it.</span><span style="display:block;margin-top:6px;color:#cbd5e1">Open ${EXC.city} on the map › Business tab to buy it.</span></div>`;
   const v=S.exVia||"";h+=`<div class="ph-card" style="margin-top:8px"><b>Where your trades go</b><span>Pick the exchange your Stocks app trades on. Fees stay the same; on a player's exchange 0.1% of the trade value goes to its owner.</span>
     <div class="ph-rows" style="margin-top:6px"><div><span>Public market</span>${v===""?"<b style='color:#4ade80'>✓ Using</b>":b("exvia","","Use",0,"#475569")}</div>
     ${x?`<div><span>${devEsc(x.name)} <small>(yours)</small></span>${v==="me"?"<b style='color:#4ade80'>✓ Using</b>":b("exvia","me","Use")}</div>`:""}
@@ -10480,7 +10489,8 @@ function exPhone(a,k){if(a==="exdash"){exOpen();return 1}if(a==="exvia"){S.exVia
 /* city sheet row (New York only) */
 function exRow(c){if(!c||c.name!==EXC.city)return"";const x=exFix();
   if(x)return `<div class="sec">Stock exchange</div><div class="list"><div class="row own"><div class="n">🏛 ${devEsc(x.name)} <span class="tag boom">Yours</span></div><div class="d">Earns about <b>${fmt(exIncome())}</b>/hr in trading fees. Today ${fmt(x.d.vol)} traded.</div><button class="buy" id="ex-dash">Dashboard</button></div></div>`;
-  return `<div class="sec">Stock exchange · one per player</div><div class="list"><div class="row"><div class="n">🏛 Stock trading office</div>
+  if(exTaken())return `<div class="sec">Stock exchange · one on the server</div><div class="list"><div class="row"><div class="n">🏛 ${devEsc(EX.ny.name||"Stock exchange")} <span class="tag">Taken</span></div><div class="d">Owned by <b>${devEsc(EX.ny.own||"another player")}</b>. There is only one stock exchange on the server. You can still trade through it from the Exchange app.</div></div></div>`;
+  return `<div class="sec">Stock exchange · only one on the server</div><div class="list"><div class="row"><div class="n">🏛 Stock trading office</div>
     <div class="d">Open your own exchange on Wall Street. About <b>${fmt(EXC.base)}</b>/hr in trading fees (more on busy market days), a phone dashboard, and other players can trade on it (0.1% commission to you).<br>
     <input id="ex-nm" maxlength="30" placeholder="Name your exchange" aria-label="Exchange name" autocomplete="off" style="margin-top:6px;width:100%;max-width:260px;box-sizing:border-box"></div>
     <button class="buy" id="ex-buy" ${S.cash<EXC.cost?"disabled":""}>Buy ${fmt(EXC.cost)}</button></div></div>`}
