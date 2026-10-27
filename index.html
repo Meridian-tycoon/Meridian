@@ -7166,7 +7166,7 @@ async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=
 function onRefresh(){if((mode==="pf"||mode==="sv")&&sheet.classList.contains("open")&&!(document.activeElement&&/^(INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;reSheet();sheet.scrollTop=y}}
 function onPubData(){const p=onProf(),{nw}=totals(),ids=o=>Object.keys(o||{}).filter(k=>o[k]&&CITIES[k]&&(typeof o[k]!=="object"||Object.keys(o[k]).length)).map(Number).slice(0,100);
   const v=Math.round(isFinite(nw)?nw:0),rank=Math.min(1000,1+S.rivals.filter(r=>r.nw>v).length+ON.players.filter(q=>(+q.nw||0)>v).length);
-  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null,...(typeof CT!=="undefined"&&CT&&CT.mine?{cid:CT.mine.id}:{}),...(ipoTk()?{tk:ipoTk()}:{}),...(S.pol&&S.pol.r>=0?{gov:true,...(S.pol.c?{govC:String(S.pol.c).slice(0,40),govR:S.pol.r,govS:Math.max(0,Math.round(S.pol.since||0))}:{})}:{})}}
+  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null,...(typeof CT!=="undefined"&&CT&&CT.mine?{cid:CT.mine.id}:{}),...(ipoTk()?{tk:ipoTk()}:{}),...(Math.min(3,Math.floor(+S.sats||0))>0?{sats:Math.min(3,Math.floor(+S.sats||0))}:{}),...(S.pol&&S.pol.r>=0?{gov:true,...(S.pol.c?{govC:String(S.pol.c).slice(0,40),govR:S.pol.r,govS:Math.max(0,Math.round(S.pol.since||0))}:{})}:{})}}
 function onLocPub(){try{if(!ON.ready||!ON.user)return;const l=S.loc&&S.loc.city;if(l!==ON.lastLoc){ON.lastLoc=l;onPublish(true)}}catch(e){}}
 function onPublish(force){if(!ON.ready||!ON.user||ON.deleting)return;const d=onPubData(),sig=JSON.stringify(d),n=Date.now();
   if(!force&&!(n-ON.lastPub>=60000||(sig!==ON.lastSig&&n-ON.lastPub>=60000)))return;
@@ -8618,10 +8618,17 @@ function airFleetVal(){const a=S.air;if(!a||!Array.isArray(a.pl))return 0;let v=
 const SATORB=[[51.6,-40,0,90],[28.5,70,2.1,110],[97.4,160,4.2,100]];   // [inclination°, node lon°, phase, minutes per orbit]
 function satPt(o,t){const i=o[0]*Math.PI/180,a=o[2]+t*2*Math.PI/(o[3]*60000),x=Math.cos(a),y=Math.sin(a)*Math.cos(i),zz=Math.sin(a)*Math.sin(i);
   return [((Math.atan2(y,x)*180/Math.PI+o[1]+540)%360)-180,Math.asin(Math.max(-1,Math.min(1,zz)))*180/Math.PI]}
-function satDraw(ctx,now){const n=Math.min(3,Math.floor(+S.sats||0));window.__satN=0;if(!(n>0)||(S.set&&S.set.sat===0))return;ctx.save();ctx.font="13px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
-  for(let k=0;k<n;k++){const o=SATORB[k],c=[];for(let j=0;j<=72;j++)c.push(satPt([o[0],o[1],0,1],j*60000/72));
-    ctx.beginPath();path({type:"LineString",coordinates:c});ctx.setLineDash([2,5]);ctx.strokeStyle="#94a3b8";ctx.globalAlpha=.3;ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([]);
-    const g=satPt(o,now);if(!visible(g[0],g[1]))continue;const [x,y]=proj(g);ctx.globalAlpha=1;ctx.fillText("🛰️",x,y);window.__satN++}
+function satHash(u){let h=2166136261;for(const ch of String(u))h=Math.imul(h^ch.charCodeAt(0),16777619);return h>>>0}
+function satList(){const L=[],n=Math.min(3,Math.floor(+S.sats||0));for(let k=0;k<n;k++)L.push({o:SATORB[k]});
+  const P=typeof ON!=="undefined"&&Array.isArray(ON.players)?ON.players:[],me=typeof ON!=="undefined"&&ON.user?ON.user.uid:null;
+  for(const p of P){if(L.length>=60)break;if(!p||p.uid===me)continue;const m=Math.min(3,Math.floor(+p.sats||0));if(!(m>0))continue;const h=satHash(p.uid),col=/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#94a3b8";
+    for(let k=0;k<m&&L.length<60;k++){const r=satHash(p.uid+":"+k);L.push({o:[20+(r%800)/10,((h>>>3)%360)-180+k*120,(r>>>10)%628/100,85+(r>>>20)%40],col})}}
+  return L}
+function satDraw(ctx,now){window.__satN=0;if(S.set&&S.set.sat===0)return;const L=satList();if(!L.length)return;ctx.save();ctx.font="13px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
+  for(const s of L){const o=s.o,c=[];for(let j=0;j<=72;j++)c.push(satPt([o[0],o[1],0,1],j*60000/72));
+    ctx.beginPath();path({type:"LineString",coordinates:c});ctx.setLineDash([2,5]);ctx.strokeStyle=s.col||"#94a3b8";ctx.globalAlpha=s.col?.2:.3;ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([]);
+    const g=satPt(o,now);if(!visible(g[0],g[1]))continue;const [x,y]=proj(g);ctx.globalAlpha=1;ctx.fillText("🛰️",x,y);
+    if(s.col){ctx.beginPath();ctx.arc(x+7,y+6,2.5,0,6.2832);ctx.fillStyle=s.col;ctx.fill()}window.__satN++}
   ctx.restore()}
 function airDraw(ctx,now){const a=S.air;if(!a||!Array.isArray(a.pl)||!a.pl.length)return;const dn={};ctx.save();ctx.font="12px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
   for(const p of a.pl){if(!p||!p.nx||p.r==null)continue;const r=airRt(p.r);if(!r||!airIsHub(p.hub))continue;const A=CITIES[p.dir?r.b:r.a],B=CITIES[p.dir?r.a:r.b];if(!A||!B)continue;
