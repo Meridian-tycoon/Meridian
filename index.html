@@ -9454,7 +9454,7 @@ const GXCFG={
     maxB:5,bStep:.05,p0:.36,games:30,champ:.62,play:.5,sell:.5}};
 const SSN=[["spring","Spring","🌸"],["summer","Summer","☀️"],["autumn","Autumn","🍂"],["winter","Winter","❄️"]];
 function gxS(){if(!S.dsx||typeof S.dsx!=="object")S.dsx={};const d=S.dsx;if(!d.act||typeof d.act!=="object")d.act={};if(!d.ins||typeof d.ins!=="object")d.ins={};if(!Array.isArray(d.pend))d.pend=[];if(!Array.isArray(d.hist))d.hist=[];d.qn=d.qn|0;
-  if(!S.ssn||typeof S.ssn!=="object")S.ssn={};if(S.ssn.i==null)S.ssn.i=ssnIdx(null);
+  if(!S.ssn||typeof S.ssn!=="object")S.ssn={};if(S.ssn.i==null)S.ssn.i=ssnIdx(null);if(S.ssn.g==null)S.ssn.g=spGameIdx();
   if(!S.lto||typeof S.lto!=="object")S.lto={};const t=S.lto;if(!Array.isArray(t.tk))t.tk=[];if(!Array.isArray(t.hist))t.hist=[];t.fd=t.fd|0;t.pd=t.pd|0;t.pn=t.pn|0;t.spent=+t.spent||0;t.won=+t.won||0;
   if(!S.spt||typeof S.spt!=="object")S.spt={};if(!S.spt.cl||typeof S.spt.cl!=="object")S.spt.cl={};S.spt.tr=S.spt.tr|0;return d}
 const gxHas=id=>{const o=S.own&&S.own[id];return !!o&&Object.keys(o).some(k=>o[k])};
@@ -9488,11 +9488,15 @@ function gxDraw(ctx){const a=S.dsx&&S.dsx.act;if(!a)return;const t=performance.n
   ctx.save();ctx.strokeStyle="rgba(239,68,68,.9)";ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(x,y,14,0,7);ctx.stroke();ctx.globalAlpha=.45;ctx.beginPath();ctx.arc(x,y,20,0,7);ctx.stroke();ctx.globalAlpha=1;
   ctx.font="15px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(K?K.i:"⚠️",x+16,y-16);ctx.restore()}}
 /* ---- seasons: 30 game days each; southern hemisphere is offset by two seasons; tropics feel half the swing ---- */
-function ssnIdx(c){const i=Math.floor(Math.max(0,(S.day||1)-1)/GXCFG.ssn.len)%4;return c&&c.lat<0?(i+2)%4:i}
+/* one world calendar for every player: the season follows the real date (UTC): Mar-May spring, Jun-Aug summer, Sep-Nov autumn, Dec-Feb winter; flipped south of the equator */
+function ssnIdx(c){const i=Math.floor(((new Date(Date.now()).getUTCMonth()+10)%12)/3);return c&&c.lat<0?(i+2)%4:i}
 function ssnMult(c,b){const fx=GXCFG.ssn.fx[SSN[ssnIdx(c)][0]][b.k];if(!fx)return 1;return 1+Math.max(-.2,Math.min(.2,fx*(Math.abs(c.lat)<GXCFG.ssn.trop?.5:1)))}
 function ssnHome(){const c=CITIES[((S.home||S.loc||{city:0}).city)|0]||CITIES[0];return c}
-function ssnTag(){try{const c=ssnHome(),s=SSN[ssnIdx(c)],el=document.getElementById("day");if(el)el.title=`${s[1]} in ${c.name}: ${ssnLeft()} game days left`;return innerWidth<600?` ${s[2]}`:` · ${s[2]} ${s[1]}`}catch(e){return ""}}
-const ssnLeft=()=>GXCFG.ssn.len-(Math.max(0,(S.day||1)-1)%GXCFG.ssn.len);
+function ssnTag(){try{const c=ssnHome(),s=SSN[ssnIdx(c)],el=document.getElementById("day");if(el)el.title=`${s[1]} in ${c.name}: ${ssnLeft()} days left`;return innerWidth<600?` ${s[2]}`:` · ${s[2]} ${s[1]}`}catch(e){return ""}}
+/* sports seasons keep the old game-day clock (30 game days each) */
+const spGameIdx=()=>Math.floor(Math.max(0,(S.day||1)-1)/GXCFG.ssn.len);
+const spLeft=()=>GXCFG.ssn.len-(Math.max(0,(S.day||1)-1)%GXCFG.ssn.len);
+const ssnLeft=()=>{const n=new Date(Date.now()),m=n.getUTCMonth(),nx=[2,5,8,11].map(x=>x>m?x:x+12).sort((x,y)=>x-y)[0],t=Date.UTC(n.getUTCFullYear()+(nx>11?1:0),nx%12,1);return Math.max(1,Math.ceil((t-n.getTime())/864e5))};
 /* ---- sports clubs ---- */
 function spUpk(cl){const T=GXCFG.sp.tiers[cl.t];return T?Math.round(T.u*(1+.25*cl.b)):0}
 const spP=cl=>Math.min(.75,GXCFG.sp.p0+GXCFG.sp.bStep*cl.b);
@@ -9523,13 +9527,14 @@ function ltDraw(quiet){const t=gxS()&&S.lto,C=GXCFG.lt,nums=ltPick();let won=0,b
   if(n)gxNews(best===3?`🎰 JACKPOT! Your ticket matched ${nums.join("-")}: you win ${fmt(won)}`:`🎟️ Lottery draw ${nums.join("-")}: ${won?`you win ${fmt(won)}`:"no win this week"}`,quiet);
   if(won&&!quiet){try{sfx("win")}catch(e){}toast(`Lottery: you won ${fmt(won)}!`)}return {nums,won}}
 /* ---- the daily hook, multipliers and upkeep ---- */
-function gxDay(quiet){gxS();dzDay(quiet);const i=ssnIdx(null);if(i!==S.ssn.i){S.ssn.i=i;const s=SSN[i],o=SSN[(i+2)%4];gxNews(`${s[2]} ${s[1]} begins in the north (${o[1].toLowerCase()} in the south)`,quiet);if(Object.keys(S.spt.cl).length)spSeason(quiet)}
+function gxDay(quiet){gxS();dzDay(quiet);const i=ssnIdx(null);if(i!==S.ssn.i){S.ssn.i=i;const s=SSN[i],o=SSN[(i+2)%4];gxNews(`${s[2]} ${s[1]} begins in the north (${o[1].toLowerCase()} in the south)`,quiet)}
+  {const g=spGameIdx();if(g!==S.ssn.g){const was=S.ssn.g;S.ssn.g=g;if(was!=null&&Object.keys(S.spt.cl).length)spSeason(quiet)}}
   if((S.day||0)%GXCFG.lt.every===0)ltDraw(quiet);if(!quiet&&S.dsx.pend.length)gxShow()}
 function gxMult(c,b){try{return dzMult(c)*ssnMult(c,b)*spMult(c)}catch(e){return 1}}
 function gxUpk(){try{let u=0;const d=S.dsx;if(d&&d.ins)for(const id in d.ins)if(d.ins[id]&&CITIES[id])u+=dzPrem(CITIES[id]);const cl=S.spt&&S.spt.cl;if(cl)for(const id in cl)u+=spUpk(cl[id]);return u}catch(e){return 0}}
 /* ---- phone UI ---- */
 const gxRow=(a,b)=>`<div class="gx-pr"><span>${a}</span><b>${b}</b></div>`;
-function gxWx(){gxS();const d=S.dsx,c0=ssnHome(),si=ssnIdx(c0),s=SSN[si];let h=`<div class="ph-card"><b>${s[2]} ${s[1]} in ${c0.name}</b><span>${ssnLeft()} game days until ${SSN[(si+1)%4][1].toLowerCase()} · hotels, airlines and ice cream love summer; gas stations, coffee and noodles do best in winter (±20%).</span></div>`;
+function gxWx(){gxS();const d=S.dsx,c0=ssnHome(),si=ssnIdx(c0),s=SSN[si];let h=`<div class="ph-card"><b>${s[2]} ${s[1]} in ${c0.name}</b><span>${ssnLeft()} days until ${SSN[(si+1)%4][1].toLowerCase()} · hotels, airlines and ice cream love summer; gas stations, coffee and noodles do best in winter (±20%).</span></div>`;
   const act=Object.keys(d.act);h+=act.length?act.map(id=>{const a=d.act[id],K=GXCFG.dz.k[a.k];return `<div class="ph-card storm"><b>${K.i} ${K.n} · ${CITIES[id].name}</b><span>${gxHas(+id)?`Your income there −${Math.round((1-dzMult(CITIES[id]))*100)}%, `:""}${a.left} day${a.left>1?"s":""} to recover</span></div>`}).join(""):"";
   const mine=CITIES.filter(c=>gxHas(c.id));h+=`<div class="ph-sub" style="margin-top:8px">Disaster insurance · per city, premium paid continuously</div>`;
   h+=mine.length?`<div class="ph-list">${mine.map(c=>{const on=!!d.ins[c.id],r=dzHaz(c);return `<div class="gx-ins"><span><b>${c.name}</b><small>${r>.9?"High":r>.3?"Medium":"Low"} risk · ${fmt(dzPrem(c))}/day</small></span><button class="buy${on?" up":""}" data-ph="gxins" data-c="${c.id}">${on?"Insured ✓":"Insure"}</button></div>`}).join("")}</div>`:`<p class="ph-sub">Buy a business to insure it.</p>`;
@@ -9544,7 +9549,7 @@ function ltApp(){gxS();const t=S.lto,today=dayN(),p=ltScrP(),tp=ltTkP(),k=LT.car
    <div style="display:flex;gap:6px"><button class="buy" data-ph="ltbuy" data-n="1" style="flex:1">1 ticket ${fmt(tp)}</button><button class="buy" data-ph="ltbuy" data-n="5" style="flex:1">5 tickets</button></div>`;
   if(t.hist.length)h+=`<div class="ph-list" style="margin-top:8px">${t.hist.map(x=>`<div><small>Day ${x.day}</small>${x.nums.join("-")} · ${x.n?`${x.n} ticket${x.n>1?"s":""} · ${x.won?"won "+fmt(x.won):"no win"}`:"you had no tickets"}</div>`).join("")}</div>`;
   return h+`<p class="ph-sub" style="margin-top:6px">Lifetime: spent ${fmt(t.spent)} · won ${fmt(t.won)}</p>`}
-function spApp(){gxS();const s=S.spt,C=GXCFG.sp,ids=Object.keys(s.cl);let h=`<div class="ph-sub">Season ends in ${ssnLeft()} game days · trophies: ${s.tr} 🏆</div>`;
+function spApp(){gxS();const s=S.spt,C=GXCFG.sp,ids=Object.keys(s.cl);let h=`<div class="ph-sub">Season ends in ${spLeft()} game days · trophies: ${s.tr} 🏆</div>`;
   for(const id of ids){const cl=s.cl[id],c=CITIES[id],T=C.tiers[cl.t],last=(cl.hist||[])[0];
     h+=`<div class="ph-card"><b>${cl.n} · ${c.name}</b><span>${T.n} · budget ${cl.b}/${C.maxB} · win chance ${Math.round(spP(cl)*100)}% · upkeep ${fmt(spUpk(cl))}/day</span>
      ${cl.bu>(S.day||0)?`<span style="color:#86efac">+${Math.round(cl.bv*100)}% income in ${c.name} for ${cl.bu-S.day} more days</span>`:""}
