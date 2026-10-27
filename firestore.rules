@@ -943,10 +943,14 @@ service cloud.firestore {
       allow read: if request.auth != null;
     }
     // Moon and Mars colonies: one doc per site, id "<planet>_<site>". Owned by a country, run by its governing player (uid).
-    // Update: the runner; a new governor of the same country (inherit); a conqueror whose atk beats the stored def (takeover);
-    // or a repelled attacker that may only lower the garrison.
+    // Create: a player whose public profile says they govern that country. Update: the runner (country can't change);
+    // a new governor of the same country (inherit); a governor of another country whose atk beats the effective defence
+    // (takeover: def, halved when the doc's own supply has run out); or a repelled attacker that may only lower the garrison.
+    function colUpLv(d, k) {
+      return d.get('up', {}).get(k, 0);
+    }
     function validColony(d) {
-      return d.keys().hasOnly(['p', 's', 'c', 'uid', 'name', 'col', 'lv', 'sup', 'supAt', 'gar', 'ore', 'oreAt', 'auto', 'def', 'atk', 'updated'])
+      return d.keys().hasOnly(['p', 's', 'c', 'uid', 'name', 'col', 'lv', 'sup', 'supAt', 'gar', 'ore', 'oreAt', 'auto', 'def', 'atk', 'updated', 'up', 'tour', 'crewTo'])
         && d.keys().hasAll(['p', 's', 'c', 'uid', 'lv', 'sup', 'supAt', 'gar', 'ore', 'def', 'updated'])
         && d.p in ['moon', 'mars'] && d.s is int && d.s >= 0 && d.s < 12
         && d.c is string && d.c.size() > 0 && d.c.size() <= 40
@@ -963,19 +967,48 @@ service cloud.firestore {
         && (!('auto' in d) || (d.auto is int && d.auto >= 0 && d.auto <= 1))
         && d.def is number && d.def >= 0 && d.def <= 10000000
         && (!('atk' in d) || (d.atk is number && d.atk >= 0 && d.atk <= 10000000))
+        && (!('up' in d) || (d.up is map && d.up.keys().hasOnly(['dome', 'driver', 'lab', 'turret'])))
+        && colUpLv(d, 'dome') is int && colUpLv(d, 'dome') >= 0 && colUpLv(d, 'dome') <= 3 && colUpLv(d, 'dome') <= d.lv
+        && colUpLv(d, 'driver') is int && colUpLv(d, 'driver') >= 0 && colUpLv(d, 'driver') <= 3 && colUpLv(d, 'driver') <= d.lv
+        && colUpLv(d, 'lab') is int && colUpLv(d, 'lab') >= 0 && colUpLv(d, 'lab') <= 3 && colUpLv(d, 'lab') <= d.lv
+        && colUpLv(d, 'turret') is int && colUpLv(d, 'turret') >= 0 && colUpLv(d, 'turret') <= 3 && colUpLv(d, 'turret') <= d.lv
+        && (!('tour' in d) || (d.tour is int && d.tour >= 0 && d.tour <= 1000000))
+        && (!('crewTo' in d) || (d.crewTo is int && d.crewTo >= 0 && d.crewTo <= request.time.toMillis() + 72000000))
         && d.updated is int;
+    }
+    // stored def is full-strength defence and may not claim more than level, turrets and garrison give
+    function colDefOk(d) {
+      return d.def <= 10 * d.lv + 20 * colUpLv(d, 'turret') + 15 * d.gar.armored + 5 * d.gar.drones + 1;
+    }
+    function colUpNoMore(n, o) {
+      return colUpLv(n, 'dome') <= colUpLv(o, 'dome') && colUpLv(n, 'driver') <= colUpLv(o, 'driver')
+        && colUpLv(n, 'lab') <= colUpLv(o, 'lab') && colUpLv(n, 'turret') <= colUpLv(o, 'turret');
+    }
+    // supply left on the stored doc right now (habitat dome: -30% use per level), as the client's colSup
+    function colSupplied(r) {
+      return r.sup - (request.time.toMillis() - r.supAt) / 3600000.0 * (1.0 - 0.3 * colUpLv(r, 'dome')) > 0;
+    }
+    function colBeats(r, atk) {
+      return atk is number && ((colSupplied(r) && atk > r.def) || (!colSupplied(r) && atk * 2 > r.def));
     }
     match /colonies/{id} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.uid == request.auth.uid
-        && validColony(request.resource.data)
+        && validColony(request.resource.data) && colDefOk(request.resource.data)
+        && govOf(request.resource.data.c)
+        && request.resource.data.lv <= 4 && request.resource.data.get('tour', 0) == 0
+        && colUpLv(request.resource.data, 'dome') + colUpLv(request.resource.data, 'driver') + colUpLv(request.resource.data, 'lab') + colUpLv(request.resource.data, 'turret') == 0
         && id == request.resource.data.p + '_' + string(request.resource.data.s);
       allow update: if request.auth != null && validColony(request.resource.data)
         && request.resource.data.p == resource.data.p && request.resource.data.s == resource.data.s
-        && (resource.data.uid == request.auth.uid
-          || (request.resource.data.uid == request.auth.uid && request.resource.data.atk is number && request.resource.data.atk > resource.data.def)
-          || (request.resource.data.uid == request.auth.uid && request.resource.data.c == resource.data.c)
-          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gar', 'updated'])
+        && ((resource.data.uid == request.auth.uid && request.resource.data.c == resource.data.c && colDefOk(request.resource.data))
+          || (request.resource.data.uid == request.auth.uid && request.resource.data.c != resource.data.c && colDefOk(request.resource.data)
+              && govOf(request.resource.data.c) && colBeats(resource.data, request.resource.data.get('atk', 0))
+              && request.resource.data.lv <= resource.data.lv && request.resource.data.ore <= resource.data.ore + 1
+              && colUpNoMore(request.resource.data, resource.data))
+          || (request.resource.data.uid == request.auth.uid && request.resource.data.c == resource.data.c && colDefOk(request.resource.data)
+              && govOf(resource.data.c))
+          || (govAny() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gar', 'updated'])
               && request.resource.data.gar.armored <= resource.data.gar.armored
               && request.resource.data.gar.drones <= resource.data.gar.drones));
     }
@@ -988,11 +1021,65 @@ service cloud.firestore {
         && request.resource.data.c is string && request.resource.data.c.size() > 0 && request.resource.data.c.size() <= 40
         && request.resource.data.p in ['moon', 'mars']
         && request.resource.data.site is int && request.resource.data.site >= 0 && request.resource.data.site < 12
-        && request.resource.data.t in ['found', 'supply', 'expand', 'garrison', 'assault']
+        && request.resource.data.t in ['found', 'supply', 'expand', 'garrison', 'assault', 'build', 'crew', 'tour']
         && request.resource.data.eta is int
         && request.resource.data.atk is number && request.resource.data.atk >= 0 && request.resource.data.atk <= 10000000
         && request.resource.data.updated is int;
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // Ore exchange. oreask/{id}: a seller's lot (the ore waits in the seller's own save). oresale/{askId_buyerUid}: written by the
+    // buyer in the same transaction that lowers (or, for the last units, deletes) the lot; the seller reads it, credits cash, deletes it.
+    function oxSale(id) {
+      return /databases/$(database)/documents/oresale/$(id + '_' + request.auth.uid);
+    }
+    function oxSaleMatches(id, r, q) {
+      return existsAfter(oxSale(id)) && getAfter(oxSale(id)).data.q == q && getAfter(oxSale(id)).data.ask == id
+        && getAfter(oxSale(id)).data.to == r.uid && getAfter(oxSale(id)).data.g == r.g && getAfter(oxSale(id)).data.px == r.px;
+    }
+    match /oreask/{id} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'g', 'q', 'px', 'at'])
+        && request.resource.data.keys().hasAll(['uid', 'name', 'g', 'q', 'px', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 20
+        && request.resource.data.g is string && request.resource.data.g.size() >= 1 && request.resource.data.g.size() <= 12
+        && request.resource.data.q is int && request.resource.data.q >= 1 && request.resource.data.q <= 100000
+        && request.resource.data.px is number && request.resource.data.px > 0 && request.resource.data.px <= 100000000
+        && request.resource.data.at == request.time;
+      // a buyer (never the seller) takes some units: only q goes down, and the matching sale doc is written in the same batch
+      allow update: if request.auth != null && request.auth.uid != resource.data.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['q'])
+        && request.resource.data.q is int && request.resource.data.q >= 1 && request.resource.data.q < resource.data.q
+        && oxSaleMatches(id, resource.data, resource.data.q - request.resource.data.q);
+      // the seller cancels, or a buyer takes the last units (with the matching sale doc)
+      allow delete: if request.auth != null && (resource.data.uid == request.auth.uid
+        || (request.auth.uid != resource.data.uid && oxSaleMatches(id, resource.data, resource.data.q)));
+    }
+    match /oresale/{id} {
+      // only the seller deletes (claims): a buyer deleting it would take the ore without the seller ever being paid
+      allow read: if request.auth != null && (resource.data.to == request.auth.uid || resource.data.by == request.auth.uid);
+      allow delete: if request.auth != null && resource.data.to == request.auth.uid;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['to', 'by', 'byName', 'ask', 'g', 'q', 'px', 'amt', 'at'])
+        && request.resource.data.keys().hasAll(['to', 'by', 'byName', 'ask', 'g', 'q', 'px', 'amt', 'at'])
+        && request.resource.data.by == request.auth.uid && request.resource.data.to != request.auth.uid
+        && request.resource.data.byName is string && request.resource.data.byName.size() <= 20
+        && request.resource.data.ask is string && id == request.resource.data.ask + '_' + request.auth.uid
+        && request.resource.data.q is int && request.resource.data.q >= 1 && request.resource.data.q <= 100000
+        && request.resource.data.px is number && request.resource.data.amt is number
+        && request.resource.data.amt == request.resource.data.q * request.resource.data.px
+        && request.resource.data.at == request.time
+        && exists(/databases/$(database)/documents/oreask/$(request.resource.data.ask))
+        && get(/databases/$(database)/documents/oreask/$(request.resource.data.ask)).data.uid == request.resource.data.to
+        && get(/databases/$(database)/documents/oreask/$(request.resource.data.ask)).data.g == request.resource.data.g
+        && get(/databases/$(database)/documents/oreask/$(request.resource.data.ask)).data.px == request.resource.data.px
+        && ((existsAfter(/databases/$(database)/documents/oreask/$(request.resource.data.ask))
+             && get(/databases/$(database)/documents/oreask/$(request.resource.data.ask)).data.q
+                - getAfter(/databases/$(database)/documents/oreask/$(request.resource.data.ask)).data.q == request.resource.data.q)
+          || (!existsAfter(/databases/$(database)/documents/oreask/$(request.resource.data.ask))
+             && get(/databases/$(database)/documents/oreask/$(request.resource.data.ask)).data.q == request.resource.data.q));
     }
 
     match /{document=**} {

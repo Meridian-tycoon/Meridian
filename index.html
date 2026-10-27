@@ -843,7 +843,7 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   if(typeof pfxDraw==="function"&&z<11)try{pfxDraw(ctx,now,z)}catch(e){}
   if(typeof satDraw==="function"&&z<11)try{satDraw(ctx,now)}catch(e){}
   if(typeof drawRigs==="function")try{drawRigs(ctx)}catch(e){}
-  if(typeof drawTens==="function"&&z<11)try{drawTens(ctx)}catch(e){}if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);if(typeof drawPlWars==="function"&&z<11)try{drawPlWars(ctx)}catch(e){}ctx.restore()}
+  if(typeof drawTens==="function"&&z<11)try{drawTens(ctx)}catch(e){}if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);if(typeof drawPlWars==="function"&&z<11)try{drawPlWars(ctx)}catch(e){}if(typeof colOvDraw==="function"&&z<11)try{colOvDraw(ctx)}catch(e){}ctx.restore()}
   const dotA=1-smooth01(10.5,12,z),labA=1-smooth01(8.5,9.6,z);   // our city dots hand over to the real map as you get close
   if(dotA>0.02){ctx.globalAlpha=dotA;
   if(S.pol&&(S.pol.r>=0||S.pol.ctrl&&Object.keys(S.pol.ctrl).length)){const lead=S.pol.r>=0?S.pol.c:null;for(const c of CITIES){const mine=c.country===lead,inf=S.pol.ctrl&&S.pol.ctrl[c.country];if(!mine&&!inf||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]);
@@ -2453,6 +2453,7 @@ const GOALS=[
  {id:"g13",n:"Supply chain",d:"Own 3 vehicles",t:3,v:()=>S.fleet.length,r:40000},
  {id:"g14",n:"Eureka",d:"Research 3 technologies",t:3,v:()=>Object.keys(S.tech).length,r:25000},
  {id:"g15",n:"Into orbit",d:"Launch a satellite from the Space app",t:1,v:()=>S.sats||0,r:5e6},
+ {id:"g16",n:"Space tourism",d:"Fly 100 space tourists to your colonies",t:100,v:()=>(S.col&&+S.col.tourists)||0,r:2.5e7},
  {id:"g10",n:"Billionaire",d:"Reach $1B net worth",t:1e9,v:()=>totals().nw,r:0}
 ];
 function checkGoals(){for(const g of GOALS){if(S.goals.includes(g.id))continue;if(g.v()>=g.t){S.goals.push(g.id);S.cash+=g.r;
@@ -2963,7 +2964,7 @@ function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filte
     const w=ws.find(q=>q.a===n||q.b===n);if(w)_cfHit.push({x,y,r:Math.max(16,r+6),w})}
   ctx.restore();if(anim&&live)wlTick()}
 /* tap: a badge opens its popup; with no city under the finger, a shaded country opens its worst conflict */
-function cfTap(x,y,best,bd){if(cfOn())for(const h of _cfHit)if(h.pl&&Math.hypot(h.x-x,h.y-y)<h.r){toast(`⚔ ${h.pl.nm} (Leader of ${h.pl.a}) is at war with ${h.pl.b}`);return true}const ws=(S.wars||[]).filter(w=>w.l>0);if((!ws.length&&!bgMilKeys().length)||!cfOn()){if(_cfPop)cfClose();return false}
+function cfTap(x,y,best,bd){try{if(typeof colOvTap==="function"&&colOvTap(x,y))return true}catch(e){}if(cfOn())for(const h of _cfHit)if(h.pl&&Math.hypot(h.x-x,h.y-y)<h.r){toast(`⚔ ${h.pl.nm} (Leader of ${h.pl.a}) is at war with ${h.pl.b}`);return true}const ws=(S.wars||[]).filter(w=>w.l>0);if((!ws.length&&!bgMilKeys().length)||!cfOn()){if(_cfPop)cfClose();return false}
   let hit=null,hd=1e9;for(const h of _cfHit){const d=Math.hypot(h.x-x,h.y-y);if(d<h.r&&d<hd){hd=d;hit=h.w}}
   if(!hit&&best){if(_cfPop)cfClose();return false}
   if(!hit&&!best){const g=proj.invert([x,y]);if(g&&visible(g[0],g[1])){const lv=cfLevels();for(const n in lv){const f=cfFeat(n);if(f&&d3.geoContains(f,g)){hit=ws.filter(w=>w.a===n||w.b===n).sort((a,b)=>b.l-a.l)[0]||bgPseudo(n);break}}}}
@@ -9010,7 +9011,7 @@ setInterval(()=>{try{if(_cfPop){const el=document.getElementById("cfpop");if(el&
     if((card?card.dataset.bgsig:"")!==sig){if(Date.now()-(PH.touched||0)>=3000&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)))phRender()}
     else bgFill(PH.el)}}catch(e){console.warn("bgfill",e)}},2000);
 /* ---------- Settings app (device prefs in S.set; UI theme mirrored to localStorage for first paint) ---------- */
-var SET_DEF={ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,sat:1,pfx:1};
+var SET_DEF={ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,sat:1,pfx:1,colov:1};
 var SET_UI=[["classic","Classic","The original look"],["glass","Glass","Frosted dark panels, violet glow"],["ledger","Ledger","Cream paper, ink and serif type"],["command","Command","Neon HUD, cyan and magenta"]];
 var SET_FONT="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@500;700&family=Playfair+Display:wght@700;900&family=Source+Serif+4:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Chakra+Petch:wght@500;700&display=swap";
 var _setSig="";
@@ -9034,6 +9035,7 @@ function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="g
   <div class="set-row"><span>Text size<small>Panels, ticker and pop-ups</small></span>${seg("fs",[[.9,"Small"],[1,"Normal"],[1.15,"Large"]],s.fs)}</div>
   ${tog("sat","Satellites","Your launched satellites orbiting the globe")}
   ${tog("pfx","Planet effects","Wealth glow, election flashes, rocket launches and seasons")}
+  ${tog("colov","Colony badges","🌙/🔴 colony counts next to capitals")}
   <div class="ph-sub">Comfort</div>
   ${tog("rm","Reduce motion","No confetti, fly-overs or animations")}
   ${tog("vib","Vibration","Buzz on wins and warnings (phones)")}
@@ -9136,6 +9138,7 @@ const ACH=[
  ["tech5","🧪","R&D lab","Research 5 technologies",()=>achTech()>=5],
  ["tech15","🧠","Innovator","Research 15 technologies",()=>achTech()>=15],
  ["sat","🛰️","Into orbit","Launch a satellite from the Space app",()=>(S.sats||0)>=1],
+ ["tour","🎢","Space tourism","Fly 100 space tourists to your colonies",()=>((S.col&&+S.col.tourists)||0)>=100],
  ["pand","😷","Weathered the storm","Live through a pandemic",()=>!!(S.pand&&(S.pand.hist||[]).length)],
  ["war","⚔️","War profiteer","Earn from a war supply contract",()=>(S.wsupT||0)>0],
  ["bunk","🛡️","Prepper","Build a bunker",()=>!!(S.bunk&&S.bunk.lv>=1)],
@@ -10700,14 +10703,15 @@ function spOpen(){if(!hasTech("spaceport"))return toast("Research Launch complex
     el.addEventListener("click",e=>{const b=e.target.closest("[data-sp]");if(!b||b.disabled)return;const a=b.dataset.sp,k=b.dataset.k,s=SP();
       if(a==="close"){spClose();return}if(a==="theme"){themeSet(themeGet()==="dark"?"light":"dark");b.innerHTML=themeIco();return}
       if(a==="tab"){s.tab=k;spRender();return}if(a==="ty"){s.ty=k;spRender();return}if(a==="pt"){s.pt=+k;spRender();return}
-      if(a.startsWith("col")){colClick(a,k);return}if(a==="go"){spLaunch(+k,s.ty);return}if(a==="deo"){spDeorbit(k,0);return}if(a==="rep"){spDeorbit(k,1);return}});
-    el.addEventListener("change",e=>{const t=e.target;if(t&&t.dataset&&t.dataset.spc)colPick(t.dataset.spc,t.value)})}
+      if(a.startsWith("col")){colClick(a,k);return}if(a.startsWith("ox")){oxClick(a,k);return}if(a==="go"){spLaunch(+k,s.ty);return}if(a==="deo"){spDeorbit(k,0);return}if(a==="rep"){spDeorbit(k,1);return}});
+    el.addEventListener("change",e=>{const t=e.target;if(t&&t.dataset&&t.dataset.spc)colPick(t.dataset.spc,t.value);if(t&&t.dataset&&t.dataset.oxf)oxSet(t.dataset.oxf,t.value,1)});
+    el.addEventListener("input",e=>{const t=e.target;if(t&&t.dataset&&t.dataset.oxf&&t.tagName==="INPUT")oxSet(t.dataset.oxf,t.value,0)})}
   const vw=innerWidth,vh=innerHeight,el=SPW.el;if(vw<560){el.classList.add("mdx-full");Object.assign(el.style,{left:"0px",top:"0px",width:vw+"px",height:vh+"px"})}
   else{el.classList.remove("mdx-full");const w=Math.min(1100,vw-48),h=Math.min(780,vh-48);Object.assign(el.style,{left:(vw-w)/2+"px",top:(vh-h)/2+"px",width:w+"px",height:h+"px"})}
-  el.style.display="flex";SPW.open=true;spRender();clearInterval(SPW.iv);SPW.iv=setInterval(()=>{if(!SPW.open)return clearInterval(SPW.iv);spRender()},5000)}
+  el.style.display="flex";SPW.open=true;spRender();clearInterval(SPW.iv);SPW.iv=setInterval(()=>{if(!SPW.open)return clearInterval(SPW.iv);const ae=document.activeElement;if(ae&&SPW.el.contains(ae)&&/^(INPUT|SELECT)$/.test(ae.tagName))return;spRender()},5000)}
 function spClose(){SPW.open=false;clearInterval(SPW.iv);if(SPW.el)SPW.el.style.display="none"}
 function spRender(){if(!SPW.el||!SPW.open)return;const sb=SPW.el.querySelector(".mdx-body"),sy=sb?sb.scrollTop:0;try{spDraw()}finally{const nb=SPW.el.querySelector(".mdx-body");if(nb&&sy)nb.scrollTop=sy}}
-function spDraw(){const s=SP(),now=Date.now(),P=spPorts(),E=dxE,tabs=[["ov","Overview"],["lc","Launch control"],["fl","Fleet"],["col","Colonies"],["wr","World registry"]];if(!tabs.some(t=>t[0]===s.tab))s.tab="ov";
+function spDraw(){const s=SP(),now=Date.now(),P=spPorts(),E=dxE,tabs=[["ov","Overview"],["lc","Launch control"],["fl","Fleet"],["col","Colonies"],["ox","Ore exchange"],["wr","World registry"]];if(!tabs.some(t=>t[0]===s.tab))s.tab="ov";
   const kp=(lb,v,ft,bg,fg,ic)=>`<div class="mdx-card mdx-kpi"><span class="mdx-ic" style="background:${bg};color:${fg};font-size:20px">${ic}</span><div class="mdx-lb"><span>${lb}</span></div><div class="mdx-big">${v}</div><div class="mdx-kfoot"><small>${ft}</small></div></div>`;
   const btn=(a,k,t,dis,bg)=>`<button class="mdx-pill" data-sp="${a}" data-k="${k}" ${dis?"disabled":""} style="border:0;cursor:pointer;color:#fff;background:${bg||"#312e81"};opacity:${dis?.5:1}">${t}</button>`;
   const card=(t,inner,ex)=>`<div class="mdx-card"${ex||""}><div class="mdx-ch"><h3>${t}</h3></div>${inner}</div>`,f1=v=>(Math.round(v*10)/10).toLocaleString("en-US");
@@ -10732,6 +10736,7 @@ function spDraw(){const s=SP(),now=Date.now(),P=spPorts(),E=dxE,tabs=[["ov","Ove
       :`<div class="mdx-rows"><div><span>No satellites in orbit yet. Launch one from Launch control.</span><b></b></div></div>`)
       +`<div style="margin-top:16px"></div>`+card("What each type does",`<div class="mdx-rows">${Object.keys(SPT).map(t=>`<div><span>${SPT[t][1]} <b>${SPT[t][0]}</b></span><small style="text-align:right">${SPT[t][2]}</small></div>`).join("")}<div><span>Health</span><small style="text-align:right">Falls from 100% to 0% over ${SPC.life} game days. Worn-out satellites still count for demand but lose their type effect. Replace uses a launch from stock.</small></div><div><span>Deorbit</span><small style="text-align:right">Removes it (and its +0.5% demand).</small></div></div>`)}
   else if(s.tab==="col")body=colTab();
+  else if(s.tab==="ox")body=oxTab();
   else{const pl=(typeof ON!=="undefined"&&Array.isArray(ON.players)?ON.players:[]).filter(p=>p&&+p.sats>0&&!(ON.user&&p.uid===ON.user.uid)).sort((a,b)=>b.sats-a.sats).slice(0,30),past=spFeed(now,-1,10),next=spFeed(now,1,10);
     const ev=(e,fut)=>`<tr><td>${new Date(e.t).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}<br><small>${fut?spIn(e.t):spAgo(e.t)}</small></td><td>${e.a[1]} <b>${E(e.a[0])}</b></td><td>${spy?SPT[e.ty][1]+" "+SPT[e.ty][0]:"<small>Classified</small>"}</td><td>${fut?"<small>Scheduled</small>":spy?`<b style="color:${e.ok?"#16a34a":"#dc2626"}">${e.ok?"Success":"Failed"}</b>`:"<small>Launched</small>"}</td></tr>`;
     body=card("Government & AI space programs",`<table class="mdx-tbl"><tr><th>Program</th><th>Satellites</th><th>Launch cadence</th></tr>${SPAI.map(a=>`<tr><td>${a[1]} <b>${E(a[0])}</b><br><small>${E(a[2])}</small></td><td>${spAiSats(a,now).toLocaleString("en-US")}</td><td>${f1(a[4]*.06)}/day</td></tr>`).join("")}<tr><td>🧑‍🚀 <b>You</b></td><td>${sats}</td><td>${f1(rate)}/day</td></tr></table>`)
@@ -10816,52 +10821,74 @@ function pfxDraw(ctx,now,z){if(!pfxOn())return;const zs=Math.min(1.6,.8+(typeof 
   ctx.restore()}
 /* ===== Moon & Mars colonies (v1, player governments only) =====
    A colony belongs to a COUNTRY (c) and is run by whichever player governs it (uid). Sites are shared by all players.
-   Firestore colonies/{p}_{s}: {p,s,c,uid,name,col,lv,sup,supAt,gar{armored,drones},ore,oreAt,auto,def,atk,updated}; cmission/{id}: public missions in flight.
+   Firestore colonies/{p}_{s}: {p,s,c,uid,name,col,lv,sup,supAt,gar{armored,drones},ore,oreAt,auto,def,atk,updated,up{dome,driver,lab,turret},tour,crewTo}; cmission/{id}: public missions in flight.
+   def is FULL-strength defence; anyone (client and rules) halves it when sup-(now-supAt)/DAYMS*(1-.3*dome) <= 0. Sites with no doc may be held by an AI agency (colAi).
    S.col={ms:[{id,p,site,t,at,eta,from,cargo,uid,c,u,n,atk,ret,ore,fid}],list:[colony docs],seq,ui{p,s,t,from,u}}. Offline the list lives only in the save. */
-const COLCFG={ln:{found:[2,4],supply:[1,2],expand:[2,3],garrison:[1,2],assault:[2,3]},   // launches [Moon, Mars]
-  cargo:{found:{robots:5,electronics:10,fuel:200},supply:{bread:20,medicine:10,fuel:100},expand:{steel:20,electronics:10,fuel:200},garrison:{},assault:{}},   // tools left the game, so robots/medicine stand in
+const COLCFG={ln:{found:[2,4],supply:[1,2],expand:[2,3],garrison:[1,2],assault:[2,3],build:[1,2],crew:[1,2],tour:[1,2]},   // launches [Moon, Mars]
+  cargo:{found:{robots:5,electronics:10,fuel:200},supply:{bread:20,medicine:10,fuel:100},expand:{steel:20,electronics:10,fuel:200},garrison:{},assault:{},build:{},crew:{medicine:20,bread:40,fuel:150},tour:{medicine:20,bread:40,fuel:150}},
+  bcargo:{dome:{steel:40,electronics:20,fuel:200},driver:{steel:40,electronics:30,fuel:200},lab:{electronics:40,robots:10,fuel:200},turret:{steel:40,armored:2,fuel:200}},   // upgrade cargo
+  upMax:3,dome:.3,driver:.5,driverT:.25,lab:1,turret:20,crewX:1.5,crewDays:10,tourPay:{moon:5e6,mars:1.5e7},tourN:10,tourLv:2,asMax:4,
+  ai:{moon:[20,160],mars:[120,400],share:50,lvDays:60,lvMax:4,defLv:10,def0:20},broker:.85,ox:{lo:.5,hi:2,fee:.05,qMax:100000,lots:10},   // tools left the game, so robots/medicine stand in
   unit:{garrison:{armored:2,drones:5},assault:{armored:4,drones:10}},grant:{moon:5e7,mars:2.5e8},sup0:30,supAdd:30,supCap:120,lvMax:5,ore:2,rp:2,autoBelow:15,wr:30000,
   str:{armored:15,drones:5},defLv:10,oreCap:100000};
-const COLT={found:["Found colony","🏗️"],supply:["Supply run","📦"],expand:["Expand","🏙️"],garrison:["Garrison","🛡️"],assault:["Assault","⚔️"]};
+const COLT={found:["Found colony","🏗️"],supply:["Supply run","📦"],expand:["Expand","🏙️"],garrison:["Garrison","🛡️"],assault:["Assault","⚔️"],build:["Build upgrade","🔧"],crew:["Crew rotation","👩‍🚀"],tour:["Tourist flight","🎢"]};
+const UPK={dome:["Habitat dome","🫧","−30% supply use per level"],driver:["Mass driver","🧲","+50% ore per return ship, Mars return leg −25% time per level"],lab:["Research lab","🔬","+100% research per level"],turret:["Defence turret","🗼","+20 defence per level"]};
 const COLP={moon:{n:"Moon",ico:"🌙",days:3,win:0,sites:[["Shackleton Crater","lice",.52,.94],["Mare Tranquillitatis","ilm",.63,.47],["Oceanus Procellarum","kreep",.2,.5],["Tycho","anor",.44,.75],["Copernicus","rglass",.4,.4],["Mare Imbrium","kreep",.4,.27],
     ["Aristarchus","he3",.25,.33],["South Pole–Aitken","lice",.33,.9],["Mare Serenitatis","he3",.58,.32],["Mare Crisium","ilm",.82,.38],["Grimaldi","rglass",.1,.55],["Clavius","anor",.5,.85]]},
   mars:{n:"Mars",ico:"🔴",days:45,win:{every:15,open:3},sites:[["Olympus Mons","mbas",.15,.4],["Valles Marineris","hem",.45,.53],["Hellas Basin","dice",.75,.72],["Jezero Crater","oliv",.68,.38],["Gale Crater","jar",.86,.53],["Utopia Planitia","dice",.72,.24],
     ["Elysium","mbas",.9,.4],["Arcadia Planitia","perc",.2,.24],["Tharsis","hem",.28,.45],["Syrtis Major","oliv",.6,.47],["Argyre","jar",.45,.82],["Noctis Labyrinthus","perc",.34,.58]]}};
-const CO={sub:[],uid:null,ms:[],wT:{},lt:0,bg:{},got:false,err:""};
+const CO={sub:[],uid:null,ms:[],wT:{},lt:0,bg:{},got:false,err:"",prev:null,hit:[],pubC:""};
+const COLORE=[...new Set(["moon","mars"].flatMap(p=>COLP[p].sites.map(q=>q[1])))];
 function COLS(){let s=S.col;if(!s||typeof s!=="object"||Array.isArray(s))s=S.col={};if(!Array.isArray(s.ms))s.ms=[];if(!Array.isArray(s.list))s.list=[];if(!(s.seq>=0))s.seq=0;
   s.ms=s.ms.filter(m=>m&&COLP[m.p]&&COLT[m.t]&&m.site>=0&&m.site<12&&isFinite(m.eta));s.list=s.list.map(colClean).filter(Boolean);
-  const u=s.ui=s.ui&&typeof s.ui==="object"?s.ui:{};if(!COLP[u.p])u.p="moon";if(!(u.s>=0&&u.s<12))u.s=0;if(!COLT[u.t])u.t="found";if(u.u!=="drones")u.u="armored";return s}
+  if(!(s.tourists>=0))s.tourists=0;if(!s.esc||typeof s.esc!=="object"||Array.isArray(s.esc))s.esc={};for(const k of ["nid","aseen","oxh","oxseen"])if(!Array.isArray(s[k]))s[k]=[];
+  const u=s.ui=s.ui&&typeof s.ui==="object"?s.ui:{};if(!COLP[u.p])u.p="moon";if(!(u.s>=0&&u.s<12))u.s=0;if(!COLT[u.t])u.t="found";if(u.u!=="drones")u.u="armored";if(!UPK[u.b])u.b="dome";u.x=Math.max(1,Math.min(COLCFG.asMax,Math.floor(+u.x)||1));return s}
 function colGov(){const p=pol();return p.r>=0?p.c:null}
 function colOn(){return typeof ON!=="undefined"&&!!(ON.user&&ON.db)}
 function colUid(){return colOn()?ON.user.uid:"local"}
-function colClean(d){if(!d||typeof d!=="object"||!COLP[d.p])return null;const s=Math.floor(+d.s);if(!(s>=0&&s<12)||typeof d.c!=="string"||!d.c)return null;const g=d.gar&&typeof d.gar==="object"?d.gar:{},n=v=>isFinite(+v)?+v:0;
+function colClean(d){if(!d||typeof d!=="object"||!COLP[d.p])return null;const s=Math.floor(+d.s);if(!(s>=0&&s<12)||typeof d.c!=="string"||!d.c)return null;const g=d.gar&&typeof d.gar==="object"?d.gar:{},u0=d.up&&typeof d.up==="object"?d.up:{},n=v=>isFinite(+v)?+v:0;
   return{p:d.p,s,c:d.c.slice(0,40),uid:String(d.uid||""),name:String(d.name||"").slice(0,20),col:/^#[0-9a-f]{6}$/i.test(d.col||"")?d.col:"#94a3b8",lv:Math.max(1,Math.min(COLCFG.lvMax,Math.floor(n(d.lv))||1)),
-    sup:Math.max(0,Math.min(COLCFG.supCap,n(d.sup))),supAt:n(d.supAt)||Date.now(),gar:{armored:Math.max(0,Math.floor(n(g.armored))),drones:Math.max(0,Math.floor(n(g.drones)))},ore:Math.max(0,Math.min(COLCFG.oreCap,n(d.ore))),oreAt:n(d.oreAt)||Date.now(),auto:d.auto?1:0,def:n(d.def),atk:n(d.atk),updated:n(d.updated)}}
+    sup:Math.max(0,Math.min(COLCFG.supCap,n(d.sup))),supAt:n(d.supAt)||Date.now(),gar:{armored:Math.max(0,Math.floor(n(g.armored))),drones:Math.max(0,Math.floor(n(g.drones)))},ore:Math.max(0,Math.min(COLCFG.oreCap,n(d.ore))),oreAt:n(d.oreAt)||Date.now(),auto:d.auto?1:0,def:n(d.def),atk:n(d.atk),updated:n(d.updated),
+    up:Object.fromEntries(Object.keys(UPK).map(k=>[k,Math.max(0,Math.min(COLCFG.upMax,Math.floor(n(u0[k]))))])),tour:Math.max(0,Math.floor(n(d.tour))),crewTo:Math.max(0,n(d.crewTo))}}
 const colId=(p,s)=>p+"_"+s;
 function colGet(p,s){return COLS().list.find(x=>x.p===p&&x.s===+s)||null}
 function colWin(p,now){now=now||Date.now();const w=COLP[p].win;if(!w)return{open:true,next:now};const d=(((now-SPE0)/DAYMS)%w.every+w.every)%w.every;
   return d<w.open?{open:true,next:now,close:now+(w.open-d)*DAYMS}:{open:false,next:now+(w.every-d)*DAYMS}}
-function colSup(x,now){return Math.max(0,x.sup-((now||Date.now())-x.supAt)/DAYMS)}
-function colDef(x,now){return (COLCFG.defLv*x.lv+COLCFG.str.armored*x.gar.armored+COLCFG.str.drones*x.gar.drones)*(colSup(x,now)>0?1:.5)}
+function colUp(x,k){return x&&x.up?(x.up[k]|0):0}
+function colRate(x){return Math.max(.1,1-COLCFG.dome*colUp(x,"dome"))}   // supply days used per day (habitat dome)
+function colSup(x,now){return Math.max(0,x.sup-((now||Date.now())-x.supAt)/DAYMS*colRate(x))}
+// full-strength defence; this is what the doc stores as def (firestore.rules halve it when the doc's own supply has run out)
+function colDefFull(x){return COLCFG.defLv*x.lv+COLCFG.turret*colUp(x,"turret")+COLCFG.str.armored*x.gar.armored+COLCFG.str.drones*x.gar.drones}
+function colDef(x,now){const b=colOn()&&+x.def>0?+x.def:colDefFull(x);return b*(colSup(x,now)>0?1:.5)}
+function colCrew(x,now){return (x.crewTo||0)>(now||Date.now())}
+// AI space programs (SPAI) claim about half of the free sites on a shared clock; a real colony on the site always wins
+const COLAI0=Date.UTC(2026,9,28);   // agencies start claiming sites from this date, so the land-grab plays out live
+function colAiAt(p,s){const h=spH("colai:"+p+":"+s);if(h%100>=COLCFG.ai.share)return null;const r=COLCFG.ai[p];return{i:spH("colaia:"+s+":"+p)%SPAI.length,at:COLAI0+(r[0]+((h>>>7)%(r[1]-r[0]+1)))*DAYMS}}
+function colAi(p,s,now){now=now||Date.now();if(!COLP[p]||colGet(p,s))return null;const c=colAiAt(p,+s);if(!c||now<c.at)return null;const lv=Math.min(COLCFG.ai.lvMax,1+Math.floor((now-c.at)/(COLCFG.ai.lvDays*DAYMS)));
+  return{a:SPAI[c.i],ai:c.i,lv,since:c.at,def:COLCFG.ai.defLv*lv+COLCFG.ai.def0}}
 function colStr(u,n){return COLCFG.str[u]*n}
 function colImm(x){return GOV_IMMUNE.includes(x.uid)||Object.values(GOV_IMMUNE_C).includes(x.c)}
 function colMine(x){const g=colGov();return !!g&&x.c===g}
 function colIn(t){const m=Math.max(0,Math.round((t-Date.now())/60000));if(m<1)return "any moment";if(m<60)return m+" min";const h=Math.floor(m/60);return h<48?h+" h "+(m%60)+" min":Math.floor(h/24)+" d "+(h%24)+" h"}
-function colCost(p,t,u){const i=p==="mars"?1:0,cargo=Object.assign({},COLCFG.cargo[t]||{});if(COLCFG.unit[t])cargo[u==="drones"?"drones":"armored"]=COLCFG.unit[t][u==="drones"?"drones":"armored"];return{ln:COLCFG.ln[t][i],cargo}}
+function colCost(p,t,u,b){const i=p==="mars"?1:0,cargo=Object.assign({},t==="build"?COLCFG.bcargo[b]||{}:COLCFG.cargo[t]||{});
+  if(COLCFG.unit[t]){const k=u==="drones"?"drones":"armored",m=t==="assault"?Math.max(1,Math.min(COLCFG.asMax,Math.floor(+b)||1)):1;cargo[k]=COLCFG.unit[t][k]*m}return{ln:COLCFG.ln[t][i],cargo}}
 // "" when the mission can fly, otherwise the reason it can't
-function colWhy(p,s,t,from,u){const g=colGov(),P=COLP[p];if(!g)return "Only a player who holds office can run a national space colony (Government app)";
+function colWhy(p,s,t,from,u,b){const g=colGov(),P=COLP[p];if(!g)return "Only a player who holds office can run a national space colony (Government app)";
   if(!hasTech("lunar"))return "Research Lunar outpost first";if(p==="mars"&&!hasTech("mars"))return "Research Mars colony to fly to Mars";
   const w=colWin(p);if(!w.open&&!spDev())return `Mars launch window closed · next window in ${colIn(w.next)}`;
   const x=colGet(p,s),st=COLS().ms.filter(m=>!m.ret&&m.p===p&&m.site===+s);
-  if(t==="found"){if(x)return `${P.sites[s][0]} is already held by ${x.c}`;if(st.some(m=>m.t==="found"))return "A founding mission is already on its way there"}
-  else if(t==="assault"){if(!x)return "Nobody holds this site: found a colony instead";if(x.c===g)return "That's your own colony";if(colImm(x))return "That colony is protected";if(!intAtWar(x.c))return `Declare war on ${x.c} first`}
-  else{if(!x||x.c!==g)return "Not your colony";if(t==="expand"&&x.lv+st.filter(m=>m.t==="expand").length>=COLCFG.lvMax)return "Already at the top level"}
-  const port=spPorts().find(q=>q.c.id===+from);if(!port)return "Pick one of your spaceports";const inv=S.inv[port.c.id]||{},c=colCost(p,t,u);
+  const ai=x?null:colAi(p,s);
+  if(t==="found"){if(x)return `${P.sites[s][0]} is already held by ${x.c}`;if(ai)return `${P.sites[s][0]} is held by ${ai.a[0]} (level ${ai.lv}): take it with an assault`;if(st.some(m=>m.t==="found"))return "A founding mission is already on its way there"}
+  else if(t==="assault"){if(!x){if(!ai)return "Nobody holds this site: found a colony instead"}else{if(x.c===g)return "That's your own colony";if(colImm(x))return "That colony is protected";if(!intAtWar(x.c))return `Declare war on ${x.c} first`}}
+  else{if(!x||x.c!==g)return "Not your colony";if(t==="expand"&&x.lv+st.filter(m=>m.t==="expand").length>=COLCFG.lvMax)return "Already at the top level";
+    if(t==="build"){if(!UPK[b])return "Pick an upgrade";const lv=colUp(x,b)+st.filter(m=>m.t==="build"&&m.b===b).length;if(lv>=COLCFG.upMax)return `${UPK[b][0]} is already at level ${COLCFG.upMax}`;if(x.lv<lv+1)return `${UPK[b][0]} level ${lv+1} needs a level ${lv+1} colony`}
+    if(t==="tour"){if(x.lv<COLCFG.tourLv)return `Tourist flights need a level ${COLCFG.tourLv} colony`;if(colUp(x,"dome")<1)return "Tourist flights need a habitat dome (Build upgrade)"}}
+  const port=spPorts().find(q=>q.c.id===+from);if(!port)return "Pick one of your spaceports";const inv=S.inv[port.c.id]||{},c=colCost(p,t,u,b);
   if(!((+inv.launches||0)>=c.ln))return `Not enough orbital launches in ${port.c.name} (${Math.floor(+inv.launches||0)}/${c.ln})`;
   for(const k in c.cargo)if(!((+inv[k]||0)>=c.cargo[k]))return `Not enough ${G[k][0].toLowerCase()} in ${port.c.name} (${Math.floor(+inv[k]||0)}/${c.cargo[k]})`;return ""}
-function colSend(p,s,t,from,u,auto){const why=colWhy(p,s,t,from,u);if(why){if(!auto)toast(why);return false}
-  const s0=COLS(),c=CITIES[+from],inv=S.inv[c.id],cost=colCost(p,t,u),now=Date.now(),x=colGet(p,s);inv.launches-=cost.ln;for(const k in cost.cargo)inv[k]-=cost.cargo[k];
-  const n=COLCFG.unit[t]?cost.cargo[u==="drones"?"drones":"armored"]:0,m={id:"m"+(++s0.seq)+"_"+now,p,site:+s,t,at:now,eta:now+COLP[p].days*DAYMS,from:c.id,cargo:cost.cargo,uid:colUid(),c:colGov(),u:u==="drones"?"drones":"armored",n,atk:t==="assault"?colStr(u==="drones"?"drones":"armored",n):0,tc:x?x.c:""};
+function colSend(p,s,t,from,u,auto,b){const why=colWhy(p,s,t,from,u,b);if(why){if(!auto)toast(why);return false}
+  const s0=COLS(),c=CITIES[+from],inv=S.inv[c.id],cost=colCost(p,t,u,b),now=Date.now(),x=colGet(p,s),ai=x?null:colAi(p,s,now);inv.launches-=cost.ln;for(const k in cost.cargo)inv[k]-=cost.cargo[k];
+  const n=COLCFG.unit[t]?cost.cargo[u==="drones"?"drones":"armored"]:0,m={id:"m"+(++s0.seq)+"_"+now,p,site:+s,t,at:now,eta:now+COLP[p].days*DAYMS,from:c.id,cargo:cost.cargo,uid:colUid(),c:colGov(),u:u==="drones"?"drones":"armored",n,atk:t==="assault"?colStr(u==="drones"?"drones":"armored",n):0,tc:x?x.c:ai?ai.a[0]:""};if(t==="build")m.b=b;
   s0.ms.push(m);
   if(colOn()){const fid=ON.user.uid+"_"+s0.seq+"_"+now;m.fid=fid;ON.db.collection("cmission").doc(fid).set({c:m.c.slice(0,40),uid:ON.user.uid,p,site:+s,t,eta:Math.floor(m.eta),atk:m.atk,updated:now}).catch(e=>{CO.err="Couldn't publish mission: "+(e&&e.code||e)})}
   try{pfxLaunch(c,true);if(pfxOn()&&isFinite(c.lon)){PFX.ln.push({lon:c.lon,lat:c.lat,t:now,ok:true,far:1});if(PFX.ln.length>8)PFX.ln.shift();pfxAnim()}}catch(e){}
@@ -10869,45 +10896,68 @@ function colSend(p,s,t,from,u,auto){const why=colWhy(p,s,t,from,u);if(why){if(!a
   try{S.log.unshift(`${COLT[t][0]} mission left ${c.name} for the ${COLP[p].n}`);S.log=S.log.slice(0,3)}catch(e){}
   if(!auto&&typeof confetti==="function")confetti(30,innerWidth/2,innerHeight/3);save();hud();spRefresh();return true}
 // owner side: bring ore and supply up to now (ore only while there was supply), then write back (throttled)
-function colProd(x,now){const el=Math.max(0,(now-x.supAt)/DAYMS),eff=Math.min(el,x.sup);if(eff>0)x.ore=Math.min(COLCFG.oreCap,x.ore+COLCFG.ore*x.lv*eff);x.sup=Math.max(0,x.sup-el);x.supAt=x.oreAt=now}
-function colDoc(x,now){return{p:x.p,s:x.s,c:x.c,uid:x.uid,name:x.name.slice(0,20),col:x.col,lv:x.lv|0,sup:Math.round(x.sup*1000)/1000,supAt:Math.floor(x.supAt),gar:{armored:x.gar.armored|0,drones:x.gar.drones|0},ore:Math.round(x.ore*100)/100,oreAt:Math.floor(x.oreAt),auto:x.auto?1:0,def:Math.round(colDef(x,now)),atk:Math.floor(x.atk||0),updated:Math.floor(now)}}
-function colPut(x,force){const now=Date.now(),id=colId(x.p,x.s);if(!force&&now-(CO.wT[id]||0)<COLCFG.wr)return;CO.wT[id]=now;x.def=colDef(x,now);x.updated=now;
+function colProd(x,now){const el=Math.max(0,(now-x.supAt)/DAYMS),r=colRate(x),eff=Math.min(el,x.sup/r);
+  if(eff>0){const cx=Math.max(0,Math.min(x.supAt+eff*DAYMS,x.crewTo||0)-x.supAt)/DAYMS;x.ore=Math.min(COLCFG.oreCap,x.ore+COLCFG.ore*x.lv*(eff+(COLCFG.crewX-1)*cx))}x.sup=Math.max(0,x.sup-el*r);x.supAt=x.oreAt=now}
+function colDoc(x,now){return{p:x.p,s:x.s,c:x.c,uid:x.uid,name:x.name.slice(0,20),col:x.col,lv:x.lv|0,sup:Math.round(x.sup*1000)/1000,supAt:Math.floor(x.supAt),gar:{armored:x.gar.armored|0,drones:x.gar.drones|0},ore:Math.round(x.ore*100)/100,oreAt:Math.floor(x.oreAt),auto:x.auto?1:0,def:Math.round(colDefFull(x)),atk:Math.floor(x.atk||0),updated:Math.floor(now),
+  up:Object.fromEntries(Object.keys(UPK).map(k=>[k,colUp(x,k)])),tour:Math.floor(x.tour||0),crewTo:Math.floor(x.crewTo||0)}}
+// a write as a (possibly new) governor: publish the profile (govC/govR) first, the rules check it
+function colPub(c){const k=c+"|"+(ON.user?ON.user.uid:"");if(CO.pubC===k||!ON.ready)return Promise.resolve();return Promise.resolve(onPublish(true)).then(()=>{CO.pubC=k})}
+function colPut(x,force){const now=Date.now(),id=colId(x.p,x.s);if(!force&&now-(CO.wT[id]||0)<COLCFG.wr)return;CO.wT[id]=now;x.def=colDefFull(x);x.updated=now;
   const s=COLS(),i=s.list.findIndex(y=>y.p===x.p&&y.s===x.s);if(i<0)s.list.push(x);else s.list[i]=x;
-  if(colOn())return ON.db.collection("colonies").doc(id).set(colDoc(x,now)).catch(e=>{CO.err="Couldn't save colony: "+(e&&e.code||e);return Promise.reject(e)});return Promise.resolve()}
+  if(colOn())return colPub(x.c).then(()=>ON.db.collection("colonies").doc(id).set(colDoc(x,now))).catch(e=>{CO.err="Couldn't save colony: "+(e&&e.code||e);return Promise.reject(e)});return Promise.resolve()}
 function colMe(x){const me=onProf();x.uid=colUid();x.name=(me.name||S.name||"Tycoon").slice(0,20);x.col=me.col}
 function colArrive(m,now){const s=COLS(),P=COLP[m.p],site=P.sites[m.site],x=colGet(m.p,m.site),at=m.eta;let msg="",x2=null;
-  if(m.t==="found"){if(x){msg=`🏚️ ${site[0]} was claimed by ${x.c} before your ship landed. The crew heads home`}
+  if(m.t==="found"){const ai=x?null:colAi(m.p,m.site,at);if(x||ai){msg=`🏚️ ${site[0]} was claimed by ${x?x.c:ai.a[0]} before your ship landed. The crew heads home`}
     else{x2=colClean({p:m.p,s:m.site,c:m.c,lv:1,sup:COLCFG.sup0,supAt:at,oreAt:at,ore:0,gar:{}});colMe(x2);colPut(x2,1);const gr=COLCFG.grant[m.p];S.cash+=gr;S.earned=(S.earned||0)+gr;
       msg=`${P.ico} ${m.c} founded a colony at ${site[0]}! Government grant ${fmt(gr)}`;if(typeof confetti==="function")confetti(60,innerWidth/2,innerHeight/3)}}
-  else if(m.t==="assault"){if(!x){msg=`⚔️ ${site[0]} was empty when your assault force landed`}else if(x.c===m.c){msg=`⚔️ ${site[0]} is already yours`;x2=x}
-    else{const d=Math.max(colDef(x,now),colOn()?+x.def||0:0);
-      if(m.atk>d){const was=x.c;x.c=m.c;colMe(x);x.gar={armored:m.u==="armored"?m.n:0,drones:m.u==="drones"?m.n:0};x.atk=m.atk;x2=x;colPut(x,1);msg=`⚔️ Victory! ${site[0]} taken from ${was} (${m.atk} vs ${Math.round(d)})`}
+  else if(m.t==="assault"){const ai=x?null:colAi(m.p,m.site,now);
+    if(!x&&!ai){msg=`⚔️ ${site[0]} was empty when your assault force landed`}
+    else if(!x){if(m.atk>ai.def){x2=colClean({p:m.p,s:m.site,c:m.c,lv:ai.lv,sup:COLCFG.sup0,supAt:now,oreAt:now,ore:0,gar:{armored:m.u==="armored"?m.n:0,drones:m.u==="drones"?m.n:0}});x2.atk=m.atk;colMe(x2);colPut(x2,1);
+        msg=`⚔️ Victory! ${site[0]} taken from ${ai.a[0]} (${m.atk} vs ${ai.def}): a level ${ai.lv} colony`;if(typeof confetti==="function")confetti(60,innerWidth/2,innerHeight/3)}
+      else msg=`💥 ${ai.a[0]} repelled your assault on ${site[0]} (${m.atk} vs ${ai.def})`}
+    else if(x.c===m.c){msg=`⚔️ ${site[0]} is already yours`;x2=x}
+    else{const d=colDef(x,now);
+      if(m.atk>d){const was=x.c;x.c=m.c;colMe(x);x.gar={armored:m.u==="armored"?m.n:0,drones:m.u==="drones"?m.n:0};x.atk=m.atk;x.crewTo=0;x2=x;colPut(x,1);msg=`⚔️ Victory! ${site[0]} taken from ${was} (${m.atk} vs ${Math.round(d)})`}
       else{x.gar={armored:Math.floor(x.gar.armored/2),drones:Math.floor(x.gar.drones/2)};msg=`💥 Assault on ${site[0]} repelled (${m.atk} vs ${Math.round(d)}). Their garrison was halved`;
         if(colOn())ON.db.collection("colonies").doc(colId(x.p,x.s)).update({gar:{armored:x.gar.armored,drones:x.gar.drones},updated:Math.floor(now)}).catch(()=>{})}}}
   else{if(!x||x.c!==m.c){msg=`📦 ${site[0]} no longer belongs to ${m.c}: the ${COLT[m.t][0].toLowerCase()} cargo was lost`}
     else{colProd(x,now);if(m.uid===colUid()||colMine(x))colMe(x);
       if(m.t==="supply"){x.sup=Math.min(COLCFG.supCap,x.sup+COLCFG.supAdd);msg=`📦 Supplies landed at ${site[0]}: ${Math.floor(x.sup)} days in store`}
       else if(m.t==="expand"){x.lv=Math.min(COLCFG.lvMax,x.lv+1);msg=`🏙️ ${site[0]} grew to level ${x.lv}`}
+      else if(m.t==="build"){const b=UPK[m.b]?m.b:"dome";x.up=x.up||{};x.up[b]=Math.min(COLCFG.upMax,colUp(x,b)+1);msg=`🔧 ${UPK[b][1]} ${UPK[b][0]} at ${site[0]} is now level ${x.up[b]}`}
+      else if(m.t==="crew"){x.crewTo=now+COLCFG.crewDays*DAYMS;msg=`👩‍🚀 A fresh crew landed at ${site[0]}: ×${COLCFG.crewX} ore and research for ${COLCFG.crewDays} days`}
+      else if(m.t==="tour"){const pay=x.lv*COLCFG.tourPay[m.p],n=x.lv*COLCFG.tourN;S.cash+=pay;S.earned=(S.earned||0)+pay;s.tourists=(s.tourists||0)+n;x.tour=(x.tour||0)+n;msg=`🎢 ${n} space tourists visited ${site[0]}: ${fmt(pay)} in ticket sales`}
       else{x.gar[m.u]=(x.gar[m.u]||0)+m.n;msg=`🛡️ ${m.n} ${G[m.u][0].toLowerCase()} now guard ${site[0]}`}
       x2=x;colPut(x,1)}}
   if(m.fid&&colOn())ON.db.collection("cmission").doc(m.fid).delete().catch(()=>{});
-  let ore=null;if(x2&&x2.c===m.c){if(x2.uid===colUid())colProd(x2,now);const q=Math.floor(x2.ore);if(q>0){x2.ore-=q;ore={g:site[1],q};colPut(x2,1)}}
-  s.ms.push({id:m.id+"r",p:m.p,site:m.site,t:m.t,at:now,eta:now+P.days*DAYMS,from:m.from,uid:m.uid,c:m.c,ret:1,ore});
+  let ore=null;const dr=x2&&x2.c===m.c?colUp(x2,"driver"):0;if(x2&&x2.c===m.c){if(x2.uid===colUid())colProd(x2,now);const q=Math.floor(x2.ore);if(q>0){x2.ore-=q;ore={g:site[1],q:Math.floor(q*(1+COLCFG.driver*dr))};colPut(x2,1)}}
+  s.ms.push({id:m.id+"r",p:m.p,site:m.site,t:m.t,at:now,eta:now+P.days*DAYMS*(m.p==="mars"?Math.max(.1,1-COLCFG.driverT*dr):1),from:m.from,uid:m.uid,c:m.c,ret:1,ore});
   toast(msg+(ore?` · ship returning with ${ore.q} ${G[ore.g][0].toLowerCase()}`:""));try{S.log.unshift(msg.replace(/^\S+\s/,""));S.log=S.log.slice(0,3)}catch(e){}}
 function colHome(m){if(m.ore&&G[m.ore.g]&&m.ore.q>0){const inv=S.inv[m.from]=S.inv[m.from]||{};inv[m.ore.g]=(+inv[m.ore.g]||0)+m.ore.q;
     toast(`${COLP[m.p].ico} Ship home in ${CITIES[m.from]?CITIES[m.from].name:"port"} with ${m.ore.q} ${G[m.ore.g][0].toLowerCase()} (worth ${fmt(m.ore.q*G[m.ore.g][1])} to a government buyer)`)}}
-function colListen(){for(const f of CO.sub)try{f()}catch(e){}CO.sub=[];CO.ms=[];CO.got=false;CO.uid=colOn()?ON.user.uid:null;if(!CO.uid||!hasTech("spaceport"))return;
+function colListen(){for(const f of CO.sub)try{f()}catch(e){}CO.sub=[];CO.ms=[];CO.got=false;CO.prev=null;OX.on=null;CO.uid=colOn()?ON.user.uid:null;if(!CO.uid||!hasTech("spaceport"))return;
   const er=w=>e=>{CO.err="Couldn't load "+w+": "+(e&&e.code||e)};
-  CO.sub.push(ON.db.collection("colonies").limit(30).onSnapshot(q=>{const a=[];q.forEach(d=>{const x=colClean(d.data());if(x)a.push(x)});COLS().list=a;CO.got=true;if(SPW.open)spRender()},er("colonies")));
-  CO.sub.push(ON.db.collection("cmission").limit(100).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(COLP[v.p]&&COLT[v.t])a.push(Object.assign({id:d.id},v))});CO.ms=a},er("missions")))}
-function colTick(now){now=now||Date.now();const on=colOn()?ON.user.uid:null;if(on!==CO.uid||(on&&!CO.sub.length&&hasTech("spaceport")))colListen();if(!S.col)return;const s=COLS();
+  CO.sub.push(ON.db.collection("colonies").limit(30).onSnapshot(q=>{const a=[];q.forEach(d=>{const x=colClean(d.data());if(x)a.push(x)});try{colNews(a)}catch(e){}COLS().list=a;CO.got=true;if(SPW.open)spRender()},er("colonies")));
+  CO.sub.push(ON.db.collection("cmission").limit(100).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(COLP[v.p]&&COLT[v.t])a.push(Object.assign({id:d.id},v))});CO.ms=a;try{colAlertChk()}catch(e){}},er("missions")))}
+// news when a colony is founded, changes hands or levels up (first snapshot is the baseline; keys dedupe across reloads)
+function colNews(a){const s=COLS(),prev=CO.prev;CO.prev={};for(const x of a)CO.prev[colId(x.p,x.s)]={c:x.c,lv:x.lv};if(!prev)return;
+  for(const x of a){const id=colId(x.p,x.s),o=prev[id],P=COLP[x.p],site=P.sites[x.s][0];let k="",t="";
+    if(!o){k=id+":f:"+x.c;t=`🏗️ ${x.c} founded a ${P.n} base at ${site}`}
+    else if(o.c!==x.c){k=id+":c:"+o.c+">"+x.c+":"+Math.floor((x.updated||Date.now())/DAYMS);t=`⚔️ ${o.c}'s ${P.n} base at ${site} fell to ${x.c}`}
+    else if(x.lv>o.lv){k=id+":l:"+x.c+":"+x.lv;t=`🏙️ ${x.c}'s ${P.n} base at ${site} grew to level ${x.lv}`}
+    if(t&&!s.nid.includes(k)){s.nid.unshift(k);s.nid=s.nid.slice(0,100);stNews(t)}}}
+// public assault missions heading for one of YOUR country's colonies
+function colAlerts(now){const g=colGov();if(!g)return [];now=now||Date.now();return CO.ms.filter(m=>m.t==="assault"&&+m.eta>now-60000&&!(colOn()&&m.uid===ON.user.uid)&&COLP[m.p]&&(colGet(m.p,+m.site)||{}).c===g)}
+function colAlertChk(){const s=COLS(),g=colGov();for(const m of colAlerts()){if(s.aseen.includes(m.id))continue;s.aseen.unshift(m.id);s.aseen=s.aseen.slice(0,60);
+  const t=`🚨 ${String(m.c||"?").slice(0,40)} launched an assault on ${g}'s ${COLP[m.p].n} base at ${COLP[m.p].sites[+m.site][0]}: lands in ${colIn(+m.eta)}`;toast(t);stNews(t)}}
+function colTick(now){now=now||Date.now();const on=colOn()?ON.user.uid:null;if(on!==CO.uid||(on&&!CO.sub.length&&hasTech("spaceport")))colListen();try{oxEnsure()}catch(e){}if(!S.col)return;const s=COLS();
   for(let i=0;i<20;i++){const k=s.ms.findIndex(m=>m.eta<=now);if(k<0)break;const m=s.ms.splice(k,1)[0];try{m.ret?colHome(m):colArrive(m,now)}catch(e){console.warn("colArrive",e)}save();spRefresh()}
   if(now-CO.lt>=10000){CO.lt=now;const g=colGov();if(g)for(const x of s.list){if(x.c!==g)continue;if(x.uid!==colUid())colMe(x);colProd(x,now);colPut(x);
       if(x.auto&&colSup(x,now)<COLCFG.autoBelow&&!s.ms.some(m=>!m.ret&&m.t==="supply"&&m.p===x.p&&m.site===x.s)){const port=spPorts().find(q=>!colWhy(x.p,x.s,"supply",q.c.id));if(port)colSend(x.p,x.s,"supply",port.c.id,"armored",1)}}}
   if(SPW.open&&SP().tab==="col")try{colPaint()}catch(e){}}
-function colAcc(dt){if(!S.col)return;const g=colGov();if(!g)return;const h=Math.max(0,Math.min(dt,48*DAYMS))/DAYMS,now=Date.now();let rp=0;for(const x of COLS().list)if(x.c===g&&colSup(x,now)>0)rp+=COLCFG.rp*x.lv*h;if(rp>0)S.rp=(S.rp||0)+rp}
-function colPhone(){if(!S.col)return "";const s=COLS(),g=colGov(),n=g?s.list.filter(x=>x.c===g).length:0,nx=s.ms.reduce((t,m)=>Math.min(t,m.eta),Infinity);if(!n&&!s.ms.length)return "";
-  return `<div><span>Colonies</span><b style="text-align:right;margin-left:8px">${n} ${n===1?"colony":"colonies"}${isFinite(nx)?" · next arrival in "+colIn(nx):""}</b></div>`}
+function colAcc(dt){if(!S.col)return;const g=colGov();if(!g)return;const h=Math.max(0,Math.min(dt,48*DAYMS))/DAYMS,now=Date.now();let rp=0;for(const x of COLS().list)if(x.c===g&&colSup(x,now)>0)rp+=COLCFG.rp*x.lv*(1+COLCFG.lab*colUp(x,"lab"))*(colCrew(x,now)?COLCFG.crewX:1)*h;if(rp>0)S.rp=(S.rp||0)+rp}
+function colPhone(){if(!S.col)return "";const s=COLS(),g=colGov(),n=g?s.list.filter(x=>x.c===g).length:0,nx=s.ms.reduce((t,m)=>Math.min(t,m.eta),Infinity);if(!n&&!s.ms.length&&!colAlerts().length)return "";
+  return colAlerts().map(m=>`<div><span style="color:#fca5a5">🚨 Assault</span><b style="text-align:right;margin-left:8px;color:#fca5a5">${dxE(String(m.c||"?"))} → ${dxE(COLP[m.p].sites[+m.site][0])} · ${colIn(+m.eta)}</b></div>`).join("")+`<div><span>Colonies</span><b style="text-align:right;margin-left:8px">${n} ${n===1?"colony":"colonies"}${isFinite(nx)?" · next arrival in "+colIn(nx):""}</b></div>`}
 // planet discs: cached background (craters / Mars shading), then sites and ships every second
 function colBg(p,R){const k=p+R;if(CO.bg[k])return CO.bg[k];const c=document.createElement("canvas");c.width=c.height=R*2;const x=c.getContext("2d");let h=p==="moon"?7:13;const rnd=()=>{h=(h*16807)%2147483647;return h/2147483647};
   x.beginPath();x.arc(R,R,R,0,7);x.fillStyle=p==="moon"?"#a3a3a3":"#b4532a";x.fill();x.save();x.clip();
@@ -10919,7 +10969,9 @@ function colPaint(){if(!SPW.el)return;const now=Date.now(),s=COLS(),g=colGov(),d
   for(const p of ["moon","mars"]){const cv=SPW.el.querySelector(`canvas[data-colcv="${p}"]`);if(!cv)continue;const W=cv.clientWidth||260,dpr=Math.min(2,devicePixelRatio||1);if(cv.width!==Math.round(W*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(W*dpr)}
     const x=cv.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,W,W);const R=Math.round(W/2-18),o=W/2;x.drawImage(colBg(p,R),o-R,o-R,R*2,R*2);
     const pos=i=>{const q=COLP[p].sites[i];return[o-R+q[2]*2*R,o-R+q[3]*2*R]};x.font="600 10px Figtree,sans-serif";x.textAlign="center";
-    COLP[p].sites.forEach((q,i)=>{const c=s.list.find(y=>y.p===p&&y.s===i),[sx,sy]=pos(i);x.beginPath();x.arc(sx,sy,c?5:3.5,0,7);x.fillStyle=c?c.col:"rgba(226,232,240,.75)";x.fill();x.lineWidth=1;x.strokeStyle="rgba(15,23,42,.6)";x.stroke();
+    COLP[p].sites.forEach((q,i)=>{const c=s.list.find(y=>y.p===p&&y.s===i),ai=c?null:colAi(p,i,now),[sx,sy]=pos(i);
+      if(ai){x.fillStyle=SPAICOL[ai.ai%SPAICOL.length];x.fillRect(sx-4.5,sy-4.5,9,9);x.lineWidth=1;x.strokeStyle="rgba(15,23,42,.6)";x.strokeRect(sx-4.5,sy-4.5,9,9);x.fillStyle="#fff";x.fillText(ai.a[0].split(" ")[0],sx,sy+15)}
+      else{x.beginPath();x.arc(sx,sy,c?5:3.5,0,7);x.fillStyle=c?c.col:"rgba(226,232,240,.75)";x.fill();x.lineWidth=1;x.strokeStyle="rgba(15,23,42,.6)";x.stroke()}
       if(c&&g&&c.c===g){x.beginPath();x.arc(sx,sy,8.5,0,7);x.strokeStyle="#fff";x.lineWidth=2;x.stroke()}if(s.ui.p===p&&s.ui.s===i){x.beginPath();x.arc(sx,sy,11.5,0,7);x.strokeStyle="#facc15";x.lineWidth=1.5;x.stroke()}});
     const ships=s.ms.filter(m=>m.p===p).map(m=>({site:m.site,at:m.at,eta:m.eta,ret:m.ret,me:1})).concat(CO.ms.filter(m=>m.p===p&&!(colOn()&&m.uid===ON.user.uid)).map(m=>({site:+m.site,at:+m.eta-COLP[p].days*DAYMS,eta:+m.eta})));
     for(const m of ships){if(!(m.site>=0&&m.site<12))continue;const [sx,sy]=pos(m.site),a=-.9+m.site*.52,ex=o+Math.cos(a)*(R+14),ey=o+Math.sin(a)*(R+14),f=Math.max(0,Math.min(1,(now-m.at)/(m.eta-m.at||1))),u=m.ret?1-f:f,rx=ex+(sx-ex)*u,ry=ey+(sy-ey)*u;
@@ -10931,32 +10983,124 @@ function colTab(){const s=COLS(),E=dxE,g=colGov(),now=Date.now(),P=spPorts(),u=s
   if(!hasTech("lunar"))return card("🔒 Colonies",empty(`Found and run national colonies on the Moon and Mars. Research <b>Lunar outpost</b> (Space tier, after Launch complex: ${fmt(2e8)} and 20,000 research points) to unlock Moon colonies, then <b>Mars colony</b> for Mars.`));
   const mw=colWin("mars",now);
   const discs=`<div style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center">${["moon","mars"].map(p=>`<div style="text-align:center"><canvas data-colcv="${p}" style="width:260px;height:260px;max-width:100%;display:block"></canvas><b>${COLP[p].ico} ${COLP[p].n}</b><br><small style="color:var(--dxmut)">${p==="moon"?"3 days each way · always in reach":hasTech("mars")?(mw.open?`45 days each way · window open, closes in ${colIn(mw.close)}`:`45 days each way · next window in ${colIn(mw.next)}`):"Research Mars colony to fly here"} · ${s.list.filter(x=>x.p===p).length}/12 sites held</small></div>`).join("")}</div>`;
-  if(!g)return card("Moon & Mars",discs)+`<div style="margin-top:16px"></div>`+card("Colonies",empty("Only a player who holds office can run a national space colony (Government app)."));
+  const br=colBroker(),broker=br.length?`<table class="mdx-tbl"><tr><th>Depot</th><th>Ore</th><th>Units</th><th>Broker pays</th><th></th></tr>${br.map(r=>`<tr><td>${E(r.c.name)}</td><td>${E(G[r.g][0])}</td><td>${r.q.toLocaleString("en-US")}</td><td>${fmt(r.q*G[r.g][1]*COLCFG.broker)}</td><td>${btn("colsell",r.c.id+":"+r.g,"Sell",0,"#16a34a")}</td></tr>`).join("")}</table><div style="margin-top:8px">${btn("colsell","all",`Sell all · ${fmt(br.reduce((t,r)=>t+r.q*G[r.g][1]*COLCFG.broker,0))}`,0,"#15803d")}</div>`:empty("No space ore in your spaceport depots.");
+  const brokerC=card("🪐 Space broker",`${broker}<div class="mdx-note" style="color:var(--dxmut)">An interplanetary broker buys any ore in your spaceport depots at ${Math.round(COLCFG.broker*100)}% of the government price, in any city. Or list it for other players on the Ore exchange tab.</div>`);
+  const al=colAlerts(now),alert=al.length?`<div class="mdx-card" style="border:2px solid #dc2626;background:rgba(220,38,38,.08);margin-bottom:16px"><div class="mdx-rows">${al.map(m=>`<div><span style="color:#dc2626"><b>🚨 Incoming assault</b> from ${E(String(m.c||"?"))}</span><b style="color:#dc2626;text-align:right;min-width:0;overflow-wrap:anywhere">${COLP[m.p].ico} ${E(COLP[m.p].sites[+m.site][0])} · strength ${Math.round(+m.atk||0)} · lands in ${colIn(+m.eta)}</b></div>`).join("")}</div></div>`:"";
+  const aiL=[];for(const p of ["moon","mars"])for(let i=0;i<12;i++){const a=colAi(p,i,now);if(a)aiL.push({p,i,a})}
+  const agency=card("Agency colonies",aiL.length?`<table class="mdx-tbl"><tr><th>Site</th><th>Agency</th><th>Level</th><th>Defence</th><th></th></tr>${aiL.map(r=>`<tr><td>${COLP[r.p].ico} ${E(COLP[r.p].sites[r.i][0])}</td><td><span style="display:inline-block;width:9px;height:9px;background:${SPAICOL[r.a.ai%SPAICOL.length]}"></span> ${r.a.a[1]} ${E(r.a.a[0])}</td><td>${r.a.lv}</td><td>${r.a.def}</td><td>${g?btn("colpick",colId(r.p,r.i)+":assault","Assault",0,"#b91c1c"):""}</td></tr>`).join("")}</table><div class="mdx-note" style="color:var(--dxmut)">Government and AI programs hold these sites. No war needed: an assault stronger than the defence (${COLCFG.ai.defLv}×level + ${COLCFG.ai.def0}) takes the site at the agency's level.</div>`:empty("No agency holds a site yet."));
+  if(!g)return alert+card("Moon & Mars",discs)+`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:16px;align-items:start">`+card("Colonies",empty("Only a player who holds office can run a national space colony (Government app)."))+brokerC+agency+`</div>`;
   const yours=mine.length?`<table class="mdx-tbl"><tr><th>Site</th><th>Ore</th><th>Level</th><th>Supply</th><th>Garrison</th><th>Ore stored</th><th>Auto-supply</th><th></th></tr>${mine.map(x=>{const q=COLP[x.p].sites[x.s],sp=colSup(x,now),pc=Math.min(100,sp/COLCFG.supCap*100),cl=sp<=0?"#dc2626":sp<COLCFG.autoBelow?"#d97706":"#16a34a";
       return `<tr><td>${COLP[x.p].ico} <b>${E(q[0])}</b></td><td>${E(G[q[1]][0])}</td><td>${x.lv}/${COLCFG.lvMax}</td><td><span style="display:inline-block;width:60px;height:6px;border-radius:3px;background:#e2e8f0;vertical-align:middle"><span style="display:block;height:6px;border-radius:3px;width:${pc}%;background:${cl}"></span></span> ${sp<=0?"<b style='color:#dc2626'>Idle</b>":Math.floor(sp)+" d"}</td><td>🚙 ${x.gar.armored} · 🛸 ${x.gar.drones}<br><small>defence ${Math.round(colDef(x,now))}</small></td><td>${Math.floor(x.ore).toLocaleString("en-US")}</td><td>${btn("colauto",colId(x.p,x.s),x.auto?"On":"Off",0,x.auto?"#16a34a":"#475569")}</td>
-        <td style="white-space:nowrap">${btn("colpick",colId(x.p,x.s)+":supply","Supply",0,"#4338ca")} ${btn("colpick",colId(x.p,x.s)+":expand","Expand",x.lv>=COLCFG.lvMax,"#4338ca")} ${btn("colpick",colId(x.p,x.s)+":garrison","Garrison",0,"#475569")}</td></tr>`}).join("")}</table>`
+        <td style="white-space:nowrap">${btn("colpick",colId(x.p,x.s)+":supply","Supply",0,"#4338ca")} ${btn("colpick",colId(x.p,x.s)+":expand","Expand",x.lv>=COLCFG.lvMax,"#4338ca")} ${btn("colpick",colId(x.p,x.s)+":garrison","Garrison",0,"#475569")}</td></tr>
+        <tr><td colspan="8" style="padding-top:0"><small style="color:var(--dxmut)">Upgrades:</small> ${Object.keys(UPK).map(k=>{const l=colUp(x,k);return `<span style="white-space:nowrap;margin-right:8px" title="${E(UPK[k][2])}">${UPK[k][1]} ${E(UPK[k][0])} <b>${l}/${COLCFG.upMax}</b> ${btn("colpick",colId(x.p,x.s)+":build:"+k,"Build",l>=COLCFG.upMax||x.lv<l+1,"#0f766e",l>=COLCFG.upMax?"Top level":x.lv<l+1?`Needs a level ${l+1} colony`:UPK[k][2])}</span>`}).join("")}
+          <span style="white-space:nowrap;margin-right:8px">👩‍🚀 ${colCrew(x,now)?`<b style="color:#16a34a">crew ×${COLCFG.crewX} · ${colIn(x.crewTo)}</b>`:"no fresh crew"} ${btn("colpick",colId(x.p,x.s)+":crew","Crew",0,"#475569")}</span>
+          <span style="white-space:nowrap">🎢 ${x.tour||0} tourists ${btn("colpick",colId(x.p,x.s)+":tour","Tour",x.lv<COLCFG.tourLv||colUp(x,"dome")<1,"#7c3aed",x.lv<COLCFG.tourLv?`Needs level ${COLCFG.tourLv}`:colUp(x,"dome")<1?"Needs a habitat dome":"Tourist flight")}</span></td></tr>`}).join("")}</table>`
     :empty(`${E(g)} has no colony yet. Launch a founding mission below.`);
   const fl=s.ms.map(m=>({p:m.p,site:m.site,t:m.t,eta:m.eta,c:m.c,ret:m.ret,me:1})).concat(CO.ms.filter(m=>!(colOn()&&m.uid===ON.user.uid)).map(m=>({p:m.p,site:+m.site,t:m.t,eta:+m.eta,c:String(m.c||"?")}))).filter(m=>COLP[m.p]&&COLP[m.p].sites[m.site]).sort((a,b)=>a.eta-b.eta);
   const fly=fl.length?`<table class="mdx-tbl"><tr><th>Mission</th><th>Target</th><th>Country</th><th>Arrives</th></tr>${fl.slice(0,40).map(m=>`<tr><td>${COLT[m.t][1]} ${m.ret?"Return leg":COLT[m.t][0]}${m.me?" <small>(yours)</small>":""}</td><td>${COLP[m.p].ico} ${E(COLP[m.p].sites[m.site][0])}</td><td>${E(m.c)}</td><td>${colIn(m.eta)}</td></tr>`).join("")}</table>`:empty("No colony ships in flight.");
-  const x=colGet(u.p,u.s),cost=colCost(u.p,u.t,u.u),port=P.find(q=>q.c.id===+u.from)||P[0];if(port)u.from=port.c.id;const why=colWhy(u.p,u.s,u.t,port?port.c.id:-1,u.u),inv=port?S.inv[port.c.id]||{}:{};
-  const sites=COLP[u.p].sites.map((q,i)=>{const c=s.list.find(y=>y.p===u.p&&y.s===i);return `<option value="${i}" ${i===u.s?"selected":""}>${E(q[0])} · ${E(G[q[1]][0])} · ${c?E(c.c)+" L"+c.lv:"unclaimed"}</option>`}).join("");
+  const bp=u.t==="build"?u.b:u.x,x=colGet(u.p,u.s),xai=x?null:colAi(u.p,u.s,now),cost=colCost(u.p,u.t,u.u,bp),port=P.find(q=>q.c.id===+u.from)||P[0];if(port)u.from=port.c.id;const why=colWhy(u.p,u.s,u.t,port?port.c.id:-1,u.u,bp),inv=port?S.inv[port.c.id]||{}:{};
+  const sites=COLP[u.p].sites.map((q,i)=>{const c=s.list.find(y=>y.p===u.p&&y.s===i),ai=c?null:colAi(u.p,i,now);return `<option value="${i}" ${i===u.s?"selected":""}>${E(q[0])} · ${E(G[q[1]][0])} · ${c?E(c.c)+" L"+c.lv:ai?`held by ${E(ai.a[0])}, level ${ai.lv}`:"unclaimed"}</option>`}).join("");
   const need=[["launches",cost.ln]].concat(Object.entries(cost.cargo)).map(([k,n])=>{const h=+inv[k]||0;return `<div><span>${E(G[k][0])}</span><b style="color:${h>=n?"#16a34a":"#dc2626"}">${n} <small>(have ${Math.floor(h)})</small></b></div>`}).join("");
   const form=`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">${["moon","mars"].map(p=>`<button data-sp="colp" data-k="${p}" ${sel(p,u.p===p)}>${COLP[p].ico} ${COLP[p].n}</button>`).join("")}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:10px"><label style="font:500 12px Figtree,sans-serif;color:var(--dxmut)">Site<br><select data-spc="s" style="width:100%;padding:6px;border-radius:8px;border:1px solid var(--dxline);background:var(--dxcard);color:var(--dxink)">${sites}</select></label>
     <label style="font:500 12px Figtree,sans-serif;color:var(--dxmut)">Spaceport<br><select data-spc="from" style="width:100%;padding:6px;border-radius:8px;border:1px solid var(--dxline);background:var(--dxcard);color:var(--dxink)">${P.length?P.map(q=>`<option value="${q.c.id}" ${port&&q.c.id===port.c.id?"selected":""}>${E(q.c.name)} · ${Math.floor(q.st.launches)} launches</option>`).join(""):`<option>No spaceport</option>`}</select></label></div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">${Object.keys(COLT).map(t=>`<button data-sp="colt" data-k="${t}" ${sel(t,u.t===t)}>${COLT[t][1]} ${COLT[t][0]}</button>`).join("")}</div>
-    ${COLCFG.unit[u.t]?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">${["armored","drones"].map(k=>`<button data-sp="colu" data-k="${k}" ${sel(k,u.u===k)}>${COLCFG.unit[u.t][k]} ${E(G[k][0].toLowerCase())} (strength ${colStr(k,COLCFG.unit[u.t][k])})</button>`).join("")}</div>`:""}
-    <div class="mdx-rows"><div><span>Target</span><b>${COLP[u.p].ico} ${E(COLP[u.p].sites[u.s][0])} · ${x?`${E(x.c)} (${E(x.name||"?")}) · level ${x.lv} · defence ${Math.round(colDef(x,now))}`:"unclaimed"}</b></div><div><span>Ore</span><b>${E(G[COLP[u.p].sites[u.s][1]][0])} · ${fmt(G[COLP[u.p].sites[u.s][1]][1])}/unit to a government buyer</b></div><div><span>Flight</span><b>${COLP[u.p].days} days each way${u.t==="found"?` · grant ${fmt(COLCFG.grant[u.p])}`:""}</b></div>${need}</div>
+    ${u.t==="build"?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">${Object.keys(UPK).map(k=>`<button data-sp="colb" data-k="${k}" title="${E(UPK[k][2])}" ${sel(k,u.b===k)}>${UPK[k][1]} ${E(UPK[k][0])}${x&&x.c===g?` (L${colUp(x,k)})`:""}</button>`).join("")}</div><div class="mdx-note" style="color:var(--dxmut);margin:-4px 0 10px">${E(UPK[u.b][2])}. Max level ${COLCFG.upMax}; level N needs a level N colony.</div>`:""}
+    ${u.t==="assault"?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">${Array.from({length:COLCFG.asMax},(_,i)=>i+1).map(n=>`<button data-sp="colx" data-k="${n}" ${sel(n,u.x===n)}>Force ×${n}</button>`).join("")}</div>`:""}
+    ${COLCFG.unit[u.t]?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">${["armored","drones"].map(k=>{const n=COLCFG.unit[u.t][k]*(u.t==="assault"?u.x:1);return `<button data-sp="colu" data-k="${k}" ${sel(k,u.u===k)}>${n} ${E(G[k][0].toLowerCase())} (strength ${colStr(k,n)})</button>`}).join("")}</div>`:""}
+    <div class="mdx-rows"><div style="flex-wrap:wrap"><span>Target</span><b style="min-width:0;text-align:right;overflow-wrap:anywhere">${COLP[u.p].ico} ${E(COLP[u.p].sites[u.s][0])} · ${x?`${E(x.c)} (${E(x.name||"?")}) · level ${x.lv} · defence ${Math.round(colDef(x,now))}`:xai?`${xai.a[1]} ${E(xai.a[0])} · level ${xai.lv} · defence ${xai.def}`:"unclaimed"}</b></div><div><span>Ore</span><b>${E(G[COLP[u.p].sites[u.s][1]][0])} · ${fmt(G[COLP[u.p].sites[u.s][1]][1])}/unit to a government buyer</b></div><div><span>Flight</span><b>${COLP[u.p].days} days each way${u.t==="found"?` · grant ${fmt(COLCFG.grant[u.p])}`:""}</b></div>${need}</div>
     <div style="margin-top:10px">${btn("colgo","",`🚀 Launch ${COLT[u.t][0].toLowerCase()} mission`,!!why,"#4338ca")}</div>${why?`<div class="mdx-note" style="color:#dc2626">${E(why)}</div>`:""}`;
-  const help=`<div class="mdx-rows"><div><span>Production</span><small style="text-align:right">${COLCFG.ore}×level ore per day and +${COLCFG.rp}×level research/hr while supplied. No supply: idle, defence halved.</small></div><div><span>Supply</span><small style="text-align:right">+${COLCFG.supAdd} days per run (max ${COLCFG.supCap}). Auto-supply flies a run below ${COLCFG.autoBelow} days.</small></div><div><span>Defence</span><small style="text-align:right">${COLCFG.defLv}×level + ${COLCFG.str.armored} per armored + ${COLCFG.str.drones} per drone. Assaults need a war with the owner.</small></div><div><span>Ore</span><small style="text-align:right">Every ship that lands brings the stored ore home to its spaceport.</small></div></div>${CO.err?`<div class="mdx-note" style="color:#dc2626">${E(CO.err)}</div>`:""}`;
-  return card("Moon & Mars",discs)+`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:16px;align-items:start">`+card(`Your colonies · ${E(g)}`,`<div style="overflow-x:auto">${yours}</div>`,' style="grid-column:1/-1"')+card("Missions in flight",`<div style="overflow-x:auto">${fly}</div>`)+card("Launch a mission",form)+card("How colonies work",help)+`</div>`}
+  const help=`<div class="mdx-rows"><div><span>Production</span><small style="text-align:right">${COLCFG.ore}×level ore per day and +${COLCFG.rp}×level research/hr while supplied. No supply: idle, defence halved.</small></div><div><span>Supply</span><small style="text-align:right">+${COLCFG.supAdd} days per run (max ${COLCFG.supCap}). Auto-supply flies a run below ${COLCFG.autoBelow} days.</small></div><div><span>Defence</span><small style="text-align:right">${COLCFG.defLv}×level + ${COLCFG.str.armored} per armored + ${COLCFG.str.drones} per drone. Assaults need a war with the owner.</small></div><div><span>Ore</span><small style="text-align:right">Every ship that lands brings the stored ore home to its spaceport.</small></div><div><span>Upgrades</span><small style="text-align:right">${Object.values(UPK).map(v=>v[1]+" "+v[0]+": "+v[2]).join(" · ")}</small></div><div><span>Crew &amp; tourists</span><small style="text-align:right">Crew rotation: ×${COLCFG.crewX} ore and research for ${COLCFG.crewDays} days. Tourist flight (level ${COLCFG.tourLv}+ with a dome): level × ${fmt(COLCFG.tourPay.moon)} Moon / ${fmt(COLCFG.tourPay.mars)} Mars and level × ${COLCFG.tourN} tourists.</small></div></div>${CO.err?`<div class="mdx-note" style="color:#dc2626">${E(CO.err)}</div>`:""}`;
+  const kpi=`<div class="mdx-kpis" style="margin-bottom:16px">${[["Colonies",mine.length,`${mine.filter(x=>x.p==="moon").length} Moon · ${mine.filter(x=>x.p==="mars").length} Mars`,"🪐"],["Space tourists flown",(s.tourists||0).toLocaleString("en-US"),"tourist flights need level "+COLCFG.tourLv+" + a dome","🎢"],["Research",`+${Math.round(mine.reduce((t,x)=>t+(colSup(x,now)>0?COLCFG.rp*x.lv*(1+COLCFG.lab*colUp(x,"lab"))*(colCrew(x,now)?COLCFG.crewX:1):0),0))}/hr`,"from supplied colonies","🔬"]].map(([l,v,f,i])=>`<div class="mdx-card mdx-kpi"><span class="mdx-ic" style="background:#e0e7ff;color:#4338ca;font-size:20px">${i}</span><div class="mdx-lb"><span>${l}</span></div><div class="mdx-big">${v}</div><div class="mdx-kfoot"><small>${f}</small></div></div>`).join("")}</div>`;
+  return alert+kpi+card("Moon & Mars",discs)+`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:16px;align-items:start">`+card(`Your colonies · ${E(g)}`,`<div style="overflow-x:auto">${yours}</div>`,' style="grid-column:1/-1"')+card("Missions in flight",`<div style="overflow-x:auto">${fly}</div>`)+card("Launch a mission",form)+brokerC+agency+card("How colonies work",help)+`</div>`}
 function colClick(a,k){const s=COLS(),u=s.ui;
-  if(a==="colp"){u.p=k;u.s=Math.min(11,u.s)}else if(a==="colt")u.t=k;else if(a==="colu")u.u=k;
-  else if(a==="colgo"){colSend(u.p,u.s,u.t,u.from,u.u);return}
+  if(a==="colp"){u.p=k;u.s=Math.min(11,u.s)}else if(a==="colt")u.t=k;else if(a==="colu")u.u=k;else if(a==="colb"&&UPK[k])u.b=k;else if(a==="colx")u.x=Math.max(1,Math.min(COLCFG.asMax,+k|0));
+  else if(a==="colsell"){if(k==="all")colSell();else{const [c,g]=k.split(":");colSell(+c,g)}return}
+  else if(a==="colgo"){colSend(u.p,u.s,u.t,u.from,u.u,0,u.t==="build"?u.b:u.x);return}
   else if(a==="colauto"){const x=s.list.find(y=>colId(y.p,y.s)===k);if(x&&colMine(x)){x.auto=x.auto?0:1;colPut(x,1);toast(`Auto-supply ${x.auto?"on":"off"} for ${COLP[x.p].sites[x.s][0]}`)}}
-  else if(a==="colpick"){const [id,t]=k.split(":"),[p,i]=id.split("_");u.p=p;u.s=+i;u.t=t}
+  else if(a==="colpick"){const [id,t,b]=k.split(":"),[p,i]=id.split("_");u.p=p;u.s=+i;u.t=t;if(UPK[b])u.b=b}
   spRender()}
 function colPick(k,v){const u=COLS().ui;if(k==="s")u.s=Math.max(0,Math.min(11,+v|0));if(k==="from")u.from=+v;spRender()}
+/* ===== Space broker (ore for cash anywhere) and Ore exchange (player to player, Firestore oreask / oresale) =====
+   oreask/{id}: {uid,name,g,q,px,at} a lot; the seller's goods wait in S.col.esc[id]={g,q,city,px,at} until sold or cancelled.
+   oresale/{askId_buyerUid}: {to,by,byName,ask,g,q,px,amt,at} written by the buyer in the same transaction that lowers or deletes the lot. */
+function colBroker(){const out=[];for(const p of spPorts()){const inv=S.inv[p.c.id]||{};for(const g of COLORE)if((+inv[g]||0)>=1)out.push({c:p.c,g,q:Math.floor(+inv[g])})}return out}
+function colSell(cid,g){const L=colBroker().filter(r=>(cid==null||r.c.id===+cid)&&(!g||r.g===g));if(!L.length)return toast("No space ore to sell");let v=0,n=0;
+  for(const r of L){S.inv[r.c.id][r.g]-=r.q;v+=r.q*G[r.g][1]*COLCFG.broker;n+=r.q}v=Math.round(v);S.cash+=v;S.earned=(S.earned||0)+v;
+  toast(`🪐 Space broker bought ${n.toLocaleString("en-US")} ore for ${fmt(v)}`);try{S.log.unshift(`Sold ${n} space ore to the broker`);S.log=S.log.slice(0,3)}catch(e){}save();hud();spRefresh()}
+const OX={on:null,ask:[],busy:{},f:{g:"",q:"",px:"",from:""},b:{id:"",q:"",to:""},flt:"",err:""};
+function oxEnsure(){if(!colOn()||!hasTech("lunar")||!CO.uid||OX.on===CO.uid)return;OX.on=CO.uid;const db=ON.db,uid=CO.uid,er=w=>e=>{OX.err="Couldn't load "+w+": "+(e&&e.code||e)};
+  CO.sub.push(db.collection("oreask").orderBy("at","desc").limit(80).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(COLORE.includes(v.g)&&(v.q|0)>0&&+v.px>0)a.push(Object.assign({id:d.id},v))});OX.ask=a;oxTidy();if(SPW.open&&SP().tab==="ox")spRender()},er("ore lots")));
+  CO.sub.push(db.collection("oresale").where("to","==",uid).onSnapshot(q=>q.forEach(d=>oxClaim(d)),er("ore sales")))}
+function oxLog(e){const s=COLS();s.oxh.unshift(e);s.oxh=s.oxh.slice(0,20)}
+function oxTidy(){const s=COLS();for(const id in s.esc)if(!(s.esc[id].q>0))delete s.esc[id]}
+// seller: claim a sale once (seen list), credit cash minus the fee, release the escrowed ore, delete the doc
+function oxClaim(d){const s=COLS(),v=d.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():0,key=d.id+"@"+at;if(v.to!==CO.uid)return;
+  if(!s.oxseen.includes(key)){const q=Math.floor(+v.q||0),amt=Math.round(+v.amt||0);
+    if(q>0&&amt>0&&amt<=1e13&&G[v.g]){s.oxseen.unshift(key);s.oxseen=s.oxseen.slice(0,300);const net=Math.round(amt*(1-COLCFG.ox.fee));S.cash+=net;S.earned=(S.earned||0)+net;
+      const e=s.esc[v.ask];if(e){e.q-=q;oxTidy()}oxLog({d:"sold",g:v.g,q,v:net,n:String(v.byName||"a player").slice(0,20),t:Date.now()});
+      toast(`🪐 ${String(v.byName||"A player").slice(0,20)} bought ${q.toLocaleString("en-US")} ${G[v.g][0].toLowerCase()} from you: ${fmt(net)} after the ${Math.round(COLCFG.ox.fee*100)}% fee`);save();hud();if(SPW.open&&SP().tab==="ox")spRender()}}
+  d.ref.delete().catch(()=>{})}
+function oxWhy(){if(!hasTech("lunar"))return "Research Lunar outpost first";if(!colOn())return "Sign in to the online world (Saves › Online) to trade ore";return ""}
+function oxList(){const w=oxWhy();if(w)return toast(w);const f=OX.f,uid=ON.user.uid,c=CITIES[+f.from],g=f.g,q=Math.floor(+String(f.q).replace(/[^0-9]/g,"")||0),px=Math.round(+String(f.px).replace(/[^0-9.]/g,"")||0),s=COLS();
+  if(!c||!spPorts().some(p=>p.c.id===c.id))return toast("Pick one of your spaceport depots");if(!COLORE.includes(g))return toast("Pick an ore");const inv=S.inv[c.id]||{};
+  if(q<1)return toast("Enter how many units to sell");if(q>COLCFG.ox.qMax)return toast(`At most ${COLCFG.ox.qMax.toLocaleString("en-US")} units per lot`);if((+inv[g]||0)<q)return toast(`${c.name} only has ${Math.floor(+inv[g]||0)} ${G[g][0].toLowerCase()}`);
+  const lo=Math.ceil(G[g][1]*COLCFG.ox.lo),hi=Math.floor(G[g][1]*COLCFG.ox.hi);if(!(px>=lo&&px<=hi))return toast(`Price must be ${fmt(lo)} to ${fmt(hi)} per unit`);
+  if(Object.keys(s.esc).length>=COLCFG.ox.lots)return toast(`At most ${COLCFG.ox.lots} lots at once`);if(OX.busy.list)return;OX.busy.list=1;
+  const ref=ON.db.collection("oreask").doc();inv[g]-=q;s.esc[ref.id]={g,q,city:c.id,px,at:Date.now()};save();hud();
+  ref.set({uid,name:(onProf().name||"Tycoon").slice(0,20),g,q,px,at:window.firebase.firestore.FieldValue.serverTimestamp()})
+    .then(()=>{delete OX.busy.list;OX.f.q="";toast(`🪐 Listed ${q.toLocaleString("en-US")} ${G[g][0].toLowerCase()} at ${fmt(px)} each`);spRefresh()},
+      e=>{delete OX.busy.list;const x=s.esc[ref.id];if(x){const iv=S.inv[x.city]=S.inv[x.city]||{};iv[x.g]=(+iv[x.g]||0)+x.q;delete s.esc[ref.id]}save();hud();toast("Listing refused: "+(e&&e.code||e));spRefresh()})}
+function oxCancel(id){const s=COLS(),e=s.esc[id];if(!e||OX.busy[id])return;
+  const back=q=>{q=Math.max(0,Math.min(e.q,q));const inv=S.inv[e.city]=S.inv[e.city]||{};inv[e.g]=(+inv[e.g]||0)+q;e.q-=q;oxTidy();save();hud();toast(`Lot cancelled: ${q.toLocaleString("en-US")} ${G[e.g][0].toLowerCase()} back in ${CITIES[e.city]?CITIES[e.city].name:"your depot"}`);spRefresh()};
+  if(!colOn()||OX.on!==CO.uid)return toast("Sign in (and let the exchange load) to cancel a lot");OX.busy[id]=1;const ref=ON.db.collection("oreask").doc(id);
+  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)return e.q;const q=Math.floor(+d.data().q||0);t.delete(ref);return q})
+    .then(q=>{delete OX.busy[id];back(q)},er=>{delete OX.busy[id];toast("Couldn't cancel: "+(er&&er.message||er))})}
+function oxBuy(){const w=oxWhy();if(w)return toast(w);const b=OX.b,a=OX.ask.find(x=>x.id===b.id),uid=ON.user.uid;if(!a)return toast("Pick a lot");if(a.uid===uid)return toast("That's your own lot");
+  const q=Math.floor(+String(b.q).replace(/[^0-9]/g,"")||0),c=CITIES[+b.to];if(!c||!hasWh(c))return toast("Pick one of your depots (a city with a warehouse) to receive the ore");if(q<1||q>a.q)return toast(`Enter 1 to ${a.q} units`);
+  const px=+a.px,amt=q*px;if(S.cash<amt)return toast(`That costs ${fmt(amt)}`);if(stored(c)+q*tpu(a.g)>whCap(c)+1e-9)return toast(`Not enough warehouse space in ${c.name}`);if(OX.busy.buy)return;OX.busy.buy=1;
+  S.cash-=amt;save();hud();const db=ON.db,ar=db.collection("oreask").doc(a.id),sr=db.collection("oresale").doc(a.id+"_"+uid),FV=window.firebase.firestore.FieldValue;
+  db.runTransaction(async t=>{const d=await t.get(ar);if(!d.exists)throw new Error("that lot is gone");const v=d.data();if((v.q|0)<q)throw new Error(`only ${v.q} left`);if(+v.px!==px||v.g!==a.g)throw new Error("the lot changed");
+      if((v.q|0)===q)t.delete(ar);else t.update(ar,{q:(v.q|0)-q});t.set(sr,{to:v.uid,by:uid,byName:(onProf().name||"Tycoon").slice(0,20),ask:a.id,g:a.g,q,px,amt,at:FV.serverTimestamp()})})
+    .then(()=>{delete OX.busy.buy;const inv=S.inv[c.id]=S.inv[c.id]||{};inv[a.g]=(+inv[a.g]||0)+q;oxLog({d:"bought",g:a.g,q,v:amt,n:String(a.name||"a player").slice(0,20),t:Date.now()});OX.b.q="";
+      toast(`🪐 Bought ${q.toLocaleString("en-US")} ${G[a.g][0].toLowerCase()} for ${fmt(amt)}: delivered to ${c.name}`);save();hud();spRefresh()},
+      e=>{delete OX.busy.buy;S.cash+=amt;save();hud();toast("Purchase failed: "+(e&&e.message||e)+" (refunded; if you bought this lot before, wait until the seller has collected)")})}
+function oxTab(){const E=dxE,s=COLS(),w=oxWhy(),uid=colOn()?ON.user.uid:"",P=spPorts(),f=OX.f,b=OX.b;
+  const btn=(a,k,t,dis,bg,tip)=>`<button class="mdx-pill" data-sp="${a}" data-k="${k}" ${dis?"disabled":""} ${tip?`title="${E(tip)}"`:""} style="border:0;cursor:pointer;color:#fff;background:${bg||"#312e81"};opacity:${dis?.5:1}">${t}</button>`;
+  const card=(t,inner,ex)=>`<div class="mdx-card"${ex||""}><div class="mdx-ch"><h3>${t}</h3></div>${inner}</div>`,empty=t=>`<div class="mdx-rows"><div><span>${t}</span><b></b></div></div>`;
+  const ist="width:100%;padding:6px;border-radius:8px;border:1px solid var(--dxline);background:var(--dxcard);color:var(--dxink)",lab="font:500 12px Figtree,sans-serif;color:var(--dxmut)";
+  if(!hasTech("lunar"))return card("🔒 Ore exchange",empty("Trade Moon and Mars ore with other players. Research <b>Lunar outpost</b> to unlock it."));
+  const held=[];for(const p of P){const inv=S.inv[p.c.id]||{};for(const g of COLORE)if((+inv[g]||0)>=1)held.push({c:p.c,g,q:Math.floor(+inv[g])})}
+  if(!COLORE.includes(f.g)||!held.some(h=>h.g===f.g&&h.c.id===+f.from)){const h=held[0];f.g=h?h.g:"";f.from=h?h.c.id:"";f.px=h?G[h.g][1]:""}
+  const deps=Object.keys(S.wh||{}).map(Number).filter(id=>CITIES[id]).map(id=>CITIES[id]);if(!deps.some(c=>c.id===+b.to))b.to=deps[0]?deps[0].id:"";
+  const sellDis=w||!held.length?(w||"No ore in your spaceport depots"):"";
+  const sell=card("Sell a lot",held.length?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:10px">
+    <label style="${lab}">Ore · depot<br><select data-oxf="f.gc" style="${ist}">${held.map(h=>`<option value="${h.g}|${h.c.id}" ${h.g===f.g&&h.c.id===+f.from?"selected":""}>${E(G[h.g][0])} · ${E(h.c.name)} (${h.q.toLocaleString("en-US")})</option>`).join("")}</select></label>
+    <label style="${lab}">Units<br><input data-oxf="f.q" inputmode="numeric" value="${E(String(f.q))}" placeholder="e.g. 50" style="${ist}"></label>
+    <label style="${lab}">Price per unit ($)<br><input data-oxf="f.px" inputmode="numeric" value="${E(String(f.px))}" style="${ist}"></label></div>
+    <div class="mdx-rows">${f.g?`<div><span>Allowed price</span><b>${fmt(G[f.g][1]*COLCFG.ox.lo)} – ${fmt(G[f.g][1]*COLCFG.ox.hi)} <small>(gov ${fmt(G[f.g][1])})</small></b></div>`:""}<div><span>Fee on sale</span><b>${Math.round(COLCFG.ox.fee*100)}%</b></div></div>
+    <div style="margin-top:10px">${btn("oxlist","","📤 List lot",!!sellDis,"#4338ca",sellDis)}</div>`:empty("No Moon or Mars ore in your spaceport depots yet."))+(sellDis&&held.length?`<div class="mdx-note" style="color:#dc2626">${E(sellDis)}</div>`:"");
+  const lots=OX.ask.filter(a=>!OX.flt||a.g===OX.flt),sel=OX.ask.find(a=>a.id===b.id);
+  const fl=`<select data-oxf="flt" style="${ist};width:auto;margin-bottom:8px"><option value="">All ores</option>${COLORE.map(g=>`<option value="${g}" ${OX.flt===g?"selected":""}>${E(G[g][0])}</option>`).join("")}</select>`;
+  const list=card("Lots for sale",fl+(lots.length?`<div style="overflow-x:auto"><table class="mdx-tbl"><tr><th>Ore</th><th>Seller</th><th>Units</th><th>Price</th><th></th></tr>${lots.map(a=>`<tr><td>${E(G[a.g][0])}</td><td>${E(String(a.name||"?").slice(0,20))}${a.uid===uid?" <small>(you)</small>":""}</td><td>${(a.q|0).toLocaleString("en-US")}</td><td>${fmt(+a.px)} <small>${Math.round(a.px/G[a.g][1]*100)}%</small></td><td>${a.uid===uid?"":btn("oxpick",a.id,b.id===a.id?"✓ Picked":"Pick",0,"#475569")}</td></tr>`).join("")}</table></div>`:empty(w?E(w):"No ore lots listed right now.")));
+  const q=Math.floor(+String(b.q).replace(/[^0-9]/g,"")||0),buyDis=w||(!sel?"Pick a lot":!deps.length?"You need a warehouse (depot) to receive ore":"");
+  const buy=card("Buy",sel?`<div class="mdx-rows"><div><span>Lot</span><b>${E(G[sel.g][0])} from ${E(String(sel.name||"?"))} · ${fmt(+sel.px)}/unit</b></div></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:10px 0"><label style="${lab}">Units (max ${sel.q|0})<br><input data-oxf="b.q" inputmode="numeric" value="${E(String(b.q))}" style="${ist}"></label>
+    <label style="${lab}">Deliver to depot<br><select data-oxf="b.to" style="${ist}">${deps.length?deps.map(c=>`<option value="${c.id}" ${c.id===+b.to?"selected":""}>${E(c.name)}</option>`).join(""):"<option>No depot</option>"}</select></label></div>
+    <div class="mdx-rows"><div><span>Total (paid up front)</span><b>${fmt(q*(+sel.px))}</b></div></div><div style="margin-top:10px">${btn("oxbuy","","🛒 Buy",!!buyDis,"#16a34a",buyDis)}</div>`:empty(w?E(w):"Pick a lot from the list."))+(buyDis&&sel?`<div class="mdx-note" style="color:#dc2626">${E(buyDis)}</div>`:"");
+  const mineL=Object.entries(s.esc),my=card("Your lots",mineL.length?`<table class="mdx-tbl"><tr><th>Ore</th><th>Unsold</th><th>Price</th><th>From</th><th></th></tr>${mineL.map(([id,e])=>{const d=OX.ask.find(a=>a.id===id);return `<tr><td>${E(G[e.g]?G[e.g][0]:e.g)}</td><td>${(d?d.q|0:e.q).toLocaleString("en-US")}</td><td>${fmt(e.px)}</td><td>${CITIES[e.city]?E(CITIES[e.city].name):"?"}</td><td>${btn("oxcancel",id,"Cancel",!!OX.busy[id],"#b91c1c")}</td></tr>`}).join("")}</table>`:empty("You have no lots listed."));
+  const feed=card("Recent trades",s.oxh.length?`<div class="mdx-rows">${s.oxh.map(h=>`<div><span>${h.d==="sold"?"📤 Sold":"📥 Bought"} ${(h.q|0).toLocaleString("en-US")} ${E(G[h.g]?G[h.g][0].toLowerCase():h.g)} ${h.d==="sold"?"to":"from"} ${E(h.n)} <small>${spAgo(h.t)}</small></span><b>${fmt(h.v)}</b></div>`).join("")}</div>`:empty("No ore trades yet."));
+  return (w?`<div class="mdx-note" style="color:#dc2626;margin-bottom:10px">${E(w)}</div>`:"")+(OX.err?`<div class="mdx-note" style="color:#dc2626;margin-bottom:10px">${E(OX.err)}</div>`:"")+`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;align-items:start">`+list+buy+sell+my+feed+`</div>`}
+function oxSet(k,v,rr){if(k==="flt")OX.flt=COLORE.includes(v)?v:"";else if(k==="f.gc"){const [g,c]=String(v).split("|");OX.f.g=g;OX.f.from=+c;OX.f.px=G[g]?G[g][1]:""}else{const [o,f]=k.split(".");if(OX[o]&&f in OX[o])OX[o][f]=v}if(rr)spRender()}
+function oxClick(a,k){if(a==="oxlist")oxList();else if(a==="oxbuy")oxBuy();else if(a==="oxcancel")oxCancel(k);else if(a==="oxpick"){OX.b.id=k;OX.b.q="";spRender()}}
+/* planet overlay: a tiny 🌙/🔴 badge with each country's colony count next to its capital (toggle S.set.colov) */
+function colOvOn(){return !(S.set&&S.set.colov===0)}
+function colOvDraw(ctx){CO.hit=[];if(!colOvOn()||!S.col||!S.col.list||!S.col.list.length)return;const by={};for(const x of S.col.list){const b=by[x.c]=by[x.c]||{m:0,r:0,l:[]};b[x.p==="moon"?"m":"r"]++;b.l.push(x)}
+  const zs=Math.min(1.4,.85+V.k*.06),h=13*zs;ctx.save();ctx.font=`700 ${Math.round(9*zs)}px system-ui, sans-serif`;ctx.textBaseline="middle";ctx.textAlign="left";
+  for(const c in by){const A=cfCap(c);if(!A||!visible(A.lon,A.lat))continue;const [x,y]=proj([A.lon,A.lat]),b=by[c],t=(b.m?"🌙"+b.m:"")+(b.r?(b.m?" ":"")+"🔴"+b.r:""),w=ctx.measureText(t).width+8,bx=x+7,bt=y-h-3;
+    ctx.globalAlpha=.88;ctx.fillStyle="rgba(15,23,42,.85)";ctx.fillRect(bx,bt,w,h);ctx.globalAlpha=1;ctx.fillStyle="#fff";ctx.fillText(t,bx+4,bt+h/2+.5);CO.hit.push({x:bx+w/2,y:bt+h/2,r:Math.max(14,w/2+4),c,l:b.l})}
+  ctx.restore()}
+function colOvTap(x,y){if(!colOvOn()||!CO.hit)return false;for(const h of CO.hit)if(Math.hypot(h.x-x,h.y-y)<h.r){toast(`${h.c} colonies: `+h.l.map(q=>`${COLP[q.p].ico} ${COLP[q.p].sites[q.s][0]} (L${q.lv})`).join(", "));return true}return false}
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();try{colTick(Date.now())}catch(e){console.warn("col",e)}try{airTick(Date.now())}catch(e){console.warn("air",e)}if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
