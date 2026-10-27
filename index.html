@@ -2412,7 +2412,7 @@ setInterval(worldNews,4*60000);setTimeout(worldNews,20000);
 /* ---------- economy tick ---------- */
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
 let pops=[]; // floating income labels
-function simDay(quiet){const{nw}=totals();S.day++;if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}try{gxDay(quiet)}catch(e){console.warn("gxDay",e)}try{flipDay(quiet)}catch(e){console.warn("flipDay",e)}try{wevDay()}catch(e){console.warn("wevDay",e)}try{ipoDay(quiet)}catch(e){console.warn("ipoDay",e)}
+function simDay(quiet){const{nw}=totals();try{wrDay(nw,quiet)}catch(e){console.warn("wrDay",e)}S.day++;if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}try{gxDay(quiet)}catch(e){console.warn("gxDay",e)}try{flipDay(quiet)}catch(e){console.warn("flipDay",e)}try{wevDay()}catch(e){console.warn("wevDay",e)}try{ipoDay(quiet)}catch(e){console.warn("ipoDay",e)}
   try{mktDay()}catch(e){console.warn("mktDay",e)}audits(quiet);simProps(quiet);
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||Math.random()>.004)continue;
     const kinds=[["Break-in at your",.04],["Equipment breakdown at your",.03],["Health inspection fine at your",.02],["Customer lawsuit against your",.06]],[t,f]=kinds[Math.floor(Math.random()*kinds.length)];
@@ -3811,7 +3811,7 @@ const obLX=()=>Math.max(0,S.ob.lm-BANKCFG.lmFair),obCX=()=>Math.max(0,S.ob.cm-BA
 const obPick=x=>{const o=S.ob;for(let j=0;j<4;j++){const c=o.customers.length&&Math.random()<.5?o.customers[Math.random()*o.customers.length|0]:obCust();
   if(Math.random()>=Math.min(.9,x*BANKCFG.advSel*(1-c.risk)))return c}return null}; // adverse selection: overpriced credit loses good borrowers
 const obDem=x=>Math.max(BANKCFG.demMin,(1-x*BANKCFG.rateDem)*obPh().dem);
-const obEquity=()=>S.ob?S.ob.reserves+obLoanBal()-S.ob.deposits-S.ob.emerg:0;
+const obEquity=()=>S.ob?S.ob.reserves+obLoanBal()+(S.ob.mg&&S.ob.mg.book>0?S.ob.mg.book:0)-S.ob.deposits-S.ob.emerg:0;
 const obAppeal=()=>{const o=S.ob,C=BANKCFG;return Math.max(.05,Math.min(2.5,1+(o.depRate-S.econ.base*C.rateRef)*C.rateSens+(o.rep-50)/100))};
 const OBN1=["Alex","Sam","Maria","Chen","Priya","Omar","Lena","Jules","Kofi","Yuki","Ivan","Sofia","Noah","Aisha","Mateo","Hana"],OBN2=["Smith","Tremblay","Garcia","Wong","Patel","Haddad","Muller","Rossi","Mensah","Sato","Novak","Silva","Kim","Diallo","Lopez","Berg"],OBCO=["Logistics","Foods","Tech","Holdings","Motors","Textiles","Media","Pharma","Energy","Retail"];
 function obCust(){const t=obT(),corp=t.corp&&Math.random()<.12,r=Math.random(),cr=Math.round(300+550*Math.pow(Math.random(),.7));
@@ -3842,6 +3842,19 @@ function obDefault(src,x){const o=S.ob,C=BANKCFG;x.st="defaulted";o.wo=(o.wo||0)
    The owner can do this any time; with autoCut on (default) the manager does it automatically after 3 missed payments. */
 /* founder borrows from the bank's reserves at any time and repays it later */
 function obPull(v){const o=S.ob;if(!o||!(v>0))return;if(o.reserves<v)return toast(`Reserves only hold ${fmt(o.reserves)}`);o.reserves-=v;S.cash+=v;o.owed=(o.owed||0)+v;toast(`Withdrew ${fmt(v)} from ${o.name}'s reserves · you owe ${fmt(o.owed)}`);try{logBank(`Founder withdrew ${fmt(v)} from reserves`)}catch(e){}}
+/* Margin desk: AI investors borrow from the bank to buy stocks. Interest goes straight to the profit account.
+   A stock crash (index down more than 8% in a month) triggers margin calls and some of the book is lost. If you own the NYC exchange, margin traders trade there too. */
+const OBMG={rates:[.08,.12,.18],cap:.25,per:25000,grow:.3,crash:.08,exVol:.5};
+function obMgS(){const o=S.ob;let g=o.mg;if(!g||typeof g!=="object")g=o.mg={on:0,book:0,r:1,ix:0,int:0,tot:0,loss:0,n:0};return g}
+function obMargin(){const o=S.ob,g=obMgS(),ix=exIndex();const drop=g.ix>0?1-ix/g.ix:0;g.ix=ix;g.int=0;
+  if(!g.on){if(g.book>0){o.reserves+=g.book;g.book=0}g.n=0;return}
+  if(drop>OBMG.crash&&g.book>0&&!spDev()){const l=g.book*Math.min(.5,(drop-OBMG.crash)*2);g.book-=l;g.loss+=l;obNote("mg",`📉 Margin calls: stocks fell ${Math.round(drop*100)}% and ${o.name} lost ${fmt(l)} on margin loans`)}
+  const rate=OBMG.rates[g.r]||.12,int=g.book*rate/12;if(int>0){o.pacct=(o.pacct||0)+int;o.ptot=(o.ptot||0)+int;g.int=int;g.tot+=int}
+  const dem=[1.4,1,.6][g.r]||1,want=Math.max(0,(o.nc||0)*OBMG.per*dem*(exOwn()?1.5:1));
+  let step=(want-g.book)*OBMG.grow;if(step>0)step=Math.min(step,obFree()*OBMG.cap,Math.max(0,o.reserves-o.deposits*BANKCFG.reqRes*1.1));
+  if(step>0||step<0){o.reserves-=step;g.book+=step}g.n=Math.round(g.book/OBMG.per);o.capital=obEquity()}
+function obMgSet(a,v){const g=obMgS();if(a==="on")g.on=v?1:0;else if(a==="r")g.r=Math.max(0,Math.min(2,v|0))}
+const obMgVol=()=>S.ob&&S.ob.mg&&S.ob.mg.on&&S.ob.mg.book>0?S.ob.mg.book*OBMG.exVol:0;
 function obPWd(v){const o=S.ob;if(!o)return;v=Math.min(v,o.pacct||0);if(!(v>=1))return toast("The profit account is empty");o.pacct-=v;if(o.pacct<.01)o.pacct=0;S.cash+=v;toast(`💰 Withdrew ${fmt(v)} profit from ${o.name}`);try{logBank(`Founder took ${fmt(v)} from the profit account`)}catch(e){}}
 function obPBack(){const o=S.ob;if(!o||!(o.pacct>=1))return;const v=o.pacct;o.pacct=0;o.reserves+=v;o.capital=obEquity();toast(`Moved ${fmt(v)} back into ${o.name}'s reserves`)}
 function obRepay(){const o=S.ob;if(!o||!(o.owed>0))return;const v=Math.min(o.owed,S.cash);if(v<1)return toast("No cash to repay with");S.cash-=v;o.reserves+=v;o.owed=Math.max(0,o.owed-v);if(o.owed<.01)o.owed=0;toast(`Repaid ${fmt(v)} to ${o.name}${o.owed?` · ${fmt(o.owed)} still owed`:" · all paid back"}`);try{logBank(`Founder repaid ${fmt(v)} to reserves`)}catch(e){}}
@@ -3903,6 +3916,7 @@ function obMonth(){econMonth();try{obMgrPrice()}catch(e){}if(S.ob.at)S.ob.depRat
   o.reserves+=inc-ci-exp;o.capital=obEquity();o.m++;obGenApps();obGenCApps();
   // profit account: a share of a profitable month moves out of reserves for the founder, never below the reserve and capital requirements
   let sw=0;if(p>0&&!o.run&&!o.emerg&&o.reserves>0){const share=o.psweep==null?.5:o.psweep;sw=Math.max(0,Math.min(p*share,obFree(),o.reserves-o.deposits*C.reqRes*1.1));if(sw>=1){o.reserves-=sw;o.pacct=(o.pacct||0)+sw;o.ptot=(o.ptot||0)+sw;o.capital=obEquity()}else sw=0} // card interest is charged onto balances, so it isn't cash yet
+  try{obMargin()}catch(e){}
   const rr=obRR();o.rep=Math.max(0,Math.min(100,o.rep+(p>0?.4:-.8)+(a-1)*.5-(o.emerg>0?1:0)-(o.reserves<0?5:0)-(rr<C.reqRes?C.confLow:0)
     -(p<-Math.max(1e5,o.capital*C.bigLoss)?3:0)-(o.run?2:0)+(rr>=C.reqRes&&p>0&&!o.emerg?C.confUp:0)));
   if(!o.run&&o.deposits>0&&(rr<C.runRR||o.reserves<0)&&o.rep<C.runRep&&Math.random()<C.runP){o.run=obRnd(C.runDur);obNote("run",`⚠️ Bank run! Depositors are pulling money out of ${o.name}`)}
@@ -4127,6 +4141,9 @@ function obAppFull(){const C=BANKCFG,o=S.ob;
   <div class="ph-card"><b>💰 Profit account</b><span>Each profitable month, ${Math.round((o.psweep==null?.5:o.psweep)*100)}% of the profit moves here for you to take, as long as the bank keeps its reserve and capital requirements. Withdrawals are yours: nothing is owed back.</span></div>
   <div class="ph-rows"><div><span>Balance</span><b style="color:var(--good)">${fmt(o.pacct||0)}</b></div><div><span>Added last month</span><b>${fmt(l&&l.sw||0)}</b></div><div><span>Paid in all time</span><b>${fmt(o.ptot||0)}</b></div></div>
   <div style="display:flex;gap:5px">${obBtn("obpw",(o.pacct||0)/2,"Withdraw half",!(o.pacct>=2),"#14532d")}${obBtn("obpw",o.pacct||0,"Withdraw all "+fmt(o.pacct||0),!(o.pacct>=1),"#14532d")}${obBtn("obpback",0,"Back to reserves",!(o.pacct>=1),"#1e3a8a")}</div>
+  ${(()=>{const g=obMgS();return `<div class="ph-card"><b>📈 Margin desk</b><span>AI investors borrow from ${devEsc(o.name)} to buy stocks. Their interest goes straight into the profit account. If stocks crash more than 8% in a month, margin calls cost the bank part of the book.${exOwn()?" They trade on your NYC exchange too, adding fee volume.":""}</span></div>
+  <div class="ph-rows"><div><span>Margin loans out</span><b>${fmt(g.book)}</b></div><div><span>Borrowers</span><b>${g.n||0}</b></div><div><span>Interest last month</span><b style="color:var(--good)">${fmt(g.int||0)}</b></div><div><span>Interest all time</span><b>${fmt(g.tot||0)}</b></div>${g.loss?`<div><span>Lost to margin calls</span><b style="color:var(--bad)">${fmt(g.loss)}</b></div>`:""}</div>
+  <div style="display:flex;gap:5px;flex-wrap:wrap">${obBtn("obmg","on:"+(g.on?0:1),g.on?"Close margin desk":"Open margin desk",0,g.on?"#7f1d1d":"#14532d")}${OBMG.rates.map((r,i)=>obBtn("obmg","r:"+i,Math.round(r*100)+"% a year"+(g.r===i?" ✓":""),0,g.r===i?"#14532d":"#334155")).join("")}</div>`})()}
   <div style="display:flex;gap:5px">${[0,.25,.5,1].map(v=>obBtn("obpsw",v,(v?Math.round(v*100)+"%":"Off")+((o.psweep==null?.5:o.psweep)===v?" ✓":""),0,(o.psweep==null?.5:o.psweep)===v?"#14532d":"#334155")).join("")}</div>
   <div class="ph-rows"><div><span>You owe your bank</span><b style="color:${o.owed>0?"#fbbf24":"var(--good)"}">${fmt(o.owed||0)}</b></div></div>
   <div style="display:flex;gap:5px">${[1e6,1e7,1e8].map(v=>obBtn("obpull",v,"Withdraw "+fmt(v),o.reserves<v,"#92400e")).join("")}</div>
@@ -8830,7 +8847,7 @@ function axPage(ag){const now=Date.now();if(!airHubs().length)return axEmpty();c
 const OFD=[["log","📦","Logistics","Runs your city managers' restocking.",1000,"City managers restock at +5% instead of +10%."],
   ["space","🚀","Space","Runs the Space manager for your colonies.",8000,"Space manager buys cargo at +5% (space freight +15%) instead of +10% / +25%."],
   ["truck","🚚","Trucking","Runs hubs and contracts.",3000,"Delivered trucking contracts pay 8% more."],["air","✈️","Airline","Runs routes and the fleet.",5000,"Airline fuel costs 20% less on every flight."],["mkt","📣","Marketing","Campaigns that lift business income.",3000,"All businesses earn 6% more, and can run 3-day ad campaigns for +10%."],["hr","🧑‍💼","HR","Hiring and wages for the whole team.",4000,"Other heads cost 15% less and sign for 25% less, ask for raises half as often and never quit over a refused raise."],
-  ["exch","📈","Exchange","Runs the NYC stock exchange. Only the exchange owner can hire.",750000,"Exchange fees +25% (grows with level) and player commissions collected automatically."]];
+  ["exch","📈","Exchange","Runs the NYC stock exchange. Only the exchange owner can hire.",750000,"Exchange fees +25% (grows with level)."]];
 const OFN=[["Ava","Liam","Noah","Mia","Zoe","Omar","Lina","Kai","Sofia","Ravi","Elena","Jonah","Priya","Mateo","Hana","Leo","Nadia","Theo","Aisha","Felix"],["Moreau","Chen","Okafor","Silva","Novak","Haddad","Tanaka","Brennan","Rossi","Kowalski","Dubois","Mensah","Lindqvist","Park","Ortiz","Reyes","Weber","Ito","Nair","Laurent"]],OFAV=["👩‍💼","👨‍💼","🧑‍💼","👩🏽‍💼","👨🏿‍💼","👩🏻‍💼","🧑🏾‍💼","👨🏽‍💼"];
 function ofS(){const o=S.off=S.off&&typeof S.off==="object"?S.off:{};o.d=o.d&&typeof o.d==="object"?o.d:{};for(const k in o.d)if(!OFD.some(x=>x[0]===k&&x[4]>0)||!o.d[k]||typeof o.d[k].nm!=="string")delete o.d[k];
   // the Exchange head is the exchange's own manager (S.exch.mgr): exists only while you own the exchange and the manager is on duty
@@ -8841,12 +8858,50 @@ function ofHq(){const ids=Object.keys(S.hq||{}).filter(id=>S.hq[id]&&CITIES[id])
 function ofUpk(){if(!ofHq()||(typeof devGod==="function"&&devGod()))return 0;let u=0;for(const d of OFD)if(d[4]>0&&d[0]!=="exch"&&ofHas(d[0]))u+=ofPay(d[0]);return u}
 /* phase 3: a head levels up every 24 game days (max 5); perks grow 25% per level, salary 10% per level, times any raises (h.sm) */
 const OFMAX=5,ofLv=h=>h?Math.max(1,Math.min(OFMAX,1+Math.floor((Date.now()-(+h.at||Date.now()))/(24*DAYMS)))):0;
-const ofP=k=>{const h=ofHas(k)&&ofS().d[k];return h?1+.25*(ofLv(h)-1):0};
+const ofP=k=>{const h=ofHas(k)&&ofS().d[k];return h?1+.25*(ofLv(h)-1)+(h.deal>Date.now()?1:0):0};
+/* weekly empire report: every 7 game days, profit by business type, what each manager earned, and the best and worst moves */
+function wrS(){let w=S.wr;if(!w||typeof w!=="object")w=S.wr={};if(!w.c||typeof w.c!=="object")w.c=null;if(!Array.isArray(w.h))w.h=[];return w}
+function wrSeg(){const g={};for(const c of CITIES){const o=S.own[c.id];if(!o)continue;for(const b of BIZ){if(!o[b.k])continue;g[b.n]=(g[b.n]||0)+uSum(c.id,b.k,l=>profit(b,c,l))}}
+  try{if(exOwn())g["Stock exchange"]=exIncome()}catch(e){}try{if(typeof lifeIncome==="function"){const v=lifeIncome();if(v)g["Lifestyle"]=v}if(typeof propIncome==="function"){const v=propIncome();if(v)g["Property"]=v}}catch(e){}return g}
+function wrDay(nw,quiet){const w=wrS(),m=MK(),now=Date.now();
+  if(!w.c){const px={};for(const s in m.hold)if(m.hold[s]&&m.hold[s].q>0)px[s]=m.px[s];w.c={d0:S.day||1,nw0:nw,days:0,seg:{},mgr:{},px,bank:S.ob?(S.ob.ptot||0):0}}
+  const c=w.c;c.days++;const g=wrSeg();for(const k in g)c.seg[k]=(c.seg[k]||0)+g[k];
+  try{for(const k in ofS().d){const y=ofGainY(k),v=y!=null?y:ofGain(k);if(v)c.mgr[k]=(c.mgr[k]||0)+v}}catch(e){}
+  if(c.days<7)return;
+  const nm=k=>{const d=OFD.find(x=>x[0]===k),h=ofS().d[k];return(h?h.nm+", ":"")+(d?d[2]:k)},prev=w.last;
+  const seg=Object.entries(c.seg).map(([k,v])=>({k,v:Math.round(v)})).sort((a,b)=>b.v-a.v),mgr=Object.entries(c.mgr).map(([k,v])=>({k:nm(k),v:Math.round(v)})).sort((a,b)=>b.v-a.v);
+  // moves: change vs last week per business type, plus the stocks you held all week
+  const mv=[];if(prev&&prev.seg){const pv={};for(const x of prev.seg)pv[x.k]=x.v;for(const x of seg)if(pv[x.k]!=null)mv.push({t:x.k,v:x.v-pv[x.k]});for(const x of prev.seg)if(!c.seg[x.k])mv.push({t:x.k+" (gone)",v:-x.v})}
+  for(const s in c.px){const h=m.hold[s];if(h&&h.q>0&&c.px[s]>0)mv.push({t:s+" shares",v:Math.round(h.q*(m.px[s]-c.px[s]))})}
+  mv.sort((a,b)=>b.v-a.v);const bank=S.ob?(S.ob.ptot||0)-c.bank:0;
+  const r={wk:(w.h.length?w.h[0].wk:0)+1,d0:c.d0,d1:(S.day||1),nw0:Math.round(c.nw0),nw1:Math.round(nw),seg:seg.slice(0,8),tot:seg.reduce((a,x)=>a+x.v,0),mgr,bank:Math.round(bank),best:mv[0]&&mv[0].v>0?mv[0]:null,worst:mv.length&&mv[mv.length-1].v<0?mv[mv.length-1]:null,at:now};
+  w.last=r;w.h.unshift({wk:r.wk,nw:r.nw1,tot:r.tot});w.h=w.h.slice(0,12);w.c=null;w.seen=0;
+  if(!quiet)try{toast(`📊 Week ${r.wk} report: net worth ${r.nw1>=r.nw0?"up":"down"} ${fmt(Math.abs(r.nw1-r.nw0))}. See the Office page.`)}catch(e){}}
+function wrHtml(){const w=wrS(),r=w.last,E=dxE;if(!r){const c=w.c;return`<div class="mdx-card"><div class="mdx-ch"><h3>📊 Weekly empire report</h3></div><div class="mdx-empty">Your first report arrives after 7 game days${c?` (${7-c.days} to go)`:""}.</div></div>`}
+  const d=r.nw1-r.nw0,row=(a,b,col)=>`<div><span>${a}</span><b${col?` style="color:${col}"`:""}>${b}</b></div>`;
+  return`<div class="mdx-card"><div class="mdx-ch"><h3>📊 Week ${r.wk} report</h3><small style="margin-left:auto;color:var(--dxmut)">Days ${r.d0}–${r.d1}</small></div>
+    <div class="mdx-rows">${row("Net worth",`${fmt(r.nw1)} (${d>=0?"+":"−"}${fmt(Math.abs(d))})`,d>=0?"#16a34a":"#dc2626")}${row("Business profit this week",fmt(r.tot))}${r.bank?row("Bank profit account",fmt(r.bank)):""}
+    ${r.best?row("🏆 Best move",`${E(r.best.t)} +${fmt(r.best.v)}`,"#16a34a"):""}${r.worst?row("⚠️ Worst move",`${E(r.worst.t)} −${fmt(Math.abs(r.worst.v))}`,"#dc2626"):""}</div>
+    ${r.seg.length?`<div class="mdx-note" style="color:var(--dxmut)">Profit by business: ${r.seg.map(x=>`${E(x.k)} ${fmt(x.v)}`).join(" · ")}</div>`:""}
+    ${r.mgr.length?`<div class="mdx-note" style="color:var(--dxmut)">What your managers earned: ${r.mgr.map(x=>`${E(x.k)} ${fmt(x.v)}`).join(" · ")}</div>`:""}
+    ${w.h.length>1?`<div class="mdx-note" style="color:var(--dxmut)">Past weeks: ${w.h.slice(1,6).map(x=>`week ${x.wk} ${fmt(x.nw)}`).join(" · ")}</div>`:""}</div>`}
+/* office events: every few game days a head walks up with a one-off deal. Pay now and their perk counts double for 7 game days. */
+const OFEV={log:"found a bulk supplier: restocking at cost",space:"can book cheap cargo slots on the next launches",truck:"wants to run a driver bonus week to land premium contracts",
+  air:"found a fuel deal with a refinery",mkt:"pitches a viral campaign",hr:"wants to run a training week so every desk runs smoother",exch:"can sign a market-maker deal to pull in more volume"};
+const OFEVD=7,OFEVX=12;
+function ofEvCost(k){const g=Math.max(0,+ofGain(k)||0);return Math.max(1000,Math.round(Math.max(ofPay(k)*5,g*3)/1000)*1000)}
+function ofEvTick(now){const o=ofS();if(o.ev&&(!o.d[o.ev.k]||now-o.ev.at>=OFEVX*DAYMS))o.ev=null;if(o.ev)return;
+  if(!o.enx){o.enx=now+72*DAYMS*(.75+Math.random()*.5);return}if(now<o.enx)return;o.enx=now+72*DAYMS*(.75+Math.random()*.5);
+  const free=Object.keys(o.d).filter(k=>OFEV[k]&&!(o.d[k].deal>now));if(!free.length)return;const k=free[Math.floor(Math.random()*free.length)],h=o.d[k];
+  o.ev={k,at:now,c:ofEvCost(k)};try{toast(`💼 ${h.nm} ${OFEV[k]}. Answer in the Office.`)}catch(e){}}
+function ofEv(yes){const o=ofS(),e=o.ev;if(!e)return"";const h=o.d[e.k],d=OFD.find(x=>x[0]===e.k);if(!h){o.ev=null;return""}
+  if(!yes){o.ev=null;return`${h.nm} shrugs: "Maybe next time."`}const c=(typeof devGod==="function"&&devGod())?0:e.c;if(S.cash<c)return`You need ${fmt(c)} for this deal.`;
+  S.cash-=c;h.deal=Date.now()+OFEVD*DAYMS;o.ev=null;o.dl=(o.dl||0)+1;return`Deal done: the ${d[2]} perk counts double for ${OFEVD} game days${c?` (paid ${fmt(c)})`:""}.`}
 function ofPay(k){const d=OFD.find(x=>x[0]===k),h=ofS().d[k];if(!d||!h)return d?d[4]:0;return Math.round(d[4]*(1+.1*(ofLv(h)-1))*(+h.sm||1)*(k!=="hr"&&ofHas("hr")?.85:1))}
 const ofFee=()=>Math.max(1,1.1-.05*ofP("log"));
 const ofSpFee=f=>{const p=ofP("space");return p?Math.max(0,f-(f/2-(f>.2?.025:0))*p):f};
 /* raise requests: one head at a time asks for +10%; unanswered after 24 game days counts as refused. Refused: 40% quit (never with an HR head or on the dev account) */
-function ofTick(now){const o=ofS(),ks=Object.keys(o.d);if(!ks.length||!ofHq()){o.nx=0;return}const gap=()=>(ofHas("hr")?96:48)*DAYMS*(.75+Math.random()*.5);
+function ofTick(now){const o=ofS(),ks=Object.keys(o.d);if(!ks.length||!ofHq()){o.nx=0;return}try{ofEvTick(now)}catch(e){}const gap=()=>(ofHas("hr")?96:48)*DAYMS*(.75+Math.random()*.5);
   for(const k of ks){const h=o.d[k];if(h&&h.ask&&now-h.ask>=24*DAYMS)ofAsk(k,false,true)}
   if(!o.nx){o.nx=now+gap();return}if(now<o.nx)return;o.nx=now+gap();const free=Object.keys(o.d).filter(k=>!o.d[k].ask);if(!free.length)return;
   const k=free[Math.floor(Math.random()*free.length)],h=o.d[k];h.ask=now;const d=OFD.find(x=>x[0]===k);try{toast(`💼 ${h.nm} (${d[2]}) is asking for a 10% raise. Answer in the Office.`)}catch(e){}}
@@ -8883,23 +8938,23 @@ const OF={note:"",nt:0,force:false};
 function ofGainRow(k){const g=ofGain(k),y=ofGainY(k),pay=(typeof devGod==="function"&&devGod())?0:ofPay(k),good=g>=pay||(y!=null&&y>=pay);
   return`<div class="mdx-note" style="margin:0;color:${good?"#16a34a":"var(--dxmut)"}">💰 ${y==null?`Worth about ${fmt(g)}/day`:`Saved or earned ${fmt(g)} this game day (last day ${fmt(y)})`} · salary ${fmt(pay)}/day</div>`}
 function ofPage(){const hq=ofHq(),o=ofS(),E=dxE,team=OFD.filter(d=>o.d[d[0]]).length,nLive=OFD.filter(d=>d[4]>0&&ofLive(d)).length,pay=ofUpk();
-  if(!hq)return`<div class="mdx-card"><div class="mdx-ch"><h3>🏢 Head office</h3></div><div class="mdx-empty">Your office opens with your first HQ. Buy an HQ in a city (Business tab) and your team moves in.</div></div>`;
+  if(!hq)return`<div class="mdx-card"><div class="mdx-ch"><h3>🏢 Head office</h3></div><div class="mdx-empty">Your office opens with your first HQ. Buy an HQ in a city (Business tab) and your team moves in.</div></div>`+wrHtml();
   const room=d=>{const k=d[0],h=o.d[k],live=d[4]>0;
     if(!ofLive(d))return`<div class="mdx-card" style="margin:0;display:flex;flex-direction:column;gap:8px;opacity:.7"><div class="mdx-ch" style="margin:0"><h3>${d[1]} ${d[2]} 🔒</h3></div><small style="color:var(--dxmut)">Only the owner of the NYC stock exchange can hire this head. Buy the exchange in New York to unlock the desk.</small></div>`;
     const desk=h?`<div style="display:flex;gap:10px;align-items:center"><span style="font-size:34px;line-height:1">${h.av}</span><span style="min-width:0"><b style="overflow-wrap:anywhere">${E(h.nm)}</b><br><small style="color:var(--dxmut)">Head of ${d[2]} · Level ${ofLv(h)}${ofLv(h)<OFMAX?` · next in ${Math.ceil((24*DAYMS-((Date.now()-h.at)%(24*DAYMS)))/DAYMS)} days`:" · max"}</small></span></div>`
       :`<div style="display:flex;gap:10px;align-items:center;opacity:.6"><span style="font-size:34px;line-height:1;filter:grayscale(1)">🪑</span><span>${live?"Empty desk":"Coming soon"}</span></div>`;
     const btn=!live?"":h?`<button class="lx-btn" data-of="fire" data-k="${k}">Let go</button>`:`<button class="lx-btn" data-of="hire" data-k="${k}"${S.cash<ofSign(k)?` aria-disabled="true" title="Need ${fmt(ofSign(k))}"`:""}>Hire · ${fmt(ofSign(k))} signing</button>`;
     return`<div class="mdx-card" style="margin:0;display:flex;flex-direction:column;gap:8px;${live?"":"opacity:.7"}"><div class="mdx-ch" style="margin:0"><h3>${d[1]} ${d[2]}</h3>${live?`<small style="margin-left:auto;color:var(--dxmut)">${fmt(h?ofPay(k):Math.round(d[4]*(k!=="hr"&&ofHas("hr")?.85:1)))}/day</small>`:""}</div>
-      <small style="color:var(--dxmut)">${d[3]}</small>${desk}${h&&h.ask?`<div class="mdx-note" style="margin:0;color:#d97706">💼 Asking for a 10% raise (${fmt(Math.round(ofPay(k)*.1))}/day more). <span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="lx-btn" data-of="yes" data-k="${k}">Give raise</button><button class="lx-btn" data-of="no" data-k="${k}">Refuse</button></span></div>`:""}${h?`<div class="mdx-note" style="margin:0;overflow-wrap:anywhere">📝 ${E(ofLine(k,h))}</div>${ofGainRow(k)}`:live?`<small><b>Perk:</b> ${d[5]}</small>`:""}<div style="display:flex;gap:6px;flex-wrap:wrap">${btn}${k==="mkt"&&h?(ofCampOn()?`<small style="align-self:center;color:var(--dxmut)">📣 Campaign: ${dxIn(S.off.camp-Date.now())} left</small>`:`<button class="lx-btn" data-of="camp"${S.cash<ofCampCost()?' aria-disabled="true"':""}>📣 Run campaign · ${fmt(ofCampCost())}</button>`):""}</div></div>`};
+      <small style="color:var(--dxmut)">${d[3]}</small>${desk}${h&&h.deal>Date.now()?`<div class="mdx-note" style="margin:0;color:#16a34a">🔥 Deal running: perk counts double · ${dxIn(h.deal-Date.now())} left</div>`:""}${h&&o.ev&&o.ev.k===k?`<div class="mdx-note" style="margin:0;color:#2563eb">💡 ${E(h.nm)} ${OFEV[k]}. Pay ${fmt((typeof devGod==="function"&&devGod())?0:o.ev.c)} now and this perk counts double for ${OFEVD} game days.<span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="lx-btn" data-of="dyes" data-k="${k}">Yes, do it</button><button class="lx-btn" data-of="dno" data-k="${k}">No thanks</button></span></div>`:""}${h&&h.ask?`<div class="mdx-note" style="margin:0;color:#d97706">💼 Asking for a 10% raise (${fmt(Math.round(ofPay(k)*.1))}/day more). <span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="lx-btn" data-of="yes" data-k="${k}">Give raise</button><button class="lx-btn" data-of="no" data-k="${k}">Refuse</button></span></div>`:""}${h?`<div class="mdx-note" style="margin:0;overflow-wrap:anywhere">📝 ${E(ofLine(k,h))}</div>${ofGainRow(k)}`:live?`<small><b>Perk:</b> ${d[5]}</small>`:""}<div style="display:flex;gap:6px;flex-wrap:wrap">${btn}${k==="mkt"&&h?(ofCampOn()?`<small style="align-self:center;color:var(--dxmut)">📣 Campaign: ${dxIn(S.off.camp-Date.now())} left</small>`:`<button class="lx-btn" data-of="camp"${S.cash<ofCampCost()?' aria-disabled="true"':""}>📣 Run campaign · ${fmt(ofCampCost())}</button>`):""}</div></div>`};
   return`<div class="mdx-card"><div class="mdx-ch"><h3>🏢 Head office · ${E(hq.name)}</h3><button class="lx-btn" style="margin-left:auto" data-of="visit">🚶 Visit office</button></div><div class="mdx-rows"><div><span>Team</span><b>${team} of ${nLive} heads hired</b></div><div><span>Payroll</span><b>${fmt(pay)}/day</b></div></div>
     ${OF.note&&Date.now()-OF.nt<8000?`<div class="mdx-note">${E(OF.note)}</div>`:""}<div class="mdx-note" style="color:var(--dxmut)">Each head runs their department's automation for less and levels up every 24 game days (perks +25% per level, salary +10%). Salaries are paid every game day with your HQ upkeep.</div></div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:12px">${OFD.map(room).join("")}</div>`}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:12px">${OFD.map(room).join("")}</div>`+wrHtml()}
 function ofRender(){const main=DX.el&&DX.el.querySelector("#mdx-main");if(!main)return;DX.el.classList.add("lx-on");
   const dt=DX.el.querySelector("#mdx-dt");if(dt)dt.textContent=`Day ${S.day||1} · next day in ${dxIn((S.hour+1)*DAYMS-Date.now())}`;
   DX.el.querySelectorAll("[data-lx=page]").forEach(b=>b.classList.toggle("on",b.dataset.v==="off"));if(main.dataset.mode!=="of"){main.dataset.mode="of";main._lxh=""}
   let h;try{h=ofPage()}catch(e){console.warn("of",e);h=`<div class="mdx-card"><div class="mdx-empty">The office page hit a snag (${dxE(e.message)}).</div></div>`}if(h!==main._lxh){main._lxh=h;main.innerHTML=h}}
 function ofWire(el){el.addEventListener("click",e=>{const b=e.target.closest("[data-of]");if(!b||b.getAttribute("aria-disabled")==="true")return;const a=b.dataset.of,k=b.dataset.k;
-  if(a==="hire"){OF.note=ofHire(k);OF.nt=Date.now()}else if(a==="yes"||a==="no"){OF.note=ofAsk(k,a==="yes");OF.nt=Date.now()}else if(a==="camp"){OF.note=ofCamp();OF.nt=Date.now()}else if(a==="visit"){const hq=ofHq();if(hq){dxClose();ofEnter(hq,false)}return}else if(a==="fire"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to let go";return}ofFire(k);OF.note="";}
+  if(a==="hire"){OF.note=ofHire(k);OF.nt=Date.now()}else if(a==="yes"||a==="no"){OF.note=ofAsk(k,a==="yes");OF.nt=Date.now()}else if(a==="camp"){OF.note=ofCamp();OF.nt=Date.now()}else if(a==="dyes"||a==="dno"){OF.note=ofEv(a==="dyes");OF.nt=Date.now()}else if(a==="visit"){const hq=ofHq();if(hq){dxClose();ofEnter(hq,false)}return}else if(a==="fire"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to let go";return}ofFire(k);OF.note="";}
   save();hud();if(PH.open)phRender();ofRender()})}
 function axRender(){const main=DX.el&&DX.el.querySelector("#mdx-main");if(!main)return;const ag=AGS();
   DX.el.classList.add("lx-on");const dt=DX.el.querySelector("#mdx-dt");if(dt)dt.textContent=`Day ${S.day||1} · next day in ${dxIn((S.hour+1)*DAYMS-Date.now())}`;
@@ -10445,6 +10500,7 @@ function ipoList(now){const o=ipoS(),pl=ipoPlan(o.N,o.fl),m=pl.o;
   const pub=Math.max(Math.ceil(o.N*IPOC.fmin),Math.min(pl.pub,Math.floor(IPOC.cap*m.bk/px))),gross=Math.min(pub*px,IPOC.cap*m.bk),uw=gross*IPOC.uw,net=gross-uw;
   S.cash+=net;Object.assign(o,{st:"live",E:m.E,E72:m.E72,mx:m.mx,bk:m.bk,pub,pool:pub,sent:+(1+Math.random()*.15).toFixed(4),sentAt:now,fAt:now,at:now,ipx:px,sg:gross,sq:pub,raised:net,fees:o.fees+uw,
     paid:0,skips:0,sk:0,hp:0,rep:{t:now,E:m.E},hist:[px],bb0:0,bbq:0,soAt:0,pubd:0,perr:""});
+  try{exListFee(o.tk,gross)}catch(e){}
   ipoNews(o,`${o.tk} lists at ${fp(px)}: you raised ${fmt(net)} for ${ipoPct(pub/o.N)} of ${ipoName()}`);try{confetti()}catch(e){}}
 /* the mandatory dividend: the public share of every positive hour of profit, charged like wages (offline too, with accrue's 48 h cap) */
 function ipoAcc(dt){const o=S.ipo;if(!o||o.st!=="live"||!(o.pub>0)||!(dt>0))return;let inc=0;try{inc=totals().inc}catch(e){return}if(!(inc>0))return;
@@ -10652,10 +10708,10 @@ sheet.addEventListener("click",e=>{const a=e.target.closest("[data-ipoapp]");if(
    Base fee income goes through totals().inc (exIncome); it scales with how much the market moves today (exAct). A hired manager adds 25% and auto-collects commissions.
    S.exVia = "" (game market) | "me" (your own exchange: you keep the 0.1% commission) | another player's uid (0.1% of the trade value is paid to that owner).
    Online: exch/{uid} {name,own,fee,vol,at} lists an exchange; a trader routing through it writes excom/{id} {by,byName,to,amt,vol,at}; the owner claims it (transaction delete) and is credited in their own save. */
-var EXC={city:"New York",cost:2e9,base:15e6,take:.0005,com:.001,mgrHire:100e6,mgrSal:750e3,mgrBoost:1.25,pub:5*60000,ai:15e9};
+var EXC={city:"New York",cost:2e9,base:15e6,take:.0005,com:.001,mgrHire:100e6,mgrSal:750e3,mgrBoost:1.25,pub:5*60000,ai:15e9,lfee:.01};
 // AI investors: funds trade through your exchange all day (EXC.ai of volume an hour at normal activity), paying the 0.1% commission
 const EXAIF=["Atlas Capital","Northwind Fund","Blue Harbor","Kestrel Partners","Meridian Pension","Orion Quant","Silverline AM","Granite Ridge"];
-function exAiVol(){return exOwn()?EXC.ai*exAct()*exBoost()*(.85+.3*ipoHash("exai:"+Math.floor(Date.now()/36e5))):0}
+function exAiVol(){return exOwn()?EXC.ai*exAct()*exBoost()*(.85+.3*ipoHash("exai:"+Math.floor(Date.now()/36e5)))+(typeof obMgVol==="function"?obMgVol():0):0}
 function exOwn(){return !!(EXC&&S.exch&&S.exch.name)}
 const exName=s=>String(s==null?"":s).replace(/<[^>]*>/g,"").replace(/[^A-Za-z0-9 &.'-]/g,"").replace(/\s+/g," ").trim().slice(0,30);
 function exFix(){const x=S.exch;if(!x||typeof x!=="object")return null;if(!x.d||typeof x.d!=="object")x.d={day:0,vol:0,fee:0,com:0,n:0};if(!Array.isArray(x.h))x.h=[];if(!(x.tot>=0))x.tot=0;if(!Number.isFinite(x.cap))x.cap=0;x.mgr=x.mgr?1:0;return x}
@@ -10705,6 +10761,13 @@ function exOnTrade(a,v){const via=S.exVia;if(!via||!(v>0))return;const c=v*EXC.c
   if(via==="me"){const x=exDay();if(!x){S.exVia="";return}x.d.vol+=v;x.d.n++;x.d.com+=c;x.tot+=c;x.cap+=c;return}
   const amt=Math.floor(c);if(amt<1||!exOk())return;const ex=EX.list.find(e=>e.id===via);if(!ex)return;
   ON.db.collection("excom").add({by:ON.user.uid,byName:String(onProf().name||"Tycoon").slice(0,20),to:via,amt:Math.min(50000000,amt),vol:Math.min(1e15,Math.max(amt*1000,Math.floor(v))),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{EX.err="Commission not sent: "+(e&&e.code||e)})}
+/* IPO listing fee: 1% of the money raised, paid out of the 4% underwriting fee (the lister pays nothing extra) to whoever owns the NYC exchange */
+function exListFee(tk,gross){const fee=Math.floor(Math.max(0,gross)*EXC.lfee);if(fee<1)return;
+  if(exOwn()){const x=exDay();if(x){x.cap+=fee;x.tot+=fee;x.d.com+=fee;x.lfee=(x.lfee||0)+fee;x.lst=[{tk,t:Date.now(),v:fee,by:"you"}].concat(x.lst||[]).slice(0,8)}return}
+  const to=EX.ny&&EX.ny.uid;if(!to||!exOk()||to===ON.user.uid)return;
+  ON.db.collection("excom").add({by:ON.user.uid,byName:String(onProf().name||"Tycoon").slice(0,20),to,amt:Math.min(50000000,fee),vol:Math.min(1e15,Math.floor(gross)),k:"ipo",tk:String(tk).slice(0,5),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{EX.err="Listing fee not sent: "+(e&&e.code||e)})}
+/* player companies listed through IPO that AI funds can trade */
+function exIpoLive(now){const a=[];try{for(const id in IPO.all){const d=IPO.all[id];if(d&&d.tk&&ipoStat(d,now)!=="delisted"&&ipoStat(d,now)!=="halt")a.push(d.tk)}const o=S.ipo;if(o&&o.st==="live"&&o.tk&&!a.includes(o.tk))a.push(o.tk)}catch(e){}return a}
 /* online */
 const EX={on:0,sub:{},list:[],inb:[],last:0,busy:{},err:"",sel:"AAPL",q:"",ny:null,nyOk:0};
 const exOk=()=>!!(typeof ON!=="undefined"&&ON.db&&ON.user&&window.firebase);
@@ -10720,8 +10783,8 @@ function exEnsure(){if(!exOk()){if(EX.on){for(const k in EX.sub)try{EX.sub[k]()}
   if(exOwn()&&now-EX.last>EXC.pub){EX.last=now;const x=exDay(now);
     ON.db.collection("exch").doc(uid).set({name:x.name,own:String(onProf().name||"Tycoon").slice(0,20),fee:EXC.com,vol:Math.min(1e15,Math.round(x.d.vol+x.d.fee/EXC.take)),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{EX.err="Couldn't list your exchange: "+(e&&e.code||e)})}}
 function exCollect(quiet){const x=exFix();if(!x||!exOk())return;for(const o of EX.inb){if(EX.busy[o.id])continue;EX.busy[o.id]=1;const ref=ON.db.collection("excom").doc(o.id);
-  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)throw new Error("gone");const v=Math.max(0,Math.min(50000000,Math.floor(+d.data().amt||0)));t.delete(ref);return{v,vol:+d.data().vol||0}})
-    .then(r=>{delete EX.busy[o.id];const x2=exDay();if(x2){x2.d.com+=r.v;x2.d.vol+=r.vol;x2.d.n++;x2.tot+=r.v;x2.cap+=r.v}S.earned=(S.earned||0)+r.v;if(!quiet)toast(`🏛 ${fmt(r.v)} commission added to the exchange account from ${o.byName||"a trader"}`);save();hud();exRefresh()},()=>{delete EX.busy[o.id]})}}
+  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)throw new Error("gone");const v=Math.max(0,Math.min(50000000,Math.floor(+d.data().amt||0)));t.delete(ref);return{v,vol:+d.data().vol||0,k:d.data().k||"",tk:d.data().tk||""}})
+    .then(r=>{delete EX.busy[o.id];const x2=exDay();if(x2){x2.d.com+=r.v;x2.d.vol+=r.vol;x2.d.n++;x2.tot+=r.v;x2.cap+=r.v;if(r.k==="ipo"){x2.lfee=(x2.lfee||0)+r.v;x2.lst=[{tk:r.tk,t:Date.now(),v:r.v,by:o.byName||"a player"}].concat(x2.lst||[]).slice(0,8)}}S.earned=(S.earned||0)+r.v;if(!quiet)toast(`🏛 ${fmt(r.v)} commission added to the exchange account from ${o.byName||"a trader"}`);save();hud();exRefresh()},()=>{delete EX.busy[o.id]})}}
 function exRefresh(){if(EXW.open)exRender();if(PH&&PH.open&&(PH.app==="exch"))phRender()}
 function exTick(){const now=Date.now(),x=exDay(now);if(x){const dt=Math.max(0,Math.min(now-(x.t||now),48*DAYMS));x.t=now;const g=exGross()*dt/DAYMS,ai=exAiVol()*dt/DAYMS,gb=g-ai*EXC.com;x.d.fee+=g;x.d.vol+=gb/EXC.take+ai;x.d.ai=(x.d.ai||0)+ai;x.tot+=g;x.cap+=exIncome()*dt/DAYMS;
     if(ai>0)exAiTrades(x,ai,now)}
@@ -10729,8 +10792,10 @@ function exTick(){const now=Date.now(),x=exDay(now);if(x){const dt=Math.max(0,Ma
 /* AI funds and rival companies trade real listed stocks on your exchange: the period's AI volume is split into trades, each paying you EXC.com and nudging the price */
 function exAiTrades(x,ai,now){const st=ASSETS.filter(a=>a.t==="s");if(!st.length)return;const m=MK();if(!Array.isArray(x.tf))x.tf=[];if(!x.d.tr||typeof x.d.tr!=="object")x.d.tr={};
   const n=Math.max(1,Math.min(4,Math.round(ai/2e7))),w=[];for(let i=0;i<n;i++)w.push(.3+Math.random());const ws=w.reduce((a,b)=>a+b,0);
-  const mine=st.filter(a=>m.hold[a.s]&&m.hold[a.s].q>0); // the owner's holdings draw most of the flow
-  for(let i=0;i<n;i++){const v=ai*w[i]/ws,own=mine.length&&Math.random()<.6,a=own?mine[Math.floor(Math.random()*mine.length)]:st[Math.floor(Math.random()*st.length)],riv=Math.random()<.35,f=riv?RIVALS[Math.floor(Math.random()*RIVALS.length)].n:EXAIF[Math.floor(Math.random()*EXAIF.length)];
+  const mine=st.filter(a=>m.hold[a.s]&&m.hold[a.s].q>0),ipo=exIpoLive(now); // the owner's holdings draw most of the flow
+  for(let i=0;i<n;i++){if(ipo.length&&Math.random()<.2){const v=ai*w[i]/ws,tk=ipo[Math.floor(Math.random()*ipo.length)],f=EXAIF[Math.floor(Math.random()*EXAIF.length)],sell=Math.random()<.4;
+      x.d.tn=(x.d.tn||0)+1;x.d.tr[f]=(x.d.tr[f]||0)+v;x.d.ipo=(x.d.ipo||0)+v;if(v>=5e5){x.tf.unshift({t:now,f,r:0,me:0,ipo:1,s:tk,sell:sell?1:0,v:Math.round(v),c:Math.round(v*EXC.com)});if(x.tf.length>12)x.tf.length=12}continue}
+    const v=ai*w[i]/ws,own=mine.length&&Math.random()<.6,a=own?mine[Math.floor(Math.random()*mine.length)]:st[Math.floor(Math.random()*st.length)],riv=Math.random()<.35,f=riv?RIVALS[Math.floor(Math.random()*RIVALS.length)].n:EXAIF[Math.floor(Math.random()*EXAIF.length)];
     const o=m.open[a.s]||m.px[a.s]||a.p0,drift=m.px[a.s]&&o?m.px[a.s]/o-1:0;
     // on your stocks they mostly buy, and push the price up, until it is ~10% up on the day; elsewhere they lean against big moves
     const sell=own?Math.random()<Math.min(.65,.25+Math.max(0,drift)*4):Math.random()<.5+Math.max(-.2,Math.min(.2,drift*3));
@@ -10800,7 +10865,7 @@ function exDraw(){const x=exDay();if(!x){exClose();return}const m=MK(),now=Date.
   <div class="mdx-kpis">${kp("Volume today",fmt(x.d.vol),`${x.d.n} player trade${x.d.n===1?"":"s"}`,"#e0ecff","#2563eb","📈")}${kp("Fee income today",fmt(x.d.fee+x.d.com),`${fmt(exIncome())}/hr now · ${fmt(x.tot)} all time`,"#dcfce7","#16a34a","💵")}${kp("Meridian 30 index",Math.round(ix).toLocaleString(),`<span style="color:${up(ich)}">${ich>=0?"+":""}${ich.toFixed(2)}% today</span> · activity ×${exAct().toFixed(2)}`,"#fef3c7","#d97706","📊")}${kp("Account",fmt(exCap()),"capital held by the exchange","#fef9c3","#a16207","🏦")}${kp("Commissions",fmt(pend),"paid into the exchange account","#f1f5f9","#0f172a","🤝")}${kp("AI investors",fmt(x.d.ai||0),`volume today · ${fmt(exAiVol()*EXC.com)}/hr in fees`,"#ede9fe","#7c3aed","🤖")}</div>
   ${(()=>{const hs=Object.entries(m.hold||{}).filter(([k,o])=>o&&o.q>0&&AK[k]).map(([k,o])=>({n:k,d:AK[k].n,q:o.q,v:o.q*m.px[k],c:o.q*o.avg})),ih=ipoIph(),ps=Object.keys(ih).filter(k=>ih[k].q>0).map(k=>{const o=ih[k],L=IPO.all&&IPO.all[k];return{n:(L&&L.tk)||"Player co.",d:(L&&L.name)||"Player company",q:o.q,v:o.q*o.px,c:o.q*o.avg}}),all=hs.concat(ps).sort((p,q)=>q.v-p.v),tv=all.reduce((t,x)=>t+x.v,0),tc=all.reduce((t,x)=>t+x.c,0),pl=v=>`<span style="color:${v>=0?"#16a34a":"#dc2626"}">${v>=0?"+":""}${fmt(v)}</span>`;
     return `<div class="mdx-card" style="margin-top:16px"><div class="mdx-ch"><h3>Your holdings · ${fmt(tv)}</h3><small>${pl(tv-tc)}</small></div><div class="mdx-rows">${all.length?all.map(x=>`<div><span><b>${dxE(x.n)}</b> <small>${dxE(x.d)} · ${x.q>=1e3?Math.round(x.q).toLocaleString("en-US"):+x.q.toFixed(4)}</small></span><b>${fmt(x.v)} <small>${pl(x.v-x.c)}</small></b></div>`).join(""):`<div><span>No holdings yet. Buy shares above.</span><b></b></div>`}</div></div>`})()}
-  ${(x.tf&&x.tf.length)?`<div class="mdx-card" style="margin-top:16px"><div class="mdx-ch"><h3>Live trades</h3><small style="color:var(--dxmut);margin-left:8px">⭐ = a stock you own</small><small style="margin-left:auto;color:var(--dxmut)">${x.d.tn||0} AI trades today · ${fmt(x.d.ai||0)} volume · ${fmt((x.d.ai||0)*EXC.com)} commission</small></div><div class="mdx-rows">${x.tf.map(o=>`<div><span>${o.r?"🏢":"🤖"} ${dxE(o.f)} ${o.sell?"sold":"bought"} ${dxE(o.s)}${o.me?" ⭐":""}<br><small style="color:var(--dxmut)">you earned ${fmt(o.c)}</small></span><b style="color:${o.sell?"#dc2626":"#16a34a"}">${fmt(o.v)}</b></div>`).join("")}</div>
+  ${(x.tf&&x.tf.length)?`<div class="mdx-card" style="margin-top:16px"><div class="mdx-ch"><h3>Live trades</h3><small style="color:var(--dxmut);margin-left:8px">⭐ = a stock you own · 🆕 = a player company (IPO)</small><small style="margin-left:auto;color:var(--dxmut)">${x.d.tn||0} AI trades today · ${fmt(x.d.ai||0)} volume · ${fmt((x.d.ai||0)*EXC.com)} commission</small></div><div class="mdx-rows">${x.tf.map(o=>`<div><span>${o.r?"🏢":"🤖"} ${dxE(o.f)} ${o.sell?"sold":"bought"} ${dxE(o.s)}${o.me?" ⭐":""}${o.ipo?" 🆕":""}<br><small style="color:var(--dxmut)">you earned ${fmt(o.c)}</small></span><b style="color:${o.sell?"#dc2626":"#16a34a"}">${fmt(o.v)}</b></div>`).join("")}</div>
     ${x.d.tr&&Object.keys(x.d.tr).length?`<div class="mdx-note" style="color:var(--dxmut)">Top traders today: ${Object.entries(x.d.tr).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${dxE(k)} ${fmt(v)}`).join(" · ")}</div>`:""}</div>`:""}
   <div style="display:grid;grid-template-columns:${full?"minmax(0,1fr)":"minmax(0,2fr) minmax(0,1fr)"};gap:16px;margin-top:16px;align-items:start"><div style="display:flex;flex-direction:column;gap:16px;min-width:0">
     <div class="mdx-card"><div class="mdx-ch"><h3>🏦 Exchange account</h3></div><div class="mdx-rows"><div><span>Balance</span><b>${fmt(exCap())}</b></div><div><span>Flowing in</span><b>${fmt(exIncome())}/hr</b></div></div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"><input data-exa="1" inputmode="numeric" placeholder="Amount" style="flex:1 1 120px;min-width:0;padding:8px;border-radius:8px;border:1px solid #cbd5e1">${btn("dep","","Deposit")}${btn("wd","","Withdraw","","#16a34a")}${btn("wd","all","Withdraw all","","#15803d")}</div></div>
@@ -10813,7 +10878,8 @@ function exDraw(){const x=exDay();if(!x){exClose();return}const m=MK(),now=Date.
     <div class="mdx-card"><div class="mdx-ch"><h3>Listed player companies</h3></div>${!ipos.length?`<div class="mdx-empty">${IPO&&IPO.uid?"No player company is listed yet.":"Sign in to see player companies (IPOs)."}</div>`:`<div class="mdx-tblw"><table class="mdx-tbl"><tr><th>Ticker</th><th>Company</th><th>Price</th><th>Market cap</th><th></th></tr>${ipos.map(y=>{const p=ipoPx(y,now);return `<tr><td><b style="color:${dxE(y.col||"inherit")}">${dxE(y.tk)}</b></td><td>${dxE(y.name||"")}</td><td>${fp(p)}</td><td>${fmt(p*y.N)}</td><td>${btn("ipo",dxE(y.id),"Trade",0,"#475569")}</td></tr>`}).join("")}</table></div>`}</div></div>
   <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
     <div class="mdx-card"><div class="mdx-ch"><h3>Fee income · 14 days</h3></div>${hist.length>1?sparkS(hist.map(z=>z.fee),"#16a34a").replace('width="60" height="18"','width="100%" height="60" preserveAspectRatio="none"'):`<div class="mdx-empty">History builds up day by day.</div>`}<div class="mdx-note">Base fees: ${fmt(EXC.base)}/hr × market activity (busier on big-move days).</div></div>
-    <div class="mdx-card"><div class="mdx-ch"><h3>Manager</h3></div><div class="mdx-rows"><div><span>${x.mgr?"👔 On duty":"No manager"}<br><small>+25% fee income, boosts fee income · salary ${fmt(x.mgr?exMgrSal():EXC.mgrSal)}/hr${x.mgr&&typeof ofHas==="function"&&ofHas("exch")?` · ${dxE(ofS().d.exch.nm)}, level ${ofLv(ofS().d.exch)}, works in your HQ office`:""}</small></span>${x.mgr?btn("mgr",0,"Let go",0,"#7f1d1d"):btn("mgr",1,"Hire "+fmt(EXC.mgrHire),S.cash<EXC.mgrHire)}</div></div></div>
+    <div class="mdx-card"><div class="mdx-ch"><h3>Manager</h3></div><div class="mdx-rows"><div><span>${x.mgr?"👔 On duty":"No manager"}<br><small>+25% fee income · salary ${fmt(x.mgr?exMgrSal():EXC.mgrSal)}/hr${x.mgr&&typeof ofHas==="function"&&ofHas("exch")?` · ${dxE(ofS().d.exch.nm)}, level ${ofLv(ofS().d.exch)}, works in your HQ office`:""}</small></span>${x.mgr?btn("mgr",0,"Let go",0,"#7f1d1d"):btn("mgr",1,"Hire "+fmt(EXC.mgrHire),S.cash<EXC.mgrHire)}</div></div></div>
+    <div class="mdx-card"><div class="mdx-ch"><h3>Listed companies</h3></div>${(()=>{const L=exIpoLive(Date.now());return `<div class="mdx-rows"><div><span>Player companies listed<br><small>AI funds trade them here</small></span><b>${L.length}</b></div><div><span>Listing fees earned<br><small>1% of every IPO</small></span><b>${fmt(x.lfee||0)}</b></div><div><span>AI volume in player stocks today</span><b>${fmt(x.d.ipo||0)}</b></div>${(x.lst||[]).slice(0,5).map(l=>`<div><span>🆕 ${dxE(l.tk||"IPO")} listed<br><small>by ${dxE(l.by)}</small></span><b>${fmt(l.v)}</b></div>`).join("")}</div>${L.length?`<div class="mdx-note">${L.slice(0,12).map(dxE).join(" · ")}</div>`:""}<div class="mdx-note">When a player takes their company public (IPO), 1% of the money they raise is paid to you as a listing fee. It comes out of their underwriting fee and lands in the exchange account.</div>`})()}</div>
     <div class="mdx-card"><div class="mdx-ch"><h3>Player commissions</h3></div>${!exOk()?`<div class="mdx-empty">Sign in (Saves › Online) to list your exchange for other players.</div>`:`<div class="mdx-rows">${EX.inb.slice(0,8).map(o=>`<div><span>${dxE(o.byName||"Trader")}<br><small>on ${fmt(+o.vol||0)} traded</small></span><b>${fmt(+o.amt||0)}</b></div>`).join("")||`<div><span>No commissions waiting.</span></div>`}</div>`}<div class="mdx-note">Other players pick your exchange in their Stocks app. 0.1% of every trade they make lands in the exchange account automatically; withdraw it any time.${EX.err?`<br><span style="color:#dc2626">${dxE(EX.err)}</span>`:""}</div></div>
   </div></div></div></div>`}
 /* ---------- Space program (phone app "Space" + dashboard window) ----------
@@ -11465,7 +11531,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="dvopen"){dvOpen();return}
   else if(a==="hrdepot"){const c=CITIES[b.dataset.k];if(!c)return;tab="wh";PH.open=false;phRender();openCity(c);return}
   else if(a==="obcu"){obCu=+b.dataset.x;obTab="cu"}
-  else if(a==="obpull"){obPull(+b.dataset.x);save();hud()}else if(a==="obrepay"){obRepay();save();hud()}else if(a==="obpw"){obPWd(+b.dataset.x);save();hud()}else if(a==="obpback"){obPBack();save();hud()}else if(a==="obpsw"){if(S.ob)S.ob.psweep=+b.dataset.x;save();hud()}else if(a==="obrevd"){if(S.ob)obRevokeCust(b.dataset.x);save();hud()}else if(a==="obauto"){if(S.ob)S.ob.autoCut=+b.dataset.x;save()}else if(a==="obrev"){if(S.ob){const [k,id]=String(b.dataset.x).split("|");obRevoke(k,id)}save();hud()}else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
+  else if(a==="obpull"){obPull(+b.dataset.x);save();hud()}else if(a==="obrepay"){obRepay();save();hud()}else if(a==="obmg"){const[k,v]=String(b.dataset.x).split(":");obMgSet(k,+v);save();hud()}else if(a==="obpw"){obPWd(+b.dataset.x);save();hud()}else if(a==="obpback"){obPBack();save();hud()}else if(a==="obpsw"){if(S.ob)S.ob.psweep=+b.dataset.x;save();hud()}else if(a==="obrevd"){if(S.ob)obRevokeCust(b.dataset.x);save();hud()}else if(a==="obauto"){if(S.ob)S.ob.autoCut=+b.dataset.x;save()}else if(a==="obrev"){if(S.ob){const [k,id]=String(b.dataset.x).split("|");obRevoke(k,id)}save();hud()}else if(a==="obnf"){if(S.ob){const k=b.dataset.k;S.ob.nf[k]=S.ob.nf[k]===0?1:0}save()}
   else if(a==="obat"){if(S.ob){S.ob.at=+b.dataset.x;if(S.ob.at)S.ob.depRate=Math.round(S.econ.base*S.ob.at*1e4)/1e4}save()}
   else if(a==="obem"){obEmerg(+b.dataset.x);save()}
   else if(a==="obmgr"){obMgrSet(+b.dataset.x);save();hud()}
