@@ -452,7 +452,7 @@ html.th-ledger #dcard>div{border-radius:2px;box-shadow:6px 6px 0 rgba(31,26,20,.
     <button id="tostreet" class="chip" hidden>View streets</button>
     <div id="hint">Drag to spin · scroll or pinch to zoom from the planet down to the streets · tap a city</div>
     <div id="toast"></div>
-    <div id="cfbox" hidden><div id="cfleg" aria-hidden="true"></div><button id="cfchip" class="chip" aria-pressed="true"></button><button id="satchip" class="chip" aria-pressed="true">🛰️ Satellites</button></div>
+    <div id="cfbox" hidden><div id="cfleg" aria-hidden="true"></div><button id="cfchip" class="chip" aria-pressed="true"></button><button id="satchip" class="chip" aria-pressed="true">🛰️ Satellites</button><button id="plchip" class="chip" aria-pressed="true">👥 Players</button></div>
     <div id="cfpop" hidden role="dialog" aria-label="Conflict details"></div>
     <button id="daily" hidden>🎁 Daily reward</button>
     <aside id="sheet" aria-live="polite"></aside>
@@ -2907,7 +2907,7 @@ function cfLevels(){const o={};for(const w of S.wars||[])if(w.l>0)for(const n of
 function cfMid(w){const A=cfCap(w.a),B=cfCap(w.b);return d3.geoInterpolate([A.lon,A.lat],[B.lon,B.lat])(.5)}
 function cfChip(){const el=document.getElementById("cfbox");if(!el)return;const ws=(S.wars||[]).filter(w=>w.l>0),pw=bgMilKeys(),st=typeof inStreet!=="undefined"&&inStreet,npl=typeof plWars==="function"?plWars().length:0,
   k=[ws.length,pw.join("|"),cfOn(),st,ws.map(w=>w.l).join(""),npl].join();if(k===_cfKey)return;_cfKey=k;
-  const any=!!(ws.length||pw.length||npl);el.hidden=st;document.getElementById("cfchip").hidden=!any;satChip();if(!ws.length&&!pw.length&&_cfPop)cfClose();const hot=ws.filter(w=>w.l>=3).length;
+  const any=!!(ws.length||pw.length||npl);el.hidden=st;document.getElementById("cfchip").hidden=!any;satChip();plChip();if(!ws.length&&!pw.length&&_cfPop)cfClose();const hot=ws.filter(w=>w.l>=3).length;
   const ch=document.getElementById("cfchip");ch.setAttribute("aria-pressed",cfOn());ch.title=cfOn()?"Hide conflicts on the map":"Show conflicts on the map";
   ch.innerHTML=`⚔ Conflicts${cfOn()?"":" (hidden)"} <i>${ws.length+pw.length+npl}</i>`;if(!hot&&!pw.length&&!npl)ch.querySelector("i").style.background=WARC[1];
   const lg=document.getElementById("cfleg");lg.hidden=!cfOn()||!any;lg.innerHTML=[1,2,3,4].map(l=>`<span><b style="background:${WARC[l]}"></b>${WARL[l]}</span>`).join("")}
@@ -2985,6 +2985,9 @@ function cfOpen(w,x,y){const el=document.getElementById("cfpop");_cfPop={id:w.id
 function cfClose(){_cfPop=null;const el=document.getElementById("cfpop");if(el)el.hidden=true;draw()}
 /* satellites on/off chip: same switch as Settings › Satellites (S.set.sat) */
 function satChip(){const b=document.getElementById("satchip");if(!b)return;const on=!(S.set&&S.set.sat===0);b.setAttribute("aria-pressed",on);b.title=on?"Hide satellites on the globe":"Show satellites on the globe";b.textContent="🛰️ Satellites"+(on?"":" (hidden)")}
+/* players on/off chip: hides the other players' markers and names on the planet */
+function plChip(){const b=document.getElementById("plchip");if(!b)return;const on=!(S.set&&S.set.pl===0);b.setAttribute("aria-pressed",on);b.title=on?"Hide other players on the planet":"Show other players on the planet";b.textContent="👥 Players"+(on?"":" (hidden)")}
+document.getElementById("plchip").addEventListener("click",()=>{S.set=S.set||{};S.set.pl=S.set.pl===0?1:0;plChip();draw();save()});
 document.getElementById("satchip").addEventListener("click",()=>{S.set=S.set||{};S.set.sat=S.set.sat===0?1:0;satChip();draw();save()});
 document.getElementById("cfchip").addEventListener("click",()=>{S.cfOff=cfOn()?1:0;if(!S.cfOff)delete S.cfOff;_cfKey="";if(!cfOn())cfClose();cfChip();draw();save()});
 document.getElementById("cfpop").addEventListener("click",e=>{const b=e.target.closest("[data-cf]");if(!b||!_cfPop)return;const w=(S.wars||[]).find(x=>x.id===_cfPop.id);
@@ -7227,7 +7230,7 @@ function onAlpha(p){const age=(Date.now()-onSeen(p))/864e5;return age>7?.3:1}
 function onCities(p){const s=new Set();if(Number.isInteger(p.home)&&CITIES[p.home])s.add(p.home);for(const i of Array.isArray(p.hq)?p.hq:[])if(CITIES[i])s.add(i);return[...s]}
 const onHere=p=>Number.isInteger(p.loc)&&!!CITIES[p.loc];
 function playersAt(c){return botAll().filter(p=>onCities(p).includes(c.id)||(Array.isArray(p.biz)&&p.biz.includes(c.id))||p.loc===c.id).sort((a,b)=>(b.loc===c.id)-(a.loc===c.id))}
-function drawOnline(ctx){const PL=botAll();if(!PL.length)return;const by={};
+function drawOnline(ctx){if(S.set&&S.set.pl===0)return;const PL=botAll();if(!PL.length)return;const by={};
   for(const p of PL){const s=new Set(onCities(p));if(onHere(p))s.add(p.loc);for(const id of s)(by[id]=by[id]||[]).push(p)}
   for(const id in by)by[id].sort((a,b)=>(b.loc==id)-(a.loc==id));
   ctx.textBaseline="middle";
@@ -9033,7 +9036,7 @@ function setApply(force){const s=setG(),sig=JSON.stringify(s);if(!force&&sig===_
   try{reduce=REDUCE_OS||!!s.rm}catch(e){}
   try{localStorage.setItem("meridian-uitheme",s.ui)}catch(e){}
   const m=document.querySelector('meta[name="theme-color"]');if(m&&s.ui!=="classic")m.content={glass:"#0b1020",ledger:"#fbf5e6",command:"#000000"}[s.ui];else if(m)m.content=themeGet()==="light"?"#fbfaf5":"#141f21";
-  try{if(typeof satChip==="function")satChip()}catch(e){}
+  try{if(typeof satChip==="function")satChip()}catch(e){}try{if(typeof plChip==="function")plChip()}catch(e){}
   try{if(typeof draw==="function")draw()}catch(e){}}
 function setPut(k,v){const s=setG();if(k==="mode"){themeSet(v);setApply(1);return}
   s[k]=k==="ui"?v:+v;setApply();save();if(k==="snd"||k==="vol"){try{sndApply();if(k==="snd"&&s.snd)sfx("click")}catch(e){}}if(k==="ui")toast(`Settings: ${SET_UI.find(u=>u[0]===v)[1]} theme`)}
