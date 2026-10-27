@@ -677,7 +677,7 @@ function totals(){let inc=0,assets=0;
   const interest=typeof bankPayHr==="function"?Math.round(bankPayHr()):Math.round(S.debt*0.003);
   const upk=typeof indUpkeep==="function"?indUpkeep():0;assets+=typeof indAssets==="function"?indAssets():0;
   const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof exIncome==="function"){assets+=exAssets()+exCap()}if(typeof flipUpk==="function"){inc-=flipUpk();assets+=flipAssets()}if(typeof polIncome==="function")inc+=polIncome();if(typeof luxIncome==="function"){inc+=luxIncome();assets+=luxAssets()}if(typeof gxUpk==="function")inc-=gxUpk();if(typeof ofUpk==="function")inc-=ofUpk();if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
-  if(typeof airFleetVal==="function")assets+=airFleetVal();if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity()+(S.ob&&S.ob.pacct>0?S.ob.pacct:0);if(typeof gearAssets==="function")assets+=gearAssets();if(typeof ishIncome==="function"){inc+=ishIncome();assets+=ishAssets()}if(typeof rigIncome==="function"){inc+=rigIncome();assets+=rigAssets()}if(typeof aucIncome==="function"){inc+=aucIncome();assets+=aucAssets()+aucEscrow()}
+  if(typeof airFleetVal==="function")assets+=airFleetVal();if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity()+(S.ob&&S.ob.pacct>0?S.ob.pacct:0);if(typeof gearAssets==="function")assets+=gearAssets();if(typeof ishIncome==="function"){inc+=ishIncome();assets+=ishAssets()}if(typeof rigIncome==="function"){inc+=rigIncome();assets+=rigAssets()}if(typeof aucIncome==="function"){inc+=aucIncome();assets+=aucAssets()+aucEscrow()}if(typeof franIncome==="function")inc+=franIncome();
   let owed=0;try{assets+=ipoHoldVal();owed=ipoOwed()}catch(e){}
   return{inc:inc-(typeof bankPayHr==="function"?0:interest)-upk-rent,interest,upk,rent,owed,nw:S.cash+assets-S.debt-owed}}
 
@@ -944,7 +944,7 @@ function renderSheet(){sheet.classList.remove("bzv");if(mode==="sv")return;if(mo
     for(const i of here)h+=`<div class="row"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${RIVALS[i].col};margin-right:6px"></span>${RIVALS[i].n}</div>
       <div class="d">Buy out their local branch to win back customers.<br><small style="color:var(--muted)">${rivalFacts(i)}</small></div><button class="buy up" data-bo="${i}" ${S.cash<bc?"disabled":""}>Buy out ${fmt(bc)}</button></div>`;
     h+=`</div>`}
-  h+=exRow(c);
+  h+=exRow(c);h+=fchHtml(c);
   if(bzF.v!=="mine"){h+=`<div class="sec">Open a business${bzq||bzF.aff?` <small>${avail.length} of ${avail0.length}</small>`:""}</div><div class="list">`;
   for(const b of avail){const k=cost(b,c),blk=bizBlock(b,c),lock=0,p=potential(b,c,1),pn=p-(SUP[b.k]?useRate(b,1,c)*unitCost(b,c):0),pay=pn>0?Math.ceil(k/pn):null;
     h+=`<div class="row"${lock?' style="opacity:.6"':""}><div class="n">${lock?"🔒 ":""}${b.n}</div>
@@ -11634,6 +11634,58 @@ function futHtml(){const f=FUT(),now=Date.now(),ex=futExps(now),dev=spDev();
 function futExCard(){const f=FUT(),now=Date.now(),d=Math.floor(now/DAYMS),oi=f.pos.reduce((t,p)=>t+Math.abs(futPx(p.k,p.e,now)*FUTC.k[p.k].sz*p.n),0),vol=f.d.day===d?f.d.vol:0;
   return `<div class="mdx-card" style="margin-top:16px"><div class="mdx-ch"><h3>Commodity futures</h3><small style="margin-left:auto;color:var(--dxmut)">${FUTC.exp.join(" / ")}-day contracts · cash-settled</small></div><div class="mdx-rows">${FUTK.map(k=>`<div><span>${FUTC.k[k].ico} ${dxE(FUTC.k[k].n)}</span><b>spot ${futPxS(futSpot(k))} · 14d ${futPxS(futPx(k,futExps(now)[2],now))}</b></div>`).join("")}<div><span>Your open interest · ${f.pos.length} position${f.pos.length===1?"":"s"}</span><b>${futD(oi)}</b></div><div><span>Your futures volume today</span><b>${futD(vol)}</b></div></div></div>`}
 setInterval(()=>{try{futTick()}catch(e){}},10000);
+/* ---------- franchising: license a business type you run in 3+ cities to AI operators elsewhere.
+   S.fran = {p:{k:1} programs started, l:[{id,k,c,op,r,fee,s,e}] active deals, o:{k:{d,l:[offers]}} daily offers, log:[], tot}
+   Royalties = franchisee's gross x royalty % x brand quality, paid continuously through totals().inc (franIncome). */
+const FRC={need:3,setup:4,max:6,ops:["Northgate Hospitality","Sunrise Ventures","Copperline Group","Bluefin Partners","Atlas Operators","Kestrel & Sons","Harbor Light Co.","Meadow Holdings","Ironwood Retail","Silverleaf Brands"]};
+function FRAN(){if(!S.fran||typeof S.fran!=="object"||Array.isArray(S.fran))S.fran={};const f=S.fran;if(!f.p||typeof f.p!=="object")f.p={};if(!Array.isArray(f.l))f.l=[];if(!f.o||typeof f.o!=="object")f.o={};if(!Array.isArray(f.log))f.log=[];f.tot=+f.tot||0;f.nid=+f.nid||1;return f}
+function frCities(k){const r=[];for(const id in S.own){const o=S.own[id];if(o&&o[k]&&CITIES[id])r.push(+id)}return r}
+function frAvgLv(k){const cs=frCities(k);return cs.length?cs.reduce((t,id)=>t+(+S.own[id][k]||1),0)/cs.length:0}
+function frQ(k){const cs=frCities(k);if(!cs.length)return 0;return Math.round((0.7+0.15*(frAvgLv(k)-1))*100)/100} // brand quality: 0.70 at Lv1, 1.30 at Lv5
+function frMax(k){return Math.min(FRC.max,Math.floor(frCities(k).length/FRC.need)*2)}
+function frSetup(b){return spDevSafe()?0:Math.round(b.cost*FRC.setup*FRC.need)}
+function spDevSafe(){try{return typeof spDev==="function"&&spDev()}catch(e){return false}}
+function frGross(b,c){return b.gross*.85*(DEMAND[c.size]||1)} // franchisee's gross per hour
+function frRoy(x){const b=BIZ.find(y=>y.k===x.k),c=CITIES[x.c];if(!b||!c)return 0;return Math.round(frGross(b,c)*x.r*frQ(x.k))}
+function franIncome(){if(!S.fran)return 0;let t=0;for(const x of FRAN().l)t+=frRoy(x);return t}
+function frOffers(k){const f=FRAN(),d=Math.floor(Date.now()/DAYMS),b=BIZ.find(y=>y.k===k);if(!b)return[];let O=f.o[k];if(O&&O.d===d)return O.l.filter(x=>fchFree(k,x.c));
+  let sd=(d*131+[...k].reduce((t,ch)=>t+ch.charCodeAt(0),0)*7919)>>>0;const rnd=()=>{sd=(sd*1103515245+12345)>>>0;return(sd>>>8)/16777216};
+  const pool=CITIES.filter(c=>fchFree(k,c.id)&&(b.cx==null||b.cx===c.id));const l=[];
+  for(let i=0;i<3&&pool.length;i++){const c=pool.splice(Math.floor(rnd()*pool.length),1)[0],r=Math.round((5+rnd()*3)*10)/1000;
+    l.push({c:c.id,op:FRC.ops[Math.floor(rnd()*FRC.ops.length)],r,fee:Math.round(cost(b,c)*(0.10+rnd()*0.08)),days:7+Math.floor(rnd()*15)})}
+  f.o[k]={d,l};return l}
+function fchFree(k,cid){return !(S.own[cid]&&S.own[cid][k])&&!FRAN().l.some(x=>x.k===k&&x.c===cid)}
+function frStart(k){const b=BIZ.find(y=>y.k===k),f=FRAN();if(!b||f.p[k])return"Already running";if(frCities(k).length<FRC.need)return`Run ${b.n.toLowerCase()} in ${FRC.need} cities first`;const p=frSetup(b);if(S.cash<p)return`Need ${fmt(p)}`;S.cash-=p;f.p[k]=1;f.log.unshift({t:Date.now(),m:`Launched a ${b.n} franchise program`});return""}
+function frSign(k,cid){const b=BIZ.find(y=>y.k===k),f=FRAN();if(!b||!f.p[k])return"Start a franchise program first";const o=frOffers(k).find(x=>x.c===cid);if(!o)return"That offer is gone";
+  if(f.l.filter(x=>x.k===k).length>=frMax(k))return`Limit reached: ${frMax(k)} ${b.n} franchises (own it in more cities to raise it)`;
+  const now=Date.now();f.l.push({id:f.nid++,k,c:cid,op:o.op,r:o.r,fee:o.fee,s:now,e:now+o.days*DAYMS});S.cash+=o.fee;f.tot+=o.fee;S.earned=(S.earned||0)+o.fee;
+  f.log.unshift({t:now,m:`${o.op} opened a ${b.n} in ${CITIES[cid].name} (+${fmt(o.fee)} fee)`});f.log.length=Math.min(f.log.length,20);return""}
+function frBuyCost(x){const b=BIZ.find(y=>y.k===x.k),c=CITIES[x.c];return b&&c?Math.round(cost(b,c)*1.1):0}
+function frBuyout(id){const f=FRAN(),i=f.l.findIndex(x=>x.id===id);if(i<0)return"Not found";const x=f.l[i],b=BIZ.find(y=>y.k===x.k),c=CITIES[x.c],p=spDevSafe()?0:frBuyCost(x);if(S.cash<p)return`Need ${fmt(p)}`;
+  if(b.co&&typeof hasHQ==="function"&&!hasHQ(c))return"Company-only business: you need an HQ there";
+  S.cash-=p;f.l.splice(i,1);(S.own[c.id]=S.own[c.id]||{})[x.k]=Math.max(1,S.own[c.id][x.k]||0);f.log.unshift({t:Date.now(),m:`Bought out ${x.op}'s ${b.n} in ${c.name}`});return""}
+function frEnd(id){const f=FRAN(),i=f.l.findIndex(x=>x.id===id);if(i<0)return;const x=f.l.splice(i,1)[0];f.log.unshift({t:Date.now(),m:`Ended ${x.op}'s franchise in ${CITIES[x.c].name}`})}
+function frTick(now){if(!S.fran)return;const f=FRAN();now=now||Date.now();
+  for(const x of f.l.slice()){if(x.e<=now){f.l.splice(f.l.indexOf(x),1);f.log.unshift({t:now,m:`${x.op}'s franchise in ${CITIES[x.c].name} expired`})}}
+  for(const k in f.p)if(f.p[k]&&frCities(k).length<FRC.need&&!f.l.some(x=>x.k===k)&&!spDevSafe()){/* program stays, royalties scale with quality */}
+  f.log.length=Math.min(f.log.length,20)}
+function fchHtml(c){const o=S.own[c.id]||{},f=S.fran?FRAN():null,mine=BIZ.filter(b=>o[b.k]);let h="";
+  const here=f?f.l.filter(x=>x.c===c.id):[];if(!mine.length&&!here.length)return"";
+  h+=`<div class="sec">Franchising</div><div class="list">`;
+  for(const x of here){const b=BIZ.find(y=>y.k===x.k);h+=`<div class="row"><div class="n">${b.n} <span class="tag boom">Franchise</span></div><div class="d">Run by ${x.op} · ${(x.r*100).toFixed(1)}% royalty · <b>${fmt(frRoy(x))}</b>/hr · ends in ${fmtDur(x.e-Date.now())}</div>
+    <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-fr="buy" data-id="${x.id}" data-fixed="1">Buy out ${fmt(frBuyCost(x))}</button><button class="buy up" data-fr="end" data-id="${x.id}" data-fixed="1">End deal</button></span></div>`}
+  for(const b of mine){const n=frCities(b.k).length;
+    if(!f||!f.p[b.k]){h+=`<div class="row"><div class="n">Franchise ${b.n}</div><div class="d">${n<FRC.need?`Run it in ${FRC.need} cities to license it to AI operators (${n}/${FRC.need}).`:`License your ${b.n.toLowerCase()} brand to operators in other cities: they pay a signing fee and 5–8% of their gross every hour.`}</div>
+      <button class="buy" data-fr="start" data-k="${b.k}" data-fixed="1" ${n<FRC.need||S.cash<frSetup(b)?"disabled":""}>Start program ${fmt(frSetup(b))}</button></div>`;continue}
+    const act=f.l.filter(x=>x.k===b.k),mx=frMax(b.k),q=frQ(b.k),roy=act.reduce((t,x)=>t+frRoy(x),0);
+    h+=`<div class="row own"><div class="n">${b.n} franchise <span class="tag" style="border:1px solid var(--line)">${act.length}/${mx}</span></div><div class="d">Brand quality ×${q.toFixed(2)} (avg Lv ${frAvgLv(b.k).toFixed(1)} in ${n} cities) · royalties <b>${fmt(roy)}</b>/hr${act.length?"<br><small>"+act.map(x=>`${CITIES[x.c].name} (${x.op}, ${fmt(frRoy(x))}/hr)`).join(" · ")+"</small>":""}</div></div>`;
+    if(act.length<mx)for(const of of frOffers(b.k))h+=`<div class="row"><div class="n">${of.op} · ${CITIES[of.c].name}</div><div class="d">Pays you ${fmt(of.fee)} now + ${(of.r*100).toFixed(1)}% royalty (≈${fmt(Math.round(frGross(b,CITIES[of.c])*of.r*q))}/hr) for ${of.days} days</div>
+      <button class="buy" data-fr="sign" data-k="${b.k}" data-c="${of.c}" data-fixed="1">Sign</button></div>`}
+  return h+`</div>`}
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-fr]");if(!b||!sel)return;const a=b.dataset.fr;let r="";
+  if(a==="start")r=frStart(b.dataset.k);else if(a==="sign")r=frSign(b.dataset.k,+b.dataset.c);else if(a==="buy")r=frBuyout(+b.dataset.id);else if(a==="end")frEnd(+b.dataset.id);
+  toast(r||({start:"Franchise program launched",sign:"Franchise deal signed",buy:"Franchise bought out: it's yours now",end:"Franchise deal ended"}[a]));save();hud();renderSheet()});
+setInterval(()=>{try{frTick()}catch(e){}},10000);
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();try{colTick(Date.now())}catch(e){console.warn("col",e)}try{airTick(Date.now())}catch(e){console.warn("air",e)}if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
