@@ -10738,24 +10738,43 @@ function pfxGlow(ctx,map,col,zs){const L=[[1,.05],[.62,.08],[.32,.14]],pts=[];
   if(!pts.length)return;ctx.fillStyle=col;for(const [f,a] of L){ctx.globalAlpha=a;ctx.beginPath();for(const [x,y,r] of pts){ctx.moveTo(x+r*f,y);ctx.arc(x,y,r*f,0,7)}ctx.fill()}ctx.globalAlpha=1}
 function pfxHemi(){if(PFX.hf||!world)return PFX.hf;const n=[],s=[];for(const f of world.features){try{const la=d3.geoCentroid(f)[1];if(la>18&&la<62)n.push(f);else if(la<-18&&la>-62)s.push(f)}catch(e){}}
   return PFX.hf={n:{type:"FeatureCollection",features:n},s:{type:"FeatureCollection",features:s}}}
-// real polar ice: Greenland + Antarctic ice sheets, and NSIDC-median-like sea-ice edges (lat per 10° lon, from -180) eased between max and min by the game's year phase
-const ICE={land:null,an:[[0,-70],[10,-70],[20,-70],[30,-69.5],[40,-69],[50,-67],[60,-67.5],[70,-69.5],[80,-67],[90,-66.5],[100,-66],[110,-66.2],[120,-66.5],[130,-66.2],[140,-66.7],[150,-68.5],[160,-70.5],[170,-72],[180,-78],[-170,-78.3],[-160,-78],[-150,-77],[-140,-75],[-130,-74],[-120,-73.5],[-110,-74],[-100,-73],[-90,-72.5],[-80,-73],[-75,-71],[-70,-69],[-67,-67],[-64,-65.2],[-60,-63.6],[-57,-63.3],[-57.5,-64.3],[-60,-66.5],[-62,-69],[-62.5,-72],[-61,-74.5],[-55,-77.5],[-45,-78.2],[-35,-77.5],[-28,-76],[-20,-74],[-10,-71.5]],
+// real polar ice: Greenland + Antarctic ice sheets, and NSIDC-median-like sea-ice edges (lat per 10° lon, from -180) eased between max and min by the game's year phase.
+// Antarctic coast: ~120 real points (Peninsula, Larsen, Ronne/Filchner, Amery, Ross) with longitudes unwrapped 0..360 so the spline never crosses the dateline.
+const ICE={land:null,an:[[0,-69.6],[4,-69.9],[8,-70.1],[12,-70],[16,-69.9],[20,-69.8],[24,-69.6],[28,-69.3],[32,-69.1],[36,-69.4],[39,-69.6],[42,-68.3],[45,-67.3],[48,-67],[51,-66.8],[54,-67.1],[57,-67.4],[60,-67.5],[63,-67.8],[66,-67.9],[68,-68.5],[70,-69],[72,-69.3],[74,-69],[76,-68.6],[78,-68.1],[81,-67.4],[85,-66.7],[89,-66.5],[93,-66.6],[97,-66.4],[101,-66.3],[105,-66.5],[109,-66.4],[113,-66.6],[117,-66.9],[121,-66.8],[125,-66.4],[129,-66.2],[133,-66],[137,-66.3],[141,-66.8],[145,-67],[148,-68],[151,-68.4],[155,-69],[158,-69.8],[161,-70.6],[163,-71.2],[165,-72.6],[167,-73.6],[169,-74.6],[166,-75.8],[165,-76.8],[167,-77.6],[170,-78],[175,-78.3],[180,-78.5],[185,-78.5],[190,-78.3],[195,-78.2],[200,-78],[203,-77.4],[206,-77.1],[210,-76.5],[215,-76],[220,-74.9],[225,-74.4],[230,-74.3],[235,-73.6],[240,-73.5],[245,-74],[250,-74.2],[254,-74.7],[258,-75],[261,-73.6],[264,-73],[267,-72.6],[270,-72.8],[275,-73],[280,-73.2],[284,-72.2],[286,-71],[288,-70.3],[290,-69],[292,-67.5],[293,-66.5],[294,-65.5],[296,-64.6],[298,-63.8],[300,-63.4],[302,-63.2],[303,-63.3],[303.5,-63.6],[303,-64.3],[301.5,-64.9],[300,-65.5],[299,-66.5],[298,-68],[297.5,-69.5],[298,-71],[299,-72.5],[299.5,-74],[299,-75],[298,-76],[300,-77.5],[305,-78.3],[310,-78.5],[315,-78],[320,-77],[324,-76],[327,-75.5],[330,-75],[333,-74.8],[335,-74],[338,-73.5],[342,-72.5],[346,-72],[350,-71],[355,-70.5]],
  nMax:[60,58,57,59,67,68,68,66,58,52,52,55,52,61,63,66,72,76,78,79,77,76,74,71,70,67,68,70,70,70,68,64,52,58,60,59],
  nMin:[75,74,74,73,72,73,74,74,75,75,76,76,77,80,82,83,82,80,78,80,81,81,81,82,82,82,82,82,81,80,79,79,79,78,76,75],
  sMax:[-63,-64,-64.5,-65,-65.5,-66,-66,-65.5,-64,-62,-60,-58.5,-56,-55.5,-55,-55,-55,-55.5,-55,-55.5,-56,-56.5,-57,-57.5,-58,-59,-60,-61,-62,-63,-63,-63,-62.5,-62,-62,-62.5],
  sMin:[-74,-74.5,-74,-73,-72,-71.5,-71,-70.5,-70,-69.5,-69,-67,-66,-68,-70,-71.5,-72,-71,-69.5,-69.5,-69.5,-69,-68.5,-67.5,-67,-66,-65.5,-65.5,-66,-66,-66,-66,-66.5,-69,-71.5,-73.5],k:null,g:null};
-function iceRing(a,b,w){const r=[];for(let lo=-180;lo<=180;lo+=2){const u=(lo+180)/10,i=Math.floor(u)%36,j=(i+1)%36,f=u-Math.floor(u),
-  la=(a[i]+(a[j]-a[i])*f)*w+(b[i]+(b[j]-b[i])*f)*(1-w);r.push([lo,la])}r[r.length-1]=[180,r[0][1]];return iceFix([r])}
+// closed Catmull-Rom through the 36 control latitudes (u in cycles of 10° lon)
+function iceLat(a,u){const i=Math.floor(u),f=u-i,p0=a[(i+35)%36],p1=a[i%36],p2=a[(i+1)%36],p3=a[(i+2)%36];return .5*(2*p1+(-p0+p2)*f+(2*p0-5*p1+4*p2-p3)*f*f+(-p0+3*p1-3*p2+p3)*f*f*f)}
+const iceWob=(lo,q)=>{const r=lo*Math.PI/180,p=(q||0)*1.7;return .45*Math.sin(r*7+p)+.3*Math.sin(r*13+1.3+2*p)+.2*Math.sin(r*29+2.1-p)};
+// sea-ice edge ring sampled every 2° of longitude, eased between max (w=1) and min (w=0) extent, pushed `off` degrees toward the equator
+function iceRing(a,b,w,off,q){const r=[],sg=a[0]<0?-1:1;for(let lo=-180;lo<=180;lo+=2){const u=(lo+180)/10,la=iceLat(a,u)*w+iceLat(b,u)*(1-w)+iceWob(lo,q)*(sg>0?1:-1)-sg*(off||0);r.push([lo,Math.max(-89.5,Math.min(89.5,la))])}r[r.length-1]=[180,r[0][1]];return iceFix([r])}
 function iceFix(c){const g={type:"Polygon",coordinates:c};if(d3.geoArea(g)>2*Math.PI)c[0].reverse();return g}
+// smooth closed spline through the Antarctic coast points (4 sub-steps per leg) with a tiny deterministic roughness
+function iceCoast(P){const n=P.length,r=[],nb=(i,j)=>{const q=P[(i+n)%n],d=q[0]-P[j][0];return d>180?[q[0]-360,q[1]]:d<-180?[q[0]+360,q[1]]:q};for(let i=0;i<n;i++){const p1=P[i],p0=nb(i-1,i),p2=nb(i+1,i),p3=nb(i+2,i);for(let k=0;k<4;k++){const f=k/4,f2=f*f,f3=f2*f,c=j=>.5*(2*p1[j]+(-p0[j]+p2[j])*f+(2*p0[j]-5*p1[j]+4*p2[j]-p3[j])*f2+(-p0[j]+3*p1[j]-3*p2[j]+p3[j])*f3);
+  let lo=c(0),la=c(1)+.12*Math.sin(lo*Math.PI/180*41+i);lo=((lo+180)%360+360)%360-180;r.push([lo,la])}}r.push(r[0].slice());return iceFix([r])}
 function iceGeo(){const L=GXCFG.ssn.len*4,ph=(Math.max(0,(S.day||1)-1)%L)/L,k=Math.round(ph*400);if(ICE.k===k&&ICE.g)return ICE.g;
   const e=t=>{const c=(1+Math.cos(2*Math.PI*t))/2;return c*c*(3-2*c)},wn=e(ph+.02),ws=e(ph-.52);
-  if(!ICE.an.g){const r=ICE.an.slice();r.push(r[0]);ICE.an.g=iceFix([r])}
-  ICE.k=k;return ICE.g={n:iceRing(ICE.nMax,ICE.nMin,wn),s:iceRing(ICE.sMax,ICE.sMin,ws),an:ICE.an.g,gl:typeof cfFeat==="function"?cfFeat("Greenland"):null}}
-function iceLand(){if(ICE.land||!world)return ICE.land;const a=[];for(const f of world.features){try{let m=-90;const w=a=>{if(typeof a[0]==="number"){if(a[1]>m)m=a[1]}else for(const x of a)w(x)};w(f.geometry.coordinates);if(m>42)a.push(f)}catch(e){}}return ICE.land={type:"FeatureCollection",features:a}}
+  if(!ICE.an.g){ICE.an.g=iceCoast(ICE.an);ICE.an.hi=[14,9].map(r=>d3.geoCircle().center([60,-85]).radius(r)());ICE.an.gh=[5.5,3].map(r=>d3.geoCircle().center([-41,72.5]).radius(r)())}
+  ICE.k=k;return ICE.g={n:[2.2,1,0,-1.2,-2.6].map((o,i)=>iceRing(ICE.nMax,ICE.nMin,wn*(i<3?1:i<4?.7:.45),o,i)),   // marginal zone → main pack → dense multiyear ice
+    s:[2.2,1,0,-1.2,-2.6].map((o,i)=>iceRing(ICE.sMax,ICE.sMin,ws*(i<3?1:i<4?.7:.45),o,i)),an:ICE.an.g,gl:typeof cfFeat==="function"?cfFeat("Greenland"):null}}
+// land the sea ice must not paint over: every ring that reaches north of 52°, with everything south of 46° collapsed onto that parallel so the clip costs a few hundred points a frame instead of all of Russia, Canada and the USA
+function iceLand(z){if(!world)return null;const zb=Math.max(0,Math.round(z*2))/2;ICE.land=ICE.land||{};if(ICE.land[zb])return ICE.land[zb];const tol=2*360/(512*Math.pow(2,zb)),polys=[];   // ~2px at this zoom
+  for(const f of world.features){try{const g=f.geometry,P=g.type==="Polygon"?[g.coordinates]:g.type==="MultiPolygon"?g.coordinates:[];
+  for(const poly of P){const rings=[];for(const ring of poly){if(!ring.some(q=>q[1]>52))continue;const r=[];let k=null;for(let i=0;i<ring.length;i++){const q=ring[i],lo=q[1]<46,pl=i>0&&ring[i-1][1]<46,nl=i<ring.length-1&&ring[i+1][1]<46;if(lo&&pl&&nl)continue;const pt=lo?[q[0],46]:q;if(k&&Math.abs(pt[0]-k[0])+Math.abs(pt[1]-k[1])<tol)continue;r.push(k=pt)}if(r.length>3){if(r[0][0]!==r[r.length-1][0]||r[0][1]!==r[r.length-1][1])r.push(r[0]);rings.push(r)}}
+  if(rings.length)polys.push(rings)}}catch(e){}}return ICE.land[zb]={type:"MultiPolygon",coordinates:polys}}
 function pfxSeasons(ctx,z){if(typeof ssnIdx!=="function"||z>=7)return;const ni=ssnIdx(null),si=(ni+2)%4,g=iceGeo();if(!g.gl)g.gl=cfFeat("Greenland");
-  ctx.save();ctx.beginPath();path({type:"Sphere"});const ld=iceLand();if(ld)path(ld);ctx.clip("evenodd");   // sea ice stays on the sea
-  ctx.beginPath();path(g.n);path(g.s);ctx.fillStyle="#edf3f8";ctx.globalAlpha=.7;ctx.fill();ctx.strokeStyle="#ffffff";ctx.lineWidth=.8;ctx.globalAlpha=.4;ctx.stroke();ctx.restore();
-  ctx.beginPath();path(g.an);if(g.gl)path(g.gl);ctx.fillStyle="#f4f8fc";ctx.globalAlpha=.94;ctx.fill();ctx.strokeStyle="#cfdde9";ctx.lineWidth=.6;ctx.globalAlpha=.6;ctx.stroke();
+  const night=()=>{if(typeof sunPoint!=="function"||MM.getZoom()>6.5)return;const s=sunPoint(Date.now()),anti=[s[0]+180,-s[1]],c=d3.geoCircle().center(anti);ctx.globalAlpha=1;for(let r=102;r>=84;r-=3){const a=.042;ctx.fillStyle=`rgba(8,14,40,${a})`;ctx.beginPath();path(c.radius(r)());ctx.fill()}};   // soft terminator over the bright ice
+  ctx.save();ctx.beginPath();path({type:"Sphere"});const ld=iceLand(z);if(ld)path(ld);ctx.clip("evenodd");   // sea ice stays on the sea
+  const lay=[[0,"#a9c6e2",.1],[1,"#c6dbee",.16],[2,"#dde9f5",.3],[3,"#ecf3fa",.28],[4,"#f6f9fd",.24]];for(const [i,col,a] of lay){ctx.beginPath();path(g.n[i]);path(g.s[i]);ctx.fillStyle=col;ctx.globalAlpha=a;ctx.fill()}
+  ctx.beginPath();path(g.n[2]);path(g.s[2]);ctx.strokeStyle="#d6ecff";ctx.lineWidth=1;ctx.globalAlpha=.22;ctx.stroke();   // frost rim
+  ctx.beginPath();path(g.n[0]);path(g.s[0]);ctx.clip();night();ctx.restore();   // the night side still falls over the ice
+  ctx.save();ctx.beginPath();path(g.an);if(g.gl)path(g.gl);ctx.clip();   // ice sheets: cool shadow under, off-white sheet, bright plateau
+  ctx.translate(1,1.6);ctx.beginPath();path(g.an);if(g.gl)path(g.gl);ctx.translate(-1,-1.6);ctx.fillStyle="#7d97b1";ctx.globalAlpha=.55;ctx.fill();
+  ctx.beginPath();path(g.an);if(g.gl)path(g.gl);ctx.fillStyle="#f2f6fa";ctx.globalAlpha=.9;ctx.fill();
+  ctx.fillStyle="#ffffff";ctx.globalAlpha=.14;for(let i=0;i<2;i++){ctx.beginPath();path(ICE.an.hi[i]);path(ICE.an.gh[i]);ctx.fill()}night();ctx.restore();
+  ctx.beginPath();path(g.an);if(g.gl)path(g.gl);ctx.strokeStyle="#9fb6cc";ctx.lineWidth=.8;ctx.globalAlpha=.6;ctx.stroke();
   const h=pfxHemi();if(h){ctx.fillStyle="#4ade80";ctx.globalAlpha=.07;if(ni===1){ctx.beginPath();path(h.n);ctx.fill()}if(si===1){ctx.beginPath();path(h.s);ctx.fill()}}ctx.globalAlpha=1}
 function pfxDraw(ctx,now,z){if(!pfxOn())return;const zs=Math.min(1.6,.8+(typeof V!=="undefined"?V.k:1)*.08),still=typeof reduce!=="undefined"&&reduce;ctx.save();
   try{pfxSeasons(ctx,z)}catch(e){}
