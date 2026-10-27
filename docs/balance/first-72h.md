@@ -57,3 +57,19 @@ Headless Chromium (Playwright) on the real game, with Firebase off. It started a
 | 6 | (optional) a new per-type spread cost, e.g. `cost()` ×(1 + 0.04 × number of that type already owned) | — | Each extra copy costs a bit more, so the 300-cart sprawl tapers off. This is a small new mechanic, so only add it if 3 and 4 are not enough. |
 
 Apply 1, 3 and 4 together and the 72 h net worth should land around $1–2M: Entrepreneur rising into early Mogul, instead of $4–6M.
+
+## After tuning
+Applied fixes 1–5 (not 6): goal rewards g6/g7/g8/g9 → $25K/$50K/$60K/$250K; new games start with $1,500 (old saves keep their cash); cart-tier gross −15% (cart 205, coffeecart 230, icecream 190, taco 315, pretzel 150, noodle 269, smoothie 212); kiosk 1000, shop 2700, rest 7600; `RPX` 4.
+
+Re-run: same bot, 2 runs, snapshots at 6 / 24 / 72 h only. No console errors.
+
+| Hour | Net worth before | Net worth after | Income/hr before | Income/hr after | Businesses after | Rank after |
+|---|---|---|---|---|---|---|
+| 6 | $1.1–1.5K | $3.4–17.7K | $20–230 | $0.5–1.1K | 4–7 | Side hustler |
+| 24 | $0.50–0.60M | $36–46K | $25–60K | $3.5–4.2K | 12–15 | Shop owner |
+| 72 | $3.7–6.0M | $0.74–0.78M | $175–260K | $57–65K | 133–136 | Entrepreneur |
+
+- The start works now: the first pretzel stand is bought in the first 20 minutes, and kiosks join from hour 6.
+- Hour 24 is now about 12× lower. The goal-cash spike is gone, and g7/g8 have not paid out by then.
+- Hour 72 lands at about $0.75M, below the $1–2M target. That is slower than intended, so fix 6 isn't needed. If it feels too slow, raise g8 back toward $150K or trim cart gross by only −10%.
+- Research: 0–2 techs by 72 h. RP is no longer the limit (500–600 RP banked). The bot's "3× cash price" rule is what holds it back now.
