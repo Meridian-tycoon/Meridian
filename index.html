@@ -842,7 +842,7 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   if(typeof airDraw==="function"&&z<11)try{airDraw(ctx,now)}catch(e){}
   if(typeof satDraw==="function"&&z<11)try{satDraw(ctx,now)}catch(e){}
   if(typeof drawRigs==="function")try{drawRigs(ctx)}catch(e){}
-  if(typeof drawTens==="function"&&z<11)try{drawTens(ctx)}catch(e){}if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);ctx.restore()}
+  if(typeof drawTens==="function"&&z<11)try{drawTens(ctx)}catch(e){}if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);if(typeof drawPlWars==="function"&&z<11)try{drawPlWars(ctx)}catch(e){}ctx.restore()}
   const dotA=1-smooth01(10.5,12,z),labA=1-smooth01(8.5,9.6,z);   // our city dots hand over to the real map as you get close
   if(dotA>0.02){ctx.globalAlpha=dotA;
   if(S.pol&&(S.pol.r>=0||S.pol.ctrl&&Object.keys(S.pol.ctrl).length)){const lead=S.pol.r>=0?S.pol.c:null;for(const c of CITIES){const mine=c.country===lead,inf=S.pol.ctrl&&S.pol.ctrl[c.country];if(!mine&&!inf||!visible(c.lon,c.lat))continue;const [x,y]=proj([c.lon,c.lat]);
@@ -2900,11 +2900,11 @@ const cfCap=n=>_cfC[n]||(_cfC[n]=cap(n));
 const cfOn=()=>!S.cfOff;
 function cfLevels(){const o={};for(const w of S.wars||[])if(w.l>0)for(const n of [w.a,w.b])o[n]=Math.max(o[n]||0,w.l);for(const n of bgMilKeys())o[n]=4;return o}
 function cfMid(w){const A=cfCap(w.a),B=cfCap(w.b);return d3.geoInterpolate([A.lon,A.lat],[B.lon,B.lat])(.5)}
-function cfChip(){const el=document.getElementById("cfbox");if(!el)return;const ws=(S.wars||[]).filter(w=>w.l>0),pw=bgMilKeys(),st=typeof inStreet!=="undefined"&&inStreet,
-  k=[ws.length,pw.join("|"),cfOn(),st,ws.map(w=>w.l).join("")].join();if(k===_cfKey)return;_cfKey=k;
-  el.hidden=!(ws.length||pw.length)||st;if(!ws.length&&!pw.length&&_cfPop)cfClose();const hot=ws.filter(w=>w.l>=3).length;
+function cfChip(){const el=document.getElementById("cfbox");if(!el)return;const ws=(S.wars||[]).filter(w=>w.l>0),pw=bgMilKeys(),st=typeof inStreet!=="undefined"&&inStreet,npl=typeof plWars==="function"?plWars().length:0,
+  k=[ws.length,pw.join("|"),cfOn(),st,ws.map(w=>w.l).join(""),npl].join();if(k===_cfKey)return;_cfKey=k;
+  el.hidden=!(ws.length||pw.length||npl)||st;if(!ws.length&&!pw.length&&_cfPop)cfClose();const hot=ws.filter(w=>w.l>=3).length;
   const ch=document.getElementById("cfchip");ch.setAttribute("aria-pressed",cfOn());ch.title=cfOn()?"Hide conflicts on the map":"Show conflicts on the map";
-  ch.innerHTML=`⚔ Conflicts${cfOn()?"":" (hidden)"} <i>${ws.length+pw.length}</i>`;if(!hot&&!pw.length)ch.querySelector("i").style.background=WARC[1];
+  ch.innerHTML=`⚔ Conflicts${cfOn()?"":" (hidden)"} <i>${ws.length+pw.length+npl}</i>`;if(!hot&&!pw.length&&!npl)ch.querySelector("i").style.background=WARC[1];
   const lg=document.getElementById("cfleg");lg.hidden=!cfOn();lg.innerHTML=[1,2,3,4].map(l=>`<span><b style="background:${WARC[l]}"></b>${WARL[l]}</span>`).join("")}
 /* Governing country outline: only on this player's own map, while they hold an office. Light tint of the flag's main colour. */
 const _govCol={};function govFlagCol(n){if(_govCol[n])return _govCol[n];let col="#93c5fd";try{const c=presFlagCv(n),g=c.getContext("2d"),d=g.getImageData(0,0,c.width,c.height).data,cnt={};
@@ -2917,6 +2917,17 @@ function drawGovLine(ctx){const p=S.pol;if(!p||!(p.r>=0)||!p.c)return;const f=cf
 function drawTens(ctx){if(!cfOn())return;const T=(typeof wfView==="function"&&wfView().tens)||{},ws=S.wars||[];ctx.save();ctx.setLineDash([2,6]);
   for(const k in T){const v=+T[k].v||0;if(v<=0)continue;const [a,b]=k.split("|");if(ws.some(w=>w.l>0&&((w.a===a&&w.b===b)||(w.a===b&&w.b===a))))continue;const A=cfCap(a),B=cfCap(b);if(!A||!B)continue;
     ctx.beginPath();path({type:"LineString",coordinates:[[A.lon,A.lat],[B.lon,B.lat]]});ctx.globalAlpha=.12+Math.min(1,v/100)*.18;ctx.strokeStyle=wfStage(v)[2];ctx.lineWidth=1;ctx.stroke()}
+  ctx.restore()}
+/* Other players' Leader wars (profile lw + govC), so everyone sees them: war-red line between capitals and a ⚔ badge. Display only. */
+function plWars(){const out=[],P=(typeof ON!=="undefined"&&ON.players)||[],old=Date.now()-3*864e5;for(const p of P){if(!p||!p.govC||!Array.isArray(p.lw))continue;
+  const t=p.lastSeen&&p.lastSeen.toMillis?p.lastSeen.toMillis():Date.now();if(t<old)continue;
+  for(const n of p.lw.slice(0,11))if(typeof n==="string"&&n!==p.govC&&COUNTRIES.includes(n)&&COUNTRIES.includes(p.govC))out.push({a:p.govC,b:n,nm:p.name||"A player"})}return out}
+function drawPlWars(ctx){if(!cfOn())return;const L=plWars();if(!L.length)return;const zs=Math.min(1.6,.85+V.k*.08),col=WARC[4];ctx.save();
+  for(const w of L){const A=cfCap(w.a),B=cfCap(w.b);if(!A||!B)continue;ctx.globalAlpha=.85;ctx.beginPath();path({type:"LineString",coordinates:[[A.lon,A.lat],[B.lon,B.lat]]});ctx.strokeStyle=col;ctx.lineWidth=2.4;ctx.setLineDash([]);ctx.stroke();
+    const m=d3.geoInterpolate([A.lon,A.lat],[B.lon,B.lat])(.5);if(!visible(m[0],m[1]))continue;const [x,y]=proj(m),r=9*zs;ctx.globalAlpha=1;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=col;ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle="#fff";ctx.stroke();
+    ctx.fillStyle="#fff";ctx.font=`700 ${Math.round(10*zs)}px system-ui, sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("⚔",x,y+.5);
+    ctx.font=`600 ${Math.round(10*zs)}px system-ui, sans-serif`;ctx.fillStyle=css("--ink");ctx.fillText(`${w.a} vs ${w.b}`,x,y+r+8*zs);ctx.textAlign="start";
+    _cfHit.push({x,y,r:Math.max(16,r+6),pl:w})}
   ctx.restore()}
 function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filter(w=>w.l>0),pw=bgMilKeys();if((!ws.length&&!pw.length)||!cfOn())return;
   const mk=S.wmd&&S.wmd.h?Object.keys(S.wmd.h).filter(n=>S.wmd.h[n].u>S.day):[];
@@ -2948,7 +2959,7 @@ function drawConflicts(ctx){_cfHit.length=0;cfChip();const ws=(S.wars||[]).filte
     const w=ws.find(q=>q.a===n||q.b===n);if(w)_cfHit.push({x,y,r:Math.max(16,r+6),w})}
   ctx.restore();if(anim&&live)wlTick()}
 /* tap: a badge opens its popup; with no city under the finger, a shaded country opens its worst conflict */
-function cfTap(x,y,best,bd){const ws=(S.wars||[]).filter(w=>w.l>0);if((!ws.length&&!bgMilKeys().length)||!cfOn()){if(_cfPop)cfClose();return false}
+function cfTap(x,y,best,bd){if(cfOn())for(const h of _cfHit)if(h.pl&&Math.hypot(h.x-x,h.y-y)<h.r){toast(`⚔ ${h.pl.nm} (Leader of ${h.pl.a}) is at war with ${h.pl.b}`);return true}const ws=(S.wars||[]).filter(w=>w.l>0);if((!ws.length&&!bgMilKeys().length)||!cfOn()){if(_cfPop)cfClose();return false}
   let hit=null,hd=1e9;for(const h of _cfHit){const d=Math.hypot(h.x-x,h.y-y);if(d<h.r&&d<hd){hd=d;hit=h.w}}
   if(!hit&&best){if(_cfPop)cfClose();return false}
   if(!hit&&!best){const g=proj.invert([x,y]);if(g&&visible(g[0],g[1])){const lv=cfLevels();for(const n in lv){const f=cfFeat(n);if(f&&d3.geoContains(f,g)){hit=ws.filter(w=>w.a===n||w.b===n).sort((a,b)=>b.l-a.l)[0]||bgPseudo(n);break}}}}
@@ -7173,7 +7184,7 @@ async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=
 function onRefresh(){if((mode==="pf"||mode==="sv")&&sheet.classList.contains("open")&&!(document.activeElement&&/^(INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;reSheet();sheet.scrollTop=y}}
 function onPubData(){const p=onProf(),{nw}=totals(),ids=o=>Object.keys(o||{}).filter(k=>o[k]&&CITIES[k]&&(typeof o[k]!=="object"||Object.keys(o[k]).length)).map(Number).slice(0,100);
   const v=Math.round(isFinite(nw)?nw:0),rank=Math.min(1000,1+S.rivals.filter(r=>r.nw>v).length+ON.players.filter(q=>(+q.nw||0)>v).length);
-  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null,...(typeof CT!=="undefined"&&CT&&CT.mine?{cid:CT.mine.id}:{}),...(ipoTk()?{tk:ipoTk()}:{}),...(Math.min(3,Math.floor(+S.sats||0))>0?{sats:Math.min(3,Math.floor(+S.sats||0))}:{}),...(S.pol&&S.pol.r>=0?{gov:true,...(S.pol.c?{govC:String(S.pol.c).slice(0,40),govR:S.pol.r,govS:Math.max(0,Math.round(S.pol.since||0))}:{})}:{})}}
+  return{name:(p.name||"Tycoon").slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null,...(typeof CT!=="undefined"&&CT&&CT.mine?{cid:CT.mine.id}:{}),...(ipoTk()?{tk:ipoTk()}:{}),...(Math.min(3,Math.floor(+S.sats||0))>0?{sats:Math.min(3,Math.floor(+S.sats||0))}:{}),...(typeof bgMilKeys==="function"&&bgMilKeys().length?{lw:bgMilKeys().slice(0,11).map(x=>String(x).slice(0,40))}:{}),...(S.pol&&S.pol.r>=0?{gov:true,...(S.pol.c?{govC:String(S.pol.c).slice(0,40),govR:S.pol.r,govS:Math.max(0,Math.round(S.pol.since||0))}:{})}:{})}}
 function onLocPub(){try{if(!ON.ready||!ON.user)return;const l=S.loc&&S.loc.city;if(l!==ON.lastLoc){ON.lastLoc=l;onPublish(true)}}catch(e){}}
 function onPublish(force){if(!ON.ready||!ON.user||ON.deleting)return;const d=onPubData(),sig=JSON.stringify(d),n=Date.now();
   if(!force&&!(n-ON.lastPub>=60000||(sig!==ON.lastSig&&n-ON.lastPub>=60000)))return;
