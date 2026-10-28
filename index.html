@@ -4950,7 +4950,7 @@ const MILCFG={
   batch:5,              // units bought per recruit tap
   reserveUp:.25,        // upkeep share while not Leader (army in reserve)
   terrains:["plains","mountains","jungle","desert","urban"],
-  enemyStr:6,enemyMin:12,enemyVar:.4,enemyRegen:.004, // enemy strength per unit of country size (min enemyMin, ±40% by hash), share regained per hour
+  enemyStr:12,enemyMin:24,enemyVar:.4,enemyRegen:.004, // enemy strength per unit of country size (min enemyMin, ±40% by hash), share regained per hour
   defBonus:1.15,        // defenders' home advantage
   frontStart:50,frontSwing:6,battleNoise:.25, // front progress, max move per battle, ± random battle luck
   loss:.025,            // share of the weaker side's strength lost per battle (scaled by the enemy's share)
@@ -4968,6 +4968,8 @@ function mil(){const p=pol(),m=p.mil=p.mil||{};if(!m.units||typeof m.units!=="ob
 const milTerrain=n=>{const cs=ctyCities(n),lat=cs.reduce((a,c)=>a+Math.abs(c.lat),0)/Math.max(1,cs.length),T=MILCFG.terrains;if(ctyScale(n)>60)return "urban";if(lat<15)return hashS(n)%2?"jungle":"plains";if(lat<32&&hashS(n)%3===0)return "desert";return T[hashS(n)%T.length]};
 // spread ±enemyVar first, then the enemyMin floor, so enemyMin is a hard minimum
 const milEnemy=n=>Math.round(Math.max(MILCFG.enemyMin,ctyScale(n)*MILCFG.enemyStr*(1-MILCFG.enemyVar+(hashS(n+"#")%100)/100*2*MILCFG.enemyVar)));
+/* PR: rival armies doubled (matches WLCFG.k 5000); one-time lift of wars already running (S.ex2 marks it done) */
+function milEx2(){const m=S.pol&&S.pol.mil;if(S.ex2||!m)return;for(const n in m.wars||{}){const w=m.wars[n];if(w&&w.enemyMax>0){w.enemyMax*=2;w.enemyStr*=2}}S.ex2=1}
 const milGar=()=>{const m=mil();let g=0;for(const n in m.occ)g+=m.occ[n].gar||0;return g};
 function milStr(ter){const m=mil(),U=MILCFG.units;let s=0;for(const k in U){const c=k==="inf"?Math.max(0,m.units.inf-milGar()):m.units[k];s+=c*U[k].str*(ter?U[k].t[ter]:1)}return s}
 function milUpkeep(){const m=S.pol&&S.pol.mil;if(!m)return 0;let v=0;for(const k in MILCFG.units)v+=(m.units[k]||0)*MILCFG.units[k].up;return polLeader()?v*(1-presFx("upk")):v*MILCFG.reserveUp}
@@ -5017,7 +5019,7 @@ function milOccLeft(n){const m=mil(),o=m.occ[n],C=MILCFG;if(!o)return"";const ne
 /* bring troops home from one war (the war stays on, frozen) or send them back */
 function milHome(n){const w=mil().wars[n];if(!w)return;w.home=w.home?0:1;toast(w.home?`🏠 Troops are coming home from ${n}. The front holds until you send them back`:`🪖 Troops sent back to ${n}`);try{if(w.home)troopFly(n,pol().c);else troopFly(pol().c,n)}catch(e){}}
 function milAbandon(n){const m=mil();if(m.occ[n]){delete m.occ[n];logPol(`You withdrew from ${n}`)}}
-function milHour(quiet){const p=S.pol;if(!p||!p.mil)return;const m=mil(),C=MILCFG,lead=polLeader(),say=(t)=>{if(!quiet)logPol(t);else S.log.unshift("Government: "+t);milLog(m,t)};
+function milHour(quiet){const p=S.pol;if(!p||!p.mil)return;milEx2();const m=mil(),C=MILCFG,lead=polLeader(),say=(t)=>{if(!quiet)logPol(t);else S.log.unshift("Government: "+t);milLog(m,t)};
   {const nb=wpnTick();if(nb&&!quiet)toast(`${nb} weapon${nb>1?"s":""} ready in your arsenal`)}
   // losing leadership forces a white peace in every war (stated design choice)
   if(!lead&&Object.keys(m.wars).length){for(const n in m.wars)milEndWar(n,"white",quiet);for(const n in m.occ)m.occ[n].resist=Math.min(100,m.occ[n].resist+20)}
