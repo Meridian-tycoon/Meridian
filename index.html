@@ -90,7 +90,7 @@ canvas#map{position:absolute;inset:0;z-index:1;pointer-events:none}
 #cfchip{display:flex;align-items:center;gap:6px}#cfchip[aria-pressed=false],#satchip[aria-pressed=false]{opacity:.7}#cfchip i{font-style:normal;background:var(--bad);color:#fff;border-radius:999px;padding:0 6px;font-size:11px}
 #cfleg{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:11px;color:var(--ink);display:grid;gap:3px;box-shadow:0 1px 4px rgba(0,0,0,.15)}
 #cfleg span{display:flex;align-items:center;gap:6px;white-space:nowrap}#cfleg b{width:10px;height:10px;border-radius:3px;display:inline-block}
-#cfpop{position:absolute;z-index:6;width:min(290px,calc(100% - 24px));box-sizing:border-box;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px 14px;box-shadow:0 12px 30px rgba(0,0,0,.25);font-size:13px;line-height:1.4}
+#cfpop{position:absolute;z-index:6;width:min(380px,calc(100% - 24px));max-height:calc(100% - 64px);overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px 14px;box-shadow:0 12px 30px rgba(0,0,0,.25);font-size:13px;line-height:1.4}
 #cfpop h4{margin:0 26px 4px 0;font-size:15px;overflow-wrap:anywhere}#cfpop .x{all:unset;cursor:pointer;position:absolute;right:10px;top:8px;font-size:18px;line-height:1;padding:2px 4px;color:var(--muted)}
 #cfpop .stg{display:flex;gap:3px;margin:8px 0 4px}#cfpop .stg i{flex:1;height:5px;border-radius:3px;background:var(--line)}
 #cfpop .stl{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:8px}
@@ -11054,10 +11054,19 @@ function wevTick(){try{if(S.dead)return;const now=Date.now(),E=wevS(),c=wevCur(n
   if(be){wevSync(now);wevMaster(now);wevFetch(now,wevWk(now));wevClaim(now)}wevChip();if(typeof wcTick==="function")wcTick()}catch(e){console.warn("wevTick",e)}}
 /* ----- UI: map chip + themed board popup + phone app ----- */
 function wevChip(){let b=document.getElementById("evchip");const mw=document.getElementById("mapwrap");if(!mw)return;
-  if(!b){b=document.createElement("button");b.id="evchip";b.className="chip";b.addEventListener("click",wevOpen);mw.appendChild(b)}
+  if(!b){b=document.createElement("button");b.id="evchip";b.className="chip";b.addEventListener("click",ev=>{if(b._drag){b._drag=0;ev.preventDefault();return}wevOpen()});mw.appendChild(b);evDrag(b,mw)}
   const now=Date.now(),w=wevWk(now),c=wevCur(now),e=wevKind(w),E=wevS(),claim=Object.keys(E.sent).some(k=>!E.cl[k]&&+E.sent[k]>0&&now>=wevT1(+k));
   const t=c?`${e.i} ${e.n} · ${wevLeft(c.t1-now)}`:`🏁 ${e.n} results · next in ${wevLeft(wevNx(w)-now)}`;const h=`<span>${t}</span>${claim?'<i class="ev-dot"></i>':""}`;
   if(b.dataset.h!==h){b.dataset.h=h;b.innerHTML=h;b.setAttribute("aria-label",`World event: ${t}. Open the event board`)}b.style.setProperty("--evc",e.col)}
+/* Event chip can be dragged anywhere on the map; spot is remembered */
+function evPos(b,mw){let p=null;try{p=JSON.parse(localStorage.getItem("mer_evpos")||"null")}catch(e){}if(!p)return;const M=mw.getBoundingClientRect(),W=M.width,H=M.height;if(!W)return;
+  b.style.left=Math.max(0,Math.min(W-b.offsetWidth,p.x*W))+"px";b.style.top=Math.max(0,Math.min(H-b.offsetHeight,p.y*H))+"px"}
+function evDrag(b,mw){let s=null;b.style.touchAction="none";evPos(b,mw);addEventListener("resize",()=>evPos(b,mw));
+  b.addEventListener("pointerdown",e=>{const R=b.getBoundingClientRect(),M=mw.getBoundingClientRect();s={x:e.clientX,y:e.clientY,l:R.left-M.left,t:R.top-M.top,m:0};try{b.setPointerCapture(e.pointerId)}catch(_){}});
+  b.addEventListener("pointermove",e=>{if(!s)return;const dx=e.clientX-s.x,dy=e.clientY-s.y;if(!s.m&&Math.hypot(dx,dy)<6)return;s.m=1;
+    const M=mw.getBoundingClientRect(),W=M.width,H=M.height;b.style.left=Math.max(0,Math.min(W-b.offsetWidth,s.l+dx))+"px";b.style.top=Math.max(0,Math.min(H-b.offsetHeight,s.t+dy))+"px"});
+  b.addEventListener("pointerup",()=>{if(s&&s.m){b._drag=1;try{localStorage.setItem("mer_evpos",(()=>{const R=b.getBoundingClientRect(),M=mw.getBoundingClientRect();return JSON.stringify({x:(R.left-M.left)/M.width,y:(R.top-M.top)/M.height})})())}catch(_){}}s=null});
+  b.addEventListener("pointercancel",()=>{s=null})}
 function wevOpen(){if(document.getElementById("evpop"))return;const el=document.createElement("div");el.id="evpop";el.innerHTML=`<div class="ev-bk" data-ev="x"><div class="ev-card" role="dialog" aria-modal="true" aria-label="World event" tabindex="-1"></div></div>`;
   el.addEventListener("click",ev=>{const t=ev.target.closest("[data-ev]");if(!t)return;const a=t.dataset.ev;if(a==="x"){if(t.classList.contains("ev-bk")&&ev.target!==t)return;el.remove();return}
     if(a==="tab"){WEV.tab=t.dataset.k;wevRender()}else if(a==="in"){el.remove();try{openSaves()}catch(x){}}});
