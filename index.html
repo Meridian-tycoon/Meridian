@@ -7475,9 +7475,10 @@ function pcMsgPaint(soft){const el=document.getElementById("pcmsg");if(!el||el.s
 function pcApp(a){if(a==="msg"){pcMsgOpen();return}if(typeof PCW!=="undefined"&&PCW[a]){pcwOpen(a);return}
   if(pcDx[a]){DX.page=pcDx[a]==="fin"?null:pcDx[a];if(DX.page&&typeof dxPageOk==="function"&&!dxPageOk(DX.page)){toast("You don't run that business yet");DX.page=null}dxOpen();pcFocus("dx");return}
   if(pcMx[a]){if(a==="int"&&!intOn())return toast("Buy the Intelligence Agency in the office shop first");if(a!=="int"&&!misOn()&&!intOn())return toast("Buy Military Intelligence in the office shop first");MX.page=a;mxOpen();pcFocus("mx");return}
+  if(a==="space"&&typeof spOpen==="function"){spOpen();if(SPW.open)pcFocus("mx");return}
   if(a==="govt"){govTab="pol";document.body.classList.add("ofc-gov")}PH.open=true;PH.app=a;phRender();pcFocus("ph")}
 function pcClose(){const el=document.getElementById("pcd");if(el)el.style.display="none";clearInterval(PC.t);document.body.classList.remove("ofc-desk","pcm-dx","pcm-mx","pcm-ph","pcm-msg","pcf-dx","pcf-mx","pcf-ph","pcf-msg");
-  const m=document.getElementById("pcmsg");if(m)m.style.display="none";document.querySelectorAll(".pcw").forEach(x=>x.style.display="none");if(DX.open)dxClose();if(MX.open)mxClose();if(PH.open&&PH.app&&pcPh[PH.app]){try{presGovClose()}catch(e){}PH.open=false;PH.app=null;phRender()}if(OFC.cv)OFC.cv.focus({preventScroll:true})}
+  const m=document.getElementById("pcmsg");if(m)m.style.display="none";document.querySelectorAll(".pcw").forEach(x=>x.style.display="none");if(DX.open)dxClose();if(MX.open)mxClose();if(typeof SPW!=="undefined"&&SPW.open)spClose();if(PH.open&&PH.app&&pcPh[PH.app]){try{presGovClose()}catch(e){}PH.open=false;PH.app=null;phRender()}if(OFC.cv)OFC.cv.focus({preventScroll:true})}
 /* ---------- Presidential computer, round 3: Executive Orders, Budget, Polls, Diplomacy, Red phone, Nuclear briefcase, Spy feed, Calendar, Themes ----------
    State S.pres = {eo:{k:until}, eoCd:{k:t}, bud:{def,hea,inf,intl}, ah:[approval by day], rel:{country:modifier}, deal:{c:until}, ally:{c:1}, rcd:{c:t}, th:{wp,bar}, ad:t}.
    Daily effects run in presDay (called from gxDay). Each app opens as its own desktop window (pcw-<id>) with a taskbar tab. */
@@ -11530,12 +11531,20 @@ function spOpen(){if(!hasTech("spaceport"))return toast("Research Launch complex
       if(a==="tab"){s.tab=k;spRender();return}if(a==="ty"){s.ty=k;spRender();return}if(a==="pt"){s.pt=+k;spRender();return}
       if(a.startsWith("col")){colClick(a,k);return}if(a.startsWith("ox")){oxClick(a,k);return}if(a==="go"){spLaunch(+k,s.ty);return}if(a==="deo"){spDeorbit(k,0);return}if(a==="rep"){spDeorbit(k,1);return}});
     el.addEventListener("change",e=>{const t=e.target;if(t&&t.dataset&&t.dataset.spc)colPick(t.dataset.spc,t.value);if(t&&t.dataset&&t.dataset.oxf)oxSet(t.dataset.oxf,t.value,1)});
-    el.addEventListener("input",e=>{const t=e.target;if(t&&t.dataset&&t.dataset.oxf&&t.tagName==="INPUT")oxSet(t.dataset.oxf,t.value,0)})}
+    el.addEventListener("input",e=>{const t=e.target;if(t&&t.dataset&&t.dataset.oxf&&t.tagName==="INPUT")oxSet(t.dataset.oxf,t.value,0)})
+    /* movable + resizable like the Military dashboard; spot kept for this session */
+    let g=null;el.addEventListener("pointerdown",e=>{if(el.classList.contains("mdx-full"))return;const rs=e.target.closest(".mdx-rs");if(!rs&&(!e.target.closest(".mdx-bar")||e.target.closest("button,input,select,a")))return;
+      const r=el.getBoundingClientRect();g={rs:!!rs,x:e.clientX,y:e.clientY,l:r.left,t:r.top,w:r.width,h:r.height,id:e.pointerId};try{el.setPointerCapture(e.pointerId)}catch(_){}e.preventDefault()});
+    el.addEventListener("pointermove",e=>{if(!g||e.pointerId!==g.id)return;const dx=e.clientX-g.x,dy=e.clientY-g.y,vw=innerWidth,vh=innerHeight;
+      if(g.rs){el.style.width=Math.max(Math.min(340,vw-16),Math.min(vw-g.l,g.w+dx))+"px";el.style.height=Math.max(Math.min(420,vh-16),Math.min(vh-g.t,g.h+dy))+"px"}
+      else{el.style.left=Math.max(0,Math.min(vw-g.w,g.l+dx))+"px";el.style.top=Math.max(0,Math.min(vh-g.h,g.t+dy))+"px"}
+      SPW.pos={x:parseFloat(el.style.left),y:parseFloat(el.style.top),w:parseFloat(el.style.width),h:parseFloat(el.style.height)}});
+    const de=e=>{if(g&&e.pointerId===g.id)g=null};el.addEventListener("pointerup",de);el.addEventListener("pointercancel",de)}
   const vw=innerWidth,vh=innerHeight,el=SPW.el;if(vw<560){el.classList.add("mdx-full");Object.assign(el.style,{left:"0px",top:"0px",width:vw+"px",height:vh+"px"})}
-  else{el.classList.remove("mdx-full");const w=Math.min(1100,vw-48),h=Math.min(780,vh-48);Object.assign(el.style,{left:(vw-w)/2+"px",top:(vh-h)/2+"px",width:w+"px",height:h+"px"})}
+  else{el.classList.remove("mdx-full");const P=SPW.pos,w=Math.min(P?P.w:1100,vw-16),h=Math.min(P?P.h:780,vh-16);Object.assign(el.style,{left:(P?Math.max(0,Math.min(vw-w,P.x)):(vw-w)/2)+"px",top:(P?Math.max(0,Math.min(vh-h,P.y)):(vh-h)/2)+"px",width:w+"px",height:h+"px"})}
   el.style.display="flex";SPW.open=true;spRender();clearInterval(SPW.iv);SPW.iv=setInterval(()=>{if(!SPW.open)return clearInterval(SPW.iv);const ae=document.activeElement;if(ae&&SPW.el.contains(ae)&&/^(INPUT|SELECT)$/.test(ae.tagName))return;spRender()},5000)}
 function spClose(){SPW.open=false;clearInterval(SPW.iv);if(SPW.el)SPW.el.style.display="none"}
-function spRender(){if(!SPW.el||!SPW.open)return;const sb=SPW.el.querySelector(".mdx-body"),sy=sb?sb.scrollTop:0;try{spDraw()}finally{const nb=SPW.el.querySelector(".mdx-body");if(nb&&sy)nb.scrollTop=sy}}
+function spRender(){if(!SPW.el||!SPW.open)return;const sb=SPW.el.querySelector(".mdx-body"),sy=sb?sb.scrollTop:0;try{spDraw()}finally{if(!SPW.el.querySelector(":scope>.mdx-rs"))SPW.el.insertAdjacentHTML("beforeend",'<div class="mdx-rs" aria-hidden="true"></div>');const nb=SPW.el.querySelector(".mdx-body");if(nb&&sy)nb.scrollTop=sy}}
 function spDraw(){const s=SP(),now=Date.now(),P=spPorts(),E=dxE,tabs=[["ov","Overview"],["lc","Launch control"],["fl","Fleet"],["col","Colonies"],["ox","Ore exchange"],["wr","World registry"]];if(!tabs.some(t=>t[0]===s.tab))s.tab="ov";
   const kp=(lb,v,ft,bg,fg,ic)=>`<div class="mdx-card mdx-kpi"><span class="mdx-ic" style="background:${bg};color:${fg};font-size:20px">${ic}</span><div class="mdx-lb"><span>${lb}</span></div><div class="mdx-big">${v}</div><div class="mdx-kfoot"><small>${ft}</small></div></div>`;
   const btn=(a,k,t,dis,bg)=>`<button class="mdx-pill" data-sp="${a}" data-k="${k}" ${dis?"disabled":""} style="border:0;cursor:pointer;color:#fff;background:${bg||"#312e81"};opacity:${dis?.5:1}">${t}</button>`;
