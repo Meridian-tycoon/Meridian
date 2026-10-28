@@ -122,6 +122,37 @@ service cloud.firestore {
     // World Council Leader: one seat for the whole world. A player creates it once for themselves; nobody can take it over.
     // The holder may set a decree (dec) that overrides the council vote for next season.
     // Only the master world (Mark) can delete it to free the seat.
+    // Player alliances: palliance/{a_b} with a < b (uids). Only the two players read or write it.
+    // The proposer creates it pending (st 'p'); only the other side may accept (st 'on'). Each side only edits its own
+    // country / name / intel fields (ca,na,ia for a; cb,nb,ib for b). Either side may delete it.
+    function paValid(d) {
+      return d.keys().hasOnly(['a', 'b', 'by', 'st', 'ca', 'cb', 'na', 'nb', 'ia', 'ib', 'at'])
+        && d.keys().hasAll(['a', 'b', 'by', 'st', 'ca', 'cb', 'na', 'nb', 'ia', 'ib', 'at'])
+        && d.a is string && d.b is string && d.a < d.b && d.by in [d.a, d.b]
+        && d.st in ['p', 'on']
+        && d.ca is string && d.ca.size() <= 40 && d.cb is string && d.cb.size() <= 40
+        && d.na is string && d.na.size() <= 40 && d.nb is string && d.nb.size() <= 40
+        && d.ia is map && d.ia.size() <= 30 && d.ib is map && d.ib.size() <= 30
+        && d.at == request.time;
+    }
+    match /palliance/{id} {
+      allow read: if request.auth != null && (request.auth.uid == resource.data.a || request.auth.uid == resource.data.b);
+      allow create: if request.auth != null && paValid(request.resource.data)
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.st == 'p'
+        && id == request.resource.data.a + '_' + request.resource.data.b;
+      allow update: if request.auth != null && paValid(request.resource.data)
+        && request.auth.uid in [resource.data.a, resource.data.b]
+        && request.resource.data.a == resource.data.a && request.resource.data.b == resource.data.b
+        && request.resource.data.by == resource.data.by
+        && (request.resource.data.st == resource.data.st
+            || (resource.data.st == 'p' && request.resource.data.st == 'on' && request.auth.uid != resource.data.by))
+        && (request.auth.uid == resource.data.a
+            ? request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st', 'ca', 'na', 'ia', 'at'])
+            : request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st', 'cb', 'nb', 'ib', 'at']));
+      allow delete: if request.auth != null && request.auth.uid in [resource.data.a, resource.data.b];
+    }
+
     match /world/wcleader {
       allow read: if true;
       allow create: if request.auth != null
