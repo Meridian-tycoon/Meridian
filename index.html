@@ -5679,13 +5679,13 @@ const RX={el:null,open:false,note:"",log:[]};
    Player orders (online, Firestore): rig owners list their fuel in fuelsell/{uid} {name,fuel,px,at}; another player orders fuelord/{id}
    {by,byName,to,toName,q,px,city,st,at} and pays up front (held in their save). The seller fills (fuel leaves the rigs, seller is paid) or declines;
    the buyer's game then lands the fuel in the chosen depot, or refunds a declined/cancelled order. Cash moves only inside each player's own save. */
-const FXCFG={max:4,every:6,expMin:2,expMax:4,premMin:1.05,premMax:1.35,qMin:.5,qMax:3,ordMax:5,asks:[.9,1,1.1,1.25]};
+const FXCFG={max:4,every:6,expMin:2,expMax:4,premMin:1.05,premMax:1.35,qMin:.2,qMax:.8,ordMax:5,asks:[.9,1,1.1,1.25]};
 const fx=()=>{if(!S.fx||typeof S.fx!=="object")S.fx={};const f=S.fx;if(!Array.isArray(f.of))f.of=[];if(!(f.next>0))f.next=0;if(!(f.done>=0))f.done=0;if(!(f.ask>0))f.ask=1;if(!f.ord||typeof f.ord!=="object")f.ord={};return f};
 const rigFuel=()=>rigs().reduce((a,r)=>a+(r.st&&r.st.fuel>0?r.st.fuel:0),0);
 function rigTake(q){let left=q;for(const r of rigs()){if(!r.st)continue;const t=Math.min(left,r.st.fuel||0);r.st.fuel-=t;left-=t;if(left<=0)break}return q-left}
 function fxTick(now){const f=fx(),rs=rigs();f.of=f.of.filter(o=>o.exp>now);if(!rs.length||f.of.length>=FXCFG.max||now<f.next)return;
   const day=rs.reduce((a,r)=>a+rigDay(r).fuel+rigDay(r).oil*rigPx("oil")/rigPx("fuel")*RIGCFG.fuelX,0),R=(a,b)=>a+Math.random()*(b-a);
-  const co=RIVALS[Math.floor(Math.random()*RIVALS.length)].n,q=Math.max(100,Math.round(day*R(FXCFG.qMin,FXCFG.qMax)/100)*100),px=+(rigPx("fuel")*R(FXCFG.premMin,FXCFG.premMax)).toFixed(2);
+  const co=RIVALS[Math.floor(Math.random()*RIVALS.length)].n,q=Math.max(50,Math.round(day*R(FXCFG.qMin,FXCFG.qMax)/50)*50),px=+(rigPx("fuel")*R(FXCFG.premMin,FXCFG.premMax)).toFixed(2);
   f.of.push({id:(f.cid=(f.cid||0)+1),co,q,px,exp:now+R(FXCFG.expMin,FXCFG.expMax)*DAYMS});f.next=now+FXCFG.every*DAYMS/24*R(.6,1.4)}
 function fxDeliver(id){const f=fx(),o=f.of.find(x=>x.id===id);if(!o)return;rigTick(Date.now());if(rigFuel()<o.q)return toast(`${o.co} wants ${fmtN(o.q)} fuel: you have ${fmtN(rigFuel())} on your rigs`);
   rigTake(o.q);const v=Math.round(o.q*o.px);S.cash+=v;S.earned=(S.earned||0)+v;try{wevAdd("oil",v)}catch(e){}f.done++;f.of=f.of.filter(x=>x!==o);toast(`🛢 Contract delivered: ${fmtN(o.q)} fuel to ${o.co} for ${fmt(v)}`)}
@@ -5725,7 +5725,7 @@ function foSettle(){for(const o of FO.out){if(!(o.st==="filled"||o.st==="decline
 /* SUPPLY CONTRACTS: a company signs for a fixed amount of rig fuel every game day for 3 days, a week or a month.
    Each day the fuel is taken from the rigs and paid at the contract price. A short day pays for what was delivered and costs a 50% penalty on the missing part;
    3 short days break the contract with a penalty worth 3 days of supply. Longer terms pay less per unit but the monthly deal adds a signing bonus. */
-const SCCFG={offers:2,act:3,every:8,terms:[[3,"Short term · 3 days",1.2],[7,"Weekly · 7 days",1.15],[30,"Monthly · 30 days",1.1]],qMin:.2,qMax:.6,pen:.5,strikes:3,breakDays:3};
+const SCCFG={offers:2,act:3,every:8,terms:[[3,"Short term · 3 days",1.2],[7,"Weekly · 7 days",1.15],[30,"Monthly · 30 days",1.1]],qMin:.5,qMax:1,pen:.5,strikes:3,breakDays:3};
 const scS=()=>{const f=fx();if(!Array.isArray(f.so))f.so=[];if(!Array.isArray(f.sc))f.sc=[];if(!(f.snext>0))f.snext=0;return f};
 const scDev=()=>{try{return typeof devGod==="function"&&devGod()}catch(e){return false}};
 const rigFuelDay=()=>rigs().reduce((a,r)=>a+rigDay(r).fuel+rigDay(r).oil*rigPx("oil")/rigPx("fuel")*RIGCFG.fuelX,0);
