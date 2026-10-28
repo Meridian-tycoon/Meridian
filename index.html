@@ -12166,7 +12166,7 @@ const futAvg=g=>{let t=0,n=0;for(const c of CITIES){const v=px(c,g);if(v>0&&isFi
 function futBase(k){return k==="oil"?futAvg("oil"):k==="grain"?(futAvg("wheat")+futAvg("corn"))/2:G[k][1]*COLCFG.broker}
 function futSpot(k){return futBase(k)*FUT().w[k]}
 const futNoise=(k,e)=>{let h=7;for(const ch of k+e)h=(h*31+ch.charCodeAt(0))|0;return ((Math.abs(h)%201)-100)/10000}; // fixed ±1% basis per contract
-function futPx(k,e,now){now=now||Date.now();const d=Math.max(0,(e-now)/DAYMS);return futSpot(k)*(1+FUTC.k[k].c*d)*(1+futNoise(k,e)*Math.min(1,d/3))}
+function futPx(k,e,now){now=now||Date.now();const d=Math.max(0,(e-now)/DAYMS),w=FUT().w[k],we=1+(w-1)*Math.pow(.95,24*d);return futBase(k)*we*(1+FUTC.k[k].c*d)*(1+futNoise(k,e)*Math.min(1,d/3))}   // priced on the expected spot: the price shock fades 5%/hour, so there is no free reversion bet
 function futExps(now){const d=Math.floor((now||Date.now())/DAYMS);return FUTC.exp.map(x=>(d+x)*DAYMS)}
 const futD=v=>"$"+Math.round(v).toLocaleString("en-US");
 const futPxS=v=>v>=100?futD(v):"$"+v.toFixed(2);
@@ -12199,7 +12199,7 @@ function futHtml(){const f=FUT(),now=Date.now(),ex=futExps(now),dev=spDev();
   for(const k of FUTK){const C=FUTC.k[k],sp=futSpot(k);
     h+=`<div style="margin-top:8px;padding:6px 8px;border:1px solid #ffffff22;border-radius:8px"><div style="display:flex;justify-content:space-between;color:#fff"><b>${C.ico} ${C.n}</b><span>spot ${futPxS(sp)}</span></div><small style="color:#cbd5e1">${C.sz.toLocaleString("en-US")} ${C.u}/contract · margin ${futD(sp*C.sz*FUTC.m)}</small>`;
     for(const e of ex){const F=futPx(k,e,now),m=F*C.sz*FUTC.m*futQ;const dis=S.cash<m*(1+FUTC.fee/FUTC.m)?"disabled":"";
-      h+=`<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:5px;align-items:center;margin-top:4px;color:#e5e7eb"><span>${Math.round((e-now)/DAYMS)}d</span><span data-futpx="${k}|${e}" style="font-family:var(--mono)">${futPxS(F)}</span>
+      h+=`<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:5px;align-items:center;margin-top:4px;color:#e5e7eb"><span>${Math.ceil((e-now)/DAYMS)}d</span><span data-futpx="${k}|${e}" style="font-family:var(--mono)">${futPxS(F)}</span>
         <button class="buy" data-ph="futo" data-k="${k}|${e}|1" style="min-width:0;padding:3px 8px;font-size:11px;background:#22c55e;color:#06210f;border-color:#22c55e;font-weight:700" ${dis}>Long</button><button class="buy up" data-ph="futo" data-k="${k}|${e}|-1" style="min-width:0;padding:3px 8px;font-size:11px;color:#fff;border-color:#ffffff55" ${dis}>Short</button></div>`}
     h+=`</div>`}
   h+=`<div style="margin-top:12px;font-weight:700;color:#fff">Your positions · realized <span style="color:${f.real>=0?"#22c55e":"#ef4444"}">${f.real>=0?"+":"-"}${futD(Math.abs(f.real))}</span></div>`;
