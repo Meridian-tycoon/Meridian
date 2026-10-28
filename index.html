@@ -3442,7 +3442,8 @@ const STORYCH=[
  {id:"off",t:"Chapter 4: Mr Gray calls",w:()=>{const o=stRv().off||{};return !!(o.taken||o.declined||o.last)},x:"\"Good afternoon. No names. Six days.\" Mr Gray offers anonymous money to whoever will push a quarrel further. Taking it, or not, is now part of your story."},
  {id:"gov",t:"Chapter 5: In office",w:()=>pol().r>=0,x:"You hold public office. Wars, taxes and treaties are no longer things that happen to your business; some of them are now your decision."},
  {id:"war",t:"Chapter 6: The first war",w:()=>(S.wars||[]).some(w=>w&&w.l>0),x:"The Long Calm is properly over: two neighbours are at war. Generals report captures and holds, markets swing, and anonymous money clears the Notary on both sides of the line."},
- {id:"aft",t:"Chapter 7: Aftermath",w:()=>story().ys.st===5||!!story().ys.ch.l,x:"The Yellow Sea war ends in an accord, a shaky ceasefire or a changed map. Nobody in Busan calls it peace, and the Counting House is already tallying who paid for what."}];
+ {id:"aft",t:"Chapter 7: Aftermath",w:()=>story().ys.st===5||!!story().ys.ch.l,x:"The Yellow Sea war ends in an accord, a shaky ceasefire or a changed map. Nobody in Busan calls it peace, and the Counting House is already tallying who paid for what."},
+ {id:"ww",t:"Chapter 8: The Long Calm Breaks",w:()=>!!(S.wwar||S.wwHist),x:"Six wars at once, and the alliances drag in everyone else. Markets crash, fuel doubles in price, and every newsroom on Earth runs the same two words. Talia Okonjo files from Busan every night. When it ends, the world will be counting who held and who folded."}];
 function stUnlock(){try{const s=story(),u=s.u=s.u&&typeof s.u==="object"?s.u:{};for(const c of STORYCH)if(!u[c.id]){let ok=0;try{ok=c.w()}catch(e){}if(ok)u[c.id]=S.day||0}return u}catch(e){return{pro:0}}}
 function stJournal(t,f){try{const s=story();if(!Array.isArray(s.j))s.j=[];s.j.unshift(f?{t,f,d:S.day||0}:{t,d:S.day||0});s.j=s.j.slice(0,60)}catch(e){}}
 function storyApp(){const u=stUnlock(),s=story(),j=Array.isArray(s.j)?s.j:[],n=STORYCH.filter(c=>u[c.id]!=null).length,E=x=>String(x).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -3724,11 +3725,25 @@ function wwarStocks(f,safe){try{const m=MK();for(const a of ASSETS){if(a.t!=="s"
 function wwarDay(quiet){const c=wwarCount(),w=S.wwar;
   if(!w&&c.n>=WWCFG.on&&c.al>=WWCFG.ally){S.wwar={d0:S.day,n:c.n,peak:c.n};wwarStocks(1-WWCFG.crash,1+WWCFG.safe);
     try{const f=FX();f.fuel=Math.min(2,f.fuel*WWCFG.fuel);f.ev={up:true,left:99}}catch(e){}
-    const t=`🔥 WORLD WAR: ${c.n} wars raging at once. Stocks crash ${Math.round(WWCFG.crash*100)}%, fuel jumps ${Math.round((WWCFG.fuel-1)*100)}%`;stNews(t);if(!quiet)toast(t);S.wwHist=(S.wwHist||0)+1}
-  else if(w){w.n=c.n;w.peak=Math.max(w.peak||0,c.n);try{const f=FX();f.fuel=Math.max(WWCFG.fuelMin,f.fuel)}catch(e){}
+    const t=`🔥 WORLD WAR: ${c.n} wars raging at once. Stocks crash ${Math.round(WWCFG.crash*100)}%, fuel jumps ${Math.round((WWCFG.fuel-1)*100)}%`;stNews(t);if(!quiet)toast(t);S.wwHist=(S.wwHist||0)+1;wwStory(0,c)}
+  else if(w){w.n=c.n;w.peak=Math.max(w.peak||0,c.n);wwStory(1,c,quiet);try{const f=FX();f.fuel=Math.max(WWCFG.fuelMin,f.fuel)}catch(e){}
     if(c.n<WWCFG.off){const days=S.day-w.d0;S.wwar=null;wwarStocks(1+WWCFG.bounce,1);try{const f=FX();if(f.ev&&f.ev.up)f.ev=null}catch(e){}
-      const t=`🕊 ARMISTICE: the world war ends after ${days} day${days===1?"":"s"}. Markets recover`;stNews(t);if(!quiet)toast(t)}}
+      const t=`🕊 ARMISTICE: the world war ends after ${days} day${days===1?"":"s"}. Markets recover`;stNews(t);wwStory(2,{days,w});if(!quiet)toast(t)}}
   wwarBan()}
+/* World War story (Chapter 8): journal lines for who joins, a weekly front report, and an ending line with the player's part */
+function wwWars(){const d=dip();return(S.wars||[]).filter(x=>x&&x.l>=4&&!d.ruler[x.a]&&!d.ruler[x.b])}
+function wwStory(k,c,quiet){try{const w=S.wwar||c.w;if(!w)return;
+  if(k===0){w.seen=wwWars().map(x=>wfPair(x.a,x.b));w.hit={};
+    stNews("Six wars, one map. Every capital I call says the same thing: they did not start it. Tonight the Long Calm is over. — MW","Talia Okonjo, Busan");return}
+  if(k===1){if(!Array.isArray(w.seen))w.seen=[];let n=0;for(const x of wwWars()){const p=wfPair(x.a,x.b);if(w.seen.includes(p))continue;w.seen.push(p);
+      if(!quiet&&n<2){n++;const al=x.al&&Object.keys(x.al).length?` (with ${Object.keys(x.al).slice(0,3).join(", ")})`:"";stNews(`⚔ ${x.a} and ${x.b} join the world war${al}`)}}
+    const dd=S.day-w.d0;if(dd>0&&dd%7===0&&w.rep!==dd){w.rep=dd;const cnt={};for(const x of wwWars()){cnt[x.a]=(cnt[x.a]||0)+1;cnt[x.b]=(cnt[x.b]||0)+1}
+      const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0];stNews(`Week ${dd/7} of the world war: ${c.n} fronts open${top?`, ${top[0]} fighting on ${top[1]}`:""}. — MW`,"Talia Okonjo, Busan")}return}
+  if(k===2){const pc=S.pol&&S.pol.r>=0?S.pol.c:null,seen=Array.isArray(w.seen)?w.seen:[],cnt={};for(const p of seen)for(const n of p.split("|"))cnt[n]=(cnt[n]||0)+1;
+    const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0],mine=pc?seen.filter(p=>p.split("|").includes(pc)).length:0;
+    const you=pc?(mine?`${pc} fought on ${mine} front${mine>1?"s":""} and came through.`:`${pc} stayed out of it.`):"You watched it from the boardroom.";
+    stNews(`${c.days} days, ${seen.length} wars, peak ${w.peak||seen.length} at once.${top?` ${top[0]} fought the most.`:""} ${you} — MW`,"Talia Okonjo, Busan");
+    S.wwLast={days:c.days,wars:seen.length,peak:w.peak||0,top:top?top[0]:"",you}}}catch(e){console.warn("wwstory",e)}}
 function wwarBan(){const mw=document.getElementById("mapwrap");if(!mw)return;let b=document.getElementById("wwarban");const w=S.wwar;
   if(!w){if(b)b.remove();return}
   if(!b){b=document.createElement("div");b.id="wwarban";b.style.cssText="position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:49;background:#7f1d1d;color:#fff;border:2px solid #ef4444;border-radius:10px;padding:5px 12px;font:800 13px Figtree,sans-serif;letter-spacing:.06em;pointer-events:none;box-shadow:0 0 18px #ef444488;white-space:nowrap";mw.appendChild(b)}
