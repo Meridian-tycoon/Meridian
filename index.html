@@ -2782,10 +2782,10 @@ function govHtml(c){const n=c.country,g=gov(n),P=PARTIES[g.party];let h=cityHead
     h+=`</div><div class="meta" style="margin-top:6px"><div><span>Control the next government </span>${top?`${PARTIES[top].n} ${fmt(have)} / ${fmt(need)}`:`give ${fmt(need)} to one party`}</div></div><div style="height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:4px 0"><div style="height:100%;width:${Math.min(100,have/need*100)}%;background:var(--own)"></div></div><div>`}
   h+=`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Donations raise a party's odds at the next election. If the party you funded most wins, lobbying gets easier for their whole term.</p>`;
   sheet.innerHTML=h}
-function govSummary(){const ns=COUNTRIES.filter(ownsIn);if(!ns.length)return conflictHtml(null)+tensHtml(null)+dipHtml(null);
-  return conflictHtml(null)+tensHtml(null)+dipHtml(null)+`<div class="sec">Governments</div><div class="list">`+ns.map(n=>{const g=gov(n),p=PARTIES[g.party],c=ctyCities(n)[0];
+function govSummary(){const ns=COUNTRIES.filter(ownsIn),pa=dipPlayerC()?paHtml("gov"):"";if(!ns.length)return pa+conflictHtml(null)+tensHtml(null)+dipHtml(null);
+  return pa+conflictHtml(null)+tensHtml(null)+dipHtml(null)+`<div class="sec">Governments</div><div class="list">`+ns.map(n=>{const g=gov(n),p=PARTIES[g.party],c=ctyCities(n)[0];
     return `<div class="row link" data-go="${c.id}"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${p.col};margin-right:6px"></span>${n}</div><div class="d">${p.n} · tax ${LAWS.tax.v[g.laws.tax]} · min wage ${LAWS.wage.v[g.laws.wage].toLowerCase()}${g.laws.casino?" · casinos banned":""}${g.laws.rent?" · rent control":""}</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`}
-sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)return;if(b.dataset.gov==="tpeace"||b.dataset.gov==="tarms"){tensAct(b.dataset.k,b.dataset.gov);return}if(b.dataset.gov==="tensx"){S.tensX=+b.dataset.k||1;save();renderSheet();return}if(!sel&&/peace|stoke|rally|join|leave|wsup|pdeal/.test(b.dataset.gov)){if(b.dataset.gov=="rally")dipRally();else if(b.dataset.gov=="pdeal")peaceOffer(+b.dataset.w);else if(b.dataset.gov=="wsup")wsupSign(+b.dataset.w,b.dataset.s);else if(b.dataset.gov=="join")warJoin(+b.dataset.w,b.dataset.s);else if(b.dataset.gov=="leave")warJoin(+b.dataset.w,"leave");else warAct(+b.dataset.w,b.dataset.gov);hud();renderSheet();return}if(!sel)return;const c=sel;
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)return;if(b.dataset.gov==="tpeace"||b.dataset.gov==="tarms"){tensAct(b.dataset.k,b.dataset.gov);return}if(/^pa(inv|ok|end)$/.test(b.dataset.gov)){paAct(b.dataset.gov,b.dataset.k);setTimeout(renderSheet,600);return}if(b.dataset.gov==="tensx"){S.tensX=+b.dataset.k||1;save();renderSheet();return}if(!sel&&/peace|stoke|rally|join|leave|wsup|pdeal/.test(b.dataset.gov)){if(b.dataset.gov=="rally")dipRally();else if(b.dataset.gov=="pdeal")peaceOffer(+b.dataset.w);else if(b.dataset.gov=="wsup")wsupSign(+b.dataset.w,b.dataset.s);else if(b.dataset.gov=="join")warJoin(+b.dataset.w,b.dataset.s);else if(b.dataset.gov=="leave")warJoin(+b.dataset.w,"leave");else warAct(+b.dataset.w,b.dataset.gov);hud();renderSheet();return}if(!sel)return;const c=sel;
   const g=gov(c.country),a=b.dataset.gov;
   if(a==="lobby")lobby(c,b.dataset.k,+b.dataset.dir);
   else if(a==="set"){const u=donUnit(c.country);if(S.cash<u||!g.ctrl)return;S.cash-=u;g.laws[b.dataset.k]+=+b.dataset.dir;logGov(`${c.country} decrees ${LAWS[b.dataset.k].n.toLowerCase()}: ${LAWS[b.dataset.k].v[g.laws[b.dataset.k]]}`);toast("Law changed")}
@@ -3548,7 +3548,58 @@ function wfListen(){if(typeof ON==="undefined"||!ON.db)return;
   if(ON.user&&devUid(ON.user.uid)&&!ON.unsubWFQ)ON.unsubWFQ=ON.db.collection("wfund").onSnapshot(q=>{let n=0;ON.wfDone=ON.wfDone||{};q.forEach(x=>{if(ON.wfDone[x.id])return;ON.wfDone[x.id]=1;n++;const v=x.data()||{};
       try{const amt=Math.min(+v.amt||0,1e13);if(!wfApply({k:v.k,w:+v.w,s:v.s,to:v.to,vs:v.vs,amt})&&v.k==="w")wfApply({k:"e",to:v.to,vs:v.vs,amt})}catch(e){console.warn("wf",e)}x.ref.delete().catch(()=>{})});if(n){save();wfPublish(true)}},
     e=>{ON.err="Couldn't read war funding: "+(e&&e.code||e)})}
-function wfTick(){try{wfListen()}catch(e){}wfPublish(false)}
+function wfTick(){try{wfListen()}catch(e){}wfPublish(false);try{paTick()}catch(e){}}
+/* ---------- Player alliances (Mark, 2026-10-28): two player governments ally, share spy intel and defend each other.
+   Firestore palliance/{a_b} (a<b uids) {a,b,by,st:"p"|"on",ca,cb (countries),na,nb (names),ia,ib (each side's spy networks {country:level}),at}.
+   Only the two players read or write it; the invited side accepts (st "on"); either side deletes it to end it.
+   Effects: allies' spy networks show in the Spy Feed and the Alliances panel; when an ally's country is in a war (border clashes or worse),
+   your army joins its side for free (paDefend, from the daily war step). */
+const PACFG={max:5,pubMs:6e4,keys:30};
+const PA={docs:[],un:[],uid:null,pub:0,last:""};
+const paMe=()=>typeof ON!=="undefined"&&ON.user?ON.user.uid:null;
+const paSide=d=>d.a===paMe()?"a":"b",paOther=d=>paSide(d)==="a"?"b":"a";
+const paOn=()=>PA.docs.filter(d=>d&&d.st==="on");
+const paAllyC=()=>paOn().map(d=>d["c"+paOther(d)]).filter(n=>COUNTRIES.includes(n));
+function paStop(){for(const f of PA.un)try{f()}catch(e){}PA.un=[];PA.docs=[];PA.uid=null}
+function paListen(){try{if(typeof ON==="undefined"||!ON.db||!ON.user){if(PA.uid)paStop();return}if(PA.uid===ON.user.uid)return;paStop();PA.uid=ON.user.uid;const u=PA.uid,got={a:[],b:[]};
+  for(const f of ["a","b"])PA.un.push(ON.db.collection("palliance").where(f,"==",u).onSnapshot(q=>{got[f]=q.docs.map(d=>({id:d.id,...d.data()}));PA.docs=[...got.a,...got.b];paPaint()},e=>{ON.err="Couldn't load alliances: "+(e&&e.code||e)}))}catch(e){}}
+function paPaint(){try{for(const id of ["dip","spy"])if(typeof pcwPaint==="function")pcwPaint(id,true)}catch(e){}}
+function paCands(){const me=paMe(),pc=dipPlayerC(),have=new Set(PA.docs.map(d=>d.a===me?d.b:d.a));
+  return ((typeof ON!=="undefined"&&ON.players)||[]).filter(p=>p&&p.uid&&p.uid!==me&&typeof p.govC==="string"&&COUNTRIES.includes(p.govC)&&p.govC!==pc&&Number.isInteger(p.govR)&&p.govR>=0&&!have.has(p.uid)).slice(0,20)}
+const paName=()=>String((S.online&&S.online.name)||S.name||"Player").slice(0,40);
+function paNet(){const o={};try{const n=intSt().net||{};for(const k of Object.keys(n).slice(0,PACFG.keys)){const l=Math.round(+n[k]||0);if(COUNTRIES.includes(k)&&l>0)o[k]=Math.min(10,l)}}catch(e){}return o}
+function paInvite(uid){const me=paMe(),pc=dipPlayerC();if(!me||!ON.db)return toast("Sign in to the online world first");if(!pc)return toast("Only players in government can form alliances");
+  if(PA.docs.length>=PACFG.max)return toast(`At most ${PACFG.max} alliances and offers`);const p=((ON.players)||[]).find(x=>x.uid===uid);if(!p||!p.govC)return toast("That player is no longer in government");
+  const [a,b]=[me,uid].sort(),sa=a===me,thN=String(p.name||"Player").slice(0,40);
+  const doc={a,b,by:me,st:"p",ca:sa?pc:p.govC,cb:sa?p.govC:pc,na:sa?paName():thN,nb:sa?thN:paName(),ia:sa?paNet():{},ib:sa?{}:paNet(),at:firebase.firestore.FieldValue.serverTimestamp()};
+  ON.db.collection("palliance").doc(a+"_"+b).set(doc).then(()=>{toast(`🛡 Alliance offer sent to ${thN}`);logGov(`You offered an alliance to ${thN} (${p.govC})`)}).catch(e=>toast("Couldn't send: "+(e&&e.code||e)))}
+function paAccept(id){const d=PA.docs.find(x=>x.id===id),pc=dipPlayerC();if(!d||d.st!=="p"||d.by===paMe())return;if(!pc)return toast("Only players in government can form alliances");const s=paSide(d),o=paOther(d);
+  ON.db.collection("palliance").doc(id).update({st:"on",["c"+s]:pc,["n"+s]:paName(),["i"+s]:paNet(),at:firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{toast(`🛡 Allied with ${d["n"+o]}`);logGov(`${pc} is now allied with ${d["c"+o]} (${d["n"+o]})`)}).catch(e=>toast("Couldn't accept: "+(e&&e.code||e)))}
+function paEnd(id){const d=PA.docs.find(x=>x.id===id);if(!d)return;const o=paOther(d);ON.db.collection("palliance").doc(id).delete().then(()=>{toast(d.st==="on"?`Alliance with ${d["n"+o]} ended`:"Offer withdrawn");if(d.st==="on")logGov(`Alliance with ${d["c"+o]} ended`)}).catch(e=>toast("Couldn't end it: "+(e&&e.code||e)))}
+/* every minute: keep my side of each alliance fresh (country, name, spy networks) */
+function paTick(){try{paListen();const now=Date.now();if(!PA.uid||now-PA.pub<PACFG.pubMs)return;PA.pub=now;const pc=dipPlayerC();if(!pc)return;const net=paNet(),key=JSON.stringify([pc,net]);if(key===PA.last)return;PA.last=key;
+  for(const d of paOn()){const s=paSide(d);ON.db.collection("palliance").doc(d.id).update({["c"+s]:pc,["i"+s]:net,at:firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{})}}catch(e){}}
+/* allied players' spy networks: [{c,l,by}] */
+function paIntel(){const out=[];for(const d of paOn()){const o=paOther(d),m=d["i"+o]||{};for(const c in m){const l=Math.round(+m[c]||0);if(COUNTRIES.includes(c)&&l>0)out.push({c,l:Math.min(10,l),by:String(d["n"+o]||"Ally")})}}return out}
+/* daily: your army defends allies' countries in local wars, free of charge */
+function paDefend(ws,quiet){const pc=dipPlayerC();if(!pc||!PA.docs.length)return;let str=0;try{str=milStr()}catch(e){}if(!(str>0))return;
+  for(const n of paAllyC()){if(n===pc)continue;for(const w of ws){if(w.l<3||(w.a!==n&&w.b!==n)||w.a===pc||w.b===pc||w.inv||(w.al&&w.al[pc]))continue;const s=w.a===n?"a":"b",en=s==="a"?w.b:w.a;if(en===pc)continue;
+    w.al=w.al||{};w.al[pc]=s;w.at=w.at||{};w.at[pc]=wlPT();if(!quiet)try{troopFly(pc,n);wlMarch(w,pc,s)}catch(e){}try{wjPub(w,s)}catch(e){}logGov(`🛡 Alliance: your troops defend ${n} against ${en}`);if(!quiet)toast(`🛡 Your army defends your ally ${n}`)}}}
+function paHtml(at){const me=paMe(),pc=dipPlayerC(),B=(a,t,id,st)=>`<button class="${at==="pw"?"pw-b"+(st?" "+st:""):"buy"}" ${at==="pw"?"data-pw":"data-gov"}="${a}" data-v="${onEsc(id)}"${at==="pw"?"":` data-k="${onEsc(id)}" data-fixed="1"`}>${t}</button>`;
+  const box=(t,b)=>at==="pw"?`<div class="pw-it"><b>${t}</b>${b}</div>`:`<div class="sec">${t}</div><div class="list"><div class="row">${b}</div></div>`;
+  if(!me)return box("🛡 Player alliances","<small>Sign in to the online world to ally with other player governments.</small>");
+  if(!pc)return box("🛡 Player alliances","<small>Hold a government office to form alliances with other players.</small>");
+  const on=paOn(),inc=PA.docs.filter(d=>d.st==="p"&&d.by!==me),out=PA.docs.filter(d=>d.st==="p"&&d.by===me),c=paCands(),iv=paIntel();
+  const row=(d,btns)=>{const o=paOther(d);return `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin:4px 0;flex-wrap:wrap"><span>${onEsc(d["n"+o]||"Player")} · <b>${onEsc(d["c"+o]||"?")}</b></span><span style="display:flex;gap:4px">${btns}</span></div>`};
+  let h=`<small>Allies share spy networks and their armies defend each other's countries in wars, for free.</small>`;
+  if(inc.length)h+=`<div style="margin-top:6px"><b>Offers for you</b>${inc.map(d=>row(d,B("paok","Accept",d.id)+B("paend","Decline",d.id,"warn"))).join("")}</div>`;
+  h+=`<div style="margin-top:6px"><b>Allies</b>${on.length?on.map(d=>row(d,B("paend","End",d.id,"warn"))).join(""):"<br><small>No allies yet.</small>"}</div>`;
+  if(out.length)h+=`<div style="margin-top:6px"><b>Waiting for an answer</b>${out.map(d=>row(d,B("paend","Withdraw",d.id,"warn"))).join("")}</div>`;
+  if(iv.length)h+=`<div style="margin-top:6px"><b>Allied intel</b>${iv.slice(0,10).map(x=>`<div style="display:flex;justify-content:space-between"><span>🛰 ${onEsc(x.c)}</span><small>level ${x.l} · ${onEsc(x.by)}</small></div>`).join("")}</div>`;
+  h+=`<div style="margin-top:6px"><b>Invite a player government</b>${c.length?c.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin:4px 0"><span>${onEsc(String(p.name||"Player").slice(0,24))} · <b>${onEsc(p.govC)}</b></span>${B("painv","🛡 Invite",p.uid)}</div>`).join(""):"<br><small>No other player governments online right now.</small>"}</div>`;
+  return box("🛡 Player alliances",h)}
+function paAct(a,id){if(a==="painv")paInvite(id);else if(a==="paok")paAccept(id);else if(a==="paend")paEnd(id)}
+
 /* Military dashboard → "Anonymous War Funding" page (same data and actions as before, dashboard style) */
 function wfDash(){const v=wfView(),C=WFCFG,act=wfActive(),f=WF.f,now=Date.now(),ago=t=>{const s=Math.max(0,Math.round((now-t)/1000));return s<60?s+"s ago":s<3600?Math.round(s/60)+" min ago":s<86400?Math.round(s/3600)+" h ago":Math.round(s/86400)+" d ago"};
   const inp="width:100%;padding:9px 10px;border-radius:10px;border:1px solid var(--dxline);background:var(--dxcard);color:var(--dxink);font:500 13px Figtree,sans-serif;margin-top:8px;box-sizing:border-box";
@@ -3659,6 +3710,7 @@ function dipDay(quiet){const C=DIPCFG,d=dip();d.day++;S.wars=S.wars||[];const ws
       if(w.l===4)for(const m of [a,b])gov(m).appr=Math.min(90,gov(m).appr+5);dipSay(t,dipRel(a,b),quiet)}
     else if(r>1-de){w.l--;w.sc=d.day+C.stepCd;if(w.l<1)d.pcd[dipKey(a,b)]=d.day+10;dipSay(w.l?`${a} and ${b} de-escalate to ${WARL[w.l].toLowerCase()}`:`${a} and ${b} agree to talks: the crisis ends`,dipRel(a,b),quiet)}}
   try{allyDay(ws,d,quiet)}catch(e){console.warn("ally",e)}
+  try{paDefend(ws,quiet)}catch(e){console.warn("pa",e)}
   try{wlDay(ws,d,quiet)}catch(e){console.warn("wl",e)}
   try{peaceAiDay(ws,d,quiet)}catch(e){console.warn("peace",e)}
   S.wars=ws.filter(w=>w.l>0);
@@ -7312,9 +7364,9 @@ PCW.poll={t:"Polls & Elections",ic:"🗳",r(){const p=pol(),x=pres(),ah=x.ah.con
   <small class="pw-m">Red line: below ${GOVCFG.apprOut}% you are removed from office.${risk?" <b style='color:#ef4444'>You are close to it.</b>":""}</small>
   <div class="pw-it"><b>📺 Campaign ads</b><small>A national ad campaign lifts approval.</small>${pbtn("ad",`Run ads${cost?" "+fmt(cost):""}`)}</div>`},a(a){if(a==="ad"){polPR();save();hud()}}};
 PCW.dip={t:"Diplomacy",ic:"🤝",r(){const p=pol(),x=pres(),L=COUNTRIES.filter(n=>n!==p.c).sort((a,b)=>presRel(a)-presRel(b));
-  return `<p class="pw-m">Relations come from the shared tension meters plus your own diplomacy. Envoys ${fmt(PRESCFG.envoy)}, trade deals need ${PRESCFG.deal.min}+, alliances ${PRESCFG.ally.min}+.</p>`+L.map(n=>{const r=presRel(n),col=r>=50?"#22c55e":r>=0?"#eab308":r>-50?"#f97316":"#ef4444";
+  return paHtml("pw")+`<p class="pw-m">Relations come from the shared tension meters plus your own diplomacy. Envoys ${fmt(PRESCFG.envoy)}, trade deals need ${PRESCFG.deal.min}+, alliances ${PRESCFG.ally.min}+.</p>`+L.map(n=>{const r=presRel(n),col=r>=50?"#22c55e":r>=0?"#eab308":r>-50?"#f97316":"#ef4444";
   return `<div class="pw-it"><div style="display:flex;justify-content:space-between;gap:6px"><b>${wfE(n)}${x.ally[n]?" 🛡":""}${x.deal[n]?" 🤝":""}</b><b style="color:${col}">${r>0?"+":""}${r}</b></div><div style="height:5px;border-radius:3px;background:rgba(255,255,255,.08);margin:5px 0"><div style="height:5px;border-radius:3px;width:${(r+100)/2}%;background:${col}"></div></div>
-  <div class="pw-row">${pbtn("envoy","🕊 Envoy",` data-v="${wfE(n)}"`)}${pbtn("deal","🤝 Trade deal",` data-v="${wfE(n)}"`,!!x.deal[n]||r<PRESCFG.deal.min)}${pbtn("ally",x.ally[n]?"End alliance":"🛡 Alliance",` data-v="${wfE(n)}"`,!x.ally[n]&&r<PRESCFG.ally.min)}${pbtn("recall","Recall ambassador",` data-v="${wfE(n)}"`,0,"warn")}</div></div>`}).join("")},a(a,b){presDip(a,b.dataset.v)}};
+  <div class="pw-row">${pbtn("envoy","🕊 Envoy",` data-v="${wfE(n)}"`)}${pbtn("deal","🤝 Trade deal",` data-v="${wfE(n)}"`,!!x.deal[n]||r<PRESCFG.deal.min)}${pbtn("ally",x.ally[n]?"End alliance":"🛡 Alliance",` data-v="${wfE(n)}"`,!x.ally[n]&&r<PRESCFG.ally.min)}${pbtn("recall","Recall ambassador",` data-v="${wfE(n)}"`,0,"warn")}</div></div>`}).join("")},a(a,b){if(a.slice(0,2)==="pa")return paAct(a,b.dataset.v);presDip(a,b.dataset.v)}};
 PCW.red={t:"Red Phone",ic:"☎️",r(){const p=pol(),T=wfView().tens||{},ks=Object.keys(T).filter(k=>k.split("|").includes(p.c)&&(+T[k].v||0)>0).sort((a,b)=>T[b].v-T[a].v);
   return `<p class="pw-m">A direct line to a rival leader. A call costs twice a talks fund and works ${Math.round(PRESCFG.red.p*100)}% of the time: tension −${PRESCFG.red.cut}.</p>`+(ks.length?ks.map(k=>{const [a,b]=k.split("|"),n=a===p.c?b:a,v=+T[k].v||0,s=wfStage(v),c=Math.max(WFCFG.min,Math.round(tensCost(p.c,n)*PRESCFG.red.mult));
   return `<div class="pw-it"><div style="display:flex;justify-content:space-between"><b>${wfE(n)}</b><b style="color:${s[2]}">${s[1]} ${Math.round(v)}/100</b></div>${pbtn("call",`☎️ Call ${wfE(n)} · ${fmt(c)}`,` data-v="${wfE(n)}"`,S.cash<c||!polLeader(),"red")}</div>`}).join(""):`<div class="pw-it"><small>No tension with ${wfE(p.c||"your country")} right now. The line is quiet.</small></div>`)},a(a,b){if(a==="call")presRed(b.dataset.v)}};
@@ -7332,12 +7384,13 @@ PCW.spy={t:"Spy Feed",ic:"🛰",r(){const W=360,H=180,P=(lo,la)=>[((lo+180)/360*
   const lab=(px,py,t,col)=>`<text x="${+px+5}" y="${+py+3}" fill="${col}" font-size="7" font-weight="700" font-family="Figtree,sans-serif" paint-order="stroke" stroke="#071226" stroke-width="2">${wfE(t)}</text>`;
   let dots=COUNTRIES.filter(n=>n!==me&&!(x.net||{})[n]).map(n=>{const c=cap(n);if(!c)return "";const [px,py]=P(c.lon,c.lat);return `<circle cx="${px}" cy="${py}" r="1.3" fill="rgba(226,232,240,.45)"/>`}).join("");
   dots+=Object.entries(x.net||{}).filter(([n,l])=>l&&n!==me).map(([n,l])=>{const c=cap(n);if(!c)return "";const [px,py]=P(c.lon,c.lat),r=2.5+Math.min(4,l);return `<circle cx="${px}" cy="${py}" r="${r+3}" fill="none" stroke="#38bdf8" stroke-opacity=".5"><animate attributeName="r" from="${r}" to="${r+7}" dur="2s" repeatCount="indefinite"/><animate attributeName="stroke-opacity" from=".7" to="0" dur="2s" repeatCount="indefinite"/></circle><circle cx="${px}" cy="${py}" r="${r}" fill="#38bdf8"/>${lab(px,py,n+" · L"+l,"#bae6fd")}`}).join("");
+  let piv=[];try{piv=paIntel().filter(y=>!(x.net||{})[y.c]&&y.c!==me)}catch(e){}dots+=piv.map(y=>{const c=cap(y.c);if(!c)return "";const [px,py]=P(c.lon,c.lat),r=2+Math.min(4,y.l);return `<circle cx="${px}" cy="${py}" r="${r}" fill="#4ade80" fill-opacity=".85"/>${lab(px,py,y.c+" · ally","#bbf7d0")}`}).join("");
   if(mc){const [px,py]=P(mc.lon,mc.lat);dots+=`<circle cx="${px}" cy="${py}" r="6" fill="none" stroke="#facc15" stroke-width="1.2"/><circle cx="${px}" cy="${py}" r="3.2" fill="#facc15"/>${lab(px,py,mc.name,"#fde68a")}`}
   const land=`<path transform="scale(2)" vector-effect="non-scaling-stroke" d="${spyLand(W,H)}" fill="#13284a" stroke="#2c4a7a" stroke-width=".4"/>`,grid=[-120,-60,0,60,120].map(lo=>`<line x1="${P(lo,0)[0]}" y1="0" x2="${P(lo,0)[0]}" y2="${H}" stroke="#ffffff" stroke-opacity=".05"/>`).join("")+[-60,-30,0,30,60].map(la=>`<line x1="0" y1="${P(0,la)[1]}" x2="${W}" y2="${P(0,la)[1]}" stroke="#ffffff" stroke-opacity=".05"/>`).join("");
   let inc=[];try{inc=aim().inc.filter(y=>y&&y.at>now)}catch(e){}const lines=inc.slice(0,12).map(y=>{const a=cap(y.att),c=CITIES[y.city];if(!a||!c)return "";const [x1,y1]=P(a.lon,a.lat),[x2,y2]=P(c.lon,c.lat);return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#ef4444" stroke-width="1.4" stroke-dasharray="3 2"/>`}).join("");
   const ops=Object.entries(x.intel||{}).flatMap(([n,o])=>Object.entries(o||{}).filter(([,t])=>t>now).map(([k,t])=>`<div class="pcd-kv"><span>${{o:"🧾 Profile",s:"📡 Signals",i:"🛰 Imagery"}[k]||k} · ${wfE(n)}</span><b>${fmtDur(t-now)}</b></div>`)).slice(0,10).join("");
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="background:#071226;border-radius:8px;display:block" role="img" aria-label="Spy map">${grid}${land}${lines}${dots}</svg>
-  <small class="pw-m">🟡 your capital · 🔵 your spy networks (bigger = deeper) · red dashes: strikes in flight</small>
+  <small class="pw-m">🟡 your capital · 🔵 your spy networks (bigger = deeper) · 🟢 allies' networks · red dashes: strikes in flight</small>
   <div class="pw-it"><b>Networks</b>${Object.keys(x.net||{}).length?Object.entries(x.net).map(([n,l])=>pk(wfE(n),"level "+l)).join(""):"<small>No assets abroad yet. Recruit them in Intelligence.</small>"}</div>
   <div class="pw-it"><b>Live intel</b>${ops||"<small>No active reports.</small>"}</div><div class="pw-it"><b>Strikes in flight</b>${inc.length?inc.slice(0,8).map(y=>pk(`${wfE(y.att||"?")} → ${wfE((CITIES[y.city]||{}).name||"?")}`,fmtDur(y.at-now),"#ef4444")).join(""):"<small>None.</small>"}</div>
   ${pbtn("int","Open Intelligence")}`},a(a){if(a==="int")pcApp("int")}};
