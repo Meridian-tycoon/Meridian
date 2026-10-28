@@ -3306,16 +3306,16 @@ function wfBreak(a,b,quiet){const d=wf(),k=wfPair(a,b),T=d.tens[k];if(!T)return;
   for(const n of [a,b])try{gov(n).appr=Math.min(90,gov(n).appr+10)}catch(e){}
   delete d.tens[k];wfSay(`War breaks out between ${fav} and ${oth}!`);if(!quiet)logGov(`War breaks out between ${fav} and ${oth} after a surge of anonymous funding`)}
 /* hourly on the authority world: war budgets buy reinforcements, meters cool, AI companies donate */
-function wfHour(quiet){if(!wfAuth())return;const d=wf(),C=WFCFG,act=wfActive();
+function wfHour(quiet){if(!wfAuth())return;const d=wf(),C=WFCFG,act=wfActive();try{allyPeace(1)}catch(e){}
   for(const w of act){const id=wlGid(w),q=d.q[id];if(!q||!w.tr||!w.t0)continue;const g=d.g[id]=d.g[id]||{a:0,b:0};
     for(const s of ["a","b"]){const p=w.t0[s]||0,n=Math.floor(Math.min((q[s]||0)/C.troop,p*C.relDay/24,Math.max(0,p*C.maxBoost-g[s])));if(n<1)continue;w.tr[s]+=n;g[s]+=n;q[s]-=n*C.troop}}
   const live=new Set((S.wars||[]).filter(w=>w.l>0).map(wlGid));for(const k of ["tot","q","g"])for(const id in d[k])if(!live.has(+id))delete d[k][id];
   for(const k in d.tens){const T=d.tens[k];T.v=Math.max(0,(+T.v||0)-C.cool);if(T.v<=0)delete d.tens[k]}
   for(const k of Object.keys(d.tens).sort((x,y)=>d.tens[y].v-d.tens[x].v).slice(C.pairs))delete d.tens[k];
-  wfHot(d);wfAI(quiet);d.dirty=1}
+  wfHot(d);wfAI(quiet);try{allyPeace(1)}catch(e){}d.dirty=1}
 /* real-world hotspots: the authority world keeps these meters at least at their floor, so the map, the funding page and the Gov tab show today's real tensions */
 const WFHOT=[["USA","China",45],["Russia","Poland",42],["USA","Russia",40],["China","Philippines",38],["China","Japan",34],["China","India",32],["USA","Colombia",30],["Russia","UK",28],["USA","Mexico",24],["China","Australia",22],["Saudi Arabia","Iraq",20],["Egypt","Saudi Arabia",15]];
-function wfHot(d){d=d||wf();for(const [a,b,f] of WFHOT){if(!COUNTRIES.includes(a)||!COUNTRIES.includes(b)||wfAtWar(a,b))continue;const k=wfPair(a,b),T=d.tens[k]=d.tens[k]||{v:0,f:{}};if(!T.f||typeof T.f!=="object")T.f={};if((+T.v||0)<f){T.v=f;T.t=Date.now();d.dirty=1}}}
+function wfHot(d){d=d||wf();const pc=dipPlayerC(),al=allySet();for(const [a,b,f] of WFHOT){if((a===pc&&al.has(b)||b===pc&&al.has(a))||!COUNTRIES.includes(a)||!COUNTRIES.includes(b)||wfAtWar(a,b))continue;const k=wfPair(a,b),T=d.tens[k]=d.tens[k]||{v:0,f:{}};if(!T.f||typeof T.f!=="object")T.f={};if((+T.v||0)<f){T.v=f;T.t=Date.now();d.dirty=1}}}
 function wfAI(quiet){const A=WFCFG.ai;if(Math.random()>A.p||!Array.isArray(S.rivals)||!S.rivals.length)return null;const i=Math.floor(Math.random()*S.rivals.length),r=S.rivals[i];if(!r||!(r.nw>0))return null;
   const amt=Math.round(r.nw*(A.min+Math.random()*(A.max-A.min))/1e5)*1e5;if(amt<WFCFG.min)return null;const act=wfActive(),d=wf(),pick=x=>x[Math.floor(Math.random()*x.length)];let o;
   if(act.length&&Math.random()<A.war){const w=pick(act);o={k:"w",w:wlGid(w),s:Math.random()<.5?"a":"b",amt}}
@@ -3682,6 +3682,12 @@ function dipInvDay(d,quiet){const C=DIPCFG,inv=d.inv,p=S.pol,w=inv&&(S.wars||[])
 function dipRally(){const d=dip(),inv=d.inv;if(!inv)return;const w=(S.wars||[]).find(x=>x.id===inv.w);if(!w)return;if(d.day<(inv.rcd||0))return toast("Defences already rallied today");
   const c=Math.round(warCost(w)*DIPCFG.rallyCost);if(S.cash<c)return toast(`Need ${fmt(c)}`);S.cash-=c;inv.rcd=d.day+1;
   if(inv.stage===1)inv.fort=Math.min(DIPCFG.fortMax,(inv.fort||0)+DIPCFG.fort);else inv.prog=Math.max(1,inv.prog-DIPCFG.rally);toast(inv.stage===1?"Defences strengthened before the attack":"Defences rallied: front pushed back")}
+/* allies are a team: no tension or war between your country and its allies (Diplomacy alliances and player alliances) */
+function allySet(){const pc=dipPlayerC(),o=new Set();if(!pc)return o;try{for(const n in pres().ally)o.add(n)}catch(e){}try{for(const n of paAllyC())o.add(n)}catch(e){}o.delete(pc);return o}
+function allyPeace(quiet){const pc=dipPlayerC(),al=allySet();if(!pc||!al.size)return;
+  const ws=S.wars||[];for(let i=ws.length-1;i>=0;i--){const w=ws[i];if(w&&(w.a===pc&&al.has(w.b)||w.b===pc&&al.has(w.a))){ws.splice(i,1);if(!quiet)logGov(`🛡 ${w.a===pc?w.b:w.a} is your ally: the dispute is dropped`)}}
+  for(const w of ws)if(w&&w.al&&w.al[pc]){for(const n in w.al)if(al.has(n)&&w.al[n]!==w.al[pc])delete w.al[n];const en=w.al[pc]==="a"?w.b:w.a;if(al.has(en))delete w.al[pc]}
+  try{const T=wf().tens;for(const n of al){const k=wfPair(pc,n);if(T[k]&&T[k].v>0){T[k].v=0;wf().dirty=1}}}catch(e){}}
 function dipDay(quiet){const C=S.wwar?Object.assign({},DIPCFG,{startP:DIPCFG.startP*2,maxWars:Math.max(DIPCFG.maxWars,WWCFG.maxWars)}):DIPCFG,d=dip();d.day++;S.wars=S.wars||[];const ws=S.wars,p=S.pol;
   for(const n of COUNTRIES)dipGrow(n,d,C);
   // liberation, and countries you took back from a ruler are free again
@@ -3715,7 +3721,7 @@ function dipDay(quiet){const C=S.wwar?Object.assign({},DIPCFG,{startP:DIPCFG.sta
   try{wlDay(ws,d,quiet)}catch(e){console.warn("wl",e)}
   try{peaceAiDay(ws,d,quiet)}catch(e){console.warn("peace",e)}
   S.wars=ws.filter(w=>w.l>0);
-  dipInvDay(d,quiet);if(wwShared())try{wwMirror(quiet)}catch(e){console.warn("ww",e)}try{wmdDay(quiet)}catch(e){console.warn("wmd",e)}try{wtDay(quiet)}catch(e){console.warn("wtest",e)}try{wwarDay(quiet)}catch(e){console.warn("wwar",e)}}
+  dipInvDay(d,quiet);if(wwShared())try{wwMirror(quiet)}catch(e){console.warn("ww",e)}try{wmdDay(quiet)}catch(e){console.warn("wmd",e)}try{wtDay(quiet)}catch(e){console.warn("wtest",e)}try{allyPeace(quiet)}catch(e){console.warn("allyp",e)}try{wwarDay(quiet)}catch(e){console.warn("wwar",e)}}
 /* ===== World War: 6+ full wars (stage 4) at once, 2+ of them with allies fighting, start a World War (S.wwar {d0,n,peak}).
    Start: banner + news, stocks crash 15% (defense and energy +10%), fuel +40%. While on: twice the new-war and ally-join chance, up to 12 wars, fuel stays >= 1.3.
    Ends (Armistice) when fewer than 3 full wars remain: stocks bounce 8%, the fuel spike clears. Each save sees it from its own war list (mirrored for online players). */
@@ -5843,7 +5849,7 @@ function wtWar(n,k,ll){const p=pol(),m=wpn(),C=MILCFG,W=WPNCFG.w[k],now=Date.now
   if(!w){const e=milEnemy(n);w=m.wars[n]={since:now,front:C.frontStart,enemyStr:e,enemyMax:e,terrain:milTerrain(n),weariness:0,battles:[],pcd:0}}
   w.weariness=Math.max(w.weariness||0,WTCFG.wear);w.rcd=0;if(k!=="msl"){w.wmd=1;if(k==="nuke"||k==="icbm")w.nk=1;if(k==="icbm")w.ic=1;wpnSanction(k)}
   p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const x in p.ctrl)p.ctrl[x].loy=Math.max(0,p.ctrl[x].loy+W.loy);for(const x in m.occ)m.occ[x].resist=Math.min(100,m.occ[x].resist+W.resist);
-  const pc=dipPlayerC();if(pc&&pc!==n){S.wars=S.wars||[];const cw=dipWarOf(n,pc);if(cw){cw.l=4;cw.att=pc}else S.wars.push({id:(S.wid=(S.wid||0)+1),a:pc,b:n,l:4,att:pc,sc:dip().day+3,d0:S.day})}
+  const pc=dipPlayerC();if(pc&&pc!==n){try{const x=pres();if(x.ally[n]){delete x.ally[n];logGov(`Alliance with ${n} broken by your strike`)}}catch(e){}S.wars=S.wars||[];const cw=dipWarOf(n,pc);if(cw){cw.l=4;cw.att=pc}else S.wars.push({id:(S.wid=(S.wid||0)+1),a:pc,b:n,l:4,att:pc,sc:dip().day+3,d0:S.day})}
   const c=wtCityNear(n,ll,k),dead=c?wtHitCity(k,c):0;const t=`Your ${W.n.toLowerCase()} test hit ${n}${c?` (${c.name}: ${fmtPop(dead)} killed)`:""}: ${n} is now at full war with you`;logPol(t);milLog(m,t);return t}
 function wtOwn(n,ll,k){const c=wtCityNear(n,ll,k);if(!c)return;const p=pol(),W=WPNCFG.w[k],dead=wtHitCity(k,c);p.appr=Math.max(0,Math.min(95,p.appr+W.appr));const t=`Your ${W.n.toLowerCase()} test struck your own city ${c.name}: ${fmtPop(dead)} killed`;logPol(t);milLog(wpn(),t)}
 function wtMine(n){const p=pol(),m=mil();return n===p.c||!!(p.ctrl&&p.ctrl[n])||!!(m.occ&&m.occ[n])}
