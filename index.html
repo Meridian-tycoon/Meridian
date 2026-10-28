@@ -4459,8 +4459,8 @@ function hubFix(h,l){const num=(v,d,lo,hi)=>Number.isFinite(+v)&&v!==null&&v!=="
 function HB(id){const l=LG();let h=l.hub[id];if(!h)h=l.hub[id]={res:0,cap:0,pol:"",dep:0,drv:0,dock:0,fuel:0,last:0,done:0,earned:0,tons:0,late:0};
   if(h.res>l.trucks)h.res=l.trucks;return h}
 const lvl=k=>LG().up[k]||0;
-/* trucks: original 1.35^n curve up to 40 bought, then linear: +5% of the 40th-truck price per extra truck (always finite) */
-const truckPrice=n=>{const u=LU.trucks,a=Math.min(Math.max(0,n),u.max),b=Math.max(0,n-u.max);const p=Math.round(u.base*Math.pow(u.g,a)*(1+b*.05));return Number.isFinite(p)&&p>=1?p:1e300};
+/* trucks: with a Trucking company the price is linear (+3% of base per truck, no cap); without one: original 1.35^n curve up to 40 bought, then linear: +5% of the 40th-truck price per extra truck (always finite) */
+const truckPrice=n=>{const u=LU.trucks;if(hubs().length){const p=Math.round(u.base*(1+Math.max(0,n)*.03));return Number.isFinite(p)&&p>=1?p:1e300}const a=Math.min(Math.max(0,n),u.max),b=Math.max(0,n-u.max);const p=Math.round(u.base*Math.pow(u.g,a)*(1+b*.05));return Number.isFinite(p)&&p>=1?p:1e300};
 const luCost=k=>{const u=LU[k];if(k==="trucks")return truckPrice(LG().trucks-2-ishTr());return Math.round(u.base*Math.pow(u.g,lvl(k)))};
 const truckCap=()=>hubs().length?TRK_CEIL:LU.trucks.max;
 /* total price of q trucks bought in a row, and how many of q are affordable */
@@ -9749,7 +9749,7 @@ const ISH_DEFS=[
  ["lab","tec","Research bench","+1.5 research points per hour.",55000,15,4,3,1,"","",{rp:1.5}],
  ["cluster","tec","Compute cluster","+5 research points per hour.",380000,90,3,2,3,"semis","lab",{rp:5}],
  ["telem","tec","Telemetry network","+6 research points per hour and every business earns 2% more.",1200000,260,2,1,4,"aero","cluster",{rp:6,biz:.02}]];
-ISH=ISH_DEFS.map(a=>({k:a[0],cat:a[1],n:a[2],d:a[3],cost:a[4],up:a[5],max:a[6],lim:a[7],sz:a[8],tech:a[9],prev:a[10],eff:a[11],tr:a[12]||0}));
+ISH=ISH_DEFS.map(a=>({k:a[0],cat:a[1],n:a[2],d:a[3],cost:a[4],up:a[5],max:a[1]==="veh"?1e6:a[6],lim:a[7],sz:a[8],tech:a[9],prev:a[10],eff:a[11],tr:a[12]||0}));
 ISHC=Object.fromEntries(ISH.map(i=>[i.k,i]));
 const ISH_CAP={biz:.25,ret:.4,farm:.6,mine:.6,fac:.6,wh:3,upk:.35,rp:40,pay:.6,spd:.4},ISH_DIM=.6,ISH_SELL=.5,ISH_DOWN=.25,ISH_INT=.12,ISH_TERM=72,ISH_MAXFIN=8;
 var ISH_Z={biz:0,ret:0,farm:0,mine:0,fac:0,wh:0,upk:0,rp:0,pay:0,spd:0};
@@ -9868,7 +9868,7 @@ function ishCard(i){const s=ishWk(),n=s.own[i.k]||0,left=ishLeft(i),rq=ishReq(i)
   const tot=ishQuote(i,q),down=Math.round(tot*ISH_DOWN),fin=ISS().fin,need=fin?down:tot,can=!rq.length&&!full&&!out&&S.cash>=need&&(!fin||s.fin.length<ISH_MAXFIN);
   const mk=ishMk(i.cat),w=ishWorth(i),sell=s.fin.some(f=>f.k===i.k)?"":"";
   const lbl=full?"Max owned":out?"Sold out":rq.length?"Locked":fin?`${fmt(down)} down`:`Buy ${q>1?q+" · ":""}${fmt(tot)}`;
-  return `<div class="lx-it"><div class="m"><b>${dxE(i.n)}<span class="lx-tag ${n?"g":""}">${n}/${i.max} owned</span><span class="lx-tag ${out?"r":left<=1?"y":"b"}">${out?"No stock":left+" in stock"}</span>${i.prev?`<span class="lx-tag">Tier after ${dxE(ISHC[i.prev].n)}</span>`:""}</b>
+  return `<div class="lx-it"><div class="m"><b>${dxE(i.n)}<span class="lx-tag ${n?"g":""}">${i.cat==="veh"?n:n+"/"+i.max} owned</span><span class="lx-tag ${out?"r":left<=1?"y":"b"}">${out?"No stock":left+" in stock"}</span>${i.prev?`<span class="lx-tag">Tier after ${dxE(ISHC[i.prev].n)}</span>`:""}</b>
     <span>${dxE(i.d)}</span><small>${dxE(ishEffTxt(i))}${i.up?` · upkeep ${fmt(i.up)}/hr each`:""} · price ${fmt(ishQuote(i,1))} (market ${mk>=1?"+":""}${Math.round((mk-1)*100)}%)${q>1?` · ${q} for ${fmt(tot)}${ishDisc(q)?` after ${Math.round(ishDisc(q)*100)}% bulk discount`:""}`:""}${w>0?` · worth about ${fmt(w)}/hr to you now`:i.tr&&!hubs().length?" · needs a Trucking hub to earn":""}</small>
     ${n&&ishStorable(i)?ishStoreHtml(i,n):""}
     ${rq.length?`<small style="color:#b91c1c">Needs ${dxE(rq.join(", "))}</small>`:""}</div>
