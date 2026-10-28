@@ -659,7 +659,8 @@ const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
 function profit(b,c,lv){if(unhOn(c))return 0;if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round((typeof ofP==="function"?(1+.06*ofP("mkt"))*(ofCampOn()?1.1:1):1)*b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof mktMult==="function"?mktMult(c):1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(typeof gxMult==="function"?gxMult(c,b):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)*(typeof ishBiz==="function"?ishBiz(b):1)*(typeof pandMult==="function"?pandMult(b):1)*techBiz(b)*wevBiz(b)*(typeof ctTurf==="function"?ctTurf(c):1)*(typeof aucMult==="function"?aucMult(c):1)*(typeof wcBiz==="function"?wcBiz(b):1)-bizWage(b,c,lv))}
 // hourly wages a business is charged inside profit(); HQ Employees shows the same figure
-function bizWage(b,c,lv){return b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1))*(typeof hrPay==="function"?hrPay(c,b):1)*techWage()}
+const WAGECUT=.95; // Mark 2026-10-28: every wage in the game is 5% lower
+function bizWage(b,c,lv){return WAGECUT*b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1))*(typeof hrPay==="function"?hrPay(c,b):1)*techWage()}
 const cityUnitsP=(b,c)=>uSum(c.id,b.k,l=>profit(b,c,l));
 function cityProfit(c){const o=S.own[c.id]||{};let t=0;for(const b of BIZ)if(o[b.k])t+=uSum(c.id,b.k,l=>profit(b,c,l));return t}
 /* renting: anything you don't own pays hourly rent (value / 60 per hour). Leases with a payback under 60 days profit; the Rent button warns when rent exceeds Lv1 profit minus hourly stock cost. Rate is read live, so old saves just pay the new rate. */
@@ -2026,7 +2027,7 @@ function hospital(){const c=CITIES[(S.home||{city:0}).city],bill=Math.round(500*
   let lost="";if(S.job&&Math.random()<.5){lost=" You lost your job while you recovered.";S.job=null}
   S.log.unshift(`Collapsed and hospitalized. Bill: ${fmt(bill)}.${lost}`);S.log=S.log.slice(0,3);toast("You were hospitalized")}
 const needMin=()=>Math.min(S.need.h,S.need.f,S.need.m);
-function wageMult(){const m=needMin();if(m<10)return 0;if(m<25)return .6;if(m<50)return .85;if(m>=95)return 1.1;return 1}
+function wageMult(){const m=needMin();if(m<10)return 0;return WAGECUT*(m<25?.6:m<50?.85:m>=95?1.1:1)}
 const burnout=()=>S.need&&S.need.m<15?.9:1;
 function needsHtml(c){const N=S.need,wm=wageMult();
   let h=`<div class="sec">Your needs</div><div style="display:grid;gap:6px;padding:4px 0 8px">`;
@@ -2252,7 +2253,7 @@ function selfOp(c,b,lv){const k=bkey(c,b.k),st=S.staff[k],o=S.opf[k];S.staff[k]=
 // h = real hours elapsed (capped at SHOPCAP). Long gaps (offline catch-up) run in ≤1h steps so managers keep restocking
 // and orders that arrived while away are delivered at the step they land. Online ticks are one step.
 const MGR_WAIT=3600000; // manager buys at the market only after a business has been empty this long (ms)
-const SHOPCAP=48; // offline catch-up cap in game hours, same as earnings in accrue(): managers don't restock beyond it
+const SHOPCAP=720; // offline catch-up cap in game hours, same as earnings in accrue(): managers don't restock beyond it
 function runShops(h,now,quiet){now=now||Date.now();S.shopT=now;S.mgrShort=S.mgrShort||{};S.mgrEmpty=S.mgrEmpty||{};h=Math.min(Math.max(0,h||0),SHOPCAP);
   const n=h>1?Math.min(SHOPCAP,Math.ceil(h)):1,sh=h/n;
   for(let i=1;i<=n;i++)shopStep(sh,now-(n-i)*sh*DAYMS,now);if(!quiet)try{stockAlerts(now,h>1)}catch(e){console.warn("stockAlerts",e)}}
@@ -2607,13 +2608,15 @@ new MutationObserver(()=>{if(!sheet.firstElementChild||sheet.firstElementChild.c
   sheet.addEventListener("pointercancel",()=>{y0=null;sheet.style.transform=""})})();
 const hourOf=t=>Math.floor(t/DAYMS);
 /* business sales trickle in every second; accrue() settles any remainder via the same clock, so nothing is counted twice */
-function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,48*DAYMS));S.saleT=now;if(!d)return 0;const g=(totals().inc+(typeof ishFinHr==="function"?ishFinHr():0))*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
+function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Math.min(now-S.saleT,OFFCAP*DAYMS));S.saleT=now;if(!d)return 0;const g=(totals().inc+(typeof ishFinHr==="function"?ishFinHr():0))*d/DAYMS;S.cash+=g;if(g>0)S.earned=(S.earned||0)+g;return g}
+/* offline catch-up: income and the hourly world both run for the same span (30 game days), so the world stays continuous */
+const OFFCAP=720;
 function accrue(){if(S.dead)return 0;const now=Date.now();if(!S.acc)S.acc=now;
-  const dt=Math.min(now-S.acc,48*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);if(typeof popTick==="function")popTick(dt/DAYMS);if(typeof careerTick==="function")careerTick(dt/DAYMS);
-  if(typeof runTrip==="function")runTrip(now);const{g,sold}=alRun(now,dt,Math.min(now-(S.shopT||now-dt),48*DAYMS)/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}try{lxTick(now)}catch(e){console.warn("lxTick",e)}try{if(typeof ofTick==="function")ofTick(now)}catch(e){console.warn("ofTick",e)}try{spAcc(dt)}catch(e){console.warn("spAcc",e)}try{colAcc(dt);colTick(now)}catch(e){console.warn("col",e)}try{flipTick(now)}catch(e){console.warn("flipTick",e)}try{crtTick(now)}catch(e){console.warn("crtTick",e)}try{ipoAcc(dt)}catch(e){console.warn("ipoAcc",e)}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
+  const dt=Math.min(now-S.acc,OFFCAP*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);if(typeof popTick==="function")popTick(dt/DAYMS);if(typeof careerTick==="function")careerTick(dt/DAYMS);
+  if(typeof runTrip==="function")runTrip(now);const{g,sold}=alRun(now,dt,Math.min(now-(S.shopT||now-dt),OFFCAP*DAYMS)/DAYMS);runTax(dt/DAYMS,now);runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}try{lxTick(now)}catch(e){console.warn("lxTick",e)}try{if(typeof ofTick==="function")ofTick(now)}catch(e){console.warn("ofTick",e)}try{spAcc(dt)}catch(e){console.warn("spAcc",e)}try{colAcc(dt);colTick(now)}catch(e){console.warn("col",e)}try{flipTick(now)}catch(e){console.warn("flipTick",e)}try{crtTick(now)}catch(e){console.warn("crtTick",e)}try{ipoAcc(dt)}catch(e){console.warn("ipoAcc",e)}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
-  const h=hourOf(now),n=Math.min(h-S.hour,168);
+  const h=hourOf(now),n=Math.min(h-S.hour,OFFCAP);
   if(n>0){for(let i=0;i<n-1;i++){simDay(true);if(i<48){govHour(true);if(typeof polHour==="function")polHour(true)}bankHour(true);cardCover()}govHour(false);if(typeof polHour==="function")polHour(false);bankHour(false);cardCover();S.debt=bankDebt();S.hour=h;endDay()}
   return g+sold}
 /* ---------- governments & laws ---------- */
@@ -9457,7 +9460,7 @@ function ofEvTick(now){const o=ofS();if(o.ev&&(!o.d[o.ev.k]||now-o.ev.at>=OFEVX*
 function ofEv(yes){const o=ofS(),e=o.ev;if(!e)return"";const h=o.d[e.k],d=OFD.find(x=>x[0]===e.k);if(!h){o.ev=null;return""}
   if(!yes){o.ev=null;return`${h.nm} shrugs: "Maybe next time."`}const c=(typeof devGod==="function"&&devGod())?0:e.c;if(S.cash<c)return`You need ${fmt(c)} for this deal.`;
   S.cash-=c;h.deal=Date.now()+OFEVD*DAYMS;o.ev=null;o.dl=(o.dl||0)+1;return`Deal done: the ${d[2]} perk counts double for ${OFEVD} game days${c?` (paid ${fmt(c)})`:""}.`}
-function ofPay(k){const d=OFD.find(x=>x[0]===k),h=ofS().d[k];if(!d||!h)return d?d[4]:0;return Math.round(d[4]*(1+.1*(ofLv(h)-1))*(+h.sm||1)*(k!=="hr"&&ofHas("hr")?.85:1))}
+function ofPay(k){const d=OFD.find(x=>x[0]===k),h=ofS().d[k];if(!d||!h)return d?Math.round(d[4]*WAGECUT):0;return Math.round(WAGECUT*d[4]*(1+.1*(ofLv(h)-1))*(+h.sm||1)*(k!=="hr"&&ofHas("hr")?.85:1))}
 const ofFee=()=>Math.max(1,1.1-.05*ofP("log"));
 const ofSpFee=f=>{const p=ofP("space");return p?Math.max(0,f-(f/2-(f>.2?.025:0))*p):f};
 /* raise requests: one head at a time asks for +10%; unanswered after 24 game days counts as refused. Refused: 40% quit (never with an HR head or on the dev account) */
