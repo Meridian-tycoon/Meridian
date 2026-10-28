@@ -2,6 +2,9 @@ rules_version = '2';
 // Meridian Tycoon: public player profiles shown on other players' globes.
 service cloud.firestore {
   match /databases/{database}/documents {
+    function wcOff() {
+      return exists(/databases/$(database)/documents/world/wcseason) ? get(/databases/$(database)/documents/world/wcseason).data.off : 0;
+    }
     function validProfile(d) {
       return d.keys().hasOnly(['name', 'col', 'home', 'hq', 'biz', 'nw', 'rank', 'loc', 'nb', 'nc', 'cid', 'gov', 'govC', 'govR', 'govS', 'tk', 'sats', 'lw', 'lastSeen'])
         && d.keys().hasAll(['name', 'col', 'lastSeen'])
@@ -153,6 +156,19 @@ service cloud.firestore {
       allow delete: if request.auth != null && request.auth.uid in [resource.data.a, resource.data.b];
     }
 
+    // World council season offset: the World Council Leader can end the season early (off + 1, at most once a minute). Season = UTC week + off.
+    match /world/wcseason {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && (request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1'
+          || (exists(/databases/$(database)/documents/world/wcleader) && get(/databases/$(database)/documents/world/wcleader).data.uid == request.auth.uid))
+        && request.resource.data.keys().hasOnly(['off', 'ot', 'by']) && request.resource.data.keys().hasAll(['off', 'ot', 'by'])
+        && request.resource.data.off is int
+        && request.resource.data.off == (resource == null ? 1 : resource.data.off + 1)
+        && request.resource.data.ot == request.time
+        && (resource == null || request.time > resource.data.ot + duration.value(1, 'm'))
+        && request.resource.data.by is string && request.resource.data.by.size() <= 40;
+    }
     match /world/wcleader {
       allow read: if true;
       allow create: if request.auth != null
@@ -175,7 +191,7 @@ service cloud.firestore {
       allow update: if request.auth != null && resource.data.uid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dec'])
         && request.resource.data.dec is map && request.resource.data.dec.keys().hasOnly(['w', 'v'])
-        && request.resource.data.dec.w is int && request.resource.data.dec.w == math.floor((request.time.toMillis() / 86400000 - 4) / 7)
+        && request.resource.data.dec.w is int && request.resource.data.dec.w == math.floor((request.time.toMillis() / 86400000 - 4) / 7) + wcOff()
         && request.resource.data.dec.v is map && request.resource.data.dec.v.keys().hasOnly(['nuke', 'carbon', 'arms'])
         && request.resource.data.dec.v.values().hasOnly([0, 1]);
       allow delete: if request.auth != null && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1';
@@ -199,7 +215,7 @@ service cloud.firestore {
     match /wcvote/{id} {
       function wcOk(d) {
         return d.keys().hasOnly(['w', 'c', 'v', 'at']) && d.keys().hasAll(['w', 'c', 'v', 'at'])
-          && d.w is int && d.w == math.floor((request.time.toMillis() / 86400000 - 4) / 7)
+          && d.w is int && d.w == math.floor((request.time.toMillis() / 86400000 - 4) / 7) + wcOff()
           && id == string(d.w) + '_' + request.auth.uid
           && d.c is string && d.c.size() > 0 && d.c.size() <= 40
           && d.v is map && d.v.size() >= 1 && d.v.keys().hasOnly(['nuke', 'carbon', 'arms'])
