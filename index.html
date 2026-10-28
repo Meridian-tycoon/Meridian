@@ -1158,7 +1158,11 @@ const storedU=c=>{const v=S.inv[c.id]||{};let t=0;for(const g in v)t+=v[g];retur
 const whRoom=c=>Math.max(0,whCap(c)-stored(c));                    // free tonnes, never negative
 const hasWh=c=>S.wh[c.id]!=null;
 function ensureWh(c){if(!hasWh(c)){S.wh[c.id]=0;S.inv[c.id]=S.inv[c.id]||{}}}
-function cityF(c,g){return cityF0(c,g)*(G[g][2]==="gov"?1:wevGoodF(g))} // world events (wevGoodF) move some goods prices
+function cityF(c,g){if(G[g][2]==="gov")return cityF0(c,g);const f=cityF0(c,g)*wevGoodF(g);return f*pmF(c,g,f)} // world events (wevGoodF) and player sales (pmF) move goods prices
+/* Player sales set the price: when a player listing sells, the city's market price for that good matches the sale price
+   and stays there until the next player listing sells. Capped at 0.5x-2x of the normal price. */
+function pmF(c,g,f){const m=S.mpx&&S.mpx[c.id+":"+g];if(!m)return 1;return Math.max(.5,Math.min(2,m.p/(G[g][1]*f)))}
+function pmSold(c,g,p,t){if(G[g][2]==="gov")return;S.mpx=S.mpx||{};S.mpx[c.id+":"+g]={p,t:t||Date.now()}} // world events (wevGoodF) move some goods prices
 function cityF0(c,g){const t=G[g][2];if(t==="gov")return 1;if(t==="raw"){if(deps(c).includes(g))return .75;if(["wheat","corn","cattle"].includes(g))return c.size<=2?.85:1.1;return 1.2}
   if(t==="mid")return 1;return .8+.1*c.size}
 function px(c,g){return G[g][1]*cityF(c,g)*((S.px[c.id]||{})[g]||1)}
@@ -1848,7 +1852,7 @@ function runMarket(now){if(!S.lst.length){S.mlast=now;return}
     for(const key of keys){const [cid,g]=key.split(":"),c=CITIES[+cid];const stockLv=mLevel(c,g,t);if(stockLv>=LOW)continue;
       let want=(.8-stockLv)*mT(c,g)*.25;const cap=maxPay(c,g,stockLv);                    // buyers trickle in: a quarter of the gap each minute
       const offers=S.lst.filter(l=>l.city==cid&&l.g===g&&l.q>0&&l.p<=cap).sort((a,b)=>a.p-b.p);
-      for(const l of offers){if(want<=0)break;const n=Math.min(l.q,want);l.q-=n;l.sold=(l.sold||0)+n;want-=n;const v=n*l.p*(1-FEE);S.cash+=v;S.earned=(S.earned||0)+v;
+      for(const l of offers){if(want<=0)break;const n=Math.min(l.q,want);l.q-=n;l.sold=(l.sold||0)+n;pmSold(c,g,l.p,t);want-=n;const v=n*l.p*(1-FEE);S.cash+=v;S.earned=(S.earned||0)+v;
         S.mkt[key].L=Math.min(1,S.mkt[key].L+n/mT(c,g));const sk=c.name+"|"+g;sold[sk]=sold[sk]||[0,0];sold[sk][0]+=n;sold[sk][1]+=v}}}
   S.mlast+=mins*MIN;
   for(const l of S.lst)if(l.q<1e-6&&!l.doneAt){l.doneAt=now;S.log.unshift(`Listing sold out: ${Math.round(l.sold)} ${G[l.g][0].toLowerCase()} in ${CITIES[l.city].name}`);S.log=S.log.slice(0,3)}
