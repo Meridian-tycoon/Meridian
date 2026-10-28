@@ -5722,13 +5722,40 @@ function foSettle(){for(const o of FO.out){if(!(o.st==="filled"||o.st==="decline
     .then(st=>{delete FO.busy[o.id];const f=fx(),v=f.ord[o.id]!=null?f.ord[o.id]:Math.round(o.q*o.px);delete f.ord[o.id];
       if(st==="filled"){const c=CITIES[o.city]||CITIES[0];ensureWh(c);const iv=S.inv[c.id];iv.fuel=(iv.fuel||0)+Math.floor(o.q);toast(`🛢 ${fmtN(o.q)} fuel from ${o.toName} arrived in ${c.name}`)}
       else{S.cash+=v;toast(`${o.toName} declined your fuel order: ${fmt(v)} refunded`)}save();hud();if(RX.open)rxRender()},()=>{delete FO.busy[o.id]})}}
-setInterval(()=>{try{fxTick(Date.now());foEnsure()}catch(e){}},5000);
+/* SUPPLY CONTRACTS: a company signs for a fixed amount of rig fuel every game day for 3 days, a week or a month.
+   Each day the fuel is taken from the rigs and paid at the contract price. A short day pays for what was delivered and costs a 50% penalty on the missing part;
+   3 short days break the contract with a penalty worth 3 days of supply. Longer terms pay less per unit but the monthly deal adds a signing bonus. */
+const SCCFG={offers:2,act:3,every:8,terms:[[3,"Short term · 3 days",1.2],[7,"Weekly · 7 days",1.15],[30,"Monthly · 30 days",1.1]],qMin:.2,qMax:.6,pen:.5,strikes:3,breakDays:3};
+const scS=()=>{const f=fx();if(!Array.isArray(f.so))f.so=[];if(!Array.isArray(f.sc))f.sc=[];if(!(f.snext>0))f.snext=0;return f};
+const scDev=()=>{try{return typeof devGod==="function"&&devGod()}catch(e){return false}};
+const rigFuelDay=()=>rigs().reduce((a,r)=>a+rigDay(r).fuel+rigDay(r).oil*rigPx("oil")/rigPx("fuel")*RIGCFG.fuelX,0);
+function scTick(now){const f=scS();f.so=f.so.filter(o=>o.exp>now);
+  for(const c of f.sc){let n=0;while(c.next<=now&&c.left>0&&n++<60){rigTick(Math.min(now,c.next));const got=rigTake(Math.min(c.q,rigFuel())),pay=Math.round(got*c.px);S.cash+=pay;S.earned=(S.earned||0)+pay;c.paid+=pay;c.left--;c.next+=DAYMS;
+      if(got<c.q-1e-6){const pen=scDev()?0:Math.round((c.q-got)*c.px*SCCFG.pen);S.cash-=pen;c.pen+=pen;c.miss++;toast(`⚠️ ${c.co}: short ${fmtN(c.q-got)} fuel today, penalty ${fmt(pen)}`,"bad");
+        if(c.miss>=SCCFG.strikes){const b=scDev()?0:Math.round(c.q*c.px*SCCFG.breakDays);S.cash-=b;c.pen+=b;c.broken=1;c.left=0;toast(`❌ ${c.co} cancelled the supply contract: ${fmt(b)} break penalty`,"bad")}}}
+    if(c.left<=0&&!c.broken&&!c.ok){c.ok=1;toast(`✅ Supply contract with ${c.co} completed: ${fmt(c.paid)} earned`)}}
+  f.sc=f.sc.filter(c=>c.left>0||now-c.next<DAYMS);
+  if(!rigs().length||f.so.length>=SCCFG.offers||now<f.snext)return;const R=(a,b)=>a+Math.random()*(b-a),T=SCCFG.terms[Math.floor(Math.random()*SCCFG.terms.length)],day=rigFuelDay();
+  f.so.push({id:(f.cid=(f.cid||0)+1),co:RIVALS[Math.floor(Math.random()*RIVALS.length)].n,d:T[0],q:Math.max(50,Math.round(day*R(SCCFG.qMin,SCCFG.qMax)/50)*50),px:+(rigPx("fuel")*T[2]*R(.97,1.05)).toFixed(2),exp:now+R(1,2)*DAYMS});
+  f.snext=now+SCCFG.every*DAYMS/24*R(.6,1.4)}
+function scSign(id){const f=scS(),o=f.so.find(x=>x.id===id);if(!o)return;if(f.sc.filter(c=>c.left>0).length>=SCCFG.act)return toast(`At most ${SCCFG.act} supply contracts at once`);
+  const used=f.sc.filter(c=>c.left>0).reduce((a,c)=>a+c.q,0);const now=Date.now(),bonus=o.d>=30?Math.round(o.q*o.px):0;if(bonus){S.cash+=bonus;S.earned=(S.earned||0)+bonus}
+  f.sc.push({id:o.id,co:o.co,q:o.q,px:o.px,d:o.d,left:o.d,next:now+DAYMS,paid:bonus,pen:0,miss:0});f.so=f.so.filter(x=>x!==o);
+  toast(`✍️ Signed: ${fmtN(o.q)} fuel a day to ${o.co} for ${o.d} days${bonus?" · signing bonus "+fmt(bonus):""}${used+o.q>rigFuelDay()?" · careful: your rigs make less than you've promised":""}`)}
+function scHtml(btn){const f=scS(),now=Date.now(),day=rigFuelDay(),act=f.sc.filter(c=>c.left>0),used=act.reduce((a,c)=>a+c.q,0);
+  let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Supply contracts</h3><small style="margin-left:auto;opacity:.6">promised ${fmtN(used)}/day of ${fmtN(day)}/day made</small></div>`;
+  if(!rigs().length)return h+`<div class="mdx-empty">Build a rig to get supply contracts.</div></div>`;
+  h+=act.length?`<div class="mdx-rows">${act.map(c=>`<div><span>📜 <b>${dxE(c.co)}</b> · ${fmtN(c.q)} fuel/day at ${fmt(c.px)}<br><small>${c.left} of ${c.d} days left · next delivery in ${fmtDur(c.next-now)} · earned ${fmt(c.paid)}${c.miss?` · <b style="color:#ef4444">${c.miss}/${SCCFG.strikes} short days</b>`:""}</small></span></div>`).join("")}</div>`:"";
+  h+=f.so.length?`<div class="mdx-rows">${f.so.map(o=>{const pr=Math.round((o.px/rigPx("fuel")-1)*100);return `<div><span>🏢 <b>${dxE(o.co)}</b> offers ${o.d===3?"a short-term":o.d===7?"a weekly":"a monthly"} deal: ${fmtN(o.q)} fuel/day for ${o.d} days<br><small>${fmt(o.px)}/unit (+${pr}%) · ${fmt(o.q*o.px*o.d)} total${o.d>=30?" + signing bonus "+fmt(o.q*o.px):""} · offer ends in ${fmtDur(o.exp-now)}</small></span>${btn("scsign",o.id,"Sign",act.length>=SCCFG.act,"#1d4ed8")}</div>`}).join("")}</div>`:`<div class="mdx-empty">No supply offers right now. Companies send new ones every few hours.</div>`;
+  return h+`<div class="mdx-note">Fuel is taken from your rigs once a game day. A short day costs a 50% penalty on what's missing; ${SCCFG.strikes} short days break the deal (penalty = ${SCCFG.breakDays} days of supply).</div></div>`}
+setInterval(()=>{try{fxTick(Date.now());foEnsure()}catch(e){}try{scTick(Date.now())}catch(e){console.warn("sc",e)}},5000);
 function fxHtml(){const now=Date.now(),f=fx(),have=rigFuel(),uid=foOk()&&ON.user.uid,whs=Object.keys(S.wh||{}).filter(i=>S.wh[i]!=null&&CITIES[i]).map(i=>CITIES[i]);
   const btn=(a,k,t,dis,bg)=>`<button class="mdx-pill" data-rx="${a}" data-v="${dxE(String(k))}" ${dis?"disabled":""} style="border:0;cursor:pointer;color:#fff;background:${bg||"#0f766e"};opacity:${dis?.5:1}">${t}</button>`;
   const sel=(id,v,opts,ph)=>`<select data-fo="${id}" style="max-width:100%">${ph?`<option value="">${ph}</option>`:""}${opts.map(([k,t])=>`<option value="${dxE(String(k))}"${String(k)===String(v)?" selected":""}>${dxE(t)}</option>`).join("")}</select>`;
   let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Export contracts</h3><small style="margin-left:auto;opacity:.6">${f.done} delivered</small></div>`+
     (rigs().length?(f.of.length?`<div class="mdx-rows">${f.of.map(o=>{const v=o.q*o.px,pr=Math.round((o.px/rigPx("fuel")-1)*100);return `<div><span>🏢 <b>${dxE(o.co)}</b> wants ${fmtN(o.q)} fuel<br><small>${fmt(o.px)}/unit (+${pr}% over market) · expires in ${fmtDur(o.exp-now)}</small></span>${btn("fxdel",o.id,"Deliver · "+fmt(v),have<o.q)}</div>`}).join("")}</div>`:`<div class="mdx-empty">No offers right now. Companies send new ones every few hours.</div>`)
       +`<div class="mdx-note">Fuel comes out of your rigs' storage (${fmtN(have)} on board now) and is paid on delivery.</div>`:`<div class="mdx-empty">Build a rig to get export offers.</div>`)+`</div>`;
+  try{h+=scHtml(btn)}catch(e){console.warn("scHtml",e)}
   h+=`<div class="mdx-card"><div class="mdx-ch"><h3>Player fuel market</h3></div>`;
   if(!uid)h+=`<div class="mdx-empty">Sign in to the online world to trade fuel with other players.</div>`;
   else{if(FO.err)h+=`<div class="mdx-empty">${dxE(FO.err)}</div>`;
@@ -5745,7 +5772,7 @@ function rxOpen(){if(!document.getElementById("mdx-css")){const st=document.crea
       if(a==="pmt"){rigPermit();save();hud();rxRender();return}if(a==="build"){rxClose();rigStart();return}
       if(a==="up"){rigUp(k);save();hud();rxRender();return}
       if(a==="sell"){rigSell(k);save();hud();rxRender();return}
-      {const v=b.dataset.v;if(a==="fxdel"){fxDeliver(+v);save();hud();rxRender();return}if(a==="foord"){foOrder();return}if(a==="fofill"){foFill(v,1);return}if(a==="fodec"){foFill(v,0);return}if(a==="focan"){foCancel(v);return}}
+      {const v=b.dataset.v;if(a==="fxdel"){fxDeliver(+v);save();hud();rxRender();return}if(a==="scsign"){scSign(+v);save();hud();rxRender();return}if(a==="foord"){foOrder();return}if(a==="fofill"){foFill(v,1);return}if(a==="fodec"){foFill(v,0);return}if(a==="focan"){foCancel(v);return}}
       if(a==="tkbuy"){const s=el.querySelector(`[data-rxtk="${k}"]`);if(s){rigTkBuy(+s.value,b.dataset.v);save();hud()}rxRender();return}
       if(a==="tksell"){rigTkSell(k,+b.dataset.v);save();hud();rxRender();return}
       if(a==="ship"){const s=el.querySelector(`[data-rxto="${k}"]`);if(s){rigShip(k,+s.value);save();hud()}rxRender();return}
