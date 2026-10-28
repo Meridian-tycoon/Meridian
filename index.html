@@ -2649,7 +2649,7 @@ function lawMult(c,b){let m=[1.06,1,.9][law(c,"wage")];
   if(RETAIL.includes(b.k))m*=[1,.97,.93][law(c,"tariff")];
   if(SMALL.includes(b.k)&&law(c,"grant"))m*=1.1;if(b.k==="prison")m*=[.7,1,1.4][law(c,"police")];
   const g=gov(c.country);if(g.strike>Date.now())m*=.7;return m*warMult(c)*dipMult(c)*wmdMult(c)}
-const taxRateC=c=>[.1,.15,.2,.25,.3][law(c,"tax")];
+const taxRateC=c=>[.1,.15,.2,.25,.3][law(c,"tax")]*cfoTaxK();
 const rentLaw=c=>law(c,"rent")?.85:1;
 const jobLaw=c=>[.9,1,1.15][law(c,"wage")];
 const siteLaw=c=>[1,1.04,1.09][law(c,"tariff")]*[1,1,1.05,1.1,1.2][warLvl(c.country)];
@@ -3825,13 +3825,13 @@ function logBank(m){S.log.unshift("Bank: "+m);S.log=S.log.slice(0,3)}
 function cardCover(){const c=B().card;if(!c||S.cash>=0)return;const d=Math.min(-S.cash,c.lim-c.bal);if(d>0){c.bal+=d;S.cash+=d}}
 function bankHour(quiet){const b=B();
   const cut=ofCfoCut();for(const l of b.loans){if(cut<1)try{ofSav("cfo",l.bal*l.rate*(1-cut))}catch(e){}l.bal*=1+l.rate*cut;const due=Math.min(l.pay,l.bal);
-    if(S.cash>=due){S.cash-=due;l.bal-=due;l.miss=0;b.ontime++;l.left--}
+    if(S.cash>=due){S.cash-=due;l.bal-=due;l.miss=0;b.ontime+=cfoCredK();l.left--}
     else{l.miss++;l.bal+=Math.max(5,due*.05);b.lates.push(Date.now());if(!quiet)logBank(`Missed a ${LOANT[l.type].n.toLowerCase()} payment (late fee charged)`);
       if(l.miss>=3&&!l.coll){l.coll=1;l.rate*=1.5;l.bal*=1.1;l.pay=Math.max(l.pay,amort(l.bal,l.rate,Math.max(24,l.left)));/* re-amortize so 1.5x rate can't outgrow the payment on long terms */b.lates.push(Date.now(),Date.now());if(!quiet)logBank(`${LOANT[l.type].n} sent to collections`)}}}
   b.loans=b.loans.filter(l=>l.bal>.5);
   const c=b.card;if(c){if(!c.paidStmt)c.bal+=Math.min(c.bal,c.stmt)*c.rate;
     if(Date.now()>=c.due){const min=Math.min(c.bal,Math.max(25,c.bal*.03));
-      if(c.bal>0){if(S.cash>=min){S.cash-=min;c.bal-=min;b.ontime++}else{c.bal+=35;b.lates.push(Date.now());if(!quiet)logBank("Missed your credit card minimum payment ($35 fee)")}}
+      if(c.bal>0){if(S.cash>=min){S.cash-=min;c.bal-=min;b.ontime+=cfoCredK()}else{c.bal+=35;b.lates.push(Date.now());if(!quiet)logBank("Missed your credit card minimum payment ($35 fee)")}}
       c.stmt=c.bal;c.paidStmt=c.bal<=0;c.due+=24*DAYMS;if(c.due<Date.now())c.due=Date.now()+24*DAYMS}}
   b.lates=b.lates.filter(t=>hrsAgo(t)<720);b.inq=b.inq.filter(t=>hrsAgo(t)<168);
   b.hist.push(creditScore());b.hist=b.hist.slice(-96)}
@@ -9473,7 +9473,7 @@ const OFD=[["log","📦","Logistics","Runs your city managers' restocking.",1000
   ["truck","🚚","Trucking","Runs hubs and contracts.",3000,"Delivered trucking contracts pay 8% more, and worn trucks get serviced before they break down."],["air","✈️","Airline","Runs routes and the fleet.",5000,"Airline fuel costs 20% less on every flight."],["mkt","📣","Marketing","Campaigns that lift business income.",3000,"All businesses earn 6% more, and can run 3-day ad campaigns for +10%."],["hr","🧑‍💼","HR","Hiring and wages for the whole team.",4000,"Other heads cost 15% less and sign for 25% less, ask for raises half as often and never quit over a refused raise."],
   ["exch","📈","Exchange","Runs the NYC stock exchange. Only the exchange owner can hire.",750000,"Exchange fees +25% (grows with level)."],
   /* second floor (2026-10-28): six more heads with desks upstairs */
-  ["cfo","💼","Finance (CFO)","Runs the books and your bank loans.",6000,"Loan interest is 20% lower."],
+  ["cfo","💼","Finance (CFO)","Runs the books, loans, taxes and treasury.",6000,"Loan interest 20% lower, business taxes 10% lower, credit builds twice as fast, plus a daily brief, stock tip and profit sweep."],
   ["rnd","🔬","R&D","Runs the research labs.",4000,"You earn 15% more research points."],
   ["sec","🛡️","Security","Protects your businesses in war zones.",5000,"Strike damage cuts your business income 30% less."],
   ["re","🏘️","Real Estate","Runs your property portfolio.",3000,"Property rent pays 8% more."],
@@ -9533,7 +9533,25 @@ function ofPay(k){const d=OFD.find(x=>x[0]===k),h=ofS().d[k];if(!d||!h)return d?
 const ofFee=()=>Math.max(1,1.1-.05*ofP("log"));
 const ofSpFee=f=>{const p=ofP("space");return p?Math.max(0,f-(f/2-(f>.2?.025:0))*p):f};
 /* raise requests: one head at a time asks for +10%; unanswered after 24 game days counts as refused. Refused: 40% quit (never with an HR head or on the dev account) */
-function ofTick(now){const o=ofS(),ks=Object.keys(o.d);if(!ks.length||!ofHq()){o.nx=0;return}try{ofEvTick(now)}catch(e){}const gap=()=>(ofHas("hr")?96:48)*DAYMS*(.75+Math.random()*.5);
+/* CFO extras (2026-10-28): business taxes -10%, on-time payments build credit twice as fast, daily brief, profit sweep to the bunker vault, daily stock tip. All grow with level. */
+function cfoTaxK(){try{return Math.max(.5,1-.1*ofP("cfo"))}catch(e){return 1}}
+function cfoCredK(){try{return ofHas("cfo")?1+ofP("cfo"):1}catch(e){return 1}}
+const CFOSW=[0,1e6,1e7,1e8,1e9];
+function cfoSweep(now){const o=ofS();if(!ofHas("cfo")||!(o.sw>0))return;const b=bunk();if(!b||!b.lv)return;const h=Math.floor(now/DAYMS);if(o.swH===h)return;o.swH=h;
+  const x=Math.floor(S.cash-o.sw);if(x<1)return;S.cash-=x;b.vault=Math.max(0,+b.vault||0)+x;o.swT=(o.swT||0)+x;try{ofSav("cfo",0)}catch(e){}}
+function cfoTip(now){const o=ofS(),d=Math.floor(now/DAYMS);if(o.tip&&o.tip.d===d)return o.tip;const m=MK();let best=null;
+  for(const a of ASSETS){if(a.t!=="s")continue;const hs=m.h[a.s],px=m.px[a.s];if(!Array.isArray(hs)||hs.length<5||!(px>0))continue;const avg=hs.reduce((x,y)=>x+y,0)/hs.length,r=px/avg;if(!best||r<best.r)best={s:a.s,n:a.n,r}}
+  o.tip=best?{d,s:best.s,n:best.n,off:Math.round((1-best.r)*1000)/10}:{d,s:null};return o.tip}
+function cfoBrief(){const t=totals(),debt=(B().loans||[]).reduce((a,l)=>a+l.bal,0)+(B().card?B().card.bal:0)+(S.debt||0);
+  const ex=[["salaries",ofUpk()],["upkeep",t.upk||0],["rent",t.rent||0],["interest",t.interest||0]].sort((a,b)=>b[1]-a[1])[0];
+  return{flow:t.inc,debt,ex}}
+function cfoHtml(){const o=ofS(),b=bunk(),br=cfoBrief(),tp=cfoTip(Date.now()),E=dxE;
+  const sw=CFOSW.map(v=>`<button class="lx-btn${(o.sw||0)===v?" on":""}" data-of="cfosw" data-v="${v}"${(o.sw||0)===v?' style="outline:2px solid #2563eb"':""}>${v?"Keep "+fmt(v):"Off"}</button>`).join("");
+  return`<div class="mdx-note" style="margin:0">📋 <b>Daily brief:</b> cash flow ${br.flow>=0?"+":"−"}${fmt(Math.abs(br.flow))}/day · debt ${fmt(br.debt)}${br.ex&&br.ex[1]>0?` · biggest cost: ${br.ex[0]} ${fmt(br.ex[1])}/day`:""}</div>
+  <div class="mdx-note" style="margin:0">📈 <b>Stock tip:</b> ${tp.s?`${E(tp.n)} (${E(tp.s)}) is ${tp.off>0?tp.off+"% below":"close to"} its recent average. A hint, not a promise.`:"Not enough market history yet."}</div>
+  <div class="mdx-note" style="margin:0">🔐 <b>Profit sweep:</b> ${b&&b.lv?`cash above your target moves into the bunker vault every game hour${o.swT?` (${fmt(o.swT)} swept so far)`:""}.`:"build a bunker to use the vault."}<span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">${b&&b.lv?sw:""}</span></div>
+  <small style="color:var(--dxmut)">Also: business taxes ${Math.round((1-cfoTaxK())*100)}% lower, and on-time payments build your credit score ${cfoCredK().toFixed(1)}× as fast.</small>`}
+function ofTick(now){const o=ofS(),ks=Object.keys(o.d);if(!ks.length||!ofHq()){o.nx=0;return}try{ofEvTick(now)}catch(e){}try{cfoSweep(now)}catch(e){}const gap=()=>(ofHas("hr")?96:48)*DAYMS*(.75+Math.random()*.5);
   for(const k of ks){const h=o.d[k];if(h&&h.ask&&now-h.ask>=24*DAYMS)ofAsk(k,false,true)}
   if(!o.nx){o.nx=now+gap();return}if(now<o.nx)return;o.nx=now+gap();const free=Object.keys(o.d).filter(k=>!o.d[k].ask);if(!free.length)return;
   const k=free[Math.floor(Math.random()*free.length)],h=o.d[k];h.ask=now;const d=OFD.find(x=>x[0]===k);try{toast(`💼 ${h.nm} (${d[2]}) is asking for a 10% raise. Answer in the Office.`)}catch(e){}}
@@ -9565,7 +9583,7 @@ function ofLine(k,h){if(k==="exch"){const g=exGross();return`Running ${S.exch.na
   if(k==="truck"){ofRep(k);const r=h.rep,j=(LG().jobs||[]).length;return`Today: ${r.n} contract${r.n===1?"":"s"} delivered for ${fmt(r.v)}. ${j} on the road now.`}
   if(k==="air"){ofRep(k);const r=h.rep,n=AIR().pl.length;return n?`Today: ${r.n} flight${r.n===1?"":"s"}, ${r.v<0?"lost":"netted"} ${fmt(Math.abs(r.v))}. ${n} plane${n===1?"":"s"} in the fleet.`:"No planes yet. Buy one on the Airline tab."}
   if(k==="mkt"){let b=0;for(const c of CITIES){const o=S.own[c.id];if(!o)continue;for(const x of BIZ)if(o[x.k])b+=uSum(c.id,x.k,l=>profit(x,c,l))}return`Marketing adds about ${fmt(ofGain("mkt"))}/day to business profit.${ofCampOn()?` Ad campaign running: ${dxIn(S.off.camp-Date.now())} left.`:""}`}
-  if(k==="cfo"){const b=(B().loans||[]).length;return b?`Watching ${b} loan${b===1?"":"s"}: you pay ${Math.round((1-ofCfoCut())*100)}% less interest. Saved ${fmt(ofGain("cfo"))} today.`:"No loans on the books. Nice and clean."}
+  if(k==="cfo"){const br=cfoBrief(),tp=cfoTip(Date.now());return`Cash flow ${br.flow>=0?"+":"−"}${fmt(Math.abs(br.flow))}/day, debt ${fmt(br.debt)}.${br.ex&&br.ex[1]>0?` Biggest cost: ${br.ex[0]}.`:""}${tp.s?` Tip: ${tp.s} looks cheap.`:""}`}
   if(k==="rnd")return`The labs add ${Math.round(15*ofP("rnd"))}% to every research point you earn. ${S.rp||0} points banked.`;
   if(k==="sec"){const n=Object.keys(S.dmg||{}).filter(id=>CITIES[id]&&dmgLvl(CITIES[id])>0).length;return n?`${n} damaged cit${n===1?"y":"ies"}: our guards cut the income hit by ${Math.round(Math.min(90,30*ofP("sec")))}%.`:"All quiet. No strike damage in any city."}
   if(k==="re")return S.props.length?`${S.props.length} propert${S.props.length===1?"y":"ies"}: rent up ${Math.round(8*ofP("re"))}%, about ${fmt(ofGain("re"))}/day extra.`:"No properties yet. Buy some in a city's Property tab.";
@@ -9584,7 +9602,7 @@ function ofPage(){const hq=ofHq(),o=ofS(),E=dxE,team=OFD.filter(d=>o.d[d[0]]).le
       :`<div style="display:flex;gap:10px;align-items:center;opacity:.6"><span style="font-size:34px;line-height:1;filter:grayscale(1)">🪑</span><span>${live?"Empty desk":"Coming soon"}</span></div>`;
     const btn=!live?"":h?`<button class="lx-btn" data-of="fire" data-k="${k}">Let go</button>`:`<button class="lx-btn" data-of="hire" data-k="${k}"${S.cash<ofSign(k)?` aria-disabled="true" title="Need ${fmt(ofSign(k))}"`:""}>Hire · ${fmt(ofSign(k))} signing</button>`;
     return`<div class="mdx-card" style="margin:0;display:flex;flex-direction:column;gap:8px;${live?"":"opacity:.7"}"><div class="mdx-ch" style="margin:0"><h3>${d[1]} ${d[2]}</h3>${live?`<small style="margin-left:auto;color:var(--dxmut)">${fmt(h?ofPay(k):Math.round(d[4]*(k!=="hr"&&ofHas("hr")?.85:1)))}/day</small>`:""}</div>
-      <small style="color:var(--dxmut)">${d[3]}</small>${desk}${h&&h.deal>Date.now()?`<div class="mdx-note" style="margin:0;color:#16a34a">🔥 Deal running: perk counts double · ${dxIn(h.deal-Date.now())} left</div>`:""}${h&&o.ev&&o.ev.k===k?`<div class="mdx-note" style="margin:0;color:#2563eb">💡 ${E(h.nm)} ${OFEV[k]}. Pay ${fmt((typeof devGod==="function"&&devGod())?0:o.ev.c)} now and this perk counts double for ${OFEVD} game days.<span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="lx-btn" data-of="dyes" data-k="${k}">Yes, do it</button><button class="lx-btn" data-of="dno" data-k="${k}">No thanks</button></span></div>`:""}${h&&h.ask?`<div class="mdx-note" style="margin:0;color:#d97706">💼 Asking for a 10% raise (${fmt(Math.round(ofPay(k)*.1))}/day more). <span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="lx-btn" data-of="yes" data-k="${k}">Give raise</button><button class="lx-btn" data-of="no" data-k="${k}">Refuse</button></span></div>`:""}${h?`<div class="mdx-note" style="margin:0;overflow-wrap:anywhere">📝 ${E(ofLine(k,h))}</div>${ofGainRow(k)}`:live?`<small><b>Perk:</b> ${d[5]}</small>`:""}<div style="display:flex;gap:6px;flex-wrap:wrap">${btn}${k==="mkt"&&h?(ofCampOn()?`<small style="align-self:center;color:var(--dxmut)">📣 Campaign: ${dxIn(S.off.camp-Date.now())} left</small>`:`<button class="lx-btn" data-of="camp"${S.cash<ofCampCost()?' aria-disabled="true"':""}>📣 Run campaign · ${fmt(ofCampCost())}</button>`):""}</div></div>`};
+      <small style="color:var(--dxmut)">${d[3]}</small>${desk}${k==="cfo"&&h?cfoHtml():""}${h&&h.deal>Date.now()?`<div class="mdx-note" style="margin:0;color:#16a34a">🔥 Deal running: perk counts double · ${dxIn(h.deal-Date.now())} left</div>`:""}${h&&o.ev&&o.ev.k===k?`<div class="mdx-note" style="margin:0;color:#2563eb">💡 ${E(h.nm)} ${OFEV[k]}. Pay ${fmt((typeof devGod==="function"&&devGod())?0:o.ev.c)} now and this perk counts double for ${OFEVD} game days.<span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="lx-btn" data-of="dyes" data-k="${k}">Yes, do it</button><button class="lx-btn" data-of="dno" data-k="${k}">No thanks</button></span></div>`:""}${h&&h.ask?`<div class="mdx-note" style="margin:0;color:#d97706">💼 Asking for a 10% raise (${fmt(Math.round(ofPay(k)*.1))}/day more). <span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="lx-btn" data-of="yes" data-k="${k}">Give raise</button><button class="lx-btn" data-of="no" data-k="${k}">Refuse</button></span></div>`:""}${h?`<div class="mdx-note" style="margin:0;overflow-wrap:anywhere">📝 ${E(ofLine(k,h))}</div>${ofGainRow(k)}`:live?`<small><b>Perk:</b> ${d[5]}</small>`:""}<div style="display:flex;gap:6px;flex-wrap:wrap">${btn}${k==="mkt"&&h?(ofCampOn()?`<small style="align-self:center;color:var(--dxmut)">📣 Campaign: ${dxIn(S.off.camp-Date.now())} left</small>`:`<button class="lx-btn" data-of="camp"${S.cash<ofCampCost()?' aria-disabled="true"':""}>📣 Run campaign · ${fmt(ofCampCost())}</button>`):""}</div></div>`};
   return`<div class="mdx-card"><div class="mdx-ch"><h3>🏢 Head office · ${E(hq.name)}</h3><button class="lx-btn" style="margin-left:auto" data-of="visit">🚶 Visit office</button></div><div class="mdx-rows"><div><span>Team</span><b>${team} of ${nLive} heads hired</b></div><div><span>Payroll</span><b>${fmt(pay)}/day</b></div></div>
     ${OF.note&&Date.now()-OF.nt<8000?`<div class="mdx-note">${E(OF.note)}</div>`:""}<div class="mdx-note" style="color:var(--dxmut)">Each head runs their department's automation for less and levels up every 24 game days (perks +25% per level, salary +10%). Salaries are paid every game day with your HQ upkeep.</div></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:12px">${OFD.map(room).join("")}</div>`+bdHtml()+wrHtml()}
@@ -9593,7 +9611,7 @@ function ofRender(){const main=DX.el&&DX.el.querySelector("#mdx-main");if(!main)
   DX.el.querySelectorAll("[data-lx=page]").forEach(b=>b.classList.toggle("on",b.dataset.v==="off"));if(main.dataset.mode!=="of"){main.dataset.mode="of";main._lxh=""}
   let h;try{h=ofPage()}catch(e){console.warn("of",e);h=`<div class="mdx-card"><div class="mdx-empty">The office page hit a snag (${dxE(e.message)}).</div></div>`}if(h!==main._lxh){main._lxh=h;main.innerHTML=h}}
 function ofWire(el){el.addEventListener("click",e=>{const b=e.target.closest("[data-of]");if(!b||b.getAttribute("aria-disabled")==="true")return;const a=b.dataset.of,k=b.dataset.k;
-  if(a==="hire"){OF.note=ofHire(k);OF.nt=Date.now()}else if(a==="yes"||a==="no"){OF.note=ofAsk(k,a==="yes");OF.nt=Date.now()}else if(a==="camp"){OF.note=ofCamp();OF.nt=Date.now()}else if(a==="dyes"||a==="dno"){OF.note=ofEv(a==="dyes");OF.nt=Date.now()}else if(a==="bdok"||a==="bdpol"){OF.note=bdVote(a==="bdok"?null:k);OF.nt=Date.now()}else if(a==="visit"){const hq=ofHq();if(hq){dxClose();ofEnter(hq,false)}return}else if(a==="fire"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to let go";return}ofFire(k);OF.note="";}
+  if(a==="cfosw"){const o=ofS();o.sw=+b.dataset.v||0;OF.note=o.sw?`CFO will keep ${fmt(o.sw)} in cash and sweep the rest into the vault.`:"Profit sweep off.";OF.nt=Date.now()}else if(a==="hire"){OF.note=ofHire(k);OF.nt=Date.now()}else if(a==="yes"||a==="no"){OF.note=ofAsk(k,a==="yes");OF.nt=Date.now()}else if(a==="camp"){OF.note=ofCamp();OF.nt=Date.now()}else if(a==="dyes"||a==="dno"){OF.note=ofEv(a==="dyes");OF.nt=Date.now()}else if(a==="bdok"||a==="bdpol"){OF.note=bdVote(a==="bdok"?null:k);OF.nt=Date.now()}else if(a==="visit"){const hq=ofHq();if(hq){dxClose();ofEnter(hq,false)}return}else if(a==="fire"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to let go";return}ofFire(k);OF.note="";}
   save();hud();if(PH.open)phRender();ofRender()})}
 function axRender(){return pcScope(axRender0)}
 function axRender0(){const main=DX.el&&DX.el.querySelector("#mdx-main");if(!main)return;const ag=AGS();
