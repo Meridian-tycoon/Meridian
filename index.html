@@ -4983,7 +4983,7 @@ function polRun(){const p=pol(),C=GOVCFG,now=Date.now(),r=p.r+1,O=C.offices[r];i
   const {nw}=totals(),cost=polCost(r,n);if(nw<O.nw)return toast(`Need net worth ${fmt(O.nw)}`);if(S.cash<cost)return toast(`Campaign costs ${fmt(cost)}`);
   const full=cabFull(n,r),foe=full?cabWeak(n,r):null;if(full&&!foe)return toast(`Every ${O.n} seat in ${n} is held by immune players`);
   const ch=polChance(r);S.cash-=cost;
-  if(Math.random()<ch){p.r=r;p.c=n;p.since=now;if(foe)logPol(`You beat ${String(foe.name||"a player").slice(0,20)} for a ${O.n} seat`);try{onPublish(true)}catch(e){}p.appr=Math.max(p.r>0?p.appr:0,C.apprStart);logPol(`You won! You are now ${O.n} of ${n}`);if(typeof confetti==="function")confetti(60,innerWidth/2,innerHeight/3)}
+  if(Math.random()<ch){p.r=r;p.c=n;p.since=now;if(foe)logPol(`You beat ${String(foe.name||"a player").slice(0,20)} for a ${O.n} seat`);try{onPublish(true)}catch(e){}p.appr=Math.max(p.r>0?p.appr:0,C.apprStart);logPol(`You won! You are now ${O.n} of ${n}`);if(r===C.offices.length-1)annPost("elect",n,`${String(onProf().name||"A player").slice(0,20)} wins the election and takes power as ${O.n} of ${n}`);if(typeof confetti==="function")confetti(60,innerWidth/2,innerHeight/3)}
   else{p.cd=now+C.loseCd*DAYMS;if(p.r>=0)p.appr=Math.max(0,p.appr-5);logPol(`You lost the race for ${O.n} of ${n} (${Math.round(ch*100)}% chance)`)}}
 const polPRq=p=>{const gb=Math.max(0,Math.min(GOVCFG.prGain,95-p.appr)),g=Math.max(0,Math.min(95-p.appr,gb*(1+presFx("pr"))));return {g,c:Math.round(polCost(p.r,p.c)*GOVCFG.prCost*gb/GOVCFG.prGain*(1-presFx("cost")))}}; // cost scales with approval actually gained (capped at 95)
 function polPR(){const p=pol();if(p.r<0)return;if(p.appr>=95)return toast("Approval is already maxed");const {g,c}=polPRq(p);if(S.cash<c)return toast(`PR campaign costs ${fmt(c)}`);S.cash-=c;p.appr=Math.min(95,p.appr+g);toast(`Approval +${Math.round(g*10)/10}`)}
@@ -5007,7 +5007,7 @@ function tkPrice(n){const d=dip(),g=d.gdp[n]||dipBase(n),a=+gov(n).appr||50,k=Ob
 function tkBuy(n){const p=pol();if(!polLeader())return toast("Only a country's Leader can take over another country");if(n===p.c||p.ctrl[n]||!COUNTRIES.includes(n))return;
   if(p.mil&&(p.mil.wars&&p.mil.wars[n]||p.mil.occ&&p.mil.occ[n]))return toast(`You are at war with ${n}: no takeover deals`);
   const c=tkPrice(n);if(S.cash<c)return toast(`Taking over ${n} costs ${fmt(c)}`);S.cash-=c;p.ctrl[n]={since:Date.now(),loy:100,buy:c};
-  try{const d=dip();if(d.ruler[n])delete d.ruler[n]}catch(e){}logPol(`You bought ${n} for ${fmt(c)}`);toast(`🏛 ${n} is now yours (${fmt(c)})`);if(typeof confetti==="function")confetti(80,innerWidth/2,innerHeight/3)}
+  try{const d=dip();if(d.ruler[n])delete d.ruler[n]}catch(e){}logPol(`You bought ${n} for ${fmt(c)}`);annPost("buy",n,`${String(onProf().name||"A player").slice(0,20)}${p.c?", "+GOVCFG.offices[p.r].n+" of "+p.c+",":""} buys ${n} for ${fmt(c)}`);toast(`🏛 ${n} is now yours (${fmt(c)})`);if(typeof confetti==="function")confetti(80,innerWidth/2,innerHeight/3)}
 function tkSellAi(n){const p=pol();if(!p.ctrl[n])return;if(TKS.out.some(x=>x.c===n))return toast("Cancel the player offer first");const v=Math.round(tkPrice(n)*TKCFG.ai);S.cash+=v;delete p.ctrl[n];logPol(`You sold ${n} to the AI for ${fmt(v)}`);toast(`${n} sold to the AI for ${fmt(v)}`)}
 const TKS={un:[],out:[],inb:[]};
 function tkBuyers(){const me=ON.user&&ON.user.uid;return((typeof ON!=="undefined"&&ON.players)||[]).filter(x=>x&&x.uid&&x.uid!==me).slice(0,50)}
@@ -5017,13 +5017,31 @@ function tkOffer(n,uid,price){const p=pol();if(!p.ctrl[n])return;if(!ON.db||!ON.
     .then(()=>toast(`Offer sent: ${n} to ${b.name||"player"} for ${fmt(price)}`),e=>toast("Couldn't send the offer: "+(e&&e.code||e)))}
 function tkCancel(id){if(ON.db)ON.db.collection("ctysale").doc(id).delete().catch(()=>{})}
 function tkAccept(id){const o=TKS.inb.find(x=>x.id===id);if(!o)return;if(S.cash<o.price)return toast(`Needs ${fmt(o.price)}`);const p=pol();
-  ON.db.collection("ctysale").doc(id).update({st:"paid"}).then(()=>{S.cash-=o.price;p.ctrl[o.c]={since:Date.now(),loy:100,buy:o.price};logPol(`You bought ${o.c} from ${o.name} for ${fmt(o.price)}`);toast(`🏛 ${o.c} is now yours`);save();hud()},e=>toast("Couldn't complete: "+(e&&e.code||e)))}
+  ON.db.collection("ctysale").doc(id).update({st:"paid"}).then(()=>{S.cash-=o.price;p.ctrl[o.c]={since:Date.now(),loy:100,buy:o.price};logPol(`You bought ${o.c} from ${o.name} for ${fmt(o.price)}`);annPost("transfer",o.c,`${o.name} hands ${o.c} to ${String(onProf().name||"a player").slice(0,20)} for ${fmt(o.price)}`);toast(`🏛 ${o.c} is now yours`);save();hud()},e=>toast("Couldn't complete: "+(e&&e.code||e)))}
 function tkDecline(id){if(ON.db)ON.db.collection("ctysale").doc(id).update({st:"no"}).catch(()=>{})}
 function tkSweep(){const p=pol();for(const o of TKS.out){if(o.st==="paid"){if(p.ctrl[o.c]){delete p.ctrl[o.c];S.cash+=o.price;logPol(`${o.toName} bought ${o.c} from you for ${fmt(o.price)}`);toast(`💰 ${o.c} sold to ${o.toName} for ${fmt(o.price)}`);save()}tkCancel(o.id)}
   else if(o.st==="no"){toast(`${o.toName} declined ${o.c}`);tkCancel(o.id)}else if(!p.ctrl[o.c])tkCancel(o.id)}}
 function tkListen(u){TKS.un.forEach(f=>{try{f()}catch(e){}});TKS.un=[];TKS.out=[];TKS.inb=[];if(!u||!ON.db)return;
   TKS.un.push(ON.db.collection("ctysale").where("uid","==",u.uid).onSnapshot(q=>{TKS.out=q.docs.map(d=>({id:d.id,...d.data()}));tkSweep();onRefresh()},e=>{}));
   TKS.un.push(ON.db.collection("ctysale").where("to","==",u.uid).onSnapshot(q=>{TKS.inb=q.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.st==="open");onRefresh()},e=>{}))}
+/* GOVERNMENT ANNOUNCEMENTS: when a player takes power (elected Leader, handed a country or the World Council seat, or buys a country)
+   a govann doc {uid,name,c,k,t,at} is posted; every online player gets a big full-screen notice that stays until they close it.
+   Each one shows once per device (seen ids in localStorage) and only if it is less than ANNCFG.age old. */
+const ANNCFG={age:6*36e5,max:10},ANN={un:null,q:[],open:0};
+const ANNK={elect:["🗳","ELECTED"],buy:["🏛","COUNTRY PURCHASED"],transfer:["🤝","POWER TRANSFERRED"]};
+function annPost(k,c,t){try{if(!ON.db||!ON.user||!ANNK[k])return;const me=onProf();ON.db.collection("govann").add({uid:ON.user.uid,name:String(me.name||"Tycoon").slice(0,20),c:String(c||"").slice(0,40),k,t:String(t).slice(0,140),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("ann",e))}catch(e){}}
+function annSeen(){try{return JSON.parse(localStorage.getItem("meridian-ann")||"[]")}catch(e){return[]}}
+function annMark(id){try{const a=annSeen().filter(x=>x!==id);a.push(id);localStorage.setItem("meridian-ann",JSON.stringify(a.slice(-50)))}catch(e){}}
+function annListen(u){if(ANN.un){try{ANN.un()}catch(e){}ANN.un=null}if(!u||!ON.db)return;
+  ANN.un=ON.db.collection("govann").orderBy("at","desc").limit(ANNCFG.max).onSnapshot(q=>{const seen=annSeen(),now=Date.now();
+    q.docs.slice().reverse().forEach(d=>{const v=d.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():now;if(seen.includes(d.id)||now-at>ANNCFG.age||!ANNK[v.k]||ANN.q.some(x=>x.id===d.id))return;ANN.q.push({id:d.id,...v})});annShow()},e=>{})}
+function annShow(){if(ANN.open||!ANN.q.length)return;const a=ANN.q.shift(),[ic,lab]=ANNK[a.k],E=s=>String(s||"").replace(/[<>&"]/g,"");ANN.open=1;
+  const o=document.createElement("div");o.id="govann";o.setAttribute("role","alertdialog");o.style.cssText="position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:16px";
+  o.innerHTML=`<div style="max-width:560px;width:100%;background:linear-gradient(160deg,#1e293b,#0f172a);border:2px solid #f59e0b;border-radius:16px;padding:28px 22px;text-align:center;color:#fff;box-shadow:0 0 60px rgba(245,158,11,.45)">
+    <div style="font-size:64px;line-height:1">${ic}</div><div style="letter-spacing:4px;font-weight:800;color:#f59e0b;margin:10px 0 4px;font-size:13px">WORLD ANNOUNCEMENT · ${lab}</div>
+    <div style="font-size:30px;font-weight:800;margin:8px 0">${E(a.c)}</div><div style="font-size:17px;line-height:1.5;opacity:.95">${E(a.t)}</div>
+    <div style="font-size:12px;opacity:.6;margin-top:10px">by ${E(a.name)}</div><button id="govann-x" style="margin-top:20px;background:#f59e0b;color:#000;border:0;border-radius:8px;padding:10px 28px;font-weight:800;font-size:15px;cursor:pointer">Close</button></div>`;
+  document.body.appendChild(o);o.querySelector("#govann-x").onclick=()=>{annMark(a.id);o.remove();ANN.open=0;annShow()}}
 function tkHtml(){const p=pol(),lead=polLeader(),C=GOVCFG;let h="";const b=(a,k,t,bg,dis)=>`<button class="buy" data-ph="${a}" data-k="${k}" style="color:#fff;background:${bg}!important;padding:4px 8px" ${dis?"disabled":""}>${t}</button>`;
   if(TKS.inb.length)h+=`<div class="ph-sub" style="margin-top:12px">Countries offered to you</div><div class="ph-rows">${TKS.inb.map(o=>`<div><span>${o.c} from ${o.name}<br><small>${fmt(o.price)}</small></span><span>${b("tkacc",o.id,"Buy","#14532d",S.cash<o.price)} ${b("tkdec",o.id,"Decline","#374151")}</span></div>`).join("")}</div>`;
   if(lead){const mw=(p.mil&&p.mil.wars)||{},occ=(p.mil&&p.mil.occ)||{},list=COUNTRIES.filter(x=>x!==p.c&&!p.ctrl[x]&&!mw[x]&&!occ[x]).sort((a,c)=>tkPrice(a)-tkPrice(c));
@@ -8096,7 +8114,7 @@ function onScript(u){return new Promise((ok,no)=>{const s=document.createElement
 async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
   try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
-    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){setGuest(false);WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM){wrPublish(true);wwPublish(true)}else{wrMirror(true);try{wwMirror(true)}catch(e){}if(WRL)WRG=true}onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{WRG=false;CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);pmListen(u);tkListen(u);gateSync();onRefresh()});
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){setGuest(false);WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM){wrPublish(true);wwPublish(true)}else{wrMirror(true);try{wwMirror(true)}catch(e){}if(WRL)WRG=true}onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{WRG=false;CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);pmListen(u);tkListen(u);annListen(u);gateSync();onRefresh()});
     ON.unsubB=ON.db.collection("world").doc("bot").onSnapshot(d=>{if(WRM&&ON.user&&devUid(ON.user.uid))return;const v=d.exists?botClean(d.data()):null;if(!v)return;ON.bot=v;try{localStorage.setItem(BOTKEY,JSON.stringify(v))}catch(e){}draw();onRefresh();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)))phRender()},e=>{ON.err="Couldn't load the bot company: "+(e&&e.code||e)});
     ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;ON.gotPlayers=true;lbCache(a);try{ctCalc()}catch(e){}try{cabCheck()}catch(e){}draw();onRefresh()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
     try{wwListen()}catch(e){}ON.unsubW=ON.db.collection("world").doc("rivals").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list)||v.list.length!==RIVALS.length)return;
@@ -12513,7 +12531,7 @@ function wclGive(uid,go){const db=wcBE();if(!wclMine()||WCLD.busy)return;if(!db)
   if(!go){WCLD.arm=uid;return toast(`Tap again to hand the seat to ${t.name||"that player"}.`)}WCLD.arm=null;
   WCLD.busy=1;const ref=db.collection("world").doc("wcleader"),me=ON.user.uid;
   db.runTransaction(x=>x.get(ref).then(d=>{if(!d.exists||(d.data()||{}).uid!==me)throw new Error("notmine");x.set(ref,{uid:t.uid,name:String(t.name||"Player").slice(0,40),c:String(t.govC).slice(0,40),at:firebase.firestore.FieldValue.serverTimestamp()})}))
-    .then(()=>{WCLD.busy=0;delete S.wcl;S.log.unshift(`🌐 You stepped down and handed the World Council Leader seat to ${t.name||"a player"}.`);S.log=S.log.slice(0,3);toast("Seat handed over.");commit();cabPaint()},
+    .then(()=>{WCLD.busy=0;delete S.wcl;S.log.unshift(`🌐 You stepped down and handed the World Council Leader seat to ${t.name||"a player"}.`);S.log=S.log.slice(0,3);toast("Seat handed over.");annPost("transfer","World Council",`${String(onProf().name||"A player").slice(0,20)} hands the World Council Leader seat to ${t.name||"a player"}`);commit();cabPaint()},
       e=>{WCLD.busy=0;toast(e&&e.message==="notmine"?"You no longer hold the seat.":"Couldn't hand over the seat. Try again.");cabPaint()})}
 function wclGiveHtml(){if(!wcBE())return `<div style="margin-top:10px;font-size:12px;opacity:.8">Sign in online to hand the seat to another player.</div>`;const h=wclHeirs();
   if(!h.length)return `<div style="margin-top:10px;font-size:12px;opacity:.8">Step down: no other player in government has been online in the last 3 days.</div>`;
