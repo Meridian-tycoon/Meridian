@@ -12058,7 +12058,10 @@ function colAlertChk(){const s=COLS(),g=colGov();for(const m of colAlerts()){if(
   const t=`🚨 ${String(m.c||"?").slice(0,40)} launched an assault on ${g}'s ${COLP[m.p].n} base at ${COLP[m.p].sites[+m.site][0]}: lands in ${colIn(+m.eta)}`;toast(t);stNews(t)}}
 function colTick(now){now=now||Date.now();try{tfTick(now)}catch(e){console.warn("tf",e)}try{astTick(now)}catch(e){console.warn("ast",e)}const on=colOn()?ON.user.uid:null;if(on!==CO.uid||(on&&!CO.sub.length&&hasTech("spaceport")))colListen();try{oxEnsure()}catch(e){}if(!S.col)return;const s=COLS();
   for(let i=0;i<20;i++){const k=s.ms.findIndex(m=>m.eta<=now);if(k<0)break;const m=s.ms.splice(k,1)[0];try{m.ret?colHome(m):colArrive(m,now)}catch(e){console.warn("colArrive",e)}save();spRefresh()}
-  if(now-CO.lt>=10000){CO.lt=now;const g=colGov();if(g)for(const x of s.list){if(x.c!==g)continue;if(x.uid!==colUid())colMe(x);colProd(x,now);colPut(x);
+  if(now-CO.lt>=10000){CO.lt=now;
+    // clear my own public flight records that already landed (or were lost) but never got deleted
+    if(colOn()){const me=ON.user.uid,live=new Set(s.ms.map(m=>m.fid).filter(Boolean));for(const m of CO.ms)if(m.uid===me&&+m.eta<now-60000&&!live.has(m.id)){ON.db.collection("cmission").doc(m.id).delete().catch(()=>{});m.eta=-1}}
+    const g=colGov();if(g)for(const x of s.list){if(x.c!==g)continue;if(x.uid!==colUid())colMe(x);colProd(x,now);colPut(x);
       if(x.auto&&colSup(x,now)<COLCFG.autoBelow&&!s.ms.some(m=>!m.ret&&m.t==="supply"&&m.p===x.p&&m.site===x.s)){const port=spPorts().find(q=>!colWhy(x.p,x.s,"supply",q.c.id));if(port)colSend(x.p,x.s,"supply",port.c.id,"armored",1)}}}
   const mg=s.mgr;if(mg&&mg.on&&(now-mg.last>=COLCFG.mgr.every||mg.last>now)){mg.last=now;try{colMgr(now)}catch(e){console.warn("colMgr",e)}}
   if(SPW.open&&SP().tab==="col")try{colPaint()}catch(e){}}
@@ -12081,7 +12084,7 @@ function colPaint(){if(!SPW.el)return;const now=Date.now(),s=COLS(),g=colGov(),d
       else if(!c&&!tfOpen(p,i)){x.beginPath();x.arc(sx,sy,3.5,0,7);x.lineWidth=1.5;x.strokeStyle="rgba(226,232,240,.6)";x.setLineDash([2,2]);x.stroke();x.setLineDash([])}
       else{x.beginPath();x.arc(sx,sy,c?5:3.5,0,7);x.fillStyle=c?c.col:"rgba(226,232,240,.75)";x.fill();x.lineWidth=1;x.strokeStyle="rgba(15,23,42,.6)";x.stroke()}
       if(c&&g&&c.c===g){x.beginPath();x.arc(sx,sy,8.5,0,7);x.strokeStyle="#fff";x.lineWidth=2;x.stroke()}if(s.ui.p===p&&s.ui.s===i){x.beginPath();x.arc(sx,sy,11.5,0,7);x.strokeStyle="#facc15";x.lineWidth=1.5;x.stroke()}});
-    const ships=s.ms.filter(m=>m.p===p).map(m=>({site:m.site,at:m.at,eta:m.eta,ret:m.ret,me:1})).concat(CO.ms.filter(m=>m.p===p&&!(colOn()&&m.uid===ON.user.uid)).map(m=>({site:+m.site,at:+m.eta-COLP[p].days*DAYMS,eta:+m.eta})));
+    const ships=s.ms.filter(m=>m.p===p).map(m=>({site:m.site,at:m.at,eta:m.eta,ret:m.ret,me:1})).concat(CO.ms.filter(m=>m.p===p&&+m.eta>Date.now()-600000&&!(colOn()&&m.uid===ON.user.uid)).map(m=>({site:+m.site,at:+m.eta-COLP[p].days*DAYMS,eta:+m.eta})));
     for(const m of ships){if(!(m.site>=0&&m.site<COLP[p].sites.length))continue;const [sx,sy]=pos(m.site),a=-.9+m.site*.52,ex=o+Math.cos(a)*(R+14),ey=o+Math.sin(a)*(R+14),f=Math.max(0,Math.min(1,(now-m.at)/(m.eta-m.at||1))),u=m.ret?1-f:f,rx=ex+(sx-ex)*u,ry=ey+(sy-ey)*u;
       x.setLineDash([3,3]);x.strokeStyle=m.me?"rgba(250,204,21,.7)":"rgba(203,213,225,.55)";x.lineWidth=1;x.beginPath();x.moveTo(ex,ey);x.lineTo(sx,sy);x.stroke();x.setLineDash([]);
       x.fillStyle=m.me?"#fb923c":"#cbd5e1";x.beginPath();x.arc(rx,ry,3.5,0,7);x.fill();x.fillStyle=dk?"#e2e8f0":"#0f172a";x.fillText((m.ret?"↩ ":"")+colIn(m.eta),rx,ry-7)}}}
@@ -12105,7 +12108,7 @@ function colTab(){const s=COLS(),E=dxE,g=colGov(),now=Date.now(),P=spPorts(),u=s
           <span style="white-space:nowrap;margin-right:8px">👩‍🚀 ${colCrew(x,now)?`<b style="color:#16a34a">crew ×${COLCFG.crewX} · ${colIn(x.crewTo)}</b>`:"no fresh crew"} ${btn("colpick",colId(x.p,x.s)+":crew","Crew",0,"#475569")}</span>
           <span style="white-space:nowrap">🎢 ${x.tour||0} tourists ${btn("colpick",colId(x.p,x.s)+":tour","Tour",x.lv<COLCFG.tourLv||colUp(x,"dome")<1,"#7c3aed",x.lv<COLCFG.tourLv?`Needs level ${COLCFG.tourLv}`:colUp(x,"dome")<1?"Needs a habitat dome":"Tourist flight")}</span></div></td></tr>`}).join("")}</table>`
     :empty(`${E(g)} has no colony yet. Launch a founding mission below.`);
-  const fl=s.ms.map(m=>({p:m.p,site:m.site,t:m.t,eta:m.eta,c:m.c,ret:m.ret,me:1})).concat(CO.ms.filter(m=>!(colOn()&&m.uid===ON.user.uid)).map(m=>({p:m.p,site:+m.site,t:m.t,eta:+m.eta,c:String(m.c||"?")}))).filter(m=>COLP[m.p]&&COLP[m.p].sites[m.site]).sort((a,b)=>a.eta-b.eta);
+  const fl=s.ms.map(m=>({p:m.p,site:m.site,t:m.t,eta:m.eta,c:m.c,ret:m.ret,me:1})).concat(CO.ms.filter(m=>+m.eta>Date.now()-600000&&!(colOn()&&m.uid===ON.user.uid)).map(m=>({p:m.p,site:+m.site,t:m.t,eta:+m.eta,c:String(m.c||"?")}))).filter(m=>COLP[m.p]&&COLP[m.p].sites[m.site]).sort((a,b)=>a.eta-b.eta);
   const fly=fl.length?`<table class="mdx-tbl"><tr><th>Mission</th><th>Target</th><th>Country</th><th>Arrives</th></tr>${fl.slice(0,40).map(m=>`<tr><td>${COLT[m.t][1]} ${m.ret?"Return leg":COLT[m.t][0]}${m.me?" <small>(yours)</small>":""}</td><td>${COLP[m.p].ico} ${E(COLP[m.p].sites[m.site][0])}</td><td>${E(m.c)}</td><td>${colIn(m.eta)}</td></tr>`).join("")}</table>`:empty("No colony ships in flight.");
   const bp=u.t==="build"?u.b:u.x,x=colGet(u.p,u.s),xai=x?null:colAi(u.p,u.s,now),cost=colCost(u.p,u.t,u.u,bp),port=P.find(q=>q.c.id===+u.from)||P[0];if(port)u.from=port.c.id;const why=colWhy(u.p,u.s,u.t,port?port.c.id:-1,u.u,bp),inv=port?S.inv[port.c.id]||{}:{};
   const sites=COLP[u.p].sites.map((q,i)=>{const c=s.list.find(y=>y.p===u.p&&y.s===i),ai=c?null:colAi(u.p,i,now);return `<option value="${i}" ${i===u.s?"selected":""}>${E(q[0])} · ${E(G[q[1]][0])} · ${c?E(c.c)+" L"+c.lv:ai?`held by ${E(ai.a[0])}, level ${ai.lv}`:tfOpen(u.p,i)?"unclaimed":`🔒 terraforming ${TFCFG.site[i]}%`}</option>`}).join("");
