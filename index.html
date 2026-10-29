@@ -3566,12 +3566,15 @@ function wfSend(){const f=WF.f,C=WFCFG,amt=Math.floor(+String(f.amt||"").replace
   else{rec.st="delivered";wfPublish(true)}
   toast(`Sent ${fmt(amt)} anonymously to ${o.to}`);save();hud()}
 /* online: everyone reads world/wfund; the master also reads and clears the wfund queue (docs carry no sender) */
-function wfClean(v){const num=x=>Number.isFinite(+x)?Math.max(0,+x):0,ab=x=>({a:num(x&&x.a),b:num(x&&x.b)}),o={tot:{},b:{},tens:{},feed:[]};
+function wfClean(v){const num=x=>Number.isFinite(+x)?Math.max(0,+x):0,ab=x=>({a:num(x&&x.a),b:num(x&&x.b)}),o={tot:{},b:{},tens:{},feed:[],ww:{n:Math.floor(num(v.ww&&v.ww.n)),d:Math.floor(num(v.ww&&v.ww.d))}};
   for(const k of ["tot","b"])if(v[k]&&typeof v[k]==="object")for(const id in v[k])o[k][id]=ab(v[k][id]);
   if(v.tens&&typeof v.tens==="object")for(const k in v.tens){const p=k.split("|"),T=v.tens[k]||{};if(p.length!==2||!COUNTRIES.includes(p[0])||!COUNTRIES.includes(p[1]))continue;const f={};for(const n of p)f[n]=num(T.f&&T.f[n]);o.tens[k]={v:Math.min(100,num(T.v)),f}}
   if(Array.isArray(v.feed))o.feed=v.feed.slice(0,WFCFG.feed).map(x=>({t:num(x&&x.t),x:String(x&&x.x||"").slice(0,140)}));return o}
 function wfPubData(){const d=wf(),r1=x=>Math.round(x*10)/10,tens={};for(const k in d.tens){const T=d.tens[k],f={};for(const n in T.f||{})f[n]=Math.round(T.f[n]);tens[k]={v:r1(T.v),f}}
-  return JSON.parse(JSON.stringify({tot:d.tot,b:d.g,tens,feed:d.feed.slice(0,WFCFG.feed)}))}
+  return JSON.parse(JSON.stringify({tot:d.tot,b:d.g,tens,feed:d.feed.slice(0,WFCFG.feed),ww:wwMine()}))}
+// the master world's world war, shared with every player so they all see the same banner
+function wwMine(){const w=S.wwar;if(!w)return{n:0,d:0};let n=w.n;try{n=wwarCount().n}catch(e){}return{n:Math.max(0,n|0),d:Math.max(1,(S.day-w.d0+1)|0)}}
+function wwShown(){const own=typeof ON!=="undefined"&&ON.user&&devUid(ON.user.uid);if(!own&&WFW&&WFW.ww)return WFW.ww.n>0?WFW.ww:null;return S.wwar?wwMine():null}
 function wfPublish(force){try{if(typeof ON==="undefined"||!ON.ready||!ON.user||!devUid(ON.user.uid))return;const d=wf(),n=Date.now();if(!d.dirty&&!force)return;if(!force&&n-(ON.wfPub||0)<10000)return;
   ON.wfPub=n;d.dirty=0;const x=wfPubData();x.updated=window.firebase.firestore.FieldValue.serverTimestamp();ON.db.collection("world").doc("wfund").set(x).catch(e=>{ON.err="Couldn't publish war funding: "+(e&&e.code||e)})}catch(e){}}
 function wfListen(){if(typeof ON==="undefined"||!ON.db)return;
@@ -3784,10 +3787,10 @@ function wwStory(k,c,quiet){try{const w=S.wwar||c.w;if(!w)return;
     const you=pc?(mine?`${pc} fought on ${mine} front${mine>1?"s":""} and came through.`:`${pc} stayed out of it.`):"You watched it from the boardroom.";
     stNews(`${c.days} days, ${seen.length} wars, peak ${w.peak||seen.length} at once.${top?` ${top[0]} fought the most.`:""} ${you} — MW`,"Talia Okonjo, Busan");
     S.wwLast={days:c.days,wars:seen.length,peak:w.peak||0,top:top?top[0]:"",you}}}catch(e){console.warn("wwstory",e)}}
-function wwarBan(){const mw=document.getElementById("mapwrap");if(!mw)return;let b=document.getElementById("wwarban");const w=S.wwar;
-  if(!w){if(b)b.remove();return}
+function wwarBan(){const mw=document.getElementById("mapwrap");if(!mw)return;let b=document.getElementById("wwarban");const w=wwShown();
+  if(!w){if(b){b.remove();try{if(ON.user&&devUid(ON.user.uid))wf().dirty=1}catch(e){}}return}
   if(!b){b=document.createElement("div");b.id="wwarban";b.style.cssText="position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:49;background:#7f1d1d;color:#fff;border:2px solid #ef4444;border-radius:10px;padding:5px 12px;font:800 13px Figtree,sans-serif;letter-spacing:.06em;pointer-events:none;box-shadow:0 0 18px #ef444488;white-space:nowrap";mw.appendChild(b)}
-  let wn=w.n;try{wn=wwarCount().n}catch(e){}const t=`🔥 WORLD WAR · ${wn} wars raging · day ${S.day-w.d0+1}`;if(b.textContent!==t)b.textContent=t}
+  const t=`🔥 WORLD WAR · ${w.n} wars raging · day ${w.d}`;if(b.textContent!==t){b.textContent=t;try{if(ON.user&&devUid(ON.user.uid))wf().dirty=1}catch(e){}}}
 const dipPhase=n=>{const ph=S.dip&&S.dip.ph&&S.dip.ph[n];return ph?(ph.g>0?"BOOM":"RECESSION"):"STABLE"};
 function dipRows(n){const d=dip(),r=d.gr[n]||0,rk=COUNTRIES.slice().sort((a,b)=>dipPower(b)-dipPower(a)).indexOf(n)+1,ph=dipPhase(n);
   const subj=Object.keys(d.ruler).filter(m=>d.ruler[m]===n),by=d.ruler[n];
