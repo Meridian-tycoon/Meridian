@@ -31,6 +31,19 @@ service cloud.firestore {
         && d.lastSeen == request.time;
     }
 
+    // Player businesses map layer: anyone may read; each user writes only their own list of placed businesses.
+    match /pbiz/{uid} {
+      allow read: if true;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['cs', 'b', 'name', 'col', 'at'])
+        && request.resource.data.cs is list && request.resource.data.cs.size() <= 100
+        && request.resource.data.b is list && request.resource.data.b.size() <= 150
+        && request.resource.data.name is string && request.resource.data.name.size() <= 20
+        && request.resource.data.col is string && request.resource.data.col.size() <= 7
+        && request.resource.data.at == request.time;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
     // Live Air One evacuations: anyone may read; each user writes only their own, with checked fields.
     match /evac/{uid} {
       allow read: if true;
