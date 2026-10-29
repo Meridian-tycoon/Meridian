@@ -1176,6 +1176,7 @@ const stored=c=>{const v=S.inv[c.id]||{};let t=0;for(const g in v)if(v[g]>0)t+=v
 const storedU=c=>{const v=S.inv[c.id]||{};let t=0;for(const g in v)t+=v[g];return t};
 const whRoom=c=>Math.max(0,whCap(c)-stored(c));                    // free tonnes, never negative
 const hasWh=c=>S.wh[c.id]!=null;
+const whSell=c=>{let v=whCost(c);for(let l=0;l<(S.wh[c.id]||0);l++)v+=Math.round(4000*PRICE[c.size]*Math.pow(2,l));return Math.round(v*.5)};
 function ensureWh(c){if(!hasWh(c)){S.wh[c.id]=0;S.inv[c.id]=S.inv[c.id]||{}}}
 function cityF(c,g){if(G[g][2]==="gov")return cityF0(c,g);const f=cityF0(c,g)*wevGoodF(g);return f*pmF(c,g,f)} // world events (wevGoodF) and player sales (pmF) move goods prices
 /* Player sales set the price: when a player listing sells, the city's market price for that good matches the sale price
@@ -1291,7 +1292,9 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
         h+=`<div class="row own"><div class="n">${G[g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(inv[g])} · ${fmtT(inv[g]*tpu(g))}</span></div>
         <div class="d">${noSell(g)?`No buyer: launch it from the 🚀 Space app to put a satellite in orbit (government pays ${fmt(G[g][1])} per successful launch)</div></div>`:G[g][2]==="gov"?(govOK(c)?"Government buyer pays ":"<b style='color:var(--bad)'>No government buyer here.</b> Worth "):"Sells here for "}<b>${fmt(p)}</b> each · worth <b>${fmt(inv[g]*p)}</b> ${hasHQ(c)?` · <label><input type="checkbox" data-act="auto" data-g="${g}" ${au?"checked":""}> auto-sell</label>`:" · street sale only: 20 at a time, 70% price"}</div>
         ${noSell(g)?"":`<button class="buy up" data-act="sell" data-g="${g}">${hasHQ(c)?"Sell all":"Sell 20"}</button></div>`}`}
-      h+=`</div><div class="row"><div class="n">Expand warehouse</div><div class="d">Doubles space to ${fmtT(cap*2)}. Goods are weighed in tonnes (armoured vehicles 20 t each, microchips 0.05 t).</div><button class="buy up" data-act="whup" ${S.cash<whUp(c)?"disabled":""}>${fmt(whUp(c))}</button></div>`;
+      h+=`</div><div class="row"><div class="n">Expand warehouse</div><div class="d">Doubles space to ${fmtT(cap*2)}. Goods are weighed in tonnes (armoured vehicles 20 t each, microchips 0.05 t).</div><button class="buy up" data-act="whup" ${S.cash<whUp(c)?"disabled":""}>${fmt(whUp(c))}</button></div>
+      <div class="row"><div class="n">Move warehouse</div><div class="d">Pick a new spot for it on the map in ${c.name}. Free; the goods stay inside.</div><button class="buy up" data-act="whmove">Move</button></div>
+      <div class="row"><div class="n">Sell warehouse</div><div class="d">Refunds half of what you paid for it and its expansions (${fmt(whSell(c))}). ${used>=.05?"Sell or ship its goods first.":"Production here stops landing until you open a new one."}</div><button class="buy up" data-act="whsell" ${used>=.05?"disabled":""}>Sell ${fmt(whSell(c))}</button></div>`;
       h+=marketHtml(c);h+=`<button class="sec" data-act="lmfold" aria-expanded="${!!S.lmOpen}" style="display:flex;width:100%;align-items:center;background:none;border:0;padding-left:0;padding-right:0;font:inherit;color:inherit;text-align:left;cursor:pointer">Local market · buy at +15%<span style="margin-left:auto">${S.lmOpen?"▾ Hide":"▸ Show"}</span></button>`;
       if(S.lmOpen){h+=`${hasHQ(c)?"":`<p class="d" style="color:var(--bad);font-size:12px;margin:0 0 4px">No registered company here. Open an HQ in ${c.name} to sell in bulk, auto-sell, buy by the hundred, and sell to the government.</p>`}<div class="list">`;
       for(const g of GK.filter(g=>G[g][2]!=="gov")){const p=px(c,g)*1.15,base=G[g][1],cheap=p<base*1.05,nop=g==="uranium"&&!uranAnyPermit();
@@ -1345,6 +1348,8 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="dvopen"){dvOpen();return}
   else if(a==="aline"){S.aline=!S.aline;if(S.aline)alTick(Date.now());toast(S.aline?"Auto-line on":"Auto-line off")}
   else if(a==="lmfold"){S.lmOpen=!S.lmOpen;renderSheet();return}
+  else if(a==="whmove"){if(!pendingPos||pendingPos.city!==c.id){toast("Tap Move, then pick the spot on the map");return}S.pos["wh:"+c.id]={...pendingPos};pendingPos=null;toast("Warehouse moved")}
+  else if(a==="whsell"){if(!hasWh(c))return;if(stored(c)>=.05){toast("Sell or ship the goods first");return}if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}const v=whSell(c);S.cash+=v;delete S.wh[c.id];delete S.inv[c.id];delete S.auto[c.id];delete S.pos["wh:"+c.id];toast(`Warehouse sold for ${fmt(v)}`)}
   else if(a==="whup"){const p=whUp(c);if(S.cash<p)return;S.cash-=p;S.wh[c.id]++;toast("Warehouse expanded")}
   else if(a==="sell"){if(noSell(b.dataset.g)){toast("Orbital launches can't be sold. Launch them from the Space app");return}if(G[b.dataset.g][2]==="gov"&&!govOK(c)){toast(hasTech("govlic")?"Government buyers are only in cities of size 4+":"Research the Defense contractor licence to sell this");return}if(G[b.dataset.g][2]==="gov"&&!hasHQ(c)){toast("Government contracts need a registered company: open an HQ here");return}const g=b.dataset.g,street=!hasHQ(c),q=street?Math.min(20,S.inv[c.id][g]||0):(S.inv[c.id][g]||0),v=sellGood(c,g,q)*(street?.7:1);S.cash+=v;S.earned=(S.earned||0)+v;S.inv[c.id][g]-=q;if(S.inv[c.id][g]<1e-6)delete S.inv[c.id][g];toast(`Sold ${gq(q)} ${G[g][0].toLowerCase()} for ${fmt(v)}`)}
   else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q;if(g==="uranium"&&!uranAnyPermit()){toast("Needs a uranium permit: apply to a government in the Gov tab first");return}const B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q*tpu(g)>whCap(c)+1e-9){toast(`Not enough warehouse space: ${fmtT(whRoom(c))} free, ${q} ${G[g][0].toLowerCase()} weigh ${fmtT(q*tpu(g))}`);return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
@@ -2128,7 +2133,7 @@ function renderPins(){clearPins();if(!inStreet)return;ensurePositions();
   if(stCity&&lyOn("ob"))try{for(const p of botAll()){if(ON.user&&p.uid===ON.user.uid)continue;const nm=String(p.name||"Player").slice(0,20),col=/^#[0-9a-fA-F]{6}$/.test(p.col||"")?p.col:"#64748b";for(const x of obPins(p,stCity)){const m=mkPin(x.lat,x.lon,BIZTAG[x.b.k]||"•",col,`${nm} · ${x.b.n}`,null,"own");m.getElement().querySelector("span").dataset.own=nm;m.getElement().style.opacity=.9;mkPins.push(m)}}}catch(e){}
   if(stCity&&!placing)renderListings(stCity)}
 /* ---------- placing a purchase on the map ---------- */
-const PLACE_SEL='[data-buy],[data-rent],[data-act="land"],[data-act="leaseland"],[data-act="wh"],[data-prop="buy"],[data-hq="open"],[data-life="rent"],[data-life="buy"]';
+const PLACE_SEL='[data-buy],[data-rent],[data-act="land"],[data-act="leaseland"],[data-act="wh"],[data-act="whmove"],[data-prop="buy"],[data-hq="open"],[data-life="rent"],[data-life="buy"]';
 let placing=null,bypass=false;
 sheet.addEventListener("click",e=>{if(!HAS_STREET||bypass)return;const b=e.target.closest(PLACE_SEL);if(!b||b.disabled||b.dataset.arm||!sel)return;
   // "Open another": extra units share the first unit's spot (S.pos is per type per city), so buy straight away
