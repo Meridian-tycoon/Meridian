@@ -556,7 +556,8 @@ const BIZ=[
  {k:"port",n:"Seaport",d:"Needs a size 3+ city. Container terminals and cruise berths. Your ships from here sail 20% faster.",cost:6000000,gross:340000,up:120000,co:1,tr:1},
  {k:"airline",n:"Airline",d:"A fleet of jets based here. Every flight you take is half price, and you can buy planes and fly routes from here (HQ dashboard → Airline tab).",cost:8000000,gross:430000,up:160000,co:1,tr:1},
  {k:"airport",n:"International airport",d:"Needs an airport city. Landing fees from every flight. +20% with your airline based here.",cost:13500000,gross:760000,up:270000,co:1,tr:1},
- {k:"casino",n:"Casino",d:"Huge takings, huge payroll.",cost:6000000,gross:380000,up:120000,co:1,big:1}
+ {k:"casino",n:"Casino",d:"Huge takings, huge payroll.",cost:6000000,gross:380000,up:120000,co:1,big:1},
+ {k:"dispensary",n:"Weed dispensary",d:"Licensed cannabis store. Only opens where the government has legalised cannabis; shuts with no income if it gets banned.",cost:120000,gross:9200,up:3100}
 ];
 const MAXLV=5;
 /* big cities: size 5 only (10 of the 63 cities). (The big:1 opening limit was removed; isBigCity is still used elsewhere.) */
@@ -566,7 +567,7 @@ const CASINO_CITIES=["Montréal"],bigOK=c=>isBigCity(c)||CASINO_CITIES.includes(
 /* why a business can't be opened in a city ("" if it can). Used by every buy/rent path. */
 const CARTS=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie"],isCart=k=>CARTS.includes(k);
 function bizBlock(b,c){if(unhOn(c))return `${c.name} is uninhabitable for ${unhLeft(c)} after an ICBM strike`;if(b.cx!=null&&b.cx!==c.id)return `${b.n} is your own brand from ${(CITIES[b.cx]||{}).name}; it only trades there`;
-  if(lawBan(c,b))return `Gambling is banned in ${c.country}`;
+  if(lawBan(c,b))return b.k==="dispensary"?`Cannabis is illegal in ${c.country}`:`Gambling is banned in ${c.country}`;
   if(b.k==="airport"&&!hasAirport(c))return `${c.name} has no airport site`;if(b.k==="port"&&c.size<3)return "Seaports need a size 3+ city";return ""}
 
 /* ---------- state ---------- */
@@ -1004,7 +1005,7 @@ const G={wheat:["Wheat",12,"raw"],corn:["Corn",10,"raw"],cattle:["Cattle",160,"r
   flour:["Flour",30,"mid"],beef:["Beef",35,"mid"],steel:["Steel",80,"mid"],glass:["Glass",28,"mid"],
   bread:["Bread",22,"fin"],burgers:["Burgers",75,"fin"],tools:["Tools",180,"fin"],electronics:["Electronics",420,"fin"]};
 Object.assign(G,{power:["Electricity (MWh)",4,"mid"],oil:["Crude oil",25,"raw"],fuel:["Fuel",45,"mid"],plastics:["Plastics",40,"mid"],cars:["Cars",2200,"fin"],chips:["Microchips",1200,"mid"],
-  medicine:["Medicine",260,"fin"],aero:["Aerospace parts",9000,"mid"],robots:["Robots",4500,"fin"],
+  medicine:["Medicine",260,"fin"],cannabis:["Cannabis flower",40,"raw"],prerolls:["Pre-rolls",90,"fin"],edibles:["Cannabis edibles",120,"fin"],thcoil:["THC oil & vapes",320,"fin"],aero:["Aerospace parts",9000,"mid"],robots:["Robots",4500,"fin"],
   uranium:["Uranium (U3O8)",150,"raw"],armored:["Armored vehicles",45000,"gov"],drones:["Military drones",12000,"gov"],engines:["Rocket engines",120000,"gov"],satellites:["Satellites",180000,"gov"],launches:["Orbital launches",600000,"gov"]});
 Object.assign(G,{he3:["Helium-3",60000,"gov"],ilm:["Ilmenite",20000,"gov"],lice:["Lunar ice",25000,"gov"],kreep:["KREEP rare earths",45000,"gov"],anor:["Anorthite",20000,"gov"],rglass:["Regolith glass",30000,"gov"],   // Moon colony ores
   hem:["Hematite",50000,"gov"],jar:["Jarosite",70000,"gov"],oliv:["Olivine",60000,"gov"],dice:["Deuterium ice",150000,"gov"],perc:["Perchlorate salts",90000,"gov"],mbas:["Martian basalt",50000,"gov"]});   // Mars colony ores
@@ -1043,6 +1044,10 @@ OPS.push(
  {k:"dronefab",n:"Drone factory",cat:"Factory",in:{chips:4,plastics:4,aero:.5},out:{drones:1},up:800,build:120000,req:"drones"},
  {k:"enginefab",n:"Rocket engine works",cat:"Factory",in:{aero:1,fuel:20,chips:4},out:{engines:.2},up:3000,build:420000,req:"rocketry"},
  {k:"satfab",n:"Satellite assembly",cat:"Factory",in:{chips:10,electronics:10,aero:1},out:{satellites:.2},up:3000,build:520000,req:"satellites"},
+ {k:"weedfarm",n:"Cannabis farm (legal only)",cat:"Farm",out:{cannabis:3},up:30,build:1200,weed:1},
+ {k:"rollery",n:"Pre-roll plant (legal only)",cat:"Factory",in:{cannabis:6},out:{prerolls:5},up:60,build:5000,weed:1},
+ {k:"edibles",n:"Edibles kitchen (legal only)",cat:"Factory",in:{cannabis:4,flour:2},out:{edibles:4},up:70,build:6000,weed:1},
+ {k:"thcext",n:"THC extraction lab (legal only)",cat:"Factory",in:{cannabis:10,plastics:1},out:{thcoil:3},up:120,build:12000,weed:1},
  {k:"spaceport",n:"Spaceport",cat:"Factory",in:{engines:.1,satellites:.1,fuel:20},out:{launches:.1},up:10000,build:1.5e6,req:"spaceport"});
 const OP=Object.fromEntries(OPS.map(o=>[o.k,o]));
 /* ---------- research tree ---------- */
@@ -1199,6 +1204,7 @@ function runIndustry(hours){let sold=0;const step=.25;let left=hours;
       if(em===0){k=0;why=IEV[S.iev[s.city].t].n}
       if(cf===0){k=0;why=s.paused?"Paused":"No crew"}
       if(o.gate==="uranium"&&!uranPermit(c.country)){k=0;why="Permit revoked"}
+      if(o.weed&&law(c,"weed")===1){k=0;why="Cannabis banned"}
       s.k=k;s.why=k>=.999?"":why;if(k<=0)continue;
       let pw=1;if(o.cat==="Factory"&&!o.out.power&&!o.rp){const need=2*ha*h*k;if((inv.power||0)>=need){inv.power-=need;pw=1.25}}s.pw=pw>1;
       for(const g in (o.in||{}))inv[g]=(inv[g]||0)-o.in[g]*ha*h*k;for(const g in o.out)inv[g]=(inv[g]||0)+o.out[g]*ha*h*k*pw;if(o.rp)S.rpP=(S.rpP||0)+RPX*o.rp*ha*h*k}
@@ -1327,7 +1333,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   if(b.dataset.tab){if(sel&&unhOn(sel))return;if(b.dataset.tab==="hq"&&typeof ofEnter==="function"&&!OFC.on&&sel&&hasHQ(sel)){ofEnter(hqCity(sel.country));return}tab=b.dataset.tab;shipForm=null;renderSheet();return}
   const c=sel;if(!c||unhOn(c))return;const a=b.dataset.act,id=+b.dataset.id;
   if(a==="land"){const k=b.dataset.k,z=b.dataset.z,p=plotPrice(c,z,k);if(S.cash<p)return;S.cash-=p;S.sites.push({id:S.nid++,city:c.id,size:k,type:z,op:null});ensureWh(c);toast(`Bought ${LAND[k][1]} ha of ${ZONE[z].n.toLowerCase()} in ${c.name}`);bigMove(`our company bought ${LAND[k][1]} ha of ${ZONE[z].n.toLowerCase()} land in ${c.name} for ${fmt(p)}`,p)}
-  else if(a==="build"){const s=S.sites.find(x=>x.id===id),o=OP[$("#op-"+id).value],p=o.build*LAND[s.size][1];if(o.gate==="uranium"){const w=uranNeed(c.country);if(w){toast(w);return}}if(S.cash<p){toast(`Need ${fmt(p)} to build that`);return}S.cash-=p;s.op=o.k;s.k=null;toast(`${o.n} built`)}
+  else if(a==="build"){const s=S.sites.find(x=>x.id===id),o=OP[$("#op-"+id).value],p=o.build*LAND[s.size][1];if(o.gate==="uranium"){const w=uranNeed(c.country);if(w){toast(w);return}}if(o.weed&&law(c,"weed")===1){toast(`Cannabis is illegal in ${c.country}`);return}if(S.cash<p){toast(`Need ${fmt(p)} to build that`);return}S.cash-=p;s.op=o.k;s.k=null;toast(`${o.n} built`)}
   else if(a==="clear"){const s=S.sites.find(x=>x.id===id);if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}const o=siteOp(s);S.cash+=o.build*LAND[s.size][1]*.3;s.op=null;toast("Demolished · 30% refunded")}
   else if(a==="leaseland"){const k=b.dataset.k,z=b.dataset.z;S.sites.push({id:S.nid++,city:c.id,size:k,type:z,op:null,lease:1});ensureWh(c);toast(`Renting ${LAND[k][1]} ha of ${ZONE[z].n.toLowerCase()} in ${c.name}`)}
   else if(a==="ownland"){const s=S.sites.find(x=>x.id===id),p=plotPrice(c,zoneOf(s)||"farm",s.size);if(S.cash<p){toast(`Need ${fmt(p)}`);return}S.cash-=p;delete s.lease;toast("Land bought. No more rent.")}
@@ -1594,7 +1600,7 @@ const HQNOTE=`Each link: +${HQNET.per*100}% business income in both countries (m
 const bizReg=(c,k)=>!!((S.reg[c.id]||{})[k]);
 const regFeeBiz=(b,c)=>Math.round(cost(b,c)*.07*hqPerk(c));
 const regFeeSite=s=>Math.round(plotPrice(CITIES[s.city],zoneOf(s)||"farm",s.size)*.05*hqPerk(CITIES[s.city]));
-const STAFF={cart:1,coffeecart:1,icecream:1,taco:2,pretzel:1,noodle:1,smoothie:1,kiosk:2,shop:4,gasstation:3,rest:12,apt:2,office:20,hotel:60,casino:250,secfirm:25,ambulance:40,lawfirm:30,prison:150,taxico:35,busline:60,trucking:80,rail:400,port:600,airline:900,airport:1500};
+const STAFF={cart:1,coffeecart:1,icecream:1,taco:2,pretzel:1,noodle:1,smoothie:1,kiosk:2,shop:4,gasstation:3,rest:12,apt:2,office:20,hotel:60,casino:250,dispensary:8,secfirm:25,ambulance:40,lawfirm:30,prison:150,taxico:35,busline:60,trucking:80,rail:400,port:600,airline:900,airport:1500};
 const siteStaff=s=>{const o=siteOp(s);if(!o)return 0;const ha=LAND[s.size][1];return Math.ceil(ha*(o.rp?1:o.cat==="Farm"?.5:o.cat==="Ranch"?.3:o.cat==="Mine"?2:3)*(1+.2*(slv(s)-1)))};
 const bizStaff=(k,lv)=>Math.ceil(STAFF[k]*(1+.5*(lv-1)));
 function hqTotalUpkeep(){let u=0;for(const id in S.hq)if(S.hq[id]&&CITIES[id]&&!unhOn(CITIES[id]))u+=hqUpkeep(CITIES[id]);return u+hqNetUp()}
@@ -2098,7 +2104,7 @@ function enterStreet(c,zoom){if(!HAS_STREET)return false;stCity=c;stLabel();cons
 function leaveStreet(){if(placing)cancelPlace();if(offer)closeOffer();const c=MM.getCenter(),z=Math.log2(Math.max(1,base)*2*Math.PI/512);
   const opt={center:[c.lng,c.lat],zoom:z,bearing:0,essential:true};if(reduce)MM.jumpTo(opt);else MM.flyTo({...opt,curve:1.42,speed:1.2,maxDuration:2600})}
 const PIN={biz:["#c2410c","Shop"],prop:["#7c3aed","Rent"],"site-farm":["#4d7c0f","Farm"],"site-mine":["#78716c","Mine"],"site-ind":["#0e7490","Ind"],hq:["#1d2a2b","HQ"],wh:["#a16207","Depot"],home:["#be185d","Home"]};
-const BIZTAG={cart:"Cart",coffeecart:"Coffee",icecream:"Ice",taco:"Taco",pretzel:"Pretzel",noodle:"Noodle",smoothie:"Smoothie",kiosk:"Café",shop:"Shop",gasstation:"Fuel",rest:"Diner",apt:"Apts",office:"Office",hotel:"Hotel",casino:"Casino"};
+const BIZTAG={cart:"Cart",coffeecart:"Coffee",icecream:"Ice",taco:"Taco",pretzel:"Pretzel",noodle:"Noodle",smoothie:"Smoothie",kiosk:"Café",shop:"Shop",gasstation:"Fuel",rest:"Diner",apt:"Apts",office:"Office",hotel:"Hotel",casino:"Casino",dispensary:"Weed"};
 /* one map pin: a label bubble pointing at its spot, drawn by the map so it sticks to the street at any tilt */
 function mkPin(lat,lon,txt,col,title,onClick,cls){const el=document.createElement("div");el.className="mpin"+(cls?" "+cls:"");if(title)el.title=title;
   const sp=document.createElement("span");if(col)sp.style.background=col;sp.textContent=txt;el.appendChild(sp);
@@ -2639,15 +2645,16 @@ function accrue(){if(S.dead)return 0;const now=Date.now();if(!S.acc)S.acc=now;
   return g+sold}
 /* ---------- governments & laws ---------- */
 const PARTIES={
-  lab:{n:"Workers' Party",col:"#d64545",d:"Higher taxes and wages, tenant protections, wary of gambling.",pl:{tax:3,wage:2,rent:1,casino:1,tariff:1,grant:1,police:0}},
-  lib:{n:"Liberal Alliance",col:"#e0a526",d:"Centrist. Moderate taxes, small-business grants.",pl:{tax:2,wage:1,rent:0,casino:0,tariff:0,grant:1,police:1}},
-  con:{n:"Conservatives",col:"#3a6fd8",d:"Low taxes, light regulation, free trade.",pl:{tax:0,wage:0,rent:0,casino:0,tariff:0,grant:0,police:2}},
-  pop:{n:"National Front",col:"#7b4bc4",d:"Populist. High tariffs, cheap labour, bans casinos.",pl:{tax:1,wage:0,rent:1,casino:1,tariff:2,grant:0,police:2}}};
+  lab:{n:"Workers' Party",col:"#d64545",d:"Higher taxes and wages, tenant protections, wary of gambling.",pl:{tax:3,wage:2,rent:1,casino:1,tariff:1,grant:1,police:0,weed:0}},
+  lib:{n:"Liberal Alliance",col:"#e0a526",d:"Centrist. Moderate taxes, small-business grants.",pl:{tax:2,wage:1,rent:0,casino:0,tariff:0,grant:1,police:1,weed:0}},
+  con:{n:"Conservatives",col:"#3a6fd8",d:"Low taxes, light regulation, free trade.",pl:{tax:0,wage:0,rent:0,casino:0,tariff:0,grant:0,police:2,weed:1}},
+  pop:{n:"National Front",col:"#7b4bc4",d:"Populist. High tariffs, cheap labour, bans casinos.",pl:{tax:1,wage:0,rent:1,casino:1,tariff:2,grant:0,police:2,weed:1}}};
 const LAWS={
   tax:{n:"Corporate tax",v:["10%","15%","20%","25%","30%"],e:["Registered assets taxed 10%","Registered assets taxed 15%","Registered assets taxed 20%","Registered assets taxed 25%","Registered assets taxed 30%"]},
   wage:{n:"Minimum wage",v:["Low","Standard","High"],e:["Business profit +6%, job pay −10%","No effect","Business profit −10%, job pay +15%"]},
   rent:{n:"Rent control",v:["Off","On"],e:["Landlords set any rent","Rental income −15%"]},
   casino:{n:"Gambling",v:["Legal","Banned"],e:["Casinos operate normally","Casinos are shut: no income, can't open new ones"]},
+  weed:{n:"Cannabis",v:["Legal","Illegal"],e:["Licensed dispensaries, cannabis farms and processing plants can operate","Dispensaries shut, cannabis farms and plants stop; only the black market sells"]},
   tariff:{n:"Import tariffs",v:["None","Low","High"],e:["Free trade","Retail profit −3%, land output value +4%","Retail profit −7%, land output value +9%"]},
   police:{n:"Policing",v:["Lenient","Standard","Strict"],e:["35% arrest chance, sentences ×0.6, private prisons earn −30%","55% arrest chance, normal sentences","80% arrest chance, sentences ×1.6, private prisons earn +40%"]},
   grant:{n:"Small-business grants",v:["Off","On"],e:["No support","Carts, kiosks, corner shops and gas stations earn +10%"]}};
@@ -2661,7 +2668,7 @@ function gov(n){S.gov=S.gov||{};let g=S.gov[n];if(g){for(const k in LAWS)if(g.la
   const laws={};for(const k in LAWS)laws[k]=p[k];
   return S.gov[n]={party:pk,appr:45+h%25,next:Date.now()+ELECT*(.25+((h>>3)%75)/100),laws,don:{},favor:0}}
 const law=(c,k)=>gov(c.country).laws[k];
-function lawBan(c,b){return b.k==="casino"&&law(c,"casino")===1}
+function lawBan(c,b){return (b.k==="casino"&&law(c,"casino")===1)||(b.k==="dispensary"&&law(c,"weed")===1)}
 function lawMult(c,b){let m=[1.06,1,.9][law(c,"wage")];
   if(RETAIL.includes(b.k))m*=[1,.97,.93][law(c,"tariff")];
   if(SMALL.includes(b.k)&&law(c,"grant"))m*=1.1;if(b.k==="prison")m*=[.7,1,1.4][law(c,"police")];
@@ -2807,7 +2814,7 @@ function govHtml(c){const n=c.country,g=gov(n);if(!PARTIES[g.party])g.party="lib
   sheet.innerHTML=h}
 function govSummary(){const ns=COUNTRIES.filter(ownsIn),pa=dipPlayerC()?paHtml("gov"):"";if(!ns.length)return pa+conflictHtml(null)+tensHtml(null)+dipHtml(null);
   return pa+conflictHtml(null)+tensHtml(null)+dipHtml(null)+`<div class="sec">Governments</div><div class="list">`+ns.map(n=>{const g=gov(n),p=PARTIES[g.party],c=ctyCities(n)[0];
-    return `<div class="row link" data-go="${c.id}"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${p.col};margin-right:6px"></span>${n}</div><div class="d">${p.n} · tax ${LAWS.tax.v[g.laws.tax]} · min wage ${LAWS.wage.v[g.laws.wage].toLowerCase()}${g.laws.casino?" · casinos banned":""}${g.laws.rent?" · rent control":""}</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`}
+    return `<div class="row link" data-go="${c.id}"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${p.col};margin-right:6px"></span>${n}</div><div class="d">${p.n} · tax ${LAWS.tax.v[g.laws.tax]} · min wage ${LAWS.wage.v[g.laws.wage].toLowerCase()}${g.laws.casino?" · casinos banned":""}${g.laws.weed?" · cannabis illegal":" · cannabis legal"}${g.laws.rent?" · rent control":""}</div><span style="color:var(--muted)">›</span></div>`}).join("")+`</div>`}
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)return;if(b.dataset.gov==="tpeace"||b.dataset.gov==="tarms"){tensAct(b.dataset.k,b.dataset.gov);return}if(/^pa(inv|ok|end)$/.test(b.dataset.gov)){paAct(b.dataset.gov,b.dataset.k);setTimeout(renderSheet,600);return}if(b.dataset.gov==="tensx"){S.tensX=+b.dataset.k||1;save();renderSheet();return}if(!sel&&/peace|stoke|rally|join|leave|wsup|pdeal/.test(b.dataset.gov)){if(b.dataset.gov=="rally")dipRally();else if(b.dataset.gov=="pdeal")peaceOffer(+b.dataset.w);else if(b.dataset.gov=="wsup")wsupSign(+b.dataset.w,b.dataset.s);else if(b.dataset.gov=="join")warJoin(+b.dataset.w,b.dataset.s);else if(b.dataset.gov=="leave")warJoin(+b.dataset.w,"leave");else warAct(+b.dataset.w,b.dataset.gov);hud();renderSheet();return}if(!sel)return;const c=sel;
   const g=gov(c.country),a=b.dataset.gov;
   if(a==="lobby")lobby(c,b.dataset.k,+b.dataset.dir);
@@ -4569,6 +4576,7 @@ const UGJ=[
  {k:"deal",n:"Move knock-off goods",d:"Fake designer bags out of a car trunk.",p:60,heat:4,ok:.9,cd:45,sev:6,reason:"selling counterfeit goods"},
  {k:"cards",n:"Run a street card game",d:"Three cards, a folding table, a lookout on the corner.",p:120,heat:6,ok:.85,cd:75,sev:8,reason:"illegal gambling",rep:2},
  {k:"scam",n:"Run a phone scam",d:"A call centre in a basement. Easy money, angry victims.",p:220,heat:9,ok:.75,cd:120,sev:14,reason:"fraud",rep:5},
+ {k:"weed",n:"Run an unlicensed weed spot",d:"A back-door dispensary with no licence and no taxes. Illegal everywhere, legal market or not.",p:300,heat:9,ok:.8,cd:120,sev:12,reason:"selling unlicensed cannabis",rep:3},
  {k:"fence",n:"Fence stolen electronics",d:"No questions asked.",p:500,heat:12,ok:.7,cd:240,sev:16,reason:"handling stolen goods",rep:15},
  {k:"chop",n:"Strip a stolen car",d:"A back-alley garage sells the parts by morning.",p:350,heat:11,ok:.72,cd:180,sev:18,reason:"vehicle theft",rep:10},
  {k:"extort",n:"Shake down a shop",d:"Collect 'protection' money. Needs a gang.",p:900,heat:18,ok:.7,cd:300,sev:24,reason:"extortion",gang:1},
