@@ -430,6 +430,7 @@ html.th-ledger #dcard>div{border-radius:2px;box-shadow:6px 6px 0 rgba(31,26,20,.
 #statsw .sw-bars i{flex:1;background:var(--own);border-radius:3px 3px 0 0;min-height:2px}
 #statsw .sw-bars i.neg{background:var(--bad)}
 #statsw.folded{width:auto}#statsw.folded .sw-body{display:none}#statsw.folded .sw-top{border:0}
+@media (max-width:600px){#wwarban{left:12px!important;transform:none!important;max-width:calc(100% - 74px);overflow:hidden;text-overflow:ellipsis;font-size:11px!important;padding:4px 9px!important;letter-spacing:.02em!important}}
 </style>
 </head>
 <body>
@@ -2836,7 +2837,7 @@ function warHour(quiet){S.wars=S.wars||[];const ws=S.wars;
       if(!quiet)logGov(`Fighting in ${c.name} damaged your ${BIZ.find(x=>x.k===k).n.toLowerCase()}`)}}
   S.wars=ws.filter(w=>w.l>0);try{aimHour(quiet)}catch(e){console.warn("aim",e)}try{wfHour(quiet)}catch(e){console.warn("wf",e)}try{wfLocalHour(quiet)}catch(e){console.warn("wf",e)}try{wwHour(quiet)}catch(e){console.warn("ww",e)}}
 /* World war alert: warn the player once when the world nears a world war */
-function wwScore(){const T=(typeof wfView==="function"&&wfView().tens)||{},w=(S.wars||[]).filter(x=>x&&x.l>=4).length+(typeof wwPlayerWars==="function"?wwPlayerWars().n:0);let t=0;for(const k in T)if((+T[k].v||0)>=80)t++;return{w,t,n:w+t}}
+function wwScore(){const T=(typeof wfView==="function"&&wfView().tens)||{},w=wwarCount().n;let t=0;for(const k in T)if((+T[k].v||0)>=80)t++;return{w,t,n:w+t}}
 function wwHour(quiet){const r=wwScore(),lv=r.n>=5?2:r.n>=3?1:0,was=S.wwL||0;S.wwL=lv;if(lv<=was||quiet)return;
   const m=lv>=2?`🚨 WORLD WAR WARNING: ${r.w} full-scale wars and ${r.t} tensions at breaking point. The world is on the edge of a world war.`:`⚠️ World on the brink: ${r.w} full-scale wars and ${r.t} tensions near breaking point. A world war could start soon.`;
   toast(m);try{$("#toast").classList.add("bad")}catch(e){}try{logGov(m)}catch(e){}}
@@ -2863,7 +2864,7 @@ const wsupLine=w=>wsupOf(w.id)?wsupHtml(w):"",wsupBtns=w=>wsupOf(w.id)?"":wsupHt
 function wsupHtml(w){const c=wsupOf(w.id);if(c)return `<div class="d">📦 Your supply contract with ${c.n}: ${fmt(Math.round(c.amt*(w.l>=4?WSUP.r4:w.l>=3?WSUP.r3:0)))}/day · earned ${fmt(c.got)} of ${fmt(c.amt)} staked</div>`;
   if(w.l<3)return "";const amt=Math.round(warCost(w)*WSUP.stake),full=(S.wsup||[]).length>=WSUP.max;
   return ["a","b"].map(s=>`<button class="buy" data-gov="wsup" data-s="${s}" data-w="${w.id}" data-fixed="1" ${S.cash<amt||full?"disabled":""}>Supply ${w[s]} ${fmt(amt)}</button>`).join("")}
-function warAct(id,a){const w=(S.wars||[]).find(x=>x.id===id);if(!w)return;const cst=warCost(w);if(S.cash<cst){toast(`Need ${fmt(cst)}`);return}S.cash-=cst;
+function warAct(id,a){const w=(S.wars||[]).find(x=>x.id===id);if(!w)return;if(wwLock(w))return toast(WWLOCKMSG);const cst=warCost(w);if(S.cash<cst){toast(`Need ${fmt(cst)}`);return}S.cash-=cst;
   if(a==="peace"){if(Math.random()<.55){w.l--;logGov(`Talks you funded ease ${w.a}–${w.b} to ${WARL[w.l].toLowerCase()}`);toast("Talks worked")}else toast("Talks collapsed")}
   else{if(Math.random()<.12*lawRisk()){const f=cst*3;S.cash-=f;logGov(`Arms dealing exposed: fined ${fmt(f)}`);toast(`Caught! Fined ${fmt(f)}`);arrest("arms trafficking",36,cap(w.a),0,1);return}
     S.cash+=cst*1.6;if(w.l<4&&Math.random()<.6){w.l++;logGov(`${w.a}–${w.b} escalates to ${WARL[w.l].toLowerCase()}`)}toast(`Arms sold: +${fmt(cst*.6)} profit`)}
@@ -2885,7 +2886,7 @@ function conflictHtml(n){const wsT=S.wsupT?`<p class="d" style="font-size:12px">
   let h=`<div class="sec">${n?"Conflicts":"World conflicts · global tension "+tension()+"%"}</div>${n?"":wsT}<div class="list">`;
   for(const w of ws){const c=warCost(w);h+=`<div class="row cfrow"><div class="n">${w.a} – ${w.b} <span class="tag" style="background:${WARC[w.l]};color:#fff">${WARL[w.l].toUpperCase()}</span></div>
     <div class="d">${CF_EFF[w.l]}</div>${allyLine(w)}${wsupLine(w)}
-    <div class="cfbt">${allyBtns(w,["buy","data-gov"])}${peaceBtn(w,["buy","data-gov"])}${wsupBtns(w)}<button class="buy" data-gov="peace" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="buy" data-gov="stoke" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Sell arms ${fmt(c)}</button></div></div>`}
+    <div class="cfbt">${allyBtns(w,["buy","data-gov"])}${peaceBtn(w,["buy","data-gov"])}${wsupBtns(w)}${wwLock(w)?`<small class="d" style="opacity:.7">🌐 Shared world war: talks and arms sales are closed</small>`:`<button class="buy" data-gov="peace" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="buy" data-gov="stoke" data-w="${w.id}" data-fixed="1" ${S.cash<c?"disabled":""}>Sell arms ${fmt(c)}</button>`}</div></div>`}
   return h+`</div>`}
 /* ---------- AI governments using WMD on each other ----------
    A world conflict (S.wars, AI vs AI: never the player's country, never an invasion of it) that stays at WAR counts days in w.es (reset when it drops below war).
@@ -3013,7 +3014,7 @@ function cfHtml(w){if(w.pm)return bgPopMil(w);const bg=w.l>=3?bgFor(w):null,days
   ${w.tr&&w.l>=3?wlHtml(w):bg?bgBlock(bg):""}<p><b>Effect in ${w.a} and ${w.b}:</b> ${CF_EFF[w.l]}.</p>${w.tr&&w.l>=3?"":allyLine(w)}${wmdNote(w)}
   <p class="m">${days!=null?`Running ${days} day${days===1?"":"s"}. `:"Ongoing. "}No fixed end: each day it can escalate or ease until a peace deal.</p>
   <p class="m">${ex.n?`Your ${ex.n} business${ex.n===1?"":"es"} there lose about ${fmt(ex.loss)}/hr to conflicts.`:"You have no businesses in either country."}</p>
-  <div class="bt">${allyBtns(w,["chip","data-cf"])}${peaceBtn(w,["chip","data-cf"])}<button class="chip" data-cf="peace" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="chip" data-cf="gov">Gov tab</button></div>`}
+  <div class="bt">${allyBtns(w,["chip","data-cf"])}${peaceBtn(w,["chip","data-cf"])}${wwLock(w)?"":`<button class="chip" data-cf="peace" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button>`}<button class="chip" data-cf="gov">Gov tab</button></div>`}
 function cfOpen(w,x,y){const el=document.getElementById("cfpop");_cfPop={id:w.id,x,y};el.innerHTML=cfHtml(w);el.hidden=false;
   const pw=el.parentElement.clientWidth,ph=el.parentElement.clientHeight,bw=el.offsetWidth,bh=el.offsetHeight;
   el.style.left=Math.max(12,Math.min(pw-bw-12,x-bw/2))+"px";el.style.top=Math.max(52,Math.min(ph-bh-12,y+18>ph-bh-12?y-bh-18:y+18))+"px";draw()}
@@ -3119,9 +3120,11 @@ function allyLine(w){const al=w.al||{},pc=dipPlayerC(),f=s=>Object.keys(al).filt
    The player's government can offer peace in any war its country fights in or has troops in (once per game day per war);
    AI governments offer each other peace too (PEACE.ai per war per day). Accepted: the war ends with a truce. */
 const PEACE={lo:.4,hi:.6,ai:.03,truce:10};
-const peaceCan=w=>{const pc=dipPlayerC();return !!(pc&&polLeader()&&w&&w.l>=2&&(w.a===pc||w.b===pc||(w.al&&w.al[pc])))};
+/* shared accounts: mirrored world wars (w.gid) are rebuilt from the master list at every wwMirror, so local peace deals/talks/arms sales would be undone: block them */
+const wwLock=w=>!!(w&&w.gid&&wwShared());const WWLOCKMSG="This is a shared world war: only the world's own leaders can end or escalate it";
+const peaceCan=w=>{const pc=dipPlayerC();return !!(pc&&polLeader()&&w&&!wwLock(w)&&w.l>=2&&(w.a===pc||w.b===pc||(w.al&&w.al[pc])))};
 function peaceEnd(w,quiet){const d=dip();if(w.inv&&d.inv&&d.inv.w===w.id)d.inv=null;w.inv=0;w.l=0;d.pcd[dipKey(w.a,w.b)]=d.day+PEACE.truce;S.wars=(S.wars||[]).filter(x=>x!==w)}
-function peaceOffer(id){const w=(S.wars||[]).find(x=>x.id===id),pc=dipPlayerC();if(!w)return;if(!peaceCan(w))return toast("Only a Leader whose country fights in this war can send a peace deal");
+function peaceOffer(id){const w=(S.wars||[]).find(x=>x.id===id),pc=dipPlayerC();if(!w)return;if(wwLock(w))return toast(WWLOCKMSG);if(!peaceCan(w))return toast("Only a Leader whose country fights in this war can send a peace deal");
   if((w.pdc||0)>S.day)return toast("They are still weighing your last offer: try again tomorrow");w.pdc=S.day+1;
   const s=warSide(w,pc),en=s==="a"?w.b:w.a,ch=PEACE.lo+Math.random()*(PEACE.hi-PEACE.lo),pct=Math.round(ch*100);
   if(Math.random()<ch){if(w.al&&w.al[pc])wlMarch(w,pc,s,1);peaceEnd(w);const t=`${en} accepts ${pc}'s peace deal: the ${w.a}–${w.b} war is over (${pct}% chance)`;logGov(t);dipSay(t,1,1);toast("🕊 "+t)}
@@ -3257,8 +3260,9 @@ function wwMirror(quiet){if(!wwShared())return;try{wwGovMirror(quiet)}catch(e){c
     if(!quiet&&o)for(const cid in w.cc||{})if((o.cc||{})[cid]!==w.cc[cid]&&CITIES[cid]){const t=`${w[w.cc[cid]]} captured ${CITIES[cid].name}`;dipSay(t,1,0);toast("⚔ "+t);wlBoom(CITIES[cid])}
     return w});
   S.wars=[...old.filter(w=>!w.gid&&(w.inv||w.a===pc||w.b===pc)),...list];
-  /* shared world: start the World War banner as soon as the shared war list crosses the line, not only at this save's next day tick */
-  try{if(!S.wwar){const c=wwarCount();if(c.n>=WWCFG.on&&c.al>=WWCFG.ally)wwarDay(quiet)}}catch(e){}
+  /* shared world: start, update (count/peak) and end the World War as soon as the shared war list changes, not only at this save's next day tick.
+     wwarDay runs once per change (start, new count, armistice), so news lines are not repeated on every mirror */
+  try{const c=wwarCount(),w=S.wwar;if(w?(c.n!==w.n||c.n<WWCFG.off):(c.n>=WWCFG.on&&c.al>=WWCFG.ally))wwarDay(quiet)}catch(e){}
   if(Array.isArray(WW.tl)){const W=wt(),now=Date.now();for(const x of WW.tl){if(!x||!WPNCFG.w[x.k]||!(+x.t>0)||W.l.some(y=>y.t===x.t&&y.by===x.by))continue;W.l.push(Object.assign({},x,{ai:1,g:1}));
       if(!quiet&&now-x.t<WPNCFG.animMs+WMDOUT){const t=`${x.by} ${x.fail?"failed a":"tested a"} ${WPNCFG.w[x.k].n.toLowerCase()}`;dipSay(t,1,0);toast((x.fail?"⚠ ":"☢ ")+t)}}
     W.l.sort((a,b)=>a.t-b.t);W.l=W.l.slice(-WTCFG.keep);if(typeof draw==="function")draw()}
@@ -3752,7 +3756,9 @@ function dipDay(quiet){const C=S.wwar?Object.assign({},DIPCFG,{startP:DIPCFG.sta
 const WWCFG={on:6,ally:2,off:3,crash:.15,safe:.1,fuel:1.4,fuelMin:1.3,bounce:.08,maxWars:12};
 /* player wars (declared from the Military dashboard) count as full wars; they count as allied when the player has an active player alliance */
 function wwPlayerWars(){try{const m=S.pol&&S.pol.mil;if(!m||!m.wars)return{n:0,al:0};const n=Object.keys(m.wars).filter(k=>m.wars[k]).length;let al=0;try{al=typeof paOn==="function"&&paOn().length?n:0}catch(e){}return{n,al}}catch(e){return{n:0,al:0}}}
-function wwarCount(){const d=dip(),ws=(S.wars||[]).filter(w=>w.l>=4&&!d.ruler[w.a]&&!d.ruler[w.b]),pw=wwPlayerWars();return{n:ws.length+pw.n,al:ws.filter(w=>w.al&&Object.keys(w.al).length).length+pw.al}}
+/* S.wars at full war, minus ruled countries and minus pc-vs-X entries already counted as a player war (mil().wars[X]: weapons tests, milDeclare) */
+function wwFullWars(){const d=dip(),pc=dipPlayerC(),m=S.pol&&S.pol.mil,mw=(m&&m.wars)||{};return(S.wars||[]).filter(w=>w&&w.l>=4&&!d.ruler[w.a]&&!d.ruler[w.b]&&!(pc&&((w.a===pc&&mw[w.b])||(w.b===pc&&mw[w.a]))))}
+function wwarCount(){const ws=wwFullWars(),pw=wwPlayerWars();return{n:ws.length+pw.n,al:ws.filter(w=>w.al&&Object.keys(w.al).length).length+pw.al}}
 function wwarStocks(f,safe){try{const m=MK();for(const a of ASSETS){if(a.t!=="s")continue;const k=(a.sec==="defense"||a.sec==="energy")?safe:f;m.px[a.s]=Math.max(.01,m.px[a.s]*k);if(m.h[a.s])m.h[a.s].push(m.px[a.s])}}catch(e){}}
 function wwarDay(quiet){const c=wwarCount(),w=S.wwar;
   if(!w&&c.n>=WWCFG.on&&c.al>=WWCFG.ally){S.wwar={d0:S.day,n:c.n,peak:c.n};wwarStocks(1-WWCFG.crash,1+WWCFG.safe);
@@ -5047,6 +5053,7 @@ function milDisband(k){const m=mil();if(!m.units[k])return;const n=Math.min(MILC
 const milWarCost=n=>Math.round(annexCost(n)*MILCFG.warMob);
 function milDeclare(n){const p=pol(),m=mil(),C=MILCFG,now=Date.now();if(!polLeader())return toast("Only a Leader can declare war");
   if(n===p.c||p.ctrl[n]||m.occ[n]||m.wars[n]||!COUNTRIES.includes(n))return;if(Object.keys(m.wars).length>=C.maxWars)return toast(`At most ${C.maxWars} wars at once`);
+  if(allySet().has(n))return toast(`${n} is your ally: end the alliance before declaring war`);
   if(!devGod()&&now<m.cd)return toast("War cooldown: "+fmtDur(m.cd-now));if(milStr()<=0)return toast("Recruit an army first");const c=milWarCost(n);if(S.cash<c)return toast(`Mobilisation costs ${fmt(c)}`);
   S.cash-=c;m.cd=devGod()?0:now+C.warCd*DAYMS*(1-presFx("cd"));p.appr=Math.max(0,p.appr+C.warAppr);const e=milEnemy(n);
   m.wars[n]={since:now,front:C.frontStart,enemyStr:e,enemyMax:e,terrain:milTerrain(n),weariness:0,battles:[],pcd:0};logPol(`You declared war on ${n}`);try{troopFly(p.c,n)}catch(e){}setTimeout(()=>toast(`⚠ ${n} will strike back with cruise missiles${bunk().lv?": stay near your bunker":": a bunker (Gov › Bunker) keeps you safe"}`),1800)}
@@ -5114,7 +5121,7 @@ function milApp(){const p=pol(),m=mil(),C=MILCFG,U=C.units,now=Date.now(),lead=p
     ${sb("milhome",n,w.home?"🪖 Send troops back":"🏠 Bring troops home","#0f766e")}
     ${sb("milpeace",n,pc?"Talks in "+fmtDur(pc):`Offer peace${w.front>=65?" (they pay)":w.front<=35?" (you pay)":" (white)"}`,"#374151",pc)}`}
   const ok=Object.keys(m.occ);if(ok.length)h+=`<div class="ph-sub" style="margin-top:10px">Occupied</div><div class="ph-rows">${ok.map(n=>{const o=m.occ[n];return urow(`${n} · resist <b style="color:${o.resist>60?"#f87171":o.resist<C.occCalm?"#4ade80":"#fbbf24"}">${Math.round(o.resist)}</b>`,`garrison ${o.gar||0} · +${fmt(GOVCFG.share*C.occIncome*ctyScale(n)*(1-o.resist/100))}/hr${milOccLeft(n)}`,bx("milgar",n+"|1",`+${C.batch} garrison`,"#14532d",0,1)+bx("milgar",n+"|-1","−","#374151",!o.gar)+bx("milab",n,"✕","#374151"))}).join("")}</div>`;
-  if(lead){const cd=Math.max(0,m.cd-now),full=wk.length>=C.maxWars,list=COUNTRIES.filter(x=>x!==p.c&&!p.ctrl[x]&&!m.occ[x]&&!m.wars[x]).sort((a,b)=>milEnemy(a)-milEnemy(b));
+  if(lead){const cd=Math.max(0,m.cd-now),full=wk.length>=C.maxWars,als=allySet(),list=COUNTRIES.filter(x=>x!==p.c&&!p.ctrl[x]&&!m.occ[x]&&!m.wars[x]&&!als.has(x)).sort((a,b)=>milEnemy(a)-milEnemy(b));
     h+=`<div class="ph-sub" style="margin-top:10px">Declare war${cd?" · ready in "+fmtDur(cd):""}${full?" · max wars reached":""} (approval ${C.warAppr})</div><div class="ph-rows">${list.map(x=>`<div><span>${x}<br><small style="opacity:.7">${milTerrain(x)} · enemy ${milEnemy(x)} vs you ${Math.round(milStr(milTerrain(x)))}</small></span>${sb("milwar",x,fmt(milWarCost(x)),"#7f1d1d",cd||full||S.cash<milWarCost(x)||milStr()<=0)}</div>`).join("")}</div>`}
   else h+=`<p class="ph-sub">Only a Leader can recruit and declare war. Losing office forces a white peace and puts the army in reserve: units stay at ${Math.round(C.reserveUp*100)}% upkeep until you lead again.</p>`;
   h+=wpnHtml(wpn(),lead,sb,bx,urow);
@@ -7635,11 +7642,11 @@ function presDay(quiet){const x=pres(),p=pol();if(!(p.r>=0))return;x.ah.push(Mat
   if(b.intl>25)try{const s=intSt();if(Math.random()<(b.intl-25)/60)s.ci=Math.max(s.ci||0,Date.now())+DAYMS/2}catch(e){}
   for(const n in x.deal){if(x.deal[n]<Date.now()){delete x.deal[n];continue}try{dip().gdp[c]*=1+PRESCFG.deal.gdp/30;dip().gdp[n]*=1+PRESCFG.deal.gdp/30}catch(e){}}}
 const presTens=n=>{try{const T=(wfView().tens||{})[wfPair(pol().c,n)];return T?+T.v||0:0}catch(e){return 0}};
-const presRel=n=>{const x=pres();let r=50-presTens(n)*1.2+(x.rel[n]||0)+(x.ally[n]?25:0)+(x.deal[n]?10:0);try{if(wfAtWar(pol().c,n))r=-100}catch(e){}return Math.max(-100,Math.min(100,Math.round(r)))};
+const presRel=n=>{const x=pres();let r=50-presTens(n)*1.2+(x.rel[n]||0)+(x.ally[n]?25:0)+(x.deal[n]?10:0);try{if(wfAtWar(pol().c,n)||(mil().wars||{})[n])r=-100}catch(e){}return Math.max(-100,Math.min(100,Math.round(r)))};
 function presDip(a,n){const x=pres(),p=pol(),now=Date.now(),C=PRESCFG;if(!polLeader())return toast("Only a Leader can run diplomacy");if(!COUNTRIES.includes(n)||n===p.c)return;
   if(a==="envoy"){if(S.cash<C.envoy)return toast(`An envoy costs ${fmt(C.envoy)}`);if((x.rcd[n]||0)>now)return toast(`Wait ${fmtDur(x.rcd[n]-now)} before another envoy`);S.cash-=C.envoy;x.rel[n]=Math.min(60,(x.rel[n]||0)+10);x.rcd[n]=now+DAYMS;if(presTens(n)>0)wfPush({k:"p",to:p.c,vs:n,amt:Math.max(WFCFG.min,Math.round(wfPt(p.c,n)*4))});toast(`🕊 Envoy sent to ${n}: relations +10`)}
   else if(a==="deal"){if(presRel(n)<C.deal.min)return toast(`Relations must be at least ${C.deal.min} for a trade deal`);if(x.deal[n])return toast("A trade deal is already running");x.deal[n]=now+C.deal.days*DAYMS;toast(`🤝 Trade deal with ${n} for ${C.deal.days} days: both GDPs grow +1%`);logGov(`Trade deal signed with ${n}`)}
-  else if(a==="ally"){if(x.ally[n]){delete x.ally[n];toast(`Alliance with ${n} ended`);}else{if(presRel(n)<C.ally.min)return toast(`Relations must be at least ${C.ally.min} for an alliance`);x.ally[n]=1;toast(`🛡 Alliance with ${n}: invasion defence +${C.ally.fort}`);logGov(`Alliance formed with ${n}`)}}
+  else if(a==="ally"){if(x.ally[n]){delete x.ally[n];toast(`Alliance with ${n} ended`);}else{if((mil().wars||{})[n]||wfAtWar(p.c,n))return toast(`You are at war with ${n}: make peace before forming an alliance`);if(presRel(n)<C.ally.min)return toast(`Relations must be at least ${C.ally.min} for an alliance`);x.ally[n]=1;toast(`🛡 Alliance with ${n}: invasion defence +${C.ally.fort}`);logGov(`Alliance formed with ${n}`)}}
   else if(a==="recall"){x.rel[n]=Math.max(-60,(x.rel[n]||0)+C.recall.rel);delete x.ally[n];delete x.deal[n];p.appr=Math.min(100,(+p.appr||0)+C.recall.appr);wfPush({k:"e",to:p.c,vs:n,amt:Math.max(WFCFG.min,Math.round(wfPt(p.c,n)*4))});toast(`Ambassador recalled from ${n}: relations ${C.recall.rel}, tension up`)}
   save();hud()}
 function presRed(n){const p=pol(),C=PRESCFG.red;if(!polLeader())return toast("Only a Leader can use the red phone");const v=presTens(n);if(!(v>0))return toast(`No tension with ${n}`);const c=Math.max(WFCFG.min,Math.round(tensCost(p.c,n)*C.mult));if(S.cash<c)return toast(`The call costs ${fmt(c)}`);
