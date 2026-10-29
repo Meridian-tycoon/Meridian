@@ -3688,10 +3688,12 @@ function dipConquer(a,b,quiet){const d=dip(),p=S.pol,pc=dipPlayerC(),pw=pc&&(S.w
     const m=p.mil;if(m){if(m.occ&&m.occ[b]){const gr=m.occ[b].gar||0;delete m.occ[b];mine=" · your occupation ended"}if(m.wars&&m.wars[b]){delete m.wars[b];mine=" · your war with it ended"}}}
   for(const m in d.ruler)if(d.ruler[m]===b)delete d.ruler[m]; // a ruled country's own subjects revert to independence
   dipSay(`${a} conquers ${b}${mine}`,1,quiet);if(!quiet&&a!==pc)stConq(a,b,pc)}
-function dipInvade(w,by,quiet){const d=dip(),n=dipPlayerC();d.inv={by,n,w:w.id,day:d.day,stage:1,prog:0,rcd:0,fort:0};w.inv=1;
+function dipInvade(w,by,quiet){if(typeof devGod==="function"&&devGod())return; // developer account is never invaded
+const d=dip(),n=dipPlayerC();d.inv={by,n,w:w.id,day:d.day,stage:1,prog:0,rcd:0,fort:0};w.inv=1;
   setTimeout(()=>{if(!quiet)toast(`⚠ War is coming to ${n}: ${bunk().lv?"know the way to your bunker":"consider building a bunker (Gov › Bunker)"}`)},2500);
   const t=`WARNING: ${by} masses troops on ${n}'s border. Invasion in ${DIPCFG.warn} days: fund talks, rally defences, build an army`;dipSay(t,1,quiet);if(!quiet)toast(t)}
-function dipFall(by,quiet){const d=dip(),p=pol(),n=p.c,o=GOVCFG.offices[p.r].n,lv=Math.round(Math.max(0,S.cash)*DIPCFG.levy);S.cash-=lv;
+function dipFall(by,quiet){if(typeof devGod==="function"&&devGod()){const d=dip();if(d.inv){const w=(S.wars||[]).find(x=>x&&x.id===d.inv.w);if(w)w.inv=0;d.inv=null}return}
+const d=dip(),p=pol(),n=p.c,o=GOVCFG.offices[p.r].n,lv=Math.round(Math.max(0,S.cash)*DIPCFG.levy);S.cash-=lv;
   d.inv=null;dipConquer(by,n,quiet);if(!polImmune())polFall();const t=`${by} occupies ${n}! You lose office as ${o}. Occupation levy ${fmt(lv)}; your businesses stay but earn ${Math.round((1-DIPCFG.occMult)*100)}% less until it is liberated`;
   S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);if(!quiet)toast(t)}
 function dipInvDay(d,quiet){const C=DIPCFG,inv=d.inv,p=S.pol,w=inv&&(S.wars||[]).find(x=>x.id===inv.w);
@@ -3787,7 +3789,7 @@ function wwStory(k,c,quiet){try{const w=S.wwar||c.w;if(!w)return;
 function wwarBan(){const mw=document.getElementById("mapwrap");if(!mw)return;let b=document.getElementById("wwarban");const w=S.wwar;
   if(!w){if(b)b.remove();return}
   if(!b){b=document.createElement("div");b.id="wwarban";b.style.cssText="position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:49;background:#7f1d1d;color:#fff;border:2px solid #ef4444;border-radius:10px;padding:5px 12px;font:800 13px Figtree,sans-serif;letter-spacing:.06em;pointer-events:none;box-shadow:0 0 18px #ef444488;white-space:nowrap";mw.appendChild(b)}
-  const t=`🔥 WORLD WAR · ${w.n} wars raging · day ${S.day-w.d0+1}`;if(b.textContent!==t)b.textContent=t}
+  let wn=w.n;try{wn=wwarCount().n}catch(e){}const t=`🔥 WORLD WAR · ${wn} wars raging · day ${S.day-w.d0+1}`;if(b.textContent!==t)b.textContent=t}
 const dipPhase=n=>{const ph=S.dip&&S.dip.ph&&S.dip.ph[n];return ph?(ph.g>0?"BOOM":"RECESSION"):"STABLE"};
 function dipRows(n){const d=dip(),r=d.gr[n]||0,rk=COUNTRIES.slice().sort((a,b)=>dipPower(b)-dipPower(a)).indexOf(n)+1,ph=dipPhase(n);
   const subj=Object.keys(d.ruler).filter(m=>d.ruler[m]===n),by=d.ruler[n];
@@ -3832,7 +3834,7 @@ function moneyRows(){const R=[],f=(n,fn)=>{let v=0;try{v=+fn()||0}catch(e){}if(N
   if(Math.abs(gain)>=.5)R.push(["Businesses (profitable ones)",gain]);if(loss)R.push([`Businesses losing money (${nl})`,loss]);
   f("Job and home rent",()=>lifeIncome());f("Rental properties",()=>propIncome());f("Franchise royalties",()=>franIncome());f("Auction businesses",()=>aucIncome());f("Office / military pay",()=>polIncome()+(typeof milUpkeep==="function"?milUpkeep():0));
   f("Military upkeep",()=>-milUpkeep());f("Land & factory upkeep",()=>-indUpkeep());f("Leases and land rent",()=>-rentTotal());f("HQ upkeep and links",()=>-hqTotalUpkeep());f("Office heads' salaries",()=>-ofUpk());
-  f("Loan payments",()=>-(typeof bankPayHr==="function"?bankPayHr():S.debt*.003));f("Credit card interest",()=>{const c=B().card;return c&&!c.paidStmt?-Math.min(c.bal,c.stmt)*c.rate:0});f("War reparations",()=>{const m=S.pol&&S.pol.mil;return m&&Array.isArray(m.rep)?-m.rep.reduce((a,r)=>a+Math.min(r.left,r.per),0):0});f("Luxury items",()=>luxIncome());f("Flip homes (property tax)",()=>-flipUpk());f("Insurance & colonies",()=>-gxUpk());f("Ships",()=>ishIncome());
+  f("Loan payments",()=>-(typeof bankPayHr==="function"?bankPayHr():S.debt*.003));f("Credit card interest",()=>{const c=B().card;return c&&!c.paidStmt?-Math.min(c.bal,c.stmt)*c.rate:0});f("War reparations",()=>{const m=S.pol&&S.pol.mil;return m&&Array.isArray(m.rep)?-m.rep.reduce((a,r)=>a+Math.min(r.left,r.per),0):0});f("Luxury items",()=>luxIncome());f("Flip homes (property tax)",()=>-flipUpk());f("Insurance & colonies",()=>-gxUpk());f("Ships",()=>ishIncome());f("Oil rigs (stored on board until sold)",()=>{let v=0;for(const r of (typeof rigs==="function"?rigs():[])){const d=rigDay(r),cp=rigCapU(r),st=r.st||{};if((st.fuel||0)>=cp.fuel-1e-6&&(st.oil||0)>=cp.oil-1e-6)continue;v+=d.oil*rigPx("oil")+d.fuel*rigPx("fuel")*RIGCFG.sell}return v});
   f("Tax building up (paid at year end)",()=>{const r=taxableRates(),h=EVADE.lv[evLevel()]||0;return-(r.reg*TAX_REG+r.un*TAX_UNREG)*(1-h)});
   return R.sort((a,b)=>a[1]-b[1])}
 const MNY={f:"all",sel:-1};
