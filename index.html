@@ -2595,7 +2595,8 @@ function renderResearch(){const done=TECH.filter(t=>hasTech(t.k)).length;
 function hud(){try{setApply()}catch(e){}const nb=document.querySelectorAll('#needs i');["h","f","m"].forEach((k,i)=>{const v=S.need[k];nb[i].style.width=v+"%";nb[i].style.background=v<25?"var(--bad)":v<50?"var(--accent)":"var(--good)"});let{inc,nw}=totals();for(const st of S.sites){const o=siteOp(st);if(o&&!st.why)inc+=siteEst(st)+o.up*LAND[st.size][1]}if(typeof tweenCash==="function")tweenCash();else $("#cash").textContent=fmt(S.cash);
   const ie=$("#inc");ie.textContent=(inc>=0?"+":"")+fmt(inc);ie.style.color=inc<0?"var(--bad)":"var(--good)";
   $("#nw").textContent=fmt(nw);if(typeof rankHud==="function")rankHud(nw);$("#day").textContent=new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})+(typeof ssnTag==="function"?ssnTag():"");
-  const tk=$("#ticker");if(S.log.length){const html=`<button id="tkb" aria-expanded="${!!tickOpen}" title="Show recent news">${S.log[0]}</button>`+(tickOpen?S.log.slice(1).map(l=>`<div>${l}</div>`).join(""):"");if(tk.innerHTML!==html)tk.innerHTML=html}}
+  const tk=$("#ticker");if(S.log.length){const tE=s=>String(s==null?"":s).replace(/[&<>]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[ch])); // log lines are plain text (they can hold player names)
+    const html=`<button id="tkb" aria-expanded="${!!tickOpen}" title="Show recent news">${tE(S.log[0])}</button>`+(tickOpen?S.log.slice(1).map(l=>`<div>${tE(l)}</div>`).join(""):"");if(tk.innerHTML!==html)tk.innerHTML=html}}
 let tickOpen=false;$("#ticker").addEventListener("click",e=>{if(e.target.closest("#tkb")){tickOpen=!tickOpen;hud()}});
 /* bottom navigation + sheet handle */
 $("#mapbtn").onclick=()=>{closeSheet();if(typeof inStreet!=="undefined"&&inStreet)leaveStreet()};
@@ -5613,8 +5614,11 @@ const rigPx=g=>(G[g]&&G[g][1])||(g==="oil"?25:45);
 function rigDay(r){const L=rigLv(r);let m=1;try{m=1+.1*ofP("nrg")}catch(e){}return {oil:m*L.val*(1-L.ref)/rigPx("oil"),fuel:m*L.val*L.ref/rigPx("fuel")*RIGCFG.fuelX}} // units made per game day
 function rigCapU(r){const d=rigDay(r);return {oil:d.oil*RIGCFG.store,fuel:(d.fuel+d.oil*rigPx("oil")/rigPx("fuel")*RIGCFG.fuelX)*RIGCFG.store}} // fuel room also holds the crude once it is refined
 function rigTick(now){for(const r of rigs()){if(!r.st)r.st={oil:0,fuel:0};if(!(r.at>0))r.at=r.t||now;const dt=Math.max(0,now-r.at)/DAYMS;r.at=now;const d=rigDay(r),cp=rigCapU(r);
-    for(const g of ["oil","fuel"])r.st[g]=Math.min(cp[g],(r.st[g]||0)+d[g]*dt);
-    {const q=Math.min(r.st.oil||0,Math.max(d.oil,d.fuel/RIGCFG.fuelX*rigPx("fuel")/rigPx("oil"))*dt);if(q>0){r.st.oil-=q;r.st.fuel=(r.st.fuel||0)+q*rigPx("oil")/rigPx("fuel")*RIGCFG.fuelX}} // crude stays on board until the rig's refinery turns it into fuel
+    {const cv=rigPx("oil")/rigPx("fuel")*RIGCFG.fuelX,rate=Math.max(d.oil,d.fuel/RIGCFG.fuelX*rigPx("fuel")/rigPx("oil"));
+     const n=dt>0?Math.min(2000,Math.ceil(dt*48)):0,s=n?dt/n:0;let oil=r.st.oil||0,fuel=r.st.fuel||0;
+     for(let i=0;i<n;i++){oil+=d.oil*s;fuel=Math.min(cp.fuel,fuel+d.fuel*s); // long gaps are worked through in short steps so a catch-up equals normal ticking
+       const q=Math.max(0,Math.min(oil,rate*s,(cp.fuel-fuel)/cv));oil-=q;fuel+=q*cv;oil=Math.min(cp.oil,oil)} // crude stays on board until the refinery has room to turn it into fuel
+     r.st.oil=Math.min(cp.oil,oil);r.st.fuel=Math.min(cp.fuel,fuel)}
     if(Array.isArray(r.sh)&&r.sh.length){const due=r.sh.filter(x=>x.arr<=now);r.sh=r.sh.filter(x=>x.arr>now);for(const x of due){const c=CITIES[x.to];if(!c)continue;ensureWh(c);const v=S.inv[c.id];v[x.g]=(v[x.g]||0)+x.q;toast(`🚢 ${fmtN(x.q)} ${G[x.g]?G[x.g][0].toLowerCase():x.g} from ${r.n} arrived in ${c.name}`)}}}}
 const fmtN=n=>Math.round(n).toLocaleString();
 /* Shipments go by tanker only: each rig owns its tankers (r.tk=[{id,k,back}]). A trip loads fuel, then crude, up to the tanker's capacity and the depot's free room;
@@ -8030,7 +8034,7 @@ function wrPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;co
   ON.db.collection("world").doc("rivals").set(d).catch(e=>{ON.err="Couldn't publish world rivals: "+(e&&e.code||e)})}
 function onSaved(){if(!ON.ready||!ON.user)return;onPublish(false);wrPublish(false);wwPublish(false)}
 const LBKEY="meridian-lb-players";
-function lbCache(a){try{localStorage.setItem(LBKEY,JSON.stringify(a.slice(0,200).map(p=>({uid:p.uid,name:String(p.name||"Player").slice(0,20),col:p.col,nw:+p.nw||0,nb:p.nb,nc:p.nc,biz:Array.isArray(p.biz)?p.biz:[],home:p.home,hq:p.hq,cid:p.cid,govC:p.govC,govR:p.govR,govS:p.govS,seen:onSeen(p)}))))}catch(e){}}
+function lbCache(a){try{localStorage.setItem(LBKEY,JSON.stringify(a.slice(0,200).map(p=>({uid:p.uid,name:String(p.name||"Player").slice(0,20),col:p.col,nw:+p.nw||0,nb:p.nb,nc:p.nc,biz:Array.isArray(p.biz)?p.biz:[],home:p.home,hq:p.hq,cid:p.cid,govC:p.govC,govR:p.govR,govS:p.govS,tk:/^[A-Z]{3,5}$/.test(p.tk||"")?p.tk:undefined,bot:p.bot?true:undefined,trucks:p.bot?(p.trucks|0):undefined,seen:onSeen(p)}))))}catch(e){}}
 function lbPlayers(){if(ON.gotPlayers)return ON.players;try{const a=JSON.parse(localStorage.getItem(LBKEY)||"[]");const me=ON.user?ON.user.uid:null;return Array.isArray(a)?a.filter(p=>p&&p.uid!==me):[]}catch(e){return[]}}
 const lbPol=(c,r)=>{const o=GOVCFG.offices[r];return o&&c?` <span class="tag" title="Political office">${devEsc(o.n)} of ${devEsc(String(c).slice(0,40))}</span>`:""};
 function lbCities(p){if(Number.isInteger(p.nc))return p.nc;const s=new Set(onCities(p));for(const i of Array.isArray(p.biz)?p.biz:[])if(CITIES[i])s.add(i);return s.size}
@@ -9483,7 +9487,10 @@ function airEst(k,r,dir){const P=ALP[k],A=CITIES[r.a],B=CITIES[r.b],km=distKm(A,
   const rev=pax*fare+tons*.5*km*r.p,fuel=P.burn*km*(1-.06*aLv("hedge"))*(typeof ofP==="function"?1-.2*ofP("air"):1),fees=(airOwnAp(to.id)?0:P.fee)+(airOwnAp(from.id)?0:P.fee)*.5;
   const ms=km/P.spd*DAYMS/24+ALC.turn*(1-.15*hb.crew);
   return {km,lf,pax,tons,fare,rev,cost:fuel+fees,fuel,fees,net:rev-fuel-fees,ms}}
-function airHrRow(now){const a=AIR(),h=Math.floor(now/DAYMS);let e=a.hh[0];if(!e||e.h!==h){e={h,rev:0,cost:0,pax:0,legs:0};a.hh.unshift(e);a.hh=a.hh.slice(0,ALC.hist)}return e}
+function airHrRow(now){const a=AIR(),h=Math.floor(now/DAYMS);if(a.hh[0]&&a.hh[0].h===h)return a.hh[0];
+  const m={};for(const x of a.hh){if(!x||!isFinite(x.h))continue;const y=m[x.h];if(y){for(const k of ["rev","cost","pax","legs"])y[k]=(y[k]||0)+(x[k]||0)}else m[x.h]=x} // one row per hour (older saves may hold duplicates)
+  let e=m[h];if(!e){e={h,rev:0,cost:0,pax:0,legs:0};m[h]=e}
+  a.hh=Object.values(m).sort((p,q)=>q.h-p.h).slice(0,ALC.hist);return e} // newest first, the cap drops only the oldest hours
 function airTick(now){const a=AIR();if(!a.pl.length)return;let got=0;
   for(const p of a.pl){const r=p.r!=null?airRt(p.r):null;if(!r||!airIsHub(p.hub)||r.a!==p.hub){p.nx=0;continue}
     if(!p.nx){const e=airEst(p.k,r,p.dir);p.dep=now;p.nx=now+e.ms;continue}
@@ -12369,7 +12376,7 @@ function sfPost(k,from,cid,icpt){try{const db=sfBE(),now=Date.now();if(!db||!WPN
 function sfShow(id,d){const c=CITIES[d.c],W=WPNCFG.w[d.k];if(!c||!W||SF.seen[id])return;SF.seen[id]=1;const now=Date.now();
   if(d.f&&COUNTRIES.includes(d.f))try{trjAdd(d.f,c,d.k,now,WPNCFG.animMs,"sf"+id)}catch(e){}
   SF.fx.push({c:d.c,k:d.k,i:d.i,t:now+WPNCFG.animMs});SF.fx=SF.fx.slice(-20);
-  const who=onEsc(d.nm||"A player"),t=d.i?`🛡 ${W.n} from ${d.f} intercepted over ${c.name} (${c.country}) · ${who}`:`💥 ${W.n} from ${d.f} hit ${c.name} (${c.country}) · ${who}`;
+  const who=String(d.nm||"A player"),t=d.i?`🛡 ${W.n} from ${d.f} intercepted over ${c.name} (${c.country}) · ${who}`:`💥 ${W.n} from ${d.f} hit ${c.name} (${c.country}) · ${who}`;
   try{wmdBanner(d.k,t,SFCFG.fx+WPNCFG.animMs)}catch(e){}S.log.unshift("World: "+t.replace(/<[^>]*>/g,""));S.log=S.log.slice(0,3)}
 function sfTick(){try{const db=sfBE();
   if(db&&!SF.unsub){const since=window.firebase.firestore.Timestamp.fromMillis(Date.now()-SFCFG.keep);
