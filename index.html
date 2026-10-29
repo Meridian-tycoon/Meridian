@@ -4983,7 +4983,7 @@ function polRun(){const p=pol(),C=GOVCFG,now=Date.now(),r=p.r+1,O=C.offices[r];i
   const {nw}=totals(),cost=polCost(r,n);if(nw<O.nw)return toast(`Need net worth ${fmt(O.nw)}`);if(S.cash<cost)return toast(`Campaign costs ${fmt(cost)}`);
   const full=cabFull(n,r),foe=full?cabWeak(n,r):null;if(full&&!foe)return toast(`Every ${O.n} seat in ${n} is held by immune players`);
   const ch=polChance(r);S.cash-=cost;
-  if(Math.random()<ch){p.r=r;p.c=n;p.since=now;if(foe)logPol(`You beat ${String(foe.name||"a player").slice(0,20)} for a ${O.n} seat`);try{onPublish(true)}catch(e){}p.appr=Math.max(p.r>0?p.appr:0,C.apprStart);logPol(`You won! You are now ${O.n} of ${n}`);if(typeof confetti==="function")confetti(60,innerWidth/2,innerHeight/3)}
+  if(Math.random()<ch){p.r=r;p.c=n;p.since=now;if(foe)logPol(`You beat ${String(foe.name||"a player").slice(0,20)} for a ${O.n} seat`);try{onPublish(true)}catch(e){}p.appr=Math.max(p.r>0?p.appr:0,C.apprStart);logPol(`You won! You are now ${O.n} of ${n}`);if(r===C.offices.length-1)govAnn(n,"elect");if(typeof confetti==="function")confetti(60,innerWidth/2,innerHeight/3)}
   else{p.cd=now+C.loseCd*DAYMS;if(p.r>=0)p.appr=Math.max(0,p.appr-5);logPol(`You lost the race for ${O.n} of ${n} (${Math.round(ch*100)}% chance)`)}}
 const polPRq=p=>{const gb=Math.max(0,Math.min(GOVCFG.prGain,95-p.appr)),g=Math.max(0,Math.min(95-p.appr,gb*(1+presFx("pr"))));return {g,c:Math.round(polCost(p.r,p.c)*GOVCFG.prCost*gb/GOVCFG.prGain*(1-presFx("cost")))}}; // cost scales with approval actually gained (capped at 95)
 function polPR(){const p=pol();if(p.r<0)return;if(p.appr>=95)return toast("Approval is already maxed");const {g,c}=polPRq(p);if(S.cash<c)return toast(`PR campaign costs ${fmt(c)}`);S.cash-=c;p.appr=Math.min(95,p.appr+g);toast(`Approval +${Math.round(g*10)/10}`)}
@@ -5002,12 +5002,29 @@ function polRelease(n){const p=pol();if(p.ctrl[n]){delete p.ctrl[n];logPol(`You 
    Price = GDP($bn) x 1e9 x TKCFG.gdpF x wealth, wealth = 0.75 + approval/200 (same weighting as national power), x (1 + 25% per country already held).
    A bought or controlled country can always be sold: to the AI for TKCFG.ai of today's price, or to another player at any price
    (offer doc ctysale/{uid_key} {uid,name,c,to,toName,price,st,at}; the buyer pays and sets st "paid", the seller is credited and deletes it). */
+/* GOVERNMENT ANNOUNCEMENTS: when a player comes to power (wins the Leader election, buys a country, or takes one over from another player)
+   a doc govann/{id} {uid,name,c,how,at} goes out; every signed-in player gets a big window that stays until they close it (seen ids in S.gaSeen). */
+const GA={un:null,q:[]},GAHOW={elect:["🗳","won the election and now leads"],buy:["💰","bought the government of"],transfer:["🤝","took over the government of"]};
+function govAnn(c,how){try{if(!ON.db||!ON.user||!GAHOW[how])return;const me=onProf();
+  ON.db.collection("govann").add({uid:ON.user.uid,name:String(me.name||"Tycoon").slice(0,20),c:String(c).slice(0,40),how,at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{})}catch(e){}}
+function gaListen(u){try{if(GA.un)GA.un()}catch(e){}GA.un=null;GA.q=[];if(!u||!ON.db)return;const since=Date.now()-3*864e5;
+  GA.un=ON.db.collection("govann").orderBy("at","desc").limit(10).onSnapshot(q=>{const seen=S.gaSeen=Array.isArray(S.gaSeen)?S.gaSeen:[];
+    GA.q=q.docs.map(d=>({id:d.id,...d.data()})).filter(a=>a.at&&a.at.toMillis&&a.at.toMillis()>since&&!seen.includes(a.id)&&GAHOW[a.how]).reverse();gaShow()},e=>{})}
+function gaShow(){if(document.getElementById("govann")||!GA.q.length)return;const a=GA.q[0],h=GAHOW[a.how],E=t=>String(t).replace(/[<>&"]/g,"");
+  const el=document.createElement("div");el.id="govann";el.style.cssText="position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px";
+  el.innerHTML=`<div role="alertdialog" aria-modal="true" aria-labelledby="gaT" style="background:linear-gradient(160deg,#1e1b4b,#0f172a);color:#fff;border:3px solid #facc15;border-radius:18px;max-width:520px;width:100%;padding:28px 22px;text-align:center;box-shadow:0 0 60px #facc1566;font-family:Figtree,system-ui,sans-serif">
+   <div style="font:800 12px var(--mono,monospace);letter-spacing:.2em;color:#facc15">📣 WORLD ANNOUNCEMENT</div>
+   <div style="font-size:56px;margin:10px 0">${h[0]}</div>
+   <h2 id="gaT" style="margin:0 0 8px;font-size:26px">New government in ${E(a.c)}</h2>
+   <p style="font-size:17px;margin:0 0 20px;opacity:.9"><b>${E(a.name)}</b> ${h[1]} ${E(a.c)}.</p>
+   <button id="gaX" style="background:#facc15;color:#111;border:0;border-radius:10px;padding:10px 26px;font:800 15px Figtree,sans-serif;cursor:pointer">Close</button></div>`;
+  document.body.appendChild(el);el.querySelector("#gaX").onclick=()=>{el.remove();const s=S.gaSeen=Array.isArray(S.gaSeen)?S.gaSeen:[];s.push(a.id);S.gaSeen=s.slice(-50);GA.q.shift();try{save()}catch(e){}gaShow()}}
 const TKCFG={gdpF:.005,step:.25,ai:.6,maxP:1e15};
 function tkPrice(n){const d=dip(),g=d.gdp[n]||dipBase(n),a=+gov(n).appr||50,k=Object.keys(pol().ctrl).length;return Math.round(g*1e9*TKCFG.gdpF*(.75+a/200)*(1+TKCFG.step*k))}
 function tkBuy(n){const p=pol();if(!polLeader())return toast("Only a country's Leader can take over another country");if(n===p.c||p.ctrl[n]||!COUNTRIES.includes(n))return;
   if(p.mil&&(p.mil.wars&&p.mil.wars[n]||p.mil.occ&&p.mil.occ[n]))return toast(`You are at war with ${n}: no takeover deals`);
   const c=tkPrice(n);if(S.cash<c)return toast(`Taking over ${n} costs ${fmt(c)}`);S.cash-=c;p.ctrl[n]={since:Date.now(),loy:100,buy:c};
-  try{const d=dip();if(d.ruler[n])delete d.ruler[n]}catch(e){}logPol(`You bought ${n} for ${fmt(c)}`);toast(`🏛 ${n} is now yours (${fmt(c)})`);if(typeof confetti==="function")confetti(80,innerWidth/2,innerHeight/3)}
+  try{const d=dip();if(d.ruler[n])delete d.ruler[n]}catch(e){}logPol(`You bought ${n} for ${fmt(c)}`);govAnn(n,"buy");toast(`🏛 ${n} is now yours (${fmt(c)})`);if(typeof confetti==="function")confetti(80,innerWidth/2,innerHeight/3)}
 function tkSellAi(n){const p=pol();if(!p.ctrl[n])return;if(TKS.out.some(x=>x.c===n))return toast("Cancel the player offer first");const v=Math.round(tkPrice(n)*TKCFG.ai);S.cash+=v;delete p.ctrl[n];logPol(`You sold ${n} to the AI for ${fmt(v)}`);toast(`${n} sold to the AI for ${fmt(v)}`)}
 const TKS={un:[],out:[],inb:[]};
 function tkBuyers(){const me=ON.user&&ON.user.uid;return((typeof ON!=="undefined"&&ON.players)||[]).filter(x=>x&&x.uid&&x.uid!==me).slice(0,50)}
@@ -5017,7 +5034,7 @@ function tkOffer(n,uid,price){const p=pol();if(!p.ctrl[n])return;if(!ON.db||!ON.
     .then(()=>toast(`Offer sent: ${n} to ${b.name||"player"} for ${fmt(price)}`),e=>toast("Couldn't send the offer: "+(e&&e.code||e)))}
 function tkCancel(id){if(ON.db)ON.db.collection("ctysale").doc(id).delete().catch(()=>{})}
 function tkAccept(id){const o=TKS.inb.find(x=>x.id===id);if(!o)return;if(S.cash<o.price)return toast(`Needs ${fmt(o.price)}`);const p=pol();
-  ON.db.collection("ctysale").doc(id).update({st:"paid"}).then(()=>{S.cash-=o.price;p.ctrl[o.c]={since:Date.now(),loy:100,buy:o.price};logPol(`You bought ${o.c} from ${o.name} for ${fmt(o.price)}`);toast(`🏛 ${o.c} is now yours`);save();hud()},e=>toast("Couldn't complete: "+(e&&e.code||e)))}
+  ON.db.collection("ctysale").doc(id).update({st:"paid"}).then(()=>{S.cash-=o.price;p.ctrl[o.c]={since:Date.now(),loy:100,buy:o.price};logPol(`You bought ${o.c} from ${o.name} for ${fmt(o.price)}`);govAnn(o.c,"transfer");toast(`🏛 ${o.c} is now yours`);save();hud()},e=>toast("Couldn't complete: "+(e&&e.code||e)))}
 function tkDecline(id){if(ON.db)ON.db.collection("ctysale").doc(id).update({st:"no"}).catch(()=>{})}
 function tkSweep(){const p=pol();for(const o of TKS.out){if(o.st==="paid"){if(p.ctrl[o.c]){delete p.ctrl[o.c];S.cash+=o.price;logPol(`${o.toName} bought ${o.c} from you for ${fmt(o.price)}`);toast(`💰 ${o.c} sold to ${o.toName} for ${fmt(o.price)}`);save()}tkCancel(o.id)}
   else if(o.st==="no"){toast(`${o.toName} declined ${o.c}`);tkCancel(o.id)}else if(!p.ctrl[o.c])tkCancel(o.id)}}
@@ -8096,7 +8113,7 @@ function onScript(u){return new Promise((ok,no)=>{const s=document.createElement
 async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
   try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
-    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){setGuest(false);WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM){wrPublish(true);wwPublish(true)}else{wrMirror(true);try{wwMirror(true)}catch(e){}if(WRL)WRG=true}onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{WRG=false;CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);pmListen(u);tkListen(u);gateSync();onRefresh()});
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;if(u){setGuest(false);WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM){wrPublish(true);wwPublish(true)}else{wrMirror(true);try{wwMirror(true)}catch(e){}if(WRL)WRG=true}onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{WRG=false;CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);pmListen(u);tkListen(u);gaListen(u);gateSync();onRefresh()});
     ON.unsubB=ON.db.collection("world").doc("bot").onSnapshot(d=>{if(WRM&&ON.user&&devUid(ON.user.uid))return;const v=d.exists?botClean(d.data()):null;if(!v)return;ON.bot=v;try{localStorage.setItem(BOTKEY,JSON.stringify(v))}catch(e){}draw();onRefresh();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)))phRender()},e=>{ON.err="Couldn't load the bot company: "+(e&&e.code||e)});
     ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;ON.gotPlayers=true;lbCache(a);try{ctCalc()}catch(e){}try{cabCheck()}catch(e){}draw();onRefresh()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
     try{wwListen()}catch(e){}ON.unsubW=ON.db.collection("world").doc("rivals").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list)||v.list.length!==RIVALS.length)return;
