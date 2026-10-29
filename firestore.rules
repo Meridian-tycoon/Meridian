@@ -536,6 +536,21 @@ service cloud.firestore {
           && getAfter(/databases/$(database)/documents/exsale/$(resource.data.uid)).data.amt == resource.data.price));
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
+    // csale/{id}: a government player offers a country they bought to another player; the buyer accepts ("a") or declines ("x"), the seller collects and deletes
+    match /csale/{id} {
+      allow read: if request.auth != null && (resource.data.by == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create, update: if request.auth != null && request.auth.uid == request.resource.data.by && request.resource.data.st == 'o'
+        && request.resource.data.keys().hasOnly(['by', 'byName', 'to', 'toName', 'c', 'price', 'st', 'at'])
+        && request.resource.data.to is string && request.resource.data.to.size() > 0 && request.resource.data.to.size() <= 128 && request.resource.data.to != request.auth.uid
+        && request.resource.data.byName is string && request.resource.data.byName.size() <= 20
+        && request.resource.data.toName is string && request.resource.data.toName.size() <= 20
+        && request.resource.data.c is string && request.resource.data.c.size() <= 60
+        && request.resource.data.price is int && request.resource.data.price >= 0;
+      allow update: if request.auth != null && resource.data.to == request.auth.uid && resource.data.st == 'o'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st'])
+        && (request.resource.data.st == 'a' || request.resource.data.st == 'x');
+      allow delete: if request.auth != null && resource.data.by == request.auth.uid;
+    }
     // exsale/{sellerUid}: the buyer's payment for the exchange; the seller claims it by deleting it (cash moves only inside the seller's own save)
     match /exsale/{seller} {
       allow read: if request.auth != null && (request.auth.uid == seller || resource.data.by == request.auth.uid);
