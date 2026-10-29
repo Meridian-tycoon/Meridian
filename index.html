@@ -5151,7 +5151,7 @@ const WPNCFG={ // cost per weapon, build = game days, enemy = share of enemy max
   ret:{odds:{msl:.12,gas:.05,nuke:.05,icbm:.003},cd:{msl:4,gas:12,nuke:48,icbm:120},minPow:.15,nukeMin:40,icbmMin:60, // icbm: only after YOU fired one at them (w.ic), never while you're offline, ~0.3%/day x their strength left
        hit:{msl:{city:.8,front:1,appr:-1,loy:-2},gas:{city:.9,front:3,appr:-4,loy:-6},nuke:{city:1,front:6,appr:-8,loy:-12},icbm:{city:1,front:10,appr:-15,loy:-25}}},
   // world reaction to your WMD use: demand/income in all your cities falls by f for `days` game days (worst one wins, timers extend)
-  sanc:{msl:{f:.05,days:.25},gas:{f:.12,days:3},nuke:{f:.25,days:5},icbm:{f:.4,days:10}},
+  sanc:{msl:{f:.05,days:.25},clu:{f:.08,days:1},gas:{f:.12,days:3},emp:{f:.18,days:4},nuke:{f:.25,days:5},hbomb:{f:.32,days:7},icbm:{f:.4,days:10}},
   animMs:3200};    // launch animation length (real ms)
 function wpn(){const m=mil();if(!m.wpn||typeof m.wpn!=="object")m.wpn={};for(const k in WPNCFG.w)if(!(m.wpn[k]>=0))m.wpn[k]=0;if(!Array.isArray(m.wq))m.wq=[];if(!Array.isArray(m.strikes))m.strikes=[];return m}
 function wpnTick(){const m=wpn(),now=Date.now();let done=0;for(let i=m.wq.length-1;i>=0;i--){const q=m.wq[i];if(q.done<=now){if(WPNCFG.w[q.k])m.wpn[q.k]++;m.wq.splice(i,1);done++}}
@@ -5162,9 +5162,10 @@ function wpnBuild(k){const p=pol(),m=wpn(),W=WPNCFG.w[k];if(!W)return;if(!polLea
   if(devGod()){m.wpn[k]++;toast(`${W.n} ready in your arsenal (developer: instant build)`);return true}
   m.wq.push({k,done:Date.now()+W.build*DAYMS});toast(`${W.n} in production · ready in ${fmtDur(W.build*DAYMS)}`);return true}
 // build several at once: stops at the first one that can't be built (cash, production limit) and says how many were ordered
-function wpnBuildN(k,n){const W=WPNCFG.w[k];n=Math.max(1,Math.min(99,Math.floor(+n||1)));if(n===1)return wpnBuild(k);let got=0;const t0=toast;
-  try{let last="";window.toast=x=>{last=x};for(let i=0;i<n;i++){if(wpnBuild(k)!==true)break;got++}window.toast=t0;
-    if(got)toast(`${got} × ${W.n} in production · ready in ${fmtDur(W.build*DAYMS)}${got<n?` · stopped at ${got} of ${n}: ${last}`:""}`);else toast(last)}finally{window.toast=t0}}
+var _toastMute=null; // {last} while set: toast() only records the message (used by wpnBuildN)
+function wpnBuildN(k,n){const W=WPNCFG.w[k];n=Math.max(1,Math.min(99,Math.floor(+n||1)));if(n===1)return wpnBuild(k);let got=0,last="";
+  try{_toastMute={last:""};for(let i=0;i<n;i++){if(wpnBuild(k)!==true)break;got++}last=_toastMute.last}finally{_toastMute=null}
+  if(got)toast(`${got} × ${W.n} ${devGod()?"ready in your arsenal (developer: instant build)":"in production · ready in "+fmtDur(W.build*DAYMS)}${got<n&&last?` · stopped at ${got} of ${n}: ${last}`:""}`);else if(last)toast(last)}
 /* Barrage: fire a salvo of regular missiles at one city, one after another (each is a normal missile strike) */
 const BARRAGE={n:30,gap:400};
 function wpnBarrage(id,go){const m=wpn(),c=CITIES[+id];if(!c)return;if(!polLeader())return toast("Only a Leader can order strikes");if(!m.wars[c.country]&&!wmdPeaceOk(c.country,"msl"))return toast(`You can't strike ${c.country}`);const pz=!m.wars[c.country];
@@ -5196,7 +5197,7 @@ function lnWarn(v){const W=WPNCFG.w[v.k],c=CITIES[v.city],mw=document.getElement
 function wmdPeaceOk(n,k){const p=pol(),m=mil();return !!WPNCFG.w[k]&&COUNTRIES.includes(n)&&n!==p.c&&n!==dipPlayerC()&&!(p.ctrl&&p.ctrl[n])&&!(m.occ&&m.occ[n])}
 let _wmdC="";
 function wpnFire(k,id,sure,go){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id],now=Date.now();if(!W||!c)return;if(!polLeader())return toast("Only a Leader can order strikes");if((k==="nuke"||k==="hbomb"||k==="icbm")&&typeof wcOn==="function"&&wcOn("nuke"))return toast("☢️ The World council nuclear ban is in force this season: no nuclear strikes");
-  if((k==="icbm"||k==="nuke")&&present(c)&&!bunkInside(c)&&!sure)return toast(`You are in ${c.name}: a ${W.n.toLowerCase()} here would kill you`);
+  if((k==="icbm"||k==="nuke"||k==="hbomb")&&present(c)&&!bunkInside(c)&&!sure)return toast(`You are in ${c.name}: a ${W.n.toLowerCase()} here would kill you`);
   if(!m.wars[c.country]&&!wmdPeaceOk(c.country,k))return toast(k==="msl"?`You're not at war with ${c.country}`:`You can't strike ${c.country}`);
   // peacetime WMD strike (gas/nuke/ICBM): no war starts; a throwaway war record lets the usual damage, sanctions, approval and loyalty costs apply
   const w=m.wars[c.country]||(()=>{const e=milEnemy(c.country);return {front:0,enemyStr:e,enemyMax:e,weariness:0,peace:1}})();if(!m.wpn[k])return toast(`No ${W.n.toLowerCase()} in stock`);
@@ -5265,11 +5266,11 @@ const BUNKCFG={
     {n:"Deep command bunker",cost:900e6,build:12},
     {n:"Doomsday vault",cost:4e9,build:24}],
   // survival chance per strike while inside; gas uses the nuke column (weapon of mass destruction)
-  surv:{1:{msl:.6,nuke:0,icbm:0},2:{msl:1,nuke:.7,icbm:0},3:{msl:1,nuke:.8,icbm:.9},4:{msl:1,nuke:1,icbm:1}},
+  surv:{1:{msl:.6,clu:.5,emp:1,nuke:0,hbomb:0,icbm:0},2:{msl:1,clu:1,emp:1,nuke:.7,hbomb:.5,icbm:0},3:{msl:1,clu:1,emp:1,nuke:.8,hbomb:.7,icbm:.9},4:{msl:1,clu:1,emp:1,nuke:1,hbomb:1,icbm:1}}, // hbomb: worse than a nuke; emp: no blast, a bunker always holds
   ad:{from:2,p:.7,k:["msl"]},     // air defense: from Level 2, 70% chance per regular missile, missiles only
-  fatal:{msl:0,gas:0,nuke:1,icbm:1}, // unprotected and hit: killed (1) or badly wounded (0)
-  cashLoss:{msl:.1,gas:.2,nuke:.5,icbm:1}, // share of cash lost when caught unprotected (skipped if the bunker covers the weapon)
-  warn:{msl:90,gas:90,nuke:120,icbm:180}, // seconds of warning before an enemy strike lands (time to get in)
+  fatal:{msl:0,clu:0,gas:0,emp:0,nuke:1,hbomb:1,icbm:1}, // unprotected and hit: killed (1) or badly wounded (0)
+  cashLoss:{msl:.1,clu:.15,gas:.2,emp:.3,nuke:.5,hbomb:.75,icbm:1}, // share of cash lost when caught unprotected (skipped if the bunker covers the weapon)
+  warn:{msl:90,clu:90,gas:90,emp:120,nuke:120,hbomb:150,icbm:180}, // seconds of warning before an enemy strike lands (time to get in)
   aim:.35};                       // chance an enemy aims at the city you're in, when you're in one of their target countries
 const bunkKey=k=>k==="gas"?"nuke":k;
 function bunk(){let b=S.bunk;if(!b||typeof b!=="object")b=S.bunk={};b.lv=Math.max(0,Math.min(4,Math.floor(+b.lv||0)));if(!(b.city>=0&&CITIES[b.city]))b.city=null;
@@ -5287,7 +5288,7 @@ function bunkIntercept(k,rnd,c){if(ironDome(c))return true;return !!(BUNKCFG.ad.
 // apply a landed strike to the player (call after the city damage); returns the bunkCheck result
 function bunkPlayer(k,c,by,quiet,mine){if(!mine&&devGod()&&S.dome!==0){if(!quiet)toast(`🛡 Iron Dome shielded you from the ${(WPNCFG.w[k]||{n:"strike"}).n.toLowerCase()} on ${c.name}`);return {here:0,dome:1}}if(typeof evLand==="function"&&evLand(k,c)){save();return {here:0,evac:1}}const r=bunkCheck({k,city:c.id}),W=WPNCFG.w[k];if(!r.here)return r;const say=t=>{S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);if(!quiet)toast(t)};
   if(r.alive){say(`🛡 You survived the ${W.n.toLowerCase()} in your bunker in ${c.name}${r.cover?": your cash is safe":""}`);return r}
-  const lost=r.cover?0:Math.round(Math.max(0,S.cash)*BUNKCFG.cashLoss[k]);S.cash-=lost;
+  const lost=r.cover?0:Math.round(Math.max(0,S.cash)*(BUNKCFG.cashLoss[k]||0));S.cash-=lost;
   if(BUNKCFG.fatal[k]){S.dead={city:c.id,name:c.name,country:c.country,by:by||"",t:Date.now(),k,foe:mine?0:1};save();if(!quiet||k==="icbm")showGameOver();return r}
   S.need.h=Math.min(S.need.h,10);say(`${W.ico} You were badly wounded by the ${W.n.toLowerCase()} in ${c.name}${r.inside?" (your bunker didn't hold)":""}${lost?`: lost ${fmt(lost)} in the chaos`:""}`);return r}
 function bunkBuy(){const p=pol(),b=bunk(),C=BUNKCFG,nx=b.lv+1,L=C.lv[nx];if(!bunkUnlocked())return toast("Bunkers are for government players: win an office first");
@@ -5878,7 +5879,7 @@ function trjDraw(ctx,now,zs){for(let i=_trj.length-1;i>=0;i--){const f=_trj[i];i
   if((f.sp||WPNCFG.w[f.k])&&u>=1&&visible(f.b[0],f.b[1])){const w=Math.min(1,(now-f.t0-f.dur)/f.fade),[bx,by]=proj(f.b),R=(W.r||10)*zs;ctx.globalAlpha=Math.max(0,1-w);ctx.lineWidth=3*(1-w)+1;ctx.beginPath();ctx.arc(bx,by,R*(.3+2.2*w),0,7);ctx.stroke();ctx.fillStyle="#fff7d6";ctx.globalAlpha=Math.max(0,(1-w)*.9);ctx.beginPath();ctx.arc(bx,by,R*(.9-.6*w),0,7);ctx.fill()}
   ctx.restore()}}
 /* red launch banner under the header: ms = lifetime; at = impact time for a live countdown (visual only) */
-const WBN={msl:"MISSILE LAUNCH",gas:"CHEMICAL ATTACK",nuke:"NUCLEAR LAUNCH",icbm:"ICBM LAUNCH"};const WMDBANNER_MS=60000;let _wbT=0;
+const WBN={msl:"MISSILE LAUNCH",clu:"CLUSTER STRIKE",gas:"CHEMICAL ATTACK",emp:"EMP LAUNCH",nuke:"NUCLEAR LAUNCH",hbomb:"THERMONUCLEAR LAUNCH",icbm:"ICBM LAUNCH"};const WMDBANNER_MS=60000;let _wbT=0;
 function wmdBanner(k,txt,ms,at,cls){const W=WPNCFG.w[k],mw=document.getElementById("mapwrap");if(!W||!mw)return;let box=document.getElementById("wmdbanner");if(!box){box=document.createElement("div");box.id="wmdbanner";mw.appendChild(box)}
   const el=document.createElement("div"),fmtT=()=>{if(!at)return txt;const r=Math.ceil((at-Date.now())/1000);return txt.replace("{s}",r>0?"impact in "+r+"s":"STRUCK")};el._f=fmtT;el._d=Date.now()+ms;if(cls)el.className=cls;el.textContent=W.ico+" "+fmtT();el.onclick=()=>{el.remove()};
   while(box.children.length>=4)box.lastChild.remove();box.prepend(el);
@@ -5924,8 +5925,8 @@ function wpnHtml(m,lead,sb,bx,urow){const C=WPNCFG,now=Date.now();wpnTick();
    Own/controlled land: a strike on your own city in range, no war. Failure chance per kind; a failure fizzles (fizzle share) or veers veerKm off course.
    AI: one test every aiGap game days worldwide (min gap minGap after any test), open-ocean sites >= coastKm from any city, at most catchMax per offline catch-up.
    Visual: yellow pulsing ring in flight, yellow dashed zone (W.r x rScale) for winH game hours, then fadeH. Optional save field S.wtest {l:[{k,by,lat,lon,t,until,fail,hit,ia}],nx,ld}. */
-const WTCFG={fail:{msl:.08,gas:.10,nuke:.08,icbm:.05},fizzle:.6,veerKm:[200,600],winH:6,fadeH:1,rScale:1.6,aiGap:[20,40],minGap:4,catchMax:2,coastKm:400,keep:8,
-  rangeKm:{msl:40,gas:80,nuke:150,icbm:300},wear:60,ai:["USA","China","Russia","UK","France","India","Pakistan","North Korea","Israel","Iran","Japan","Germany","South Korea","Turkey","Brazil","Saudi Arabia","Egypt"]};
+const WTCFG={fail:{msl:.08,clu:.08,gas:.10,emp:.10,nuke:.08,hbomb:.10,icbm:.05},fizzle:.6,veerKm:[200,600],winH:6,fadeH:1,rScale:1.6,aiGap:[20,40],minGap:4,catchMax:2,coastKm:400,keep:8,
+  rangeKm:{msl:40,clu:40,gas:80,emp:200,nuke:150,hbomb:250,icbm:300},wear:60,ai:["USA","China","Russia","UK","France","India","Pakistan","North Korea","Israel","Iran","Japan","Germany","South Korea","Turkey","Brazil","Saudi Arabia","Egypt"]};
 let _wtR=Math.random,_wtPick=null,_wtQ=0; // _wtR: RNG hook (tests can force it)
 const wtRand=()=>_wtR();
 function wt(){if(!S.wtest||typeof S.wtest!=="object")S.wtest={l:[],nx:0,ld:-99};if(!Array.isArray(S.wtest.l))S.wtest.l=[];return S.wtest}
@@ -5939,7 +5940,7 @@ function wtRoll(k,ll){const r={fail:0,ll,ia:null};if(wtRand()<(WTCFG.fail[k]||.0
 function wtRec(k,by,r,quiet){const W=wt(),now=Date.now(),win=WTCFG.winH*DAYMS/24;const x={k,by,lat:+r.ll[1].toFixed(3),lon:+r.ll[0].toFixed(3),t:now,until:now+(r.fail===1?win/3:win),fail:r.fail,hit:r.n||null};
   if(r.ia)x.ia=[+r.ia[0].toFixed(3),+r.ia[1].toFixed(3)];W.l.push(x);W.l=W.l.slice(-WTCFG.keep);W.ld=S.day;
   if(!quiet){const o=cap(by);if(o){trjAdd(o,{lon:x.lon,lat:x.lat},k,now,trjMs(k));if(typeof wpnAnim==="function")wpnAnim()}}return x}
-const WTN={msl:"MISSILE TEST",gas:"CHEMICAL TEST",nuke:"NUCLEAR TEST",icbm:"ICBM TEST"};
+const WTN={msl:"MISSILE TEST",clu:"CLUSTER TEST",gas:"CHEMICAL TEST",emp:"EMP TEST",nuke:"NUCLEAR TEST",hbomb:"H-BOMB TEST",icbm:"ICBM TEST"};
 function wtSay(x,r,quiet,who){const W0=WPNCFG.w[x.k],W={n:W0.n==='ICBM'?'ICBM':W0.n.toLowerCase()},site=wtName(r.ia||r.ll,r.ia?wtLand(r.ia):r.n),t=r.fail===1?`TEST FAILED: ${who}'s ${W.n} fizzled over the ${site}`:r.fail===2?`TEST FAILED: ${who}'s ${W.n} veered ${r.n?"into "+r.n:"off course into the "+wtName(r.ll,r.n)}`:`${WTN[x.k]}: ${who} → ${site}`;
   if(!quiet)wmdBanner(x.k,(r.fail?"":"")+t,WMDBANNER_MS,0,r.fail===2&&r.n?"":"wt");return t}
 function wtCityNear(n,ll,k){let best=null,bd=1e9;for(const c of ctyCities(n)){const d=wtKm(ll,[c.lon,c.lat]);if(d<bd){bd=d;best=c}}return best&&bd<=WTCFG.rangeKm[k]?best:null}
@@ -5947,10 +5948,10 @@ function wtHitCity(k,c){const m=wpn(),W=WPNCFG.w[k],now=Date.now();m.strikes=m.s
 function wtWar(n,k,ll){const p=pol(),m=wpn(),C=MILCFG,W=WPNCFG.w[k],now=Date.now();let w=m.wars[n];
   if(!w){const e=milEnemy(n);w=m.wars[n]={since:now,front:C.frontStart,enemyStr:e,enemyMax:e,terrain:milTerrain(n),weariness:0,battles:[],pcd:0}}
   w.weariness=Math.max(w.weariness||0,WTCFG.wear);w.rcd=0;if(k!=="msl"){w.wmd=1;if(k==="nuke"||k==="hbomb"||k==="icbm")w.nk=1;if(k==="icbm")w.ic=1;wpnSanction(k)}
-  p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const x in p.ctrl)p.ctrl[x].loy=Math.max(0,p.ctrl[x].loy+W.loy);for(const x in m.occ)m.occ[x].resist=Math.min(100,m.occ[x].resist+W.resist);
+  if(!devGod()){p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const x in p.ctrl)p.ctrl[x].loy=Math.max(0,p.ctrl[x].loy+W.loy);for(const x in m.occ)m.occ[x].resist=Math.min(100,m.occ[x].resist+W.resist)}
   const pc=dipPlayerC();if(pc&&pc!==n){try{const x=pres();if(x.ally[n]){delete x.ally[n];logGov(`Alliance with ${n} broken by your strike`)}}catch(e){}S.wars=S.wars||[];const cw=dipWarOf(n,pc);if(cw){cw.l=4;cw.att=pc}else S.wars.push({id:(S.wid=(S.wid||0)+1),a:pc,b:n,l:4,att:pc,sc:dip().day+3,d0:S.day})}
   const c=wtCityNear(n,ll,k),dead=c?wtHitCity(k,c):0;const t=`Your ${W.n.toLowerCase()} test hit ${n}${c?` (${c.name}: ${fmtPop(dead)} killed)`:""}: ${n} is now at full war with you`;logPol(t);milLog(m,t);return t}
-function wtOwn(n,ll,k){const c=wtCityNear(n,ll,k);if(!c)return;const p=pol(),W=WPNCFG.w[k],dead=wtHitCity(k,c);p.appr=Math.max(0,Math.min(95,p.appr+W.appr));const t=`Your ${W.n.toLowerCase()} test struck your own city ${c.name}: ${fmtPop(dead)} killed`;logPol(t);milLog(wpn(),t)}
+function wtOwn(n,ll,k){const c=wtCityNear(n,ll,k);if(!c)return;const p=pol(),W=WPNCFG.w[k],dead=wtHitCity(k,c);if(!devGod())p.appr=Math.max(0,Math.min(95,p.appr+W.appr));const t=`Your ${W.n.toLowerCase()} test struck your own city ${c.name}: ${fmtPop(dead)} killed`;logPol(t);milLog(wpn(),t)}
 function wtMine(n){const p=pol(),m=mil();return n===p.c||!!(p.ctrl&&p.ctrl[n])||!!(m.occ&&m.occ[n])}
 /* player: enter pick mode, then a tap on the globe calls wtPlayer */
 let _wtBarT=0,_wtT0=0;
@@ -7646,7 +7647,7 @@ function presRed(n){const p=pol(),C=PRESCFG.red;if(!polLeader())return toast("On
 /* nuclear briefcase: pick a weapon and a city, read back the authentication code, then launch through wpnFire */
 const PB={k:"nuke",c:null,code:"",typed:"",arm:false};
 function presNukeArm(){PB.code=String(1000+Math.floor(Math.random()*9000));PB.typed="";PB.arm=true}
-function presNukeFire(){if(!PB.arm||PB.typed!==PB.code)return toast("Authentication code doesn't match");if(PB.c==null)return toast("Pick a target city");const k=PB.k;PB.arm=false;PB.typed="";wpnFire(k,PB.c,0,0);try{stNews(`☢️ ${pol().c} has authorised a ${k==="icbm"?"ballistic":k==="hbomb"?"thermonuclear":"nuclear"} launch`)}catch(e){}save();hud()}
+function presNukeFire(){if(!PB.arm||PB.typed!==PB.code)return toast("Authentication code doesn't match");if(PB.c==null)return toast("Pick a target city");const k=PB.k;PB.arm=false;PB.typed="";const s0=wpn().wpn[k]||0,l0=Array.isArray(S.launch)?S.launch.length:0;wpnFire(k,PB.c,0,0);if((wpn().wpn[k]||0)<s0||(Array.isArray(S.launch)?S.launch.length:0)>l0)try{stNews(`☢️ ${pol().c} has authorised a ${k==="icbm"?"ballistic":k==="hbomb"?"thermonuclear":"nuclear"} launch`)}catch(e){}save();hud()}
 /* ---- windows ---- */
 const PCW={};
 function pcwOpen(id){const D=PCW[id];if(!D)return;let el=document.getElementById("pcw-"+id);
@@ -7688,7 +7689,7 @@ PCW.dip={t:"Diplomacy",ic:"🤝",r(){const p=pol(),x=pres(),L=COUNTRIES.filter(n
 PCW.red={t:"Red Phone",ic:"☎️",r(){const p=pol(),T=wfView().tens||{},ks=Object.keys(T).filter(k=>k.split("|").includes(p.c)&&(+T[k].v||0)>0).sort((a,b)=>T[b].v-T[a].v);
   return `<p class="pw-m">A direct line to a rival leader. A call costs twice a talks fund and works ${Math.round(PRESCFG.red.p*100)}% of the time: tension −${PRESCFG.red.cut}.</p>`+(ks.length?ks.map(k=>{const [a,b]=k.split("|"),n=a===p.c?b:a,v=+T[k].v||0,s=wfStage(v),c=Math.max(WFCFG.min,Math.round(tensCost(p.c,n)*PRESCFG.red.mult));
   return `<div class="pw-it"><div style="display:flex;justify-content:space-between"><b>${wfE(n)}</b><b style="color:${s[2]}">${s[1]} ${Math.round(v)}/100</b></div>${pbtn("call",`☎️ Call ${wfE(n)} · ${fmt(c)}`,` data-v="${wfE(n)}"`,S.cash<c||!polLeader(),"red")}</div>`}).join(""):`<div class="pw-it"><small>No tension with ${wfE(p.c||"your country")} right now. The line is quiet.</small></div>`)},a(a,b){if(a==="call")presRed(b.dataset.v)}};
-PCW.nuke={t:"Nuclear Briefcase",ic:"☢️",r(){const m=wpn(),p=pol(),ban=typeof wcOn==="function"&&wcOn("nuke"),ks=["nuke","hbomb","icbm"].filter(k=>WPNCFG.w[k]),tg=COUNTRIES.filter(n=>n!==p.c),cs=PB.tc?ctyCities(PB.tc):[];
+PCW.nuke={t:"Nuclear Briefcase",ic:"☢️",r(){const m=wpn(),p=pol(),ban=typeof wcOn==="function"&&wcOn("nuke"),ks=["nuke","hbomb","icbm"].filter(k=>WPNCFG.w[k]),tg=COUNTRIES.filter(n=>m.wars[n]||wmdPeaceOk(n,PB.k)),cs=PB.tc&&tg.includes(PB.tc)?ctyCities(PB.tc):[];
   return `<div class="pw-it nk"><b>☢️ Launch authority · ${wfE(p.c||"")}</b><small>${ban?"<b style='color:#ef4444'>The World Council nuclear ban is in force: launches are blocked.</b>":"Two steps: pick a weapon and a target, then read back the authentication code."}</small></div>
   <div class="pw-it"><b>Weapon</b><div class="pw-row">${ks.map(k=>`<button class="pw-b${PB.k===k?" on":""}" data-pw="wk" data-v="${k}">${WPNCFG.w[k].n} · ${m.wpn[k]||0} in stock</button>`).join("")}</div></div>
   <div class="pw-it"><b>Target</b><select data-nk="c" aria-label="Target country"><option value="">Country…</option>${tg.map(n=>`<option${PB.tc===n?" selected":""}>${wfE(n)}</option>`).join("")}</select>
@@ -9986,7 +9987,7 @@ setInterval(()=>{try{if(_cfPop){const el=document.getElementById("cfpop");if(el&
     if((card?card.dataset.bgsig:"")!==sig){if(Date.now()-(PH.touched||0)>=3000&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)))phRender()}
     else bgFill(PH.el)}}catch(e){console.warn("bgfill",e)}},2000);
 /* ---------- Settings app (device prefs in S.set; UI theme mirrored to localStorage for first paint) ---------- */
-var SET_DEF={ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,sat:1,pfx:1,colov:1};
+var SET_DEF={ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,sat:1,pfx:1,colov:1,alarm:1};
 var SET_UI=[["classic","Classic","The original look"],["glass","Glass","Frosted dark panels, violet glow"],["ledger","Ledger","Cream paper, ink and serif type"],["command","Command","Neon HUD, cyan and magenta"]];
 var SET_FONT="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@500;700&family=Playfair+Display:wght@700;900&family=Source+Serif+4:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Chakra+Petch:wght@500;700&display=swap";
 var _setSig="";
@@ -10017,6 +10018,7 @@ function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="g
   ${tog("vib","Vibration","Buzz on wins and warnings (phones)")}
   <div class="ph-sub">Sound</div>
   ${tog("snd","Sound and music","Clicks, blasts and mood music")}
+  ${tog("alarm","Strike siren","Air-raid siren when an enemy fires at a city you hold")}
   ${s.snd?`<div class="set-row"><span>Volume<small>Effects and music</small></span>${seg("vol",[[.2,"Low"],[.5,"Med"],[.8,"High"],[1,"Max"]],s.vol)}</div>`:""}
   <div class="ph-sub">Notifications</div>
   ${tog("toast","Pop-up messages","Off keeps only wins and warnings")}
@@ -12670,7 +12672,7 @@ function appHtml(k){const {inc,nw}=totals();
 const itemBtn=it=>{const c=CITIES[(S.home||{city:0}).city],p=itemPrice(it,c);return `<button class="ph-item" data-ph="buyitem" data-k="${it.k}" ${S.cash<p?"disabled":""}><span>${it.n}<small>${NEEDS.filter(([q])=>it[q]).map(([q,n])=>(it[q]>0?"+":"")+it[q]+" "+n.toLowerCase()).join(", ")}</small></span><b>${fmt(p)}</b></button>`};
 ["touchstart","touchmove","wheel","scroll","pointerdown"].forEach(t=>PH.el.addEventListener(t,()=>{PH.touched=Date.now()},{passive:true,capture:true}));
 PH.el.addEventListener("change",e=>{const t=e.target.closest("[data-wmdc]");if(!t)return;_wmdC=t.value;phRender()});
-PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon",hrfire:"Tap again to fire",hqunlink:"Tap again",xfsend:"Tap again to send",ctleave:"Tap again to leave",ctkick:"Tap again to remove",ctdisband:"Tap again to disband",ctraid:"Tap again to raid",wpnbar:"Tap again",ipoRoad:"Tap again: pay $1M",ipoDel:"Tap again to delist",ipoCancel:"Tap again",ipoSO:"Tap again to sell"}[a]||(a==="wpnfire"&&!/^msl\|/.test(b.dataset.k)?(/^(icbm|nuke)\|/.test(b.dataset.k)&&S.loc&&!S.trip&&S.loc.city===+b.dataset.k.split("|")[1]?"Tap = YOU DIE":"Tap again"):null);if(cfm&&!b.dataset.arm){const t0=b.textContent,w0=b.style.width,f0=b.style.flex;b.dataset.arm=1;b.textContent=cfm;if(a==="milab"||a==="wpnfire"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();
+PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;const cfm={polquit:"Tap again to resign",polrel:"Tap again to release",milab:"Tap again to abandon",hrfire:"Tap again to fire",hqunlink:"Tap again",xfsend:"Tap again to send",ctleave:"Tap again to leave",ctkick:"Tap again to remove",ctdisband:"Tap again to disband",ctraid:"Tap again to raid",wpnbar:"Tap again",ipoRoad:"Tap again: pay $1M",ipoDel:"Tap again to delist",ipoCancel:"Tap again",ipoSO:"Tap again to sell"}[a]||(a==="wpnfire"&&!/^msl\|/.test(b.dataset.k)?(/^(icbm|nuke|hbomb)\|/.test(b.dataset.k)&&S.loc&&!S.trip&&S.loc.city===+b.dataset.k.split("|")[1]?"Tap = YOU DIE":"Tap again"):null);if(cfm&&!b.dataset.arm){const t0=b.textContent,w0=b.style.width,f0=b.style.flex;b.dataset.arm=1;b.textContent=cfm;if(a==="milab"||a==="wpnfire"){b.style.width="auto";b.style.flex="1"}PH.touched=Date.now();
     setTimeout(()=>{if(b.isConnected&&b.dataset.arm){delete b.dataset.arm;b.textContent=t0;b.style.width=w0;b.style.flex=f0}},4000);return} // disarm after 4 s
   if(a==="unfold"){PH.open=true;PH.app=null;setTimeout(()=>{if(typeof tutTick==="function")tutTick()},0)}else if(a==="fold"){PH.open=false}else if(a==="home"){PH.app=null}else if(a==="phsz"){PH.szUi=!PH.szUi}else if(a==="phsetsz"){PH.sz=+b.dataset.v;try{localStorage.setItem("meridian-phone-size",String(PH.sz))}catch(e){}}else if(a==="app"){PH.app=b.dataset.k}else if(a==="setv"){setPut(b.dataset.k,b.dataset.v)}else if(a==="setreset"){setReset()}else if(a==="settut"){PH.open=false;phRender();closeSheet();tutStart();return}
   else if(/^hr(sch|up|dn|fire|hire)$/.test(a)){hrAct(a,b.dataset.k);save();hud()}
@@ -12682,7 +12684,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="dashoff"){DX.page="off";dxOpen();return}
   else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
-  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="rigpmt"){rigPermit();save();hud()}else if(a==="rigbuy"){rigStart();return}else if(a==="rigdash"){rxOpen();return}else if(a==="spdash"){spOpen();return}else if(a==="exdash"||a==="exvia"||a==="exoffer"||a==="exunoffer"||a==="exaccept"){if(exPhone(a,b.dataset.k||""))return}else if(a==="propstab"){propsTab=b.dataset.k}else if(a==="propsal"){S.aline=!S.aline;if(S.aline)alTick(Date.now());toast(S.aline?"Auto-line on: supplying your properties":"Auto-line off");save()}else if(a==="propsrun"){alTick(Date.now());toast("Auto-line recalculated");save()}else if(a==="propscity"){const c=CITIES[+b.dataset.k];if(c){openCity(c);return}}else if(a==="obdash"){bxOpen();return}else if(a==="rigship"){const sel=PH.el.querySelector(`[data-rigto="${b.dataset.k}"]`);if(sel)rigShip(+b.dataset.k,+sel.value);save();hud()}else if(a==="rigup"){rigUp(+b.dataset.k);save();hud()}else if(a==="rigsell"){rigSell(+b.dataset.k);save();hud()}else if(a==="airbuy"){airBuy();save();hud()}else if(a==="evbuy"){evBuy();save();hud()}else if(a==="g1buy"){g1Buy();save();hud()}else if(a==="s1buy"){s1Buy();save();hud()}else if(a==="s1go"){const sl=(b.closest(".bxd-con")||PH.el).querySelector("[data-s1to]");if(sl)s1Go(+sl.value);phRender();return}else if(a==="a1go"){const sl=(b.closest(".bxd-con")||PH.el).querySelector("[data-a1to]");if(sl)a1Go(+sl.value);phRender();return}else if(a==="a1up"){a1Up();save();hud()}else if(a==="g1go"){const sl=PH.el.querySelector("[data-g1to]");if(sl)g1Go(+sl.value);phRender();return}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="vault"){vaultMv(b.dataset.d,+b.dataset.f);save();hud();phRender();return}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrf"){milReinforce(b.dataset.k);save();hud()}else if(a==="milhome"){milHome(b.dataset.k);save()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){const qi=PH.el.querySelector(`[data-wq="${b.dataset.k}"]`);wpnBuildN(b.dataset.k,qi?qi.value:1);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnbar"){wpnBarrage(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
+  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="rigpmt"){rigPermit();save();hud()}else if(a==="rigbuy"){rigStart();return}else if(a==="rigdash"){rxOpen();return}else if(a==="spdash"){spOpen();return}else if(a==="exdash"||a==="exvia"||a==="exoffer"||a==="exunoffer"||a==="exaccept"){if(exPhone(a,b.dataset.k||""))return}else if(a==="propstab"){propsTab=b.dataset.k}else if(a==="propsal"){S.aline=!S.aline;if(S.aline)alTick(Date.now());toast(S.aline?"Auto-line on: supplying your properties":"Auto-line off");save()}else if(a==="propsrun"){alTick(Date.now());toast("Auto-line recalculated");save()}else if(a==="propscity"){const c=CITIES[+b.dataset.k];if(c){openCity(c);return}}else if(a==="obdash"){bxOpen();return}else if(a==="rigship"){const sel=PH.el.querySelector(`[data-rigto="${b.dataset.k}"]`);if(sel)rigShip(+b.dataset.k,+sel.value);save();hud()}else if(a==="rigup"){rigUp(+b.dataset.k);save();hud()}else if(a==="rigsell"){rigSell(+b.dataset.k);save();hud()}else if(a==="airbuy"){airBuy();save();hud()}else if(a==="evbuy"){evBuy();save();hud()}else if(a==="g1buy"){g1Buy();save();hud()}else if(a==="s1buy"){s1Buy();save();hud()}else if(a==="s1go"){const sl=(b.closest(".bxd-con")||PH.el).querySelector("[data-s1to]");if(sl)s1Go(+sl.value);phRender();return}else if(a==="a1go"){const sl=(b.closest(".bxd-con")||PH.el).querySelector("[data-a1to]");if(sl)a1Go(+sl.value);phRender();return}else if(a==="a1up"){a1Up();save();hud()}else if(a==="g1go"){const sl=PH.el.querySelector("[data-g1to]");if(sl)g1Go(+sl.value);phRender();return}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="vault"){vaultMv(b.dataset.d,+b.dataset.f);save();hud();phRender();return}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrf"){milReinforce(b.dataset.k);save();hud()}else if(a==="milhome"){milHome(b.dataset.k);save()}else if(a==="milrec"){milRecruit(b.dataset.k);save();hud()}else if(a==="mildis"){milDisband(b.dataset.k);save()}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){const qi=(b.closest(".bxd-con")||PH.el).querySelector(`[data-wq="${b.dataset.k}"]`);wpnBuildN(b.dataset.k,qi?qi.value:1);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnbar"){wpnBarrage(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
   else if(a==="misopen"){mxOpen();return}else if(a==="intopen"){intOpen();return}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="hrtab"){hrTab=b.dataset.k}
@@ -12866,7 +12868,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
 const atHomeNow=()=>!!(S.home&&!S.trip&&S.loc.city===S.home.city);
 
 /* ---------- misc ---------- */
-let tt;function toast(m){try{alPush(m)}catch(e){}const t=$("#toast");t.textContent=m;t.classList.remove("good","bad");t.classList.toggle("top",!!(typeof PH!=="undefined"&&PH&&PH.open));
+let tt;function toast(m){if(_toastMute){_toastMute.last=m;return}try{alPush(m)}catch(e){}const t=$("#toast");t.textContent=m;t.classList.remove("good","bad");t.classList.toggle("top",!!(typeof PH!=="undefined"&&PH&&PH.open));
   if(/^(Opened|Approved|You got the job|You earned|Bill passed|Bail posted|Law changed|Contract awarded|Talks worked|Arms sold|Bought|Card approved|Day \d+ streak|.*paid off)/.test(m)){t.classList.add("good");if(typeof confetti==="function"&&!/^Day/.test(m))confetti(28,innerWidth/2,innerHeight-80);if(typeof vib==="function")vib(20)}
   else if(/^(Denied|Scandal|Caught|Arrested|Application turned down|Bill failed|Talks collapsed|Need |You need|Not from prison|Out of stock|Stock critical|While you were away · Out of stock)/.test(m)){t.classList.add("bad");if(typeof vib==="function")vib([15,30,15])}
   if(S.set&&S.set.toast===0&&!t.classList.contains("good")&&!t.classList.contains("bad")&&!/^(Need|Not enough|Can't|Cannot|Settings)/.test(m))return;
