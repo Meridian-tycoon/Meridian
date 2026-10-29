@@ -5054,7 +5054,7 @@ function cabHtml(n){const O=GOVCFG.offices,rows=[];for(let r=O.length-1;r>=0;r--
 const annexCost0=n=>Math.round(GOVCFG.annexCost*ctyScale(n)*(1+GOVCFG.annexStep*Object.keys(pol().ctrl).length));
 const annexCost=n=>Math.round(annexCost0(n)*(1-presFx("cost")));
 const annexChance=()=>{const p=pol(),C=GOVCFG;return Math.max(.1,Math.min(.85,C.annexWin+C.annexStepWin*Object.keys(p.ctrl).length+(p.appr-50)/200))};
-function polIncome(){const p=S.pol;if(!p||p.r==null||p.r<0||!p.c)return p&&p.mil&&typeof milUpkeep==="function"?milOccIncome()-milUpkeep():0;let v=GOVCFG.offices[p.r].pay*ctyScale(p.c);for(const n in p.ctrl)v+=GOVCFG.share*ctyScale(n);if(typeof milUpkeep==="function")v+=milOccIncome()-milUpkeep();return v}
+function polIncome(){const p=S.pol;if(!p||p.r==null||p.r<0||!p.c)return p&&p.mil&&typeof milUpkeep==="function"?milOccIncome()-milUpkeep():0;let v=GOVCFG.offices[p.r].pay*ctyScale(p.c);for(const n in p.ctrl)v+=GOVCFG.share*ctyScale(n);for(const n in (p.own||{}))v+=GOVCFG.share*ctyScale(n);if(typeof milUpkeep==="function")v+=milOccIncome()-milUpkeep();return v}
 function logPol(m,good){S.log.unshift("Government: "+m);S.log=S.log.slice(0,3);if(typeof toast==="function")toast(m)}
 const polDonCtrl=n=>!!(n&&S.gov&&S.gov[n]&&S.gov[n].ctrl&&!S.gov[n].polCtrl);
 function polChance(r){const p=pol(),{nw}=totals(),O=GOVCFG.offices[r],n=p.r>=0?p.c:polHere();return Math.max(.05,Math.min(.9,O.win+(polDonCtrl(n)?GOVCFG.ctrlWin:0)+Math.min(.15,Math.log10(Math.max(1,nw/O.nw))*.08)+(p.r>=0?(p.appr-50)/250:0)))}
@@ -5084,7 +5084,7 @@ function polAnnex(n){const p=pol(),C=GOVCFG,now=Date.now();if(!polLeader()||n===
   else{p.appr=Math.max(0,p.appr+C.annexFailAppr);logPol(`${n} rejected your influence bid (${Math.round(ch*100)}% chance)`)}}
 function polLoyal(n){const p=pol(),c=p.ctrl[n];if(!c)return;const v=Math.round(annexCost(n)*GOVCFG.loyCost);if(S.cash<v)return toast(`Aid package costs ${fmt(v)}`);if(Math.round(c.loy)>=100){c.loy=100;return toast("Loyalty is maxed")};S.cash-=v;c.loy=Math.min(100,c.loy+GOVCFG.loyGain);toast(`${n} loyalty +${GOVCFG.loyGain}`)}
 function polRelease(n){const p=pol();if(p.ctrl[n]){delete p.ctrl[n];logPol(`You released ${n}`)}}
-/* COUNTRY TAKEOVER (no war): a government Leader buys another country outright; it joins the sphere of influence at full loyalty.
+/* COUNTRY TAKEOVER (no war): a government Leader buys another country outright. Owned countries (S.pol.own) are kept apart from the sphere of influence (S.pol.ctrl): buying never adds to the sphere, and annexing never counts as owning.
    Price = GDP($bn) x 1e9 x TKCFG.gdpF x wealth, wealth = 0.75 + approval/200 (same weighting as national power), x (1 + 25% per country already held).
    A bought or controlled country can always be sold: to the AI for TKCFG.ai of today's price, or to another player at any price
    (offer doc ctysale/{uid_key} {uid,name,c,to,toName,price,st,at}; the buyer pays and sets st "paid", the seller is credited and deletes it). */
@@ -5106,32 +5106,33 @@ function gaShow(){if(document.getElementById("govann")||!GA.q.length)return;cons
    <button id="gaX" style="background:#facc15;color:#111;border:0;border-radius:10px;padding:10px 26px;font:800 15px Figtree,sans-serif;cursor:pointer">Close</button></div>`;
   document.body.appendChild(el);el.querySelector("#gaX").onclick=()=>{el.remove();const s=S.gaSeen=Array.isArray(S.gaSeen)?S.gaSeen:[];s.push(a.id);S.gaSeen=s.slice(-50);GA.q.shift();try{save()}catch(e){}gaShow()}}
 const TKCFG={gdpF:.005,step:.25,ai:.6,maxP:1e15};
-function tkPrice(n){const d=dip(),g=d.gdp[n]||dipBase(n),a=+gov(n).appr||50,k=Object.keys(pol().ctrl).length;return Math.round(g*1e9*TKCFG.gdpF*(.75+a/200)*(1+TKCFG.step*k))}
-function tkBuy(n){const p=pol();if(!polLeader())return toast("Only a country's Leader can take over another country");if(n===p.c||p.ctrl[n]||!COUNTRIES.includes(n))return;
+function tkOwn(){const p=pol();if(!p.own||typeof p.own!=="object")p.own={};return p.own}
+function tkPrice(n){const d=dip(),g=d.gdp[n]||dipBase(n),a=+gov(n).appr||50,k=Object.keys(tkOwn()).length;return Math.round(g*1e9*TKCFG.gdpF*(.75+a/200)*(1+TKCFG.step*k))}
+function tkBuy(n){const p=pol();if(!polLeader())return toast("Only a country's Leader can take over another country");if(n===p.c||tkOwn()[n]||!COUNTRIES.includes(n))return;
   if(p.mil&&(p.mil.wars&&p.mil.wars[n]||p.mil.occ&&p.mil.occ[n]))return toast(`You are at war with ${n}: no takeover deals`);
-  const c=tkPrice(n);if(S.cash<c)return toast(`Taking over ${n} costs ${fmt(c)}`);S.cash-=c;p.ctrl[n]={since:Date.now(),loy:100,buy:c};
+  const c=tkPrice(n);if(S.cash<c)return toast(`Taking over ${n} costs ${fmt(c)}`);S.cash-=c;tkOwn()[n]={since:Date.now(),buy:c};
   try{const d=dip();if(d.ruler[n])delete d.ruler[n]}catch(e){}logPol(`You bought ${n} for ${fmt(c)}`);govAnn(n,"buy");toast(`🏛 ${n} is now yours (${fmt(c)})`);if(typeof confetti==="function")confetti(80,innerWidth/2,innerHeight/3)}
-function tkSellAi(n){const p=pol();if(!p.ctrl[n])return;if(TKS.out.some(x=>x.c===n))return toast("Cancel the player offer first");const v=Math.round(tkPrice(n)*TKCFG.ai);S.cash+=v;delete p.ctrl[n];logPol(`You sold ${n} to the AI for ${fmt(v)}`);toast(`${n} sold to the AI for ${fmt(v)}`)}
+function tkSellAi(n){const p=pol();if(!tkOwn()[n])return;if(TKS.out.some(x=>x.c===n))return toast("Cancel the player offer first");const v=Math.round(tkPrice(n)*TKCFG.ai);S.cash+=v;delete tkOwn()[n];logPol(`You sold ${n} to the AI for ${fmt(v)}`);toast(`${n} sold to the AI for ${fmt(v)}`)}
 const TKS={un:[],out:[],inb:[]};
 function tkBuyers(){const me=ON.user&&ON.user.uid;return((typeof ON!=="undefined"&&ON.players)||[]).filter(x=>x&&x.uid&&x.uid!==me).slice(0,50)}
-function tkOffer(n,uid,price){const p=pol();if(!p.ctrl[n])return;if(!ON.db||!ON.user)return toast("Sign in to sell to a player");price=Math.round(+price);
+function tkOffer(n,uid,price){const p=pol();if(!tkOwn()[n])return;if(!ON.db||!ON.user)return toast("Sign in to sell to a player");price=Math.round(+price);
   if(!(price>=0&&price<=TKCFG.maxP))return toast("Enter a price");const b=tkBuyers().find(x=>x.uid===uid);if(!b)return toast("Pick a buyer");if(TKS.out.some(x=>x.c===n))return toast("You already have an offer out for "+n);
   const me=onProf();ON.db.collection("ctysale").doc(ON.user.uid+"_"+pmKey(n)).set({uid:ON.user.uid,name:(me.name||"Tycoon").slice(0,20),c:n,to:uid,toName:(b.name||"Player").slice(0,20),price,st:"open",at:window.firebase.firestore.FieldValue.serverTimestamp()})
     .then(()=>toast(`Offer sent: ${n} to ${b.name||"player"} for ${fmt(price)}`),e=>toast("Couldn't send the offer: "+(e&&e.code||e)))}
 function tkCancel(id){if(ON.db)ON.db.collection("ctysale").doc(id).delete().catch(()=>{})}
 function tkAccept(id){const o=TKS.inb.find(x=>x.id===id);if(!o)return;if(S.cash<o.price)return toast(`Needs ${fmt(o.price)}`);const p=pol();
-  ON.db.collection("ctysale").doc(id).update({st:"paid"}).then(()=>{S.cash-=o.price;p.ctrl[o.c]={since:Date.now(),loy:100,buy:o.price};logPol(`You bought ${o.c} from ${o.name} for ${fmt(o.price)}`);govAnn(o.c,"transfer");toast(`🏛 ${o.c} is now yours`);save();hud()},e=>toast("Couldn't complete: "+(e&&e.code||e)))}
+  ON.db.collection("ctysale").doc(id).update({st:"paid"}).then(()=>{S.cash-=o.price;tkOwn()[o.c]={since:Date.now(),buy:o.price};logPol(`You bought ${o.c} from ${o.name} for ${fmt(o.price)}`);govAnn(o.c,"transfer");toast(`🏛 ${o.c} is now yours`);save();hud()},e=>toast("Couldn't complete: "+(e&&e.code||e)))}
 function tkDecline(id){if(ON.db)ON.db.collection("ctysale").doc(id).update({st:"no"}).catch(()=>{})}
-function tkSweep(){const p=pol();for(const o of TKS.out){if(o.st==="paid"){if(p.ctrl[o.c]){delete p.ctrl[o.c];S.cash+=o.price;logPol(`${o.toName} bought ${o.c} from you for ${fmt(o.price)}`);toast(`💰 ${o.c} sold to ${o.toName} for ${fmt(o.price)}`);save()}tkCancel(o.id)}
-  else if(o.st==="no"){toast(`${o.toName} declined ${o.c}`);tkCancel(o.id)}else if(!p.ctrl[o.c])tkCancel(o.id)}}
+function tkSweep(){const p=pol();for(const o of TKS.out){if(o.st==="paid"){if(tkOwn()[o.c]){delete tkOwn()[o.c];S.cash+=o.price;logPol(`${o.toName} bought ${o.c} from you for ${fmt(o.price)}`);toast(`💰 ${o.c} sold to ${o.toName} for ${fmt(o.price)}`);save()}tkCancel(o.id)}
+  else if(o.st==="no"){toast(`${o.toName} declined ${o.c}`);tkCancel(o.id)}else if(!tkOwn()[o.c])tkCancel(o.id)}}
 function tkListen(u){TKS.un.forEach(f=>{try{f()}catch(e){}});TKS.un=[];TKS.out=[];TKS.inb=[];if(!u||!ON.db)return;
   TKS.un.push(ON.db.collection("ctysale").where("uid","==",u.uid).onSnapshot(q=>{TKS.out=q.docs.map(d=>({id:d.id,...d.data()}));tkSweep();onRefresh()},e=>{}));
   TKS.un.push(ON.db.collection("ctysale").where("to","==",u.uid).onSnapshot(q=>{TKS.inb=q.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.st==="open");onRefresh()},e=>{}))}
 function tkHtml(){const p=pol(),lead=polLeader(),C=GOVCFG;let h="";const b=(a,k,t,bg,dis)=>`<button class="buy" data-ph="${a}" data-k="${k}" style="color:#fff;background:${bg}!important;padding:4px 8px" ${dis?"disabled":""}>${t}</button>`;
   if(TKS.inb.length)h+=`<div class="ph-sub" style="margin-top:12px">Countries offered to you</div><div class="ph-rows">${TKS.inb.map(o=>`<div><span>${o.c} from ${o.name}<br><small>${fmt(o.price)}</small></span><span>${b("tkacc",o.id,"Buy","#14532d",S.cash<o.price)} ${b("tkdec",o.id,"Decline","#374151")}</span></div>`).join("")}</div>`;
-  if(lead){const mw=(p.mil&&p.mil.wars)||{},occ=(p.mil&&p.mil.occ)||{},list=COUNTRIES.filter(x=>x!==p.c&&!p.ctrl[x]&&!mw[x]&&!occ[x]).sort((a,c)=>tkPrice(a)-tkPrice(c));
+  if(lead){const mw=(p.mil&&p.mil.wars)||{},occ=(p.mil&&p.mil.occ)||{},list=COUNTRIES.filter(x=>x!==p.c&&!tkOwn()[x]&&!mw[x]&&!occ[x]).sort((a,c)=>tkPrice(a)-tkPrice(c));
     h+=`<div class="ph-sub" style="margin-top:12px">Take over a country · guaranteed, no war</div><div class="ph-rows">${list.map(x=>{const c=tkPrice(x);return `<div><span>${x}<br><small style="opacity:.7">GDP $${Math.round(dip().gdp[x]||0).toLocaleString()}bn · +${fmt(C.share*ctyScale(x))}/hr</small></span>${b("tkbuy",x,fmt(c),"#7f1d1d",S.cash<c)}</div>`}).join("")}</div>`}
-  const ck=Object.keys(p.ctrl);if(ck.length){const by=tkBuyers();h+=`<div class="ph-sub" style="margin-top:12px">Sell a country</div><div class="ph-rows">${ck.map(x=>{const o=TKS.out.find(y=>y.c===x);
+  const ck=Object.keys(tkOwn());if(ck.length){const by=tkBuyers();h+=`<div class="ph-sub" style="margin-top:12px">Countries you own</div><div class="ph-rows">${ck.map(x=>{const o=TKS.out.find(y=>y.c===x);
     return `<div style="flex-wrap:wrap;gap:6px"><span>${x}</span><span>${o?`Offered to ${o.toName} for ${fmt(o.price)} ${b("tkcan",o.id,"Cancel","#374151")}`:`${b("tkai",x,"Sell to AI "+fmt(Math.round(tkPrice(x)*TKCFG.ai)),"#374151")}${by.length&&ON.user?` <select data-tkto="${x}">${by.map(y=>`<option value="${y.uid}">${(y.name||"Player").replace(/[<>&"]/g,"")}</option>`).join("")}</select> <input data-tkp="${x}" type="number" min="0" placeholder="Price" style="width:90px"> ${b("tkoff",x,"Offer","#1e3a8a")}`:""}`}</span></div>`}).join("")}</div>`}
   return h}
 function polHour(quiet){const p=S.pol;if(!p)return;pol();const C=GOVCFG;
