@@ -1887,7 +1887,7 @@ function runMarket(now){if(!S.lst.length){S.mlast=now;return}
   else if(ks.length){const tot=ks.reduce((a,k)=>a+sold[k][1],0);S.log.unshift(`Market sales while away: ${fmt(tot)}`);S.log=S.log.slice(0,3)}}
 function marketHtml(c){const inv=S.inv[c.id]||{},mine=S.lst.filter(l=>l.city===c.id);
   let h=`<div class="sec">Player market · ${FEE*100}% fee</div>`;
-  if(!hasHQ(c))return h+`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Open an HQ in ${c.name} to post listings. NPC buyers come by every minute, but only for goods the city is running low on.</p>`;
+  if(!hasHQ(c))return h+`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Open an HQ in ${c.name} to post listings. NPC buyers come by every minute, but only for goods the city is running low on.</p>`+gxHtml(c);
   h+=`<div class="list">`;
   for(const l of mine){const stockLv=mLevel(c,l.g),st=mState(stockLv),ok=l.p<=maxPay(c,l.g,stockLv);
     h+=`<div class="row own"><div class="n">${G[l.g][0]} · ${gq(l.q)} left <span class="tag ${l.q<1e-6?"boom":ok&&stockLv<LOW?"boom":""}" style="border:1px solid var(--line)">${l.q<1e-6?"Sold out":ok&&stockLv<LOW?"Selling":"Waiting"}</span></div>
@@ -1900,9 +1900,9 @@ function marketHtml(c){const inv=S.inv[c.id]||{},mine=S.lst.filter(l=>l.city===c
     <div class="d" style="color:var(--muted)">Stock here ${Math.round(stockLv*100)}% <span class="tag ${st[1]}">${st[0]}</span> · reference price ${fmt(mRef(c,g0))}${stockLv<LOW?` · buyers pay up to ${fmt(maxPay(c,g0,stockLv))} right now`:""}</div>
     <div style="display:flex;gap:8px"><label style="flex:1">Quantity<input id="mk-q" type="number" min="1" max="${Math.floor(inv[g0])}" value="${Math.floor(inv[g0])}" style="width:100%;box-sizing:border-box;font:inherit;padding:6px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px"></label>
     <label style="flex:1">Price each<input id="mk-p" type="number" min="0" step="0.01" value="${(mRef(c,g0)*1.1).toFixed(2)}" style="width:100%;box-sizing:border-box;font:inherit;padding:6px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px"></label></div>
-    <button class="buy" data-mk="post">Post listing</button></div>`}
+    <button class="buy" data-mk="post">Post listing</button>${gxOn()?`<button class="buy up" data-gx="list">List for other players</button>`:""}</div>`}
   else if(!mine.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Nothing in this warehouse to list.</p>`;
-  return h+`</div>`}
+  return h+`</div>`+gxHtml(c)}
 let mkForm={};
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-bzf],[data-bzt]");if(!b||!sel)return;
   if(b.dataset.bzf){bzF.v=b.dataset.bzf;renderSheet();return}const k=b.dataset.bzt,it=b.parentElement,o=!it.classList.contains("open");bzF.op[k]=o;it.classList.toggle("open",o);b.setAttribute("aria-expanded",o)});
@@ -1916,6 +1916,69 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-mk]");if(!b||
   else if(a==="cancel"){const l=S.lst.find(x=>x.id===+b.dataset.id);const inv=S.inv[c.id]=S.inv[c.id]||{};inv[l.g]=(inv[l.g]||0)+l.q;S.lst=S.lst.filter(x=>x!==l);toast("Listing cancelled, goods back in the warehouse")}
   else return;commit()});
 
+/* ---------- online goods exchange: players buy each other's listings (Firestore gdask / gdsale, same pattern as the ore exchange) ----------
+   gdask/{id}: {uid,name,c,g,q,px,at} a lot in city c; the seller's goods wait in S.gdx.esc[id]={c,g,q,px,at} until sold or cancelled.
+   gdsale/{askId_buyerUid}: {to,by,byName,ask,c,g,q,px,amt,at} written by the buyer in the same transaction that lowers or deletes the lot.
+   The buyer needs a warehouse in the lot's city; goods land there. The seller is paid (minus the 2% market fee) next time their game is open. */
+const PMX={on:null,ask:[],busy:{},sub:[],err:"",q:{}},PMXCFG={lo:.25,hi:4,qMax:100000,lots:10};
+function PMXS(){let s=S.gdx;if(!s||typeof s!=="object")s=S.gdx={};if(!s.esc||typeof s.esc!=="object")s.esc={};if(!Array.isArray(s.seen))s.seen=[];return s}
+const gxOn=()=>typeof ON!=="undefined"&&!!(ON.user&&ON.db);
+const gxName=()=>{try{return (onProf().name||"Tycoon").slice(0,20)}catch(e){return "Tycoon"}};
+function gxEnsure(){const uid=gxOn()?ON.user.uid:null;if(PMX.on===uid)return;for(const f of PMX.sub)try{f()}catch(e){}PMX.sub=[];PMX.ask=[];PMX.on=uid;PMX.err="";if(!uid)return;
+  const db=ON.db,er=w=>e=>{PMX.err="Couldn't load "+w+": "+(e&&e.code||e)};
+  PMX.sub.push(db.collection("gdask").orderBy("at","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(G[v.g]&&CITIES[v.c]&&(v.q|0)>0&&+v.px>0)a.push(Object.assign({id:d.id},v))});PMX.ask=a;gxTidy();gxRefresh()},er("player listings")));
+  PMX.sub.push(db.collection("gdsale").where("to","==",uid).onSnapshot(q=>q.forEach(d=>gxClaim(d)),er("player sales")))}
+function gxRefresh(){try{if(sel&&sheet.classList.contains("open")&&tab==="ind"&&!(document.activeElement&&sheet.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))renderSheet()}catch(e){}}
+function gxTidy(){const s=PMXS();for(const id in s.esc)if(!(s.esc[id].q>0))delete s.esc[id]}
+function gxClaim(d){const s=PMXS(),v=d.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():0,key=d.id+"@"+at;if(v.to!==PMX.on)return;
+  if(!s.seen.includes(key)){const q=Math.floor(+v.q||0),amt=+v.amt||0;
+    if(q>0&&amt>0&&amt<=1e13&&G[v.g]){s.seen.unshift(key);s.seen=s.seen.slice(0,300);const net=Math.round(amt*(1-FEE));S.cash+=net;S.earned=(S.earned||0)+net;
+      const e=s.esc[v.ask];if(e){e.q-=q;gxTidy()}const who=String(v.byName||"A player").slice(0,20);
+      toast(`🛒 ${who} bought ${gq(q)} ${G[v.g][0].toLowerCase()} from you${CITIES[v.c]?" in "+CITIES[v.c].name:""}: +${fmt(net)}`);
+      try{S.log.unshift(`${who} bought ${gq(q)} ${G[v.g][0].toLowerCase()} from you`);S.log=S.log.slice(0,3)}catch(x){}save();hud();gxRefresh()}}
+  d.ref.delete().catch(()=>{})}
+function gxList(c){if(!gxOn())return toast("Sign in to the online world (Saves › Online) to sell to other players");
+  const g=$("#mk-g")&&$("#mk-g").value,inv=S.inv[c.id]||{},q=Math.floor(+($("#mk-q")||{}).value||0),px=Math.round((+($("#mk-p")||{}).value||0)*100)/100,s=PMXS();
+  if(!G[g]||G[g][2]==="gov")return toast("Pick something to sell");if(q<1)return toast("Enter a quantity");if(q>PMXCFG.qMax)return toast(`At most ${PMXCFG.qMax.toLocaleString("en-US")} per listing`);
+  if((+inv[g]||0)<q)return toast(`Only ${Math.floor(+inv[g]||0)} in this warehouse`);
+  const lo=Math.max(.01,Math.ceil(G[g][1]*PMXCFG.lo*100)/100),hi=Math.floor(G[g][1]*PMXCFG.hi*100)/100;if(!(px>=lo&&px<=hi))return toast(`Price must be ${fmt(lo)} to ${fmt(hi)} each`);
+  if(Object.keys(s.esc).length>=PMXCFG.lots)return toast(`At most ${PMXCFG.lots} player listings at once`);if(PMX.busy.list)return;PMX.busy.list=1;
+  const ref=ON.db.collection("gdask").doc();inv[g]-=q;if(inv[g]<1e-6)delete inv[g];s.esc[ref.id]={c:c.id,g,q,px,at:Date.now()};mkForm={};save();hud();renderSheet();
+  ref.set({uid:ON.user.uid,name:gxName(),c:c.id,g,q,px,at:window.firebase.firestore.FieldValue.serverTimestamp()})
+    .then(()=>{delete PMX.busy.list;toast(`Listed ${gq(q)} ${G[g][0].toLowerCase()} for other players at ${fmt(px)} each`);gxRefresh()},
+      e=>{delete PMX.busy.list;const x=s.esc[ref.id];if(x){const iv=S.inv[x.c]=S.inv[x.c]||{};iv[x.g]=(+iv[x.g]||0)+x.q;delete s.esc[ref.id]}save();hud();toast("Listing refused: "+(e&&e.code||e));gxRefresh()})}
+function gxCancel(id){const s=PMXS(),e=s.esc[id];if(!e||PMX.busy[id])return;if(!gxOn()||PMX.on!==ON.user.uid)return toast("Sign in to cancel a player listing");PMX.busy[id]=1;
+  const ref=ON.db.collection("gdask").doc(id);
+  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)return e.q;const q=Math.floor(+d.data().q||0);t.delete(ref);return q})
+    .then(q=>{delete PMX.busy[id];q=Math.max(0,Math.min(e.q,q));const inv=S.inv[e.c]=S.inv[e.c]||{};inv[e.g]=(+inv[e.g]||0)+q;e.q-=q;gxTidy();save();hud();toast("Listing cancelled, goods back in the warehouse");gxRefresh()},
+      er=>{delete PMX.busy[id];toast("Couldn't cancel: "+(er&&er.message||er))})}
+function gxBuy(id){if(!gxOn())return toast("Sign in to the online world to buy from other players");const a=PMX.ask.find(x=>x.id===id),uid=ON.user.uid;if(!a)return toast("That listing is gone");
+  if(a.uid===uid)return toast("That's your own listing");const c=CITIES[a.c];if(!hasWh(c))return toast(`You need a warehouse in ${c.name} to receive it`);
+  const q=Math.floor(+PMX.q[id]||a.q),px=+a.px,amt=Math.round(q*px*100)/100;if(q<1||q>a.q)return toast(`Enter 1 to ${a.q}`);if(S.cash<amt)return toast(`That costs ${fmt(amt)}`);
+  if(stored(c)+q*tpu(a.g)>whCap(c)+1e-9)return toast(`Not enough warehouse space in ${c.name}`);if(PMX.busy.buy)return;PMX.busy.buy=1;
+  S.cash-=amt;save();hud();const db=ON.db,ar=db.collection("gdask").doc(a.id),sr=db.collection("gdsale").doc(a.id+"_"+uid),FV=window.firebase.firestore.FieldValue;
+  db.runTransaction(async t=>{const d=await t.get(ar);if(!d.exists)throw new Error("that listing is gone");const v=d.data();if((v.q|0)<q)throw new Error(`only ${v.q} left`);if(+v.px!==px||v.g!==a.g||v.c!==a.c)throw new Error("the listing changed");
+      if((v.q|0)===q)t.delete(ar);else t.update(ar,{q:(v.q|0)-q});t.set(sr,{to:v.uid,by:uid,byName:gxName(),ask:a.id,c:a.c,g:a.g,q,px,amt:q*px,at:FV.serverTimestamp()})})
+    .then(()=>{delete PMX.busy.buy;const inv=S.inv[c.id]=S.inv[c.id]||{};inv[a.g]=(+inv[a.g]||0)+q;delete PMX.q[id];
+      toast(`🛒 Bought ${gq(q)} ${G[a.g][0].toLowerCase()} from ${String(a.name||"a player").slice(0,20)} for ${fmt(amt)}: in your ${c.name} warehouse`);save();hud();gxRefresh()},
+      e=>{delete PMX.busy.buy;S.cash+=amt;save();hud();toast("Purchase failed: "+(e&&e.message||e)+" (refunded; if you just bought from this listing, wait until the seller has collected)")})}
+function gxHtml(c){gxEnsure();const E=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
+  let h=`<div class="sec">From other players in ${E(c.name)}</div>`;
+  if(!gxOn())return h+`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Sign in to the online world (Saves › Online) to buy what other players list here.</p>`;
+  if(PMX.err)h+=`<p class="d" style="color:#dc2626;font-size:13px;padding:6px 0">${E(PMX.err)}</p>`;
+  const uid=ON.user.uid,lots=PMX.ask.filter(a=>a.c===c.id).sort((a,b)=>a.g<b.g?-1:a.g>b.g?1:a.px-b.px),wh=hasWh(c);
+  if(!lots.length)return h+`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">No player listings in ${E(c.name)} right now.</p>`;
+  if(!wh)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Build a warehouse in ${E(c.name)} to buy these. Goods are delivered there.</p>`;
+  h+=`<div class="list">`;
+  for(const a of lots){const mine=a.uid===uid,q=PMX.q[a.id]!=null?PMX.q[a.id]:a.q|0;
+    h+=`<div class="row${mine?" own":""}"><div class="n">${E(G[a.g][0])} · ${(a.q|0).toLocaleString("en-US")} for sale</div>
+    <div class="d">${mine?"Your listing":"Seller <b>"+E(String(a.name||"?").slice(0,20))+"</b>"} · <b>${fmt(+a.px)}</b> each · market ref ${fmt(mRef(c,a.g))}</div>
+    ${mine?`<button class="buy up" data-gx="cancel" data-id="${E(a.id)}">Cancel</button>`:`<span style="display:flex;gap:6px;align-items:center"><input data-gxq="${E(a.id)}" type="number" min="1" max="${a.q|0}" value="${q}" aria-label="Quantity" style="width:72px;font:inherit;padding:4px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px"><button class="buy" data-gx="buy" data-id="${E(a.id)}" ${wh?"":"disabled"}>Buy</button></span>`}</div>`}
+  return h+`</div>`}
+sheet.addEventListener("input",e=>{const t=e.target;if(t.dataset&&t.dataset.gxq)PMX.q[t.dataset.gxq]=t.value});
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gx]");if(!b||!sel)return;const a=b.dataset.gx;
+  if(a==="buy")gxBuy(b.dataset.id);else if(a==="cancel")gxCancel(b.dataset.id);else if(a==="list")gxList(sel)});
+setInterval(()=>{try{gxEnsure()}catch(e){}},5000);
 /* ---------- walkable HQ office: isometric 3D room drawn on canvas ---------- */
 const ROOM={w:10,d:8,h:3};
 const FURN=[ // x,y = back-left corner on the floor grid; w,d footprint; h height (tiles)
