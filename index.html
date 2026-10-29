@@ -451,12 +451,12 @@ html.th-ledger #dcard>div{border-radius:2px;box-shadow:6px 6px 0 rgba(31,26,20,.
     <div id="ticker"></div>
     <canvas id="amb"></canvas>
     <canvas id="wx" hidden></canvas>
-    <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button><button id="st3dt" class="chip" title="Light or dark map">☾ Dark</button></div>
+    <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button><button id="st3dt" class="chip" title="Light or dark map">☾ Dark</button><button id="stob" class="chip" aria-pressed="true" title="Show or hide other players' businesses in this city">👥 Others' shops</button></div>
     <div id="placebar" hidden></div>
     <button id="tostreet" class="chip" hidden>View streets</button>
     <div id="hint">Drag to spin · scroll or pinch to zoom from the planet down to the streets · tap a city</div>
     <div id="toast"></div>
-    <div id="cfbox" hidden><div id="cfleg" aria-hidden="true"></div><button id="cfchip" class="chip" aria-pressed="true"></button><button id="lychip" class="chip" aria-expanded="false">🗂️ Layers</button><div id="lylist" hidden><button class="chip" data-ly="sat" aria-pressed="true"></button><button class="chip" data-ly="pl" aria-pressed="true"></button><button class="chip" data-ly="pfx" aria-pressed="true"></button><button class="chip" data-ly="colov" aria-pressed="true"></button></div></div>
+    <div id="cfbox" hidden><div id="cfleg" aria-hidden="true"></div><button id="cfchip" class="chip" aria-pressed="true"></button><button id="lychip" class="chip" aria-expanded="false">🗂️ Layers</button><div id="lylist" hidden><button class="chip" data-ly="sat" aria-pressed="true"></button><button class="chip" data-ly="pl" aria-pressed="true"></button><button class="chip" data-ly="pfx" aria-pressed="true"></button><button class="chip" data-ly="colov" aria-pressed="true"></button><button class="chip" data-ly="ob" aria-pressed="true"></button></div></div>
     <div id="cfpop" hidden role="dialog" aria-label="Conflict details"></div>
     <button id="daily" hidden>🎁 Daily reward</button>
     <aside id="sheet" aria-live="polite"></aside>
@@ -2095,7 +2095,8 @@ function streetSync(){const z=MM.getZoom(),on=z>=ZST||!!placing;
   if(on&&!inStreet){inStreet=true;const ce=MM.getCenter();stCity=stCity&&Math.hypot(stCity.lat-ce.lat,(stCity.lon-ce.lng)*Math.cos(ce.lat*Math.PI/180))<1.5?stCity:nearCity(ce.lng,ce.lat,2);
     stBar.hidden=false;$("#hint").hidden=true;$("#mapwrap").classList.add("st");stLabel();renderPins();if(typeof navSync==="function")navSync()}
   else if(!on&&inStreet){inStreet=false;stBar.hidden=true;$("#mapwrap").classList.remove("st");if(offer)closeOffer();clearPins();if(typeof navSync==="function")navSync()}}
-function stLabel(){$("#stcity").textContent=stCity?stCity.name:"";$("#stcityb").hidden=!stCity}
+function stLabel(){$("#stcity").textContent=stCity?stCity.name:"";$("#stcityb").hidden=!stCity;const ob=$("#stob");if(ob){const on=lyOn("ob");ob.setAttribute("aria-pressed",on);ob.textContent=on?"👥 Others' shops":"👥 Others' shops (hidden)"}}
+$("#stob").addEventListener("click",()=>{S.set=S.set||{};S.set.ob=S.set.ob===0?1:0;stLabel();if(typeof satChip==="function")satChip();renderPins();save()});
 MM.on("move",streetSync);
 MM.on("moveend",()=>{if(!inStreet)return;const ce=MM.getCenter(),best=nearCity(ce.lng,ce.lat,.6);if(best&&best!==stCity){stCity=best;stLabel();renderPins()}});
 /* fly down to a city's streets; zoom is in street-map levels (13 city, 15 block) */
@@ -2122,6 +2123,8 @@ function renderPins(){clearPins();if(!inStreet)return;ensurePositions();
   // rival branches in this city
   if(stCity)S.rivals.forEach((rv,i)=>{if(!rv.cities.includes(stCity.id))return;const p=autoPos("rival"+i+":"+stCity.id,stCity,.4,2.2);
     mkPins.push(mkPin(p.lat,p.lon,RIVALS[i].n.split(" ")[0],RIVALS[i].col,`${RIVALS[i].n} branch`))});
+  // other players' placed businesses here (Layers → Others' shops, or the street-bar toggle)
+  if(stCity&&lyOn("ob"))try{for(const p of botAll()){if(ON.user&&p.uid===ON.user.uid)continue;const nm=String(p.name||"Player").slice(0,20),col=/^#[0-9a-fA-F]{6}$/.test(p.col||"")?p.col:"#64748b";for(const x of obPins(p,stCity)){const m=mkPin(x.lat,x.lon,BIZTAG[x.b.k]||"•",col,`${nm} · ${x.b.n}`);m.getElement().style.opacity=.85;mkPins.push(m)}}}catch(e){}
   if(stCity&&!placing)renderListings(stCity)}
 /* ---------- placing a purchase on the map ---------- */
 const PLACE_SEL='[data-buy],[data-rent],[data-act="land"],[data-act="leaseland"],[data-act="wh"],[data-prop="buy"],[data-hq="open"],[data-life="rent"],[data-life="buy"]';
@@ -3043,7 +3046,7 @@ function cfOpen(w,x,y){const el=document.getElementById("cfpop");_cfPop={id:w.id
   el.style.left=Math.max(12,Math.min(pw-bw-12,x-bw/2))+"px";el.style.top=Math.max(52,Math.min(ph-bh-12,y+18>ph-bh-12?y-bh-18:y+18))+"px";draw()}
 function cfClose(){_cfPop=null;const el=document.getElementById("cfpop");if(el)el.hidden=true;draw()}
 /* Layers: one chip opens the map toggles (same switches as Settings: sat, pl, pfx, colov; 0 = off) */
-const LYR=[["sat","🛰️ Satellites","satellites"],["pl","👥 Players","other players"],["pfx","✨ Planet effects","planet effects"],["colov","🪐 Colony badges","colony badges"]];
+const LYR=[["sat","🛰️ Satellites","satellites"],["pl","👥 Players","other players"],["pfx","✨ Planet effects","planet effects"],["colov","🪐 Colony badges","colony badges"],["ob","🏪 Others' shops","other players' businesses"]];
 function lyOn(k){return !(S.set&&S.set[k]===0)}
 function satChip(){const L=document.getElementById("lylist"),c=document.getElementById("lychip");if(!L)return;
   for(const b of L.querySelectorAll("[data-ly]")){const d=LYR.find(x=>x[0]===b.dataset.ly),on=lyOn(d[0]);b.setAttribute("aria-pressed",on);b.title=(on?"Hide ":"Show ")+d[2]+" on the map";b.textContent=d[1]+(on?"":" (hidden)")}
@@ -8063,7 +8066,10 @@ async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=
 function onRefresh(){if((mode==="pf"||mode==="sv")&&sheet.classList.contains("open")&&!(document.activeElement&&/^(INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;reSheet();sheet.scrollTop=y}}
 function onPubData(){const p=onProf(),{nw}=totals(),ids=o=>Object.keys(o||{}).filter(k=>o[k]&&CITIES[k]&&(typeof o[k]!=="object"||Object.keys(o[k]).length)).map(Number).slice(0,100);
   const v=Math.round(isFinite(nw)?nw:0),rank=Math.min(1000,1+S.rivals.filter(r=>r.nw>v).length+ON.players.filter(q=>(+q.nw||0)>v).length);
-  return{name:(p.name||(isAnon()?"Guest":"Tycoon")).slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null,...(typeof CT!=="undefined"&&CT&&CT.mine?{cid:CT.mine.id}:{}),...(ipoTk()?{tk:ipoTk()}:{}),...(Math.min(3,Math.floor(+S.sats||0))>0?{sats:Math.min(3,Math.floor(+S.sats||0))}:{}),...(typeof bgMilKeys==="function"&&bgMilKeys().length?{lw:bgMilKeys().slice(0,11).map(x=>String(x).slice(0,40))}:{}),...(S.pol&&S.pol.r>=0?{gov:true,...(S.pol.c?{govC:String(S.pol.c).slice(0,40),govR:S.pol.r,govS:Math.max(0,Math.round(S.pol.since||0))}:{})}:{})}}
+  return{name:(p.name||(isAnon()?"Guest":"Tycoon")).slice(0,20),col:p.col,home:S.home?S.home.city:null,hq:ids(S.hq).slice(0,50),biz:ids(S.own),nw:v,rank,nb:Math.min(100000,nOwned()),nc:Math.min(10000,nCities()),pins:pinsPub(),loc:S.loc&&Number.isInteger(S.loc.city)&&CITIES[S.loc.city]?S.loc.city:null,...(typeof CT!=="undefined"&&CT&&CT.mine?{cid:CT.mine.id}:{}),...(ipoTk()?{tk:ipoTk()}:{}),...(Math.min(3,Math.floor(+S.sats||0))>0?{sats:Math.min(3,Math.floor(+S.sats||0))}:{}),...(typeof bgMilKeys==="function"&&bgMilKeys().length?{lw:bgMilKeys().slice(0,11).map(x=>String(x).slice(0,40))}:{}),...(S.pol&&S.pol.r>=0?{gov:true,...(S.pol.c?{govC:String(S.pol.c).slice(0,40),govR:S.pol.r,govS:Math.max(0,Math.round(S.pol.since||0))}:{})}:{})}}
+/* other players' placed businesses: "cityId:bizKey:lat:lon" strings, read back by obPins() for the street-view pins */
+function pinsPub(){const out=[];for(const key in S.pos){if(!key.startsWith("biz:"))continue;const [,id,k]=key.split(":"),p=S.pos[key];if(!CITIES[id]||!(S.own[id]||{})[k]||!p||!isFinite(p.lat)||!isFinite(p.lon))continue;out.push(`${id}:${k}:${(+p.lat).toFixed(5)}:${(+p.lon).toFixed(5)}`);if(out.length>=300)break}return out}
+function obPins(p,c){const out=[];for(const s of Array.isArray(p.pins)?p.pins:[]){if(typeof s!=="string")continue;const [id,k,la,lo]=s.split(":");if(+id!==c.id)continue;const b=BIZ.find(x=>x.k===k),lat=+la,lon=+lo;if(!b||!isFinite(lat)||!isFinite(lon)||Math.abs(lat-c.lat)>.5||Math.abs(lon-c.lon)>.5)continue;out.push({b,lat,lon})}return out}
 function onLocPub(){try{if(!ON.ready||!ON.user)return;const l=S.loc&&S.loc.city;if(l!==ON.lastLoc){ON.lastLoc=l;onPublish(true)}}catch(e){}}
 function onPublish(force){if(!ON.ready||!ON.user||ON.deleting)return;const d=onPubData(),sig=JSON.stringify(d),n=Date.now();
   if(!force&&!(n-ON.lastPub>=60000||(sig!==ON.lastSig&&n-ON.lastPub>=60000)))return;
@@ -8078,7 +8084,7 @@ function wrPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;co
   ON.db.collection("world").doc("rivals").set(d).catch(e=>{ON.err="Couldn't publish world rivals: "+(e&&e.code||e)})}
 function onSaved(){if(!ON.ready||!ON.user)return;onPublish(false);wrPublish(false);wwPublish(false)}
 const LBKEY="meridian-lb-players";
-function lbCache(a){try{localStorage.setItem(LBKEY,JSON.stringify(a.slice(0,200).map(p=>({uid:p.uid,name:String(p.name||"Player").slice(0,20),col:p.col,nw:+p.nw||0,nb:p.nb,nc:p.nc,biz:Array.isArray(p.biz)?p.biz:[],home:p.home,hq:p.hq,cid:p.cid,govC:p.govC,govR:p.govR,govS:p.govS,tk:/^[A-Z]{3,5}$/.test(p.tk||"")?p.tk:undefined,bot:p.bot?true:undefined,trucks:p.bot?(p.trucks|0):undefined,seen:onSeen(p)}))))}catch(e){}}
+function lbCache(a){try{localStorage.setItem(LBKEY,JSON.stringify(a.slice(0,200).map(p=>({uid:p.uid,name:String(p.name||"Player").slice(0,20),col:p.col,nw:+p.nw||0,nb:p.nb,nc:p.nc,biz:Array.isArray(p.biz)?p.biz:[],pins:Array.isArray(p.pins)?p.pins.slice(0,300):undefined,home:p.home,hq:p.hq,cid:p.cid,govC:p.govC,govR:p.govR,govS:p.govS,tk:/^[A-Z]{3,5}$/.test(p.tk||"")?p.tk:undefined,bot:p.bot?true:undefined,trucks:p.bot?(p.trucks|0):undefined,seen:onSeen(p)}))))}catch(e){}}
 function lbPlayers(){if(ON.gotPlayers)return ON.players;try{const a=JSON.parse(localStorage.getItem(LBKEY)||"[]");const me=ON.user?ON.user.uid:null;return Array.isArray(a)?a.filter(p=>p&&p.uid!==me):[]}catch(e){return[]}}
 const lbPol=(c,r)=>{const o=GOVCFG.offices[r];return o&&c?` <span class="tag" title="Political office">${devEsc(o.n)} of ${devEsc(String(c).slice(0,40))}</span>`:""};
 function lbCities(p){if(Number.isInteger(p.nc))return p.nc;const s=new Set(onCities(p));for(const i of Array.isArray(p.biz)?p.biz:[])if(CITIES[i])s.add(i);return s.size}
