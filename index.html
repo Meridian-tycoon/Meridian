@@ -5240,7 +5240,7 @@ function wpnRetal(n,w,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,now=Date.now();i
   if(quiet)return wpnLand(n,k,c.id,1);
   // live play: announce it and let it land after a warning (bunkTick lands it)
   const wn=BUNKCFG.warn[k]+intWarn(n);if(!Array.isArray(m.inc))m.inc=[];m.inc.push({n,k,city:c.id,t:now,at:now+wn*1000});
-  const t=`⚠ ${n} launched a ${W.n.toLowerCase()} at ${c.name}: impact in ${wn}s${wn>BUNKCFG.warn[k]?" (SIGINT early warning)":""}${present(c)?" · you are there, get to your bunker":""}`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);toast(t);wpnAnim();wmdBanner(k,`${WBN[k]}: ${n} → ${c.country} (${c.name}) · {s}`,Math.max(WMDBANNER_MS,wn*1000+1500),now+wn*1000)}
+  const t=`⚠ ${n} launched a ${W.n.toLowerCase()} at ${c.name}: impact in ${wn}s${wn>BUNKCFG.warn[k]?" (SIGINT early warning)":""}${present(c)?" · you are there, get to your bunker":""}`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);toast(t);wpnAnim();try{if(!quiet)strikeAlarm(wn)}catch(e){}wmdBanner(k,`${WBN[k]}: ${n} → ${c.country} (${c.name}) · {s}`,Math.max(WMDBANNER_MS,wn*1000+1500),now+wn*1000)}
 // an enemy strike lands on city cid (n = attacker). Air defense may shoot a missile down first.
 function wpnLand(n,k,cid,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,W=WPNCFG.w[k],E=C.hit[k],c=CITIES[cid],now=Date.now();if(!W||!E||!c)return;const w=m.wars[n];
   if(bunkIntercept(k,null,c)){if(!quiet)sfPost(k,n,c.id,1);if(!Array.isArray(m.icpt))m.icpt=[];m.icpt=m.icpt.filter(x=>now-x.t<WPNCFG.animMs).concat([{city:c.id,t:now}]);
@@ -10006,6 +10006,13 @@ setApply(1);
    One lazy AudioContext, created only from a user gesture. sfx(kind,size) for clicks/booms; music = soft generative chords whose mood follows wars (tense) and big wins (upbeat). ---------- */
 var SND={ac:null,mst:null,mus:null,mood:"calm",win:0,lastClick:0,lastBoom:0,booms:0,next:0,tmr:null,noise:null};
 function sndOn(){return !!(S.set&&S.set.snd)}
+/* inbound strike air-raid siren: plays with the strike banner when an enemy fires at a city you hold; on unless S.set.alarm===0 (works even with game sounds off) */
+var ALARM={ac:null,stop:0};
+function strikeAlarm(sec){try{if(S.set&&S.set.alarm===0)return;const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;const ac=SND.ac||ALARM.ac||(ALARM.ac=new AC());if(ac.state==="suspended")ac.resume();
+  const now=ac.currentTime,dur=Math.max(3,Math.min(10,+sec||6));if(ALARM.stop>now)return;ALARM.stop=now+dur;
+  const o=ac.createOscillator(),g=ac.createGain();o.type="sawtooth";g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(.18*Math.max(.3,sndVol()),now+.3);g.gain.setValueAtTime(.18*Math.max(.3,sndVol()),now+dur-.4);g.gain.exponentialRampToValueAtTime(.0001,now+dur);
+  for(let t=0;t<dur;t+=2){o.frequency.setValueAtTime(520,now+t);o.frequency.linearRampToValueAtTime(1050,now+t+1);o.frequency.linearRampToValueAtTime(520,now+t+2)}
+  o.connect(g);g.connect(ac.destination);o.start(now);o.stop(now+dur+.05)}catch(e){}}
 function sndVol(){const v=S.set?+S.set.vol:.5;return isFinite(v)?Math.max(0,Math.min(1,v)):.5}
 function sndInit(){if(SND.ac||!sndOn())return SND.ac;try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;const ac=new AC();SND.ac=ac;
   SND.mst=ac.createGain();SND.mst.gain.value=sndVol()*.6;SND.mst.connect(ac.destination);SND.mus=ac.createGain();SND.mus.gain.value=.0001;SND.mus.connect(SND.mst);
