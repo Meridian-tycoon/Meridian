@@ -1237,7 +1237,7 @@ function runFleet(now){for(const v of S.fleet){let guard=0;
     if(v.cargo)try{fxTon(v.cargo.g,v.cargo.q,v.cargo.rc);if(!v.cargo.rc&&G[v.cargo.g])wevAdd("rush",v.cargo.q*px(d,v.cargo.g))}catch(e){}
     if(v.cargo&&!lxDeliver(v,d)){S.inv[d.id][v.cargo.g]=(S.inv[d.id][v.cargo.g]||0)+v.cargo.q;S.log.unshift(`${VEH[v.type].n} #${v.id} delivered ${Math.round(v.cargo.q)} ${G[v.cargo.g][0].toLowerCase()} to ${d.name}`);S.log=S.log.slice(0,3)}
     v.city=v.dest;v.dest=null;v.cargo=null;v.dep=null;v.arr=null;routeStep(v,t);if(v.job)lxVeh(v,t)}
-  if(!v.arr)routeStep(v,now)}}
+  if(!v.arr&&v.pmx)gxFetch(v,now);if(!v.arr)routeStep(v,now)}}
 function driftPrices(){for(const c of CITIES){const p=S.px[c.id]=S.px[c.id]||{};for(const g of GK){let m=p[g]||1;m+=(1-m)*.12;p[g]=Math.min(1.6,Math.max(.4,m*(1+(Math.random()-.5)*.08)))}}}
 /* selling floods a local market; buying tightens it. Bigger cities absorb more. */
 const depth=(c,g)=>(G[g][2]==="raw"?3000:G[g][2]==="mid"?800:400)*(.5+.3*c.size);
@@ -1307,7 +1307,7 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
       h+=`<div class="sec">Your own fleet · parked here</div><div class="list">`;
       if(!here.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">No vehicles here.</p>`;
       for(const v of here){const V=VEH[v.type];
-        h+=v.job?`<div class="row own"><div class="n">${V.n} #${v.id} <span class="tag boom">JOB</span></div><div class="d">Working a Logistics shipment (release it on the Logistics page to send it elsewhere)</div><span></span></div>`:v.route?`<div class="row own"><div class="n">${V.n} #${v.id} <span class="tag boom">ROUTE</span></div><div class="d">${unhOn(CITIES[v.route.to])?`Paused: ${CITIES[v.route.to].name} is uninhabitable for ${unhLeft(CITIES[v.route.to])}`:`Waiting to load ${G[v.route.g][0].toLowerCase()} for ${CITIES[v.route.to].name}`}</div><button class="buy up" data-act="stoproute" data-id="${v.id}">Stop route</button></div>`:`<div class="row own"><div class="n">${V.n} #${v.id}</div><div class="d">Carries ${fmtT(V.cap)} · ${V.spd} km/day · condition ${Math.round(fxCond(v))}%</div><span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-act="ship" data-id="${v.id}">${shipForm===v.id?"Cancel":"Send"}</button>${vSellOk(v)?`<button class="buy up" data-act="vsell" data-id="${v.id}">Sell ${fmt(vSellP(v))}</button>`:""}</span></div>`;
+        h+=v.pmx&&!v.arr?`<div class="row own"><div class="n">${V.n} #${v.id} <span class="tag boom">PICKUP</span></div><div class="d">Waiting for fuel money to bring a player-market purchase home</div><span></span></div>`:v.job?`<div class="row own"><div class="n">${V.n} #${v.id} <span class="tag boom">JOB</span></div><div class="d">Working a Logistics shipment (release it on the Logistics page to send it elsewhere)</div><span></span></div>`:v.route?`<div class="row own"><div class="n">${V.n} #${v.id} <span class="tag boom">ROUTE</span></div><div class="d">${unhOn(CITIES[v.route.to])?`Paused: ${CITIES[v.route.to].name} is uninhabitable for ${unhLeft(CITIES[v.route.to])}`:`Waiting to load ${G[v.route.g][0].toLowerCase()} for ${CITIES[v.route.to].name}`}</div><button class="buy up" data-act="stoproute" data-id="${v.id}">Stop route</button></div>`:`<div class="row own"><div class="n">${V.n} #${v.id}</div><div class="d">Carries ${fmtT(V.cap)} · ${V.spd} km/day · condition ${Math.round(fxCond(v))}%</div><span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-act="ship" data-id="${v.id}">${shipForm===v.id?"Cancel":"Send"}</button>${vSellOk(v)?`<button class="buy up" data-act="vsell" data-id="${v.id}">Sell ${fmt(vSellP(v))}</button>`:""}</span></div>`;
         if(shipForm===v.id)h+=shipFormHtml(c,v)}
       h+=`</div>`;
       if(incoming.length)h+=`<div class="sec">Arriving</div><div class="list">`+incoming.map(v=>`<div class="row"><div class="n">${VEH[v.type].n} #${v.id}</div><div class="d">${v.cargo?`${Math.round(v.cargo.q)} ${G[v.cargo.g][0].toLowerCase()} · `:"empty · "}from ${CITIES[v.from].name} · in ${fmtDur(v.arr-Date.now())}</div><span></span></div>`).join("")+`</div>`;
@@ -1358,7 +1358,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="vsell"){const v=S.fleet.find(x=>x.id===id);if(!v||!vSellOk(v)){toast("That vehicle is busy and can't be sold right now");return}
     if(!b.dataset.arm){b.dataset.arm=1;b.textContent=`Tap again: sell ${fmt(vSellP(v))}`;return}
     const p=vSellP(v);S.fleet=S.fleet.filter(x=>x!==v);if(shipForm===id)shipForm=null;S.cash+=p;toast(`Sold ${VEH[v.type].n} #${v.id} for ${fmt(p)}`)}
-  else if(a==="go"){const v=S.fleet.find(x=>x.id===id);if(!v||v.job||v.arr||v.cargo){toast("That vehicle is busy");return}const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,km=distKm(c,d),fuel=vFuel(v.type,km,g?Math.min(capU(v.type,g),inv0(c,g))*tpu(g):0,c,d);
+  else if(a==="go"){const v=S.fleet.find(x=>x.id===id);if(!v||v.pmx||v.job||v.arr||v.cargo){toast("That vehicle is busy");return}const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,km=distKm(c,d),fuel=vFuel(v.type,km,g?Math.min(capU(v.type,g),inv0(c,g))*tpu(g):0,c,d);
     if(S.cash<fuel){toast(`Need ${fmt(fuel)} for fuel`);return}
     depart(v,c,d,g);v.al=null;const rep=$("#sf-r")&&$("#sf-r").checked;v.route=rep&&g?{from:c.id,to:d.id,g,back:$("#sf-b").value}:null;
     shipForm=null;toast(rep&&g?`Route set: ${c.name} ⇄ ${d.name}`:`${V.n} #${v.id} left for ${d.name}`)}
@@ -1920,7 +1920,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-mk]");if(!b||
    gdask/{id}: {uid,name,c,g,q,px,at} a lot in city c; the seller's goods wait in S.gdx.esc[id]={c,g,q,px,at} until sold or cancelled.
    gdsale/{askId_buyerUid}: {to,by,byName,ask,c,g,q,px,amt,at} written by the buyer in the same transaction that lowers or deletes the lot.
    The buyer needs a warehouse in the lot's city; goods land there. The seller is paid (minus the 2% market fee) next time their game is open. */
-const PMX={on:null,ask:[],busy:{},sub:[],err:"",q:{}},PMXCFG={qMax:1000000000};
+const PMX={on:null,ask:[],busy:{},sub:[],err:"",q:{},v:{}},PMXCFG={qMax:1000000000};
 function PMXS(){let s=S.gdx;if(!s||typeof s!=="object")s=S.gdx={};if(!s.esc||typeof s.esc!=="object")s.esc={};if(!Array.isArray(s.seen))s.seen=[];return s}
 const gxOn=()=>typeof ON!=="undefined"&&!!(ON.user&&ON.db);
 const gxName=()=>{try{return (onProf().name||"Tycoon").slice(0,20)}catch(e){return "Tycoon"}};
@@ -1952,34 +1952,26 @@ function gxCancel(id){const s=PMXS(),e=s.esc[id];if(!e||PMX.busy[id])return;if(!
   ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)return e.q;const q=Math.floor(+d.data().q||0);t.delete(ref);return q})
     .then(q=>{delete PMX.busy[id];q=Math.max(0,Math.min(e.q,q));const inv=S.inv[e.c]=S.inv[e.c]||{};inv[e.g]=(+inv[e.g]||0)+q;e.q-=q;gxTidy();save();hud();toast("Listing cancelled, goods back in the warehouse");gxRefresh()},
       er=>{delete PMX.busy[id];toast("Couldn't cancel: "+(er&&er.message||er))})}
+/* buying a player lot needs a free vehicle parked at one of your depots: it drives empty to the seller's city, loads the lot and brings it home (v.pmx={c,h,g,q}) */
+const gxVehOk=(v,c)=>v.city!=null&&!v.pmx&&!v.arr&&!v.job&&!v.cargo&&!v.route&&!(v.al&&v.al.cu)&&v.hm==null&&CITIES[v.city]&&hasWh(CITIES[v.city])&&(vcls(v.type)!=="truck"||landmass(CITIES[v.city])===landmass(c));
+const gxVehs=c=>S.fleet.filter(v=>gxVehOk(v,c));
+function gxFetch(v,now){const P=v.pmx,A=CITIES[P.c],H=CITIES[P.h];if(!A||!H||!G[P.g]){v.pmx=null;return}
+  if(v.city!==P.c)return;if(P.c===P.h){ensureWh(H);S.inv[H.id][P.g]=(S.inv[H.id][P.g]||0)+P.q;v.pmx=null;return}
+  if(depart(v,A,H,null,now,{g:P.g,q:P.q})){v.pmx=null;S.log.unshift(`${VEH[v.type].n} #${v.id} loaded ${gq(P.q)} ${G[P.g][0].toLowerCase()} in ${A.name}, heading to ${H.name}`);S.log=S.log.slice(0,3)}
+  else if(!P.w){P.w=1;toast(`${VEH[v.type].n} #${v.id} needs fuel money in ${A.name} to bring your purchase home`)}}
 function gxBuy(id){if(!gxOn())return toast("Sign in to the online world to buy from other players");const a=PMX.ask.find(x=>x.id===id),uid=ON.user.uid;if(!a)return toast("That listing is gone");
-  if(a.uid===uid)return toast("That's your own listing");const c=CITIES[a.c];if(!hasWh(c))return toast(`You need a warehouse in ${c.name} to receive it`);
-  const q=Math.floor(+PMX.q[id]||a.q),px=+a.px,amt=Math.round(q*px*100)/100;if(q<1||q>a.q)return toast(`Enter 1 to ${a.q}`);if(S.cash<amt)return toast(`That costs ${fmt(amt)}`);
-  if(stored(c)+q*tpu(a.g)>whCap(c)+1e-9)return toast(`Not enough warehouse space in ${c.name}`);if(PMX.busy.buy)return;PMX.busy.buy=1;
-  S.cash-=amt;save();hud();const db=ON.db,ar=db.collection("gdask").doc(a.id),sr=db.collection("gdsale").doc(a.id+"_"+uid),FV=window.firebase.firestore.FieldValue;
-  db.runTransaction(async t=>{const d=await t.get(ar);if(!d.exists)throw new Error("that listing is gone");const v=d.data();if((v.q|0)<q)throw new Error(`only ${v.q} left`);if(+v.px!==px||v.g!==a.g||v.c!==a.c)throw new Error("the listing changed");
-      if((v.q|0)===q)t.delete(ar);else t.update(ar,{q:(v.q|0)-q});t.set(sr,{to:v.uid,by:uid,byName:gxName(),ask:a.id,c:a.c,g:a.g,q,px,amt:q*px,at:FV.serverTimestamp()})})
-    .then(()=>{delete PMX.busy.buy;const inv=S.inv[c.id]=S.inv[c.id]||{};inv[a.g]=(+inv[a.g]||0)+q;delete PMX.q[id];
-      toast(`🛒 Bought ${gq(q)} ${G[a.g][0].toLowerCase()} from ${String(a.name||"a player").slice(0,20)} for ${fmt(amt)}: in your ${c.name} warehouse`);save();hud();gxRefresh()},
-      e=>{delete PMX.busy.buy;S.cash+=amt;save();hud();toast("Purchase failed: "+(e&&e.message||e)+" (refunded; if you just bought from this listing, wait until the seller has collected)")})}
-function gxHtml(c){gxEnsure();const E=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
-  let h=`<div class="sec">From other players in ${E(c.name)}</div>`;
-  if(!gxOn())return h+`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Sign in to the online world (Saves › Online) to buy what other players list here.</p>`;
-  if(PMX.err)h+=`<p class="d" style="color:#dc2626;font-size:13px;padding:6px 0">${E(PMX.err)}</p>`;
-  const uid=ON.user.uid,lots=PMX.ask.filter(a=>a.c===c.id).sort((a,b)=>a.g<b.g?-1:a.g>b.g?1:a.px-b.px),wh=hasWh(c);
-  if(!lots.length)return h+`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">No player listings in ${E(c.name)} right now.</p>`;
-  if(!wh)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Build a warehouse in ${E(c.name)} to buy these. Goods are delivered there.</p>`;
-  h+=`<div class="list">`;
-  for(const a of lots){const mine=a.uid===uid,q=PMX.q[a.id]!=null?PMX.q[a.id]:a.q|0;
-    h+=`<div class="row${mine?" own":""}"><div class="n">${E(G[a.g][0])} · ${(a.q|0).toLocaleString("en-US")} for sale</div>
-    <div class="d">${mine?"Your listing":"Seller <b>"+E(String(a.name||"?").slice(0,20))+"</b>"} · <b>${fmt(+a.px)}</b> each · market ref ${fmt(mRef(c,a.g))}</div>
-    ${mine?`<button class="buy up" data-gx="cancel" data-id="${E(a.id)}">Cancel</button>`:`<span style="display:flex;gap:6px;align-items:center"><input data-gxq="${E(a.id)}" type="number" min="1" max="${a.q|0}" value="${q}" aria-label="Quantity" style="width:72px;font:inherit;padding:4px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px"><button class="buy" data-gx="buy" data-id="${E(a.id)}" ${wh?"":"disabled"}>Buy</button></span>`}</div>`}
-  return h+`</div>`}
-sheet.addEventListener("input",e=>{const t=e.target;if(t.dataset&&t.dataset.gxq)PMX.q[t.dataset.gxq]=t.value});
-sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gx]");if(!b||!sel)return;const a=b.dataset.gx;
-  if(a==="buy")gxBuy(b.dataset.id);else if(a==="cancel")gxCancel(b.dataset.id);else if(a==="list")gxList(sel)});
-setInterval(()=>{try{gxEnsure()}catch(e){}},5000);
-/* phone Market app: every player listing in the world, cheapest first per good; Buy delivers to your warehouse in that city */
+  if(a.uid===uid)return toast("That's your own listing");const c=CITIES[a.c],vs=gxVehs(c);if(!vs.length)return toast(`You need a free vehicle at one of your depots to fetch it from ${c.name}`);
+  const v=vs.find(x=>String(x.id)===String(PMX.v[id]))||vs[0],H=CITIES[v.city],cap=Math.floor(capU(v.type,a.g)),max=Math.min(a.q|0,cap);
+  const q=Math.floor(+PMX.q[id]||max),px=+a.px,amt=Math.round(q*px*100)/100;if(q<1||q>max)return toast(`${VEH[v.type].n} #${v.id} carries 1 to ${max}`);
+  const km=distKm(H,c),fuel=H===c?0:vFuel(v.type,km,0,H,c)+vFuel(v.type,km,q*tpu(a.g),c,H);if(S.cash<amt+fuel)return toast(`That costs ${fmt(amt)} plus about ${fmt(fuel)} fuel`);
+  if(stored(H)+q*tpu(a.g)>whCap(H)+1e-9)return toast(`Not enough warehouse space in ${H.name}`);if(PMX.busy.buy)return;PMX.busy.buy=1;
+  v.pmx={c:c.id,h:H.id,g:a.g,q,lock:1};S.cash-=amt;save();hud();const db=ON.db,ar=db.collection("gdask").doc(a.id),sr=db.collection("gdsale").doc(a.id+"_"+uid),FV=window.firebase.firestore.FieldValue;
+  db.runTransaction(async t=>{const d=await t.get(ar);if(!d.exists)throw new Error("that listing is gone");const x=d.data();if((x.q|0)<q)throw new Error(`only ${x.q} left`);if(+x.px!==px||x.g!==a.g||x.c!==a.c)throw new Error("the listing changed");
+      if((x.q|0)===q)t.delete(ar);else t.update(ar,{q:(x.q|0)-q});t.set(sr,{to:x.uid,by:uid,byName:gxName(),ask:a.id,c:a.c,g:a.g,q,px,amt:q*px,at:FV.serverTimestamp()})})
+    .then(()=>{delete PMX.busy.buy;delete PMX.q[id];delete v.pmx.lock;const now=Date.now();
+      if(H===c)gxFetch(v,now);else if(!depart(v,H,c,null,now)){toast("Not enough cash for fuel: the vehicle waits")}
+      toast(H===c?`🛒 Bought ${gq(q)} ${G[a.g][0].toLowerCase()}: in your ${c.name} warehouse`:`🛒 Bought ${gq(q)} ${G[a.g][0].toLowerCase()} for ${fmt(amt)}. ${VEH[v.type].n} #${v.id} is driving from ${H.name} to fetch it`);save();hud();gxRefresh()},
+      e=>{delete PMX.busy.buy;v.pmx=null;S.cash+=amt;save();hud();toast("Purchase failed: "+(e&&e.message||e)+" (refunded; if you just bought from this listing, wait until the seller has collected)")})}
 function gxPhone(){gxEnsure();const E=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
   let h=`<div class="ph-sub" style="font-weight:700">Player listings</div>`;
   if(!gxOn())return h+`<p class="ph-sub">Sign in to the online world (Saves › Online) to buy from other players.</p>`;
@@ -1987,11 +1979,11 @@ function gxPhone(){gxEnsure();const E=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&
   const uid=ON.user.uid,f=PMX.pf||"",lots=PMX.ask.filter(a=>!f||a.g===f).sort((a,b)=>a.g<b.g?-1:a.g>b.g?1:a.px-b.px),gs=[...new Set(PMX.ask.map(a=>a.g))];
   if(gs.length>1)h+=`<select data-pmxf style="width:100%;margin:4px 0;padding:6px;font:inherit"><option value="">All goods</option>${gs.map(g=>`<option value="${g}" ${g===f?"selected":""}>${E(G[g][0])}</option>`).join("")}</select>`;
   if(!lots.length)return h+`<p class="ph-sub">No player listings right now.</p>`;
-  return h+`<div class="ph-list">${lots.map(a=>{const c=CITIES[a.c],mine=a.uid===uid,wh=hasWh(c),q=PMX.q[a.id]!=null?PMX.q[a.id]:a.q|0;
+  return h+`<div class="ph-list">${lots.map(a=>{const c=CITIES[a.c],mine=a.uid===uid,vs=mine?[]:gxVehs(c),wh=vs.length>0,sv=vs.find(x=>String(x.id)===String(PMX.v[a.id]))||vs[0],mx=sv?Math.min(a.q|0,Math.floor(capU(sv.type,a.g))):0,q=PMX.q[a.id]!=null?PMX.q[a.id]:mx;
     return `<div><b>${E(G[a.g][0])} · ${E(c.name)}</b>${(a.q|0).toLocaleString("en-US")} at ${fmt(+a.px)} each · ${mine?"your listing":"from "+E(String(a.name||"?").slice(0,20))}
-    ${mine?`<button class="buy up" data-ph="pmxcan" data-k="${E(a.id)}" style="width:100%;margin-top:4px">Cancel</button>`:wh?`<span style="display:flex;gap:6px;margin-top:4px"><input data-gxq="${E(a.id)}" type="number" min="1" max="${a.q|0}" value="${q}" aria-label="Quantity" style="width:80px;padding:4px;font:inherit"><button class="buy" data-ph="pmxbuy" data-k="${E(a.id)}" style="flex:1">Buy</button></span>`:`<small style="display:block">Needs a warehouse in ${E(c.name)}</small>`}</div>`}).join("")}</div>`}
+    ${mine?`<button class="buy up" data-ph="pmxcan" data-k="${E(a.id)}" style="width:100%;margin-top:4px">Cancel</button>`:wh?`<select data-gxv="${E(a.id)}" aria-label="Vehicle" style="width:100%;margin-top:4px;padding:4px;font:inherit">${vs.map(v=>`<option value="${v.id}" ${v===sv?"selected":""}>${E(VEH[v.type].n)} #${v.id} at ${E(CITIES[v.city].name)} (max ${Math.floor(capU(v.type,a.g)).toLocaleString("en-US")})</option>`).join("")}</select><span style="display:flex;gap:6px;margin-top:4px"><input data-gxq="${E(a.id)}" type="number" min="1" max="${mx}" value="${q}" aria-label="Quantity" style="width:80px;padding:4px;font:inherit"><button class="buy" data-ph="pmxbuy" data-k="${E(a.id)}" style="flex:1">Buy</button></span>`:`<small style="display:block">Needs a free vehicle parked at one of your depots to fetch it</small>`}</div>`}).join("")}</div>`}
 setTimeout(()=>{PH.el.addEventListener("input",e=>{const t=e.target;if(t.dataset&&t.dataset.gxq)PMX.q[t.dataset.gxq]=t.value});
-PH.el.addEventListener("change",e=>{const t=e.target.closest("[data-pmxf]");if(!t)return;PMX.pf=t.value;phRender()});
+PH.el.addEventListener("change",e=>{const gv=e.target.closest("[data-gxv]");if(gv){PMX.v[gv.dataset.gxv]=gv.value;delete PMX.q[gv.dataset.gxv];phRender();return}const t=e.target.closest("[data-pmxf]");if(!t)return;PMX.pf=t.value;phRender()});
 PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph=pmxbuy],[data-ph=pmxcan]");if(!b)return;e.stopPropagation();if(b.dataset.ph==="pmxbuy")gxBuy(b.dataset.k);else gxCancel(b.dataset.k);setTimeout(()=>{try{phRender()}catch(x){}},50)},true);},0);
 /* ---------- walkable HQ office: isometric 3D room drawn on canvas ---------- */
 const ROOM={w:10,d:8,h:3};
@@ -9093,7 +9085,7 @@ function lxStockAvail(c,bk){const b=BIZ.find(x=>x.k===bk),lv=(S.own[c.id]||{})[b
 function lxBlock(c,d){if(unhOn(c))return `${c.name} is uninhabitable for ${unhLeft(c)}`;if(unhOn(d))return `${d.name} is uninhabitable for ${unhLeft(d)}`;
   if(c.country!==d.country){for(const w of S.wars||[])if(w.l>=2&&((w.a===c.country&&w.b===d.country)||(w.a===d.country&&w.b===c.country)))return `${WARL[w.l]} between ${c.country} and ${d.country}: no trade`;
     if(warLvl(d.country)>=4)return `${d.country} is at war: freight there is suspended`}return ""}
-function lxIdle(c){return S.fleet.filter(v=>v.city===c.id&&!v.arr&&!v.route&&!v.job&&!v.cargo&&!(v.al&&v.al.cu)&&v.hm==null)}
+function lxIdle(c){return S.fleet.filter(v=>v.city===c.id&&!v.pmx&&!v.arr&&!v.route&&!v.job&&!v.cargo&&!(v.al&&v.al.cu)&&v.hm==null)}
 function lxVehOK(v,c,d){return vcls(v.type)!=="truck"||landmass(c)===landmass(d)}
 /* units already heading for a warehouse (escrow not yet launched, in vehicles, hired) */
 function lxIncoming(d,g,wt){const X=LX();let t=0;const W=wt?tpu:()=>1;
@@ -9235,7 +9227,7 @@ function fxTier(){const t=FX().tons;let i=0;for(let k=0;k<FXT.length;k++)if(t>=F
 function fxHire(){return (.4+.6*fuelM())*(1-fxTier().disc)}
 function fxCap(){return lxc().maxJobs+lxc().maxSh+fxTier().jobs}
 /* resale: 60% of what you paid, scaled by condition; only parked, empty, idle vehicles (no job, route, Auto-line or recall) */
-const vSellP=v=>Math.round((v.paid||(VEH[v.type]||{}).cost||0)*.6*fxCond(v)/100),vSellOk=v=>!!v&&!v.arr&&!v.job&&!v.route&&!v.al&&!v.cargo&&v.hm==null;
+const vSellP=v=>Math.round((v.paid||(VEH[v.type]||{}).cost||0)*.6*fxCond(v)/100),vSellOk=v=>!!v&&!v.pmx&&!v.arr&&!v.job&&!v.route&&!v.al&&!v.cargo&&v.hm==null;
 function fxCond(v){return v&&v.cond>=0&&v.cond<=100?+v.cond:100}
 function fxUp(v){return vPrice(v)*FXM*(1+(100-fxCond(v))/100)}
 function fxFee(v){return Math.round(vPrice(v)*FXS*(100-fxCond(v))/100*(1-fxTier().sv))}
