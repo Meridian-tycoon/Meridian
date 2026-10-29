@@ -1928,7 +1928,7 @@ function gxEnsure(){const uid=gxOn()?ON.user.uid:null;if(PMX.on===uid)return;for
   const db=ON.db,er=w=>e=>{PMX.err="Couldn't load "+w+": "+(e&&e.code||e)};
   PMX.sub.push(db.collection("gdask").orderBy("at","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(G[v.g]&&CITIES[v.c]&&(v.q|0)>0&&+v.px>0)a.push(Object.assign({id:d.id},v))});PMX.ask=a;gxTidy();gxRefresh()},er("player listings")));
   PMX.sub.push(db.collection("gdsale").where("to","==",uid).onSnapshot(q=>q.forEach(d=>gxClaim(d)),er("player sales")))}
-function gxRefresh(){try{if(sel&&sheet.classList.contains("open")&&tab==="ind"&&!(document.activeElement&&sheet.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))renderSheet()}catch(e){}}
+function gxRefresh(){try{if(typeof PH!=="undefined"&&PH.open&&PH.app==="market"&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))phRender()}catch(e){}try{if(sel&&sheet.classList.contains("open")&&tab==="ind"&&!(document.activeElement&&sheet.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))renderSheet()}catch(e){}}
 function gxTidy(){const s=PMXS();for(const id in s.esc)if(!(s.esc[id].q>0))delete s.esc[id]}
 function gxClaim(d){const s=PMXS(),v=d.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():0,key=d.id+"@"+at;if(v.to!==PMX.on)return;
   if(!s.seen.includes(key)){const q=Math.floor(+v.q||0),amt=+v.amt||0;
@@ -1979,6 +1979,20 @@ sheet.addEventListener("input",e=>{const t=e.target;if(t.dataset&&t.dataset.gxq)
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gx]");if(!b||!sel)return;const a=b.dataset.gx;
   if(a==="buy")gxBuy(b.dataset.id);else if(a==="cancel")gxCancel(b.dataset.id);else if(a==="list")gxList(sel)});
 setInterval(()=>{try{gxEnsure()}catch(e){}},5000);
+/* phone Market app: every player listing in the world, cheapest first per good; Buy delivers to your warehouse in that city */
+function gxPhone(){gxEnsure();const E=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
+  let h=`<div class="ph-sub" style="font-weight:700">Player listings</div>`;
+  if(!gxOn())return h+`<p class="ph-sub">Sign in to the online world (Saves › Online) to buy from other players.</p>`;
+  if(PMX.err)h+=`<p class="ph-sub" style="color:#dc2626">${E(PMX.err)}</p>`;
+  const uid=ON.user.uid,f=PMX.pf||"",lots=PMX.ask.filter(a=>!f||a.g===f).sort((a,b)=>a.g<b.g?-1:a.g>b.g?1:a.px-b.px),gs=[...new Set(PMX.ask.map(a=>a.g))];
+  if(gs.length>1)h+=`<select data-pmxf style="width:100%;margin:4px 0;padding:6px;font:inherit"><option value="">All goods</option>${gs.map(g=>`<option value="${g}" ${g===f?"selected":""}>${E(G[g][0])}</option>`).join("")}</select>`;
+  if(!lots.length)return h+`<p class="ph-sub">No player listings right now.</p>`;
+  return h+`<div class="ph-list">${lots.map(a=>{const c=CITIES[a.c],mine=a.uid===uid,wh=hasWh(c),q=PMX.q[a.id]!=null?PMX.q[a.id]:a.q|0;
+    return `<div><b>${E(G[a.g][0])} · ${E(c.name)}</b>${(a.q|0).toLocaleString("en-US")} at ${fmt(+a.px)} each · ${mine?"your listing":"from "+E(String(a.name||"?").slice(0,20))}
+    ${mine?`<button class="buy up" data-ph="pmxcan" data-k="${E(a.id)}" style="width:100%;margin-top:4px">Cancel</button>`:wh?`<span style="display:flex;gap:6px;margin-top:4px"><input data-gxq="${E(a.id)}" type="number" min="1" max="${a.q|0}" value="${q}" aria-label="Quantity" style="width:80px;padding:4px;font:inherit"><button class="buy" data-ph="pmxbuy" data-k="${E(a.id)}" style="flex:1">Buy</button></span>`:`<small style="display:block">Needs a warehouse in ${E(c.name)}</small>`}</div>`}).join("")}</div>`}
+setTimeout(()=>{PH.el.addEventListener("input",e=>{const t=e.target;if(t.dataset&&t.dataset.gxq)PMX.q[t.dataset.gxq]=t.value});
+PH.el.addEventListener("change",e=>{const t=e.target.closest("[data-pmxf]");if(!t)return;PMX.pf=t.value;phRender()});
+PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph=pmxbuy],[data-ph=pmxcan]");if(!b)return;e.stopPropagation();if(b.dataset.ph==="pmxbuy")gxBuy(b.dataset.k);else gxCancel(b.dataset.k);setTimeout(()=>{try{phRender()}catch(x){}},50)},true);},0);
 /* ---------- walkable HQ office: isometric 3D room drawn on canvas ---------- */
 const ROOM={w:10,d:8,h:3};
 const FURN=[ // x,y = back-left corner on the floor grid; w,d footprint; h height (tiles)
@@ -12856,7 +12870,7 @@ function appHtml(k){const {inc,nw}=totals();
     const near=s=>{const ce=stormCenter(s);const c=CITIES.slice().sort((a,b)=>d3.geoDistance(ce,[a.lon,a.lat])-d3.geoDistance(ce,[b.lon,b.lat]))[0];return c.name};
     return gxWx()+(act.length?act.map(s=>`<div class="ph-card storm"><b>Storm near ${near(s)}</b><span>ends in ${fmtDur(s.end-now)}</span></div>`).join(""):`<div class="ph-card"><b>Clear skies</b><span>No storms anywhere right now.</span></div>`)+
       (up?`<div class="ph-card"><b>Next storm</b><span>${new Date(up.start).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})} · ${((up.end-up.start)/3600000).toFixed(1)} h</span></div>`:"")}
-  if(k==="market"){const l=S.lst||[];return l.length?`<div class="ph-list">${l.map(x=>`<div><b>${G[x.g][0]} · ${CITIES[x.city].name}</b>${x.q<1e-6?"Sold out":gq(x.q)+" left at "+fmt(x.p)} · ${gq(x.sold||0)} sold</div>`).join("")}</div>`:`<p class="ph-sub">No listings. Post them from a city's Depot tab (needs an HQ).</p><button class="buy" data-ph="mktdepot" style="width:100%;margin-top:6px">${Object.keys(S.hq||{}).some(i=>S.hq[i])?"Open Depot":"Open HQ tab (set up an HQ first)"}</button>`}
+  if(k==="market"){const l=S.lst||[];return gxPhone()+`<div class="ph-sub" style="margin-top:10px;font-weight:700">Your NPC listings</div>`+(l.length?`<div class="ph-list">${l.map(x=>`<div><b>${G[x.g][0]} · ${CITIES[x.city].name}</b>${x.q<1e-6?"Sold out":gq(x.q)+" left at "+fmt(x.p)} · ${gq(x.sold||0)} sold</div>`).join("")}</div>`:`<p class="ph-sub">No listings. Post them from a city's Depot tab (needs an HQ).</p><button class="buy" data-ph="mktdepot" style="width:100%;margin-top:6px">${Object.keys(S.hq||{}).some(i=>S.hq[i])?"Open Depot":"Open HQ tab (set up an HQ first)"}</button>`)}
   if(k==="travel")return travelApp();
   if(k==="calc")return `<input class="ph-calc" id="phc" inputmode="decimal" placeholder="e.g. 1500*12-300" aria-label="Calculator"><div class="ph-big" id="phr" style="font-size:22px">0</div><p class="ph-sub">Type a sum. + − × ÷ and brackets work.</p>`;
   return ""}
