@@ -557,7 +557,7 @@ const BIZ=[
  {k:"airline",n:"Airline",d:"A fleet of jets based here. Every flight you take is half price, and you can buy planes and fly routes from here (HQ dashboard → Airline tab).",cost:8000000,gross:430000,up:160000,co:1,tr:1},
  {k:"airport",n:"International airport",d:"Needs an airport city. Landing fees from every flight. +20% with your airline based here.",cost:13500000,gross:760000,up:270000,co:1,tr:1},
  {k:"casino",n:"Casino",d:"Huge takings, huge payroll.",cost:6000000,gross:380000,up:120000,co:1,big:1},
- {k:"dispensary",n:"Weed dispensary",d:"Licensed cannabis store. Only opens where the government has legalised cannabis; shuts with no income if it gets banned.",cost:120000,gross:9200,up:3100}
+ {k:"dispensary",n:"Weed dispensary",d:"Licensed cannabis store. Stock it with cannabis flower from your depot here (your cannabis farm) for +35%. Needs a cannabis licence from the government (one-time fee) and only opens where cannabis is legal; shuts with no income if it gets banned.",cost:120000,gross:9200,up:3100}
 ];
 const MAXLV=5;
 /* big cities: size 5 only (10 of the 63 cities). (The big:1 opening limit was removed; isBigCity is still used elsewhere.) */
@@ -568,7 +568,7 @@ const CASINO_CITIES=["Montréal"],bigOK=c=>isBigCity(c)||CASINO_CITIES.includes(
 const CARTS=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie"],isCart=k=>CARTS.includes(k);
 function bizBlock(b,c){if(unhOn(c))return `${c.name} is uninhabitable for ${unhLeft(c)} after an ICBM strike`;if(b.cx!=null&&b.cx!==c.id)return `${b.n} is your own brand from ${(CITIES[b.cx]||{}).name}; it only trades there`;
   if(lawBan(c,b))return b.k==="dispensary"?`Cannabis is illegal in ${c.country}`:`Gambling is banned in ${c.country}`;
-  if(b.k==="airport"&&!hasAirport(c))return `${c.name} has no airport site`;if(b.k==="port"&&c.size<3)return "Seaports need a size 3+ city";return ""}
+  if(b.k==="dispensary"&&!(gov(c.country).wLic))return `Needs a cannabis licence in ${c.country} (Government tab, ${fmt(WLIC_FEE)})`;if(b.k==="airport"&&!hasAirport(c))return `${c.name} has no airport site`;if(b.k==="port"&&c.size<3)return "Seaports need a size 3+ city";return ""}
 
 /* ---------- state ---------- */
 const DAYMS=3600000, BASEKEY="meridian-tycoon-v1", SLOTKEY="meridian-active-slot";
@@ -659,7 +659,7 @@ function menuG(c,b){const m=menuOf(c,b.k);if(!m)return 1;const e=S.events&&S.eve
   return m.g+(m.small&&c.size<=2?m.small:0)+(m.big&&(c.size>=5||boom)?m.big:0)+(m.slump&&slump?m.slump:0)}
 function menuU(c,b){const m=menuOf(c,b.k);return m?m.u:1}
 function menuNet(c,b,lv,id){menuOv={[c.id+":"+b.k]:id};try{return profit(b,c,lv)-useRate(b,lv,c)*unitCost(b,c)}finally{menuOv=null}}
-const USE={cart:{burgers:2},coffeecart:{bread:1},icecream:{bread:1},taco:{beef:1,bread:1},pretzel:{bread:2},noodle:{beef:1},smoothie:{bread:1},kiosk:{bread:3},shop:{bread:4},rest:{burgers:5,beef:3},hotel:{bread:8}};
+const USE={cart:{burgers:2},coffeecart:{bread:1},icecream:{bread:1},taco:{beef:1,bread:1},pretzel:{bread:2},noodle:{beef:1},smoothie:{bread:1},kiosk:{bread:3},shop:{bread:4},rest:{burgers:5,beef:3},hotel:{bread:8},dispensary:{cannabis:2}};
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
 function profit(b,c,lv){if(unhOn(c))return 0;if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round((typeof ofP==="function"?(1+.06*ofP("mkt"))*(ofCampOn()?1.1:1):1)*b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("mars")?1.25:1)*(1+.35*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof mktMult==="function"?mktMult(c):1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(typeof gxMult==="function"?gxMult(c,b):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)*(typeof ishBiz==="function"?ishBiz(b):1)*(typeof pandMult==="function"?pandMult(b):1)*techBiz(b)*wevBiz(b)*(typeof ctTurf==="function"?ctTurf(c):1)*(typeof aucMult==="function"?aucMult(c):1)*(typeof wcBiz==="function"?wcBiz(b):1)-bizWage(b,c,lv))}
@@ -2668,6 +2668,7 @@ function gov(n){S.gov=S.gov||{};let g=S.gov[n];if(g){for(const k in LAWS)if(g.la
   const laws={};for(const k in LAWS)laws[k]=p[k];
   return S.gov[n]={party:pk,appr:45+h%25,next:Date.now()+ELECT*(.25+((h>>3)%75)/100),laws,don:{},favor:0}}
 const law=(c,k)=>gov(c.country).laws[k];
+const WLIC_FEE=50000;
 function lawBan(c,b){return (b.k==="casino"&&law(c,"casino")===1)||(b.k==="dispensary"&&law(c,"weed")===1)}
 function lawMult(c,b){let m=[1.06,1,.9][law(c,"wage")];
   if(RETAIL.includes(b.k))m*=[1,.97,.93][law(c,"tariff")];
@@ -2790,6 +2791,7 @@ function govHtml(c){const n=c.country,g=gov(n);if(!PARTIES[g.party])g.party="lib
     <div class="row"><div class="n">State contract ${g.contract?"<b>ACTIVE</b>":""}</div><div class="d">Pays you ${fmt(contractPay(n))} an hour from public money, but more than doubles the exposure risk.</div><button class="buy" data-gov="contract" data-fixed="1">${g.contract?"Cancel":"Award to yourself"}</button></div></div>`}
   {const has=uranPermit(n),fee=uranFee(),q=g.uReq,o=uranGov(n),mine=uranIGov(n),cd=urqCdOn()&&g.uDen>Date.now();
     const who=mine?"You govern here, so you approve it yourself.":o?`Decided by <b>${onEsc(o.name||"a player")}</b> (${(GOVCFG.offices[o.govR]||{n:"in office"}).n}), the player governing ${n}. If they don't answer in ${fmtDur(URQ.wait)} the AI government decides.`:`Decided by the AI government (${Math.round(uranAiOdds(n)*100)}% chance of approval; better if you hold office here, have their ear or control the government).`;
+    h+=`<div class="sec">Cannabis licence</div><div class="list"><div class="row"><div class="n">Cannabis retail licence ${g.wLic?"<b>ACTIVE</b>":""}</div><div class="d">Needed to open weed dispensaries anywhere in ${n}. One-time fee ${fmt(WLIC_FEE)}. ${g.laws.weed?"Cannabis is illegal here, so no licences are issued.":""}</div><button class="buy" data-gov="wlic" data-fixed="1" ${g.wLic||g.laws.weed||S.cash<WLIC_FEE?"disabled":""}>${g.wLic?"Licensed":"Buy "+fmt(WLIC_FEE)}</button></div></div>`;
     h+=`<div class="sec">Nuclear mining permit</div><div class="list"><div class="row"><div class="n">Nuclear mining licence ${has?"<b>ACTIVE</b>":q?"<b>PENDING</b>":""}</div>
     <div class="d">Uranium mines need this government's approval. Fee ${fmt(fee)}, refunded if refused. ${has?"":who}${q?` Waiting for ${onEsc(q.name)}.`:""}${cd?` Refused recently: retry in ${fmtDur(g.uDen-Date.now())}.`:""}</div>
     <button class="buy" data-gov="upermit" data-fixed="1" ${has||q?"":(S.cash<fee||cd?"disabled":"")}>${has?"Give up permit":q?"Withdraw application":"Apply "+fmt(fee)}</button></div></div>`;
@@ -2819,6 +2821,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)
   const g=gov(c.country),a=b.dataset.gov;
   if(a==="lobby")lobby(c,b.dataset.k,+b.dataset.dir);
   else if(a==="set"){const u=donUnit(c.country);if(S.cash<u||!g.ctrl)return;S.cash-=u;g.laws[b.dataset.k]+=+b.dataset.dir;logGov(`${c.country} decrees ${LAWS[b.dataset.k].n.toLowerCase()}: ${LAWS[b.dataset.k].v[g.laws[b.dataset.k]]}`);toast("Law changed")}
+  else if(a==="wlic"){if(g.wLic||g.laws.weed||S.cash<WLIC_FEE)return;S.cash-=WLIC_FEE;g.wLic=1;toast(`Cannabis licence granted in ${c.country}`)}
   else if(a==="upermit"){const n=c.country;if(uranPermit(n)){g.uPermit=0;toast("Permit given up")}else if(g.uReq)uranCancel(n);else uranApply(n)}
   else if(a==="uok"||a==="uno")uranRule(b.dataset.id,a==="uok")
   else if(a==="rpermit"){const n=c.country;if(rsPermit(n)&&!devGod()){g.rPermit=0;toast("Research licence given up")}else if(g.rReq)rsCancel(n);else rsApply(n)}
