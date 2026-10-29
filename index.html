@@ -1920,7 +1920,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-mk]");if(!b||
    gdask/{id}: {uid,name,c,g,q,px,at} a lot in city c; the seller's goods wait in S.gdx.esc[id]={c,g,q,px,at} until sold or cancelled.
    gdsale/{askId_buyerUid}: {to,by,byName,ask,c,g,q,px,amt,at} written by the buyer in the same transaction that lowers or deletes the lot.
    The buyer needs a warehouse in the lot's city; goods land there. The seller is paid (minus the 2% market fee) next time their game is open. */
-const PMX={on:null,ask:[],busy:{},sub:[],err:"",q:{}},PMXCFG={qMax:1000000000};
+const PMX={on:null,ask:[],busy:{},sub:[],err:"",q:{},v:{}},PMXCFG={qMax:1000000000};
 function PMXS(){let s=S.gdx;if(!s||typeof s!=="object")s=S.gdx={};if(!s.esc||typeof s.esc!=="object")s.esc={};if(!Array.isArray(s.seen))s.seen=[];return s}
 const gxOn=()=>typeof ON!=="undefined"&&!!(ON.user&&ON.db);
 const gxName=()=>{try{return (onProf().name||"Tycoon").slice(0,20)}catch(e){return "Tycoon"}};
@@ -1952,30 +1952,39 @@ function gxCancel(id){const s=PMXS(),e=s.esc[id];if(!e||PMX.busy[id])return;if(!
   ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)return e.q;const q=Math.floor(+d.data().q||0);t.delete(ref);return q})
     .then(q=>{delete PMX.busy[id];q=Math.max(0,Math.min(e.q,q));const inv=S.inv[e.c]=S.inv[e.c]||{};inv[e.g]=(+inv[e.g]||0)+q;e.q-=q;gxTidy();save();hud();toast("Listing cancelled, goods back in the warehouse");gxRefresh()},
       er=>{delete PMX.busy[id];toast("Couldn't cancel: "+(er&&er.message||er))})}
+const gxIdle=()=>(S.fleet||[]).filter(v=>!v.arr&&!v.cargo&&!v.route&&!v.job&&v.city!=null&&CITIES[v.city]);
+const gxVname=v=>`${VEH[v.type].n} #${v.id} (${CITIES[v.city].name})`;
+function gxVsel(a){const L=gxIdle(),E=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));if(!L.length)return "";const cur=PMX.v[a.id];
+  return `<select data-gxv="${E(a.id)}" aria-label="Vehicle to fetch it" style="flex:1;min-width:0;padding:4px;font:inherit;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px">${L.map(v=>`<option value="${v.id}" ${String(v.id)===String(cur)?"selected":""}>${E(gxVname(v))} · carries ${Math.floor(capU(v.type,a.g)).toLocaleString("en-US")}</option>`).join("")}</select>`}
 function gxBuy(id){if(!gxOn())return toast("Sign in to the online world to buy from other players");const a=PMX.ask.find(x=>x.id===id),uid=ON.user.uid;if(!a)return toast("That listing is gone");
   if(a.uid===uid)return toast("That's your own listing");const c=CITIES[a.c];if(!hasWh(c))return toast(`You need a warehouse in ${c.name} to receive it`);
   const q=Math.floor(+PMX.q[id]||a.q),px=+a.px,amt=Math.round(q*px*100)/100;if(q<1||q>a.q)return toast(`Enter 1 to ${a.q}`);if(S.cash<amt)return toast(`That costs ${fmt(amt)}`);
-  if(stored(c)+q*tpu(a.g)>whCap(c)+1e-9)return toast(`Not enough warehouse space in ${c.name}`);if(PMX.busy.buy)return;PMX.busy.buy=1;
+  if(stored(c)+q*tpu(a.g)>whCap(c)+1e-9)return toast(`Not enough warehouse space in ${c.name}`);const idle=gxIdle(),veh=idle.find(v=>String(v.id)===String(PMX.v[id]))||idle[0];if(!veh)return toast("You need a free vehicle to go and fetch it. Buy one or wait for one to finish its trip");
+  if(capU(veh.type,a.g)+1e-9<q)return toast(`${gxVname(veh)} carries at most ${Math.floor(capU(veh.type,a.g))} ${G[a.g][0].toLowerCase()}`);if(PMX.busy.buy)return;PMX.busy.buy=1;
   S.cash-=amt;save();hud();const db=ON.db,ar=db.collection("gdask").doc(a.id),sr=db.collection("gdsale").doc(a.id+"_"+uid),FV=window.firebase.firestore.FieldValue;
   db.runTransaction(async t=>{const d=await t.get(ar);if(!d.exists)throw new Error("that listing is gone");const v=d.data();if((v.q|0)<q)throw new Error(`only ${v.q} left`);if(+v.px!==px||v.g!==a.g||v.c!==a.c)throw new Error("the listing changed");
       if((v.q|0)===q)t.delete(ar);else t.update(ar,{q:(v.q|0)-q});t.set(sr,{to:v.uid,by:uid,byName:gxName(),ask:a.id,c:a.c,g:a.g,q,px,amt:q*px,at:FV.serverTimestamp()})})
-    .then(()=>{delete PMX.busy.buy;const inv=S.inv[c.id]=S.inv[c.id]||{};inv[a.g]=(+inv[a.g]||0)+q;delete PMX.q[id];
-      toast(`🛒 Bought ${gq(q)} ${G[a.g][0].toLowerCase()} from ${String(a.name||"a player").slice(0,20)} for ${fmt(amt)}: in your ${c.name} warehouse`);save();hud();gxRefresh()},
+    .then(()=>{delete PMX.busy.buy;delete PMX.q[id];const now=Date.now(),v=gxIdle().includes(veh)?veh:null;
+      if(v){const from=CITIES[v.city];let ms=120000;try{ms=Math.max(ms,legMs(v,from,c)||0)}catch(e){}Object.assign(v,{from:from.id,dest:c.id,cargo:{g:a.g,q},dep:now,arr:now+ms,city:null});
+        toast(`🛒 Bought ${gq(q)} ${G[a.g][0].toLowerCase()} for ${fmt(amt)}. ${VEH[v.type].n} #${v.id} is on its way to fetch it: arrives in ${c.name} in ${Math.max(1,Math.round(ms/60000))} min`)}
+      else{const inv=S.inv[c.id]=S.inv[c.id]||{};inv[a.g]=(+inv[a.g]||0)+q;toast(`🛒 Bought ${gq(q)} ${G[a.g][0].toLowerCase()} for ${fmt(amt)}: in your ${c.name} warehouse`)}save();hud();gxRefresh()},
       e=>{delete PMX.busy.buy;S.cash+=amt;save();hud();toast("Purchase failed: "+(e&&e.message||e)+" (refunded; if you just bought from this listing, wait until the seller has collected)")})}
 function gxHtml(c){gxEnsure();const E=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
   let h=`<div class="sec">From other players in ${E(c.name)}</div>`;
   if(!gxOn())return h+`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Sign in to the online world (Saves › Online) to buy what other players list here.</p>`;
   if(PMX.err)h+=`<p class="d" style="color:#dc2626;font-size:13px;padding:6px 0">${E(PMX.err)}</p>`;
   const uid=ON.user.uid,lots=PMX.ask.filter(a=>a.c===c.id).sort((a,b)=>a.g<b.g?-1:a.g>b.g?1:a.px-b.px),wh=hasWh(c);
+  if(lots.length&&!gxIdle().length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">You need a free vehicle (not on a trip or route) to go and fetch what you buy.</p>`;
   if(!lots.length)return h+`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">No player listings in ${E(c.name)} right now.</p>`;
-  if(!wh)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Build a warehouse in ${E(c.name)} to buy these. Goods are delivered there.</p>`;
+  if(!wh)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Build a warehouse in ${E(c.name)} to buy these. One of your free vehicles drives there to fetch the goods.</p>`;
   h+=`<div class="list">`;
   for(const a of lots){const mine=a.uid===uid,q=PMX.q[a.id]!=null?PMX.q[a.id]:a.q|0;
     h+=`<div class="row${mine?" own":""}"><div class="n">${E(G[a.g][0])} · ${(a.q|0).toLocaleString("en-US")} for sale</div>
     <div class="d">${mine?"Your listing":"Seller <b>"+E(String(a.name||"?").slice(0,20))+"</b>"} · <b>${fmt(+a.px)}</b> each · market ref ${fmt(mRef(c,a.g))}</div>
-    ${mine?`<button class="buy up" data-gx="cancel" data-id="${E(a.id)}">Cancel</button>`:`<span style="display:flex;gap:6px;align-items:center"><input data-gxq="${E(a.id)}" type="number" min="1" max="${a.q|0}" value="${q}" aria-label="Quantity" style="width:72px;font:inherit;padding:4px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px"><button class="buy" data-gx="buy" data-id="${E(a.id)}" ${wh?"":"disabled"}>Buy</button></span>`}</div>`}
+    ${mine?`<button class="buy up" data-gx="cancel" data-id="${E(a.id)}">Cancel</button>`:`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${gxVsel(a)}<input data-gxq="${E(a.id)}" type="number" min="1" max="${a.q|0}" value="${q}" aria-label="Quantity" style="width:72px;font:inherit;padding:4px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px"><button class="buy" data-gx="buy" data-id="${E(a.id)}" ${wh&&gxIdle().length?"":"disabled"}>Buy</button></span>`}</div>`}
   return h+`</div>`}
 sheet.addEventListener("input",e=>{const t=e.target;if(t.dataset&&t.dataset.gxq)PMX.q[t.dataset.gxq]=t.value});
+sheet.addEventListener("change",e=>{const t=e.target;if(t.dataset&&t.dataset.gxv)PMX.v[t.dataset.gxv]=t.value});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gx]");if(!b||!sel)return;const a=b.dataset.gx;
   if(a==="buy")gxBuy(b.dataset.id);else if(a==="cancel")gxCancel(b.dataset.id);else if(a==="list")gxList(sel)});
 setInterval(()=>{try{gxEnsure()}catch(e){}},5000);
@@ -1989,8 +1998,8 @@ function gxPhone(){gxEnsure();const E=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&
   if(!lots.length)return h+`<p class="ph-sub">No player listings right now.</p>`;
   return h+`<div class="ph-list">${lots.map(a=>{const c=CITIES[a.c],mine=a.uid===uid,wh=hasWh(c),q=PMX.q[a.id]!=null?PMX.q[a.id]:a.q|0;
     return `<div><b>${E(G[a.g][0])} · ${E(c.name)}</b>${(a.q|0).toLocaleString("en-US")} at ${fmt(+a.px)} each · ${mine?"your listing":"from "+E(String(a.name||"?").slice(0,20))}
-    ${mine?`<button class="buy up" data-ph="pmxcan" data-k="${E(a.id)}" style="width:100%;margin-top:4px">Cancel</button>`:wh?`<span style="display:flex;gap:6px;margin-top:4px"><input data-gxq="${E(a.id)}" type="number" min="1" max="${a.q|0}" value="${q}" aria-label="Quantity" style="width:80px;padding:4px;font:inherit"><button class="buy" data-ph="pmxbuy" data-k="${E(a.id)}" style="flex:1">Buy</button></span>`:`<small style="display:block">Needs a warehouse in ${E(c.name)}</small>`}</div>`}).join("")}</div>`}
-setTimeout(()=>{PH.el.addEventListener("input",e=>{const t=e.target;if(t.dataset&&t.dataset.gxq)PMX.q[t.dataset.gxq]=t.value});
+    ${mine?`<button class="buy up" data-ph="pmxcan" data-k="${E(a.id)}" style="width:100%;margin-top:4px">Cancel</button>`:wh?`<span style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">${gxVsel(a)||`<small style="flex-basis:100%">No free vehicle to fetch it</small>`}<input data-gxq="${E(a.id)}" type="number" min="1" max="${a.q|0}" value="${q}" aria-label="Quantity" style="width:80px;padding:4px;font:inherit"><button class="buy" data-ph="pmxbuy" data-k="${E(a.id)}" style="flex:1" ${gxIdle().length?"":"disabled"}>Buy</button></span>`:`<small style="display:block">Needs a warehouse in ${E(c.name)}</small>`}</div>`}).join("")}</div>`}
+setTimeout(()=>{PH.el.addEventListener("input",e=>{const t=e.target;if(t.dataset&&t.dataset.gxq)PMX.q[t.dataset.gxq]=t.value});PH.el.addEventListener("change",e=>{const t=e.target;if(t.dataset&&t.dataset.gxv)PMX.v[t.dataset.gxv]=t.value});
 PH.el.addEventListener("change",e=>{const t=e.target.closest("[data-pmxf]");if(!t)return;PMX.pf=t.value;phRender()});
 PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph=pmxbuy],[data-ph=pmxcan]");if(!b)return;e.stopPropagation();if(b.dataset.ph==="pmxbuy")gxBuy(b.dataset.k);else gxCancel(b.dataset.k);setTimeout(()=>{try{phRender()}catch(x){}},50)},true);},0);
 /* ---------- walkable HQ office: isometric 3D room drawn on canvas ---------- */
