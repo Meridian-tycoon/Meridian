@@ -1489,7 +1489,7 @@ const LUX=[
 const LUXK=Object.fromEntries(LUX.map(x=>[x.k,x]));
 const luxList=()=>Array.isArray(S.lux)?S.lux.filter(o=>o&&LUXK[o.k]):[];
 function luxIncome(){return luxList().reduce((a,o)=>{const x=LUXK[o.k];return a-x.up+(o.biz?x.gr:0)},0)}
-function luxAssets(){return luxList().reduce((a,o)=>a+LUXK[o.k].cost*.8,0)+gldOz()*gldP()}
+function luxAssets(){return luxList().reduce((a,o)=>a+LUXK[o.k].cost*.8,0)+gldOz()*gldP()+slvOz()*slvP()}
 /* Gold reserves: buy and sell gold bars (1 oz each). The price drifts daily, pulls back toward $2,400, gets random spikes and climbs while wars are on, so gold holds value when everything else falls. */
 const GLD={base:2400,vol:.015,war:.004,fee:.01};
 function gld(){let g=S.gold;if(!g||typeof g!=="object")g=S.gold={};g.oz=Math.max(0,Math.floor(+g.oz||0));if(!(g.p>0))g.p=GLD.base;return g}
@@ -1501,6 +1501,16 @@ function gldHtml(){const g=gld(),buy=g.p*(1+GLD.fee),sell=g.p*(1-GLD.fee),b=n=>`
   return `<div class="sec">Gold reserves</div><div class="list"><div class="row${g.oz?" own":""}"><div class="n">🪙 Gold bars <span class="tag">${fmt(g.p)}/oz</span></div><div class="d">You hold <b>${g.oz.toLocaleString()} oz</b> worth <b>${fmt(g.oz*g.p)}</b>. Gold rises when wars heat up and holds value in a crash. 1% dealer fee each way.</div>
   <span style="display:flex;flex-wrap:wrap;gap:6px;grid-column:1/-1">${b(10)}${b(100)}${b(1000)}<button class="buy up" data-life="gldsell" ${g.oz?"":"disabled"}>Sell all ${fmt(sell*g.oz)}</button></span></div></div>`}
 const luxJet=()=>luxList().some(o=>!o.biz&&LUXK[o.k].jet);
+/* Silver reserves: same setup as gold at about a tenth of the price. Silver swings harder, also climbs in wars (a bit less than gold) and drifts back toward $240. */
+const SLV={base:240,vol:.022,war:.003,fee:.01};
+function slvr(){let g=S.silver;if(!g||typeof g!=="object")g=S.silver={};g.oz=Math.max(0,Math.floor(+g.oz||0));if(!(g.p>0))g.p=SLV.base;return g}
+const slvOz=()=>slvr().oz,slvP=()=>slvr().p;
+function slvDay(){const g=slvr();let wars=0;try{const m=S.pol&&S.pol.mil;wars=m&&m.wars?Object.keys(m.wars).length:0}catch(e){}
+  const pull=(SLV.base-g.p)/SLV.base*.05,shock=Math.random()<.04?(Math.random()*.10):0;
+  g.p=Math.max(80,Math.min(1200,g.p*(1+pull+(Math.random()*2-1)*SLV.vol+Math.min(.025,wars*SLV.war)+shock)))}
+function slvHtml(){const g=slvr(),buy=g.p*(1+SLV.fee),sell=g.p*(1-SLV.fee),b=n=>`<button class="buy" data-life="slvbuy" data-n="${n}" ${S.cash<buy*n?"disabled":""}>Buy ${n} oz ${fmt(buy*n)}</button>`;
+  return `<div class="sec">Silver reserves</div><div class="list"><div class="row${g.oz?" own":""}"><div class="n">🥈 Silver bars <span class="tag">${fmt(g.p)}/oz</span></div><div class="d">You hold <b>${g.oz.toLocaleString()} oz</b> worth <b>${fmt(g.oz*g.p)}</b>. Silver swings harder than gold and also rises in wars. 1% dealer fee each way.</div>
+  <span style="display:flex;flex-wrap:wrap;gap:6px;grid-column:1/-1">${b(10)}${b(100)}${b(1000)}<button class="buy up" data-life="slvsell" ${g.oz?"":"disabled"}>Sell all ${fmt(sell*g.oz)}</button></span></div></div>`}
 // fastest kept jet: flight time multiplier (1 = no jet)
 const luxJetSpd=()=>luxList().filter(o=>!o.biz&&LUXK[o.k].jet).reduce((m,o)=>Math.min(m,LUXK[o.k].spd||.7),1);
 const luxHeli=()=>luxList().some(o=>!o.biz&&LUXK[o.k].heli);
@@ -1516,7 +1526,7 @@ function luxHtml(){const own=luxList(),now=Date.now();let h=`<div class="sec">Lu
     const cd=(o.vac||0)+12*DAYMS-now;
     h+=`<div class="row own"><div class="n">${x.n} <span class="tag boom">${o.biz?"Chartered":"Personal"}</span></div><div class="d">${o.biz?`Earning <b style="color:var(--good)">${fmt(net)}</b>/hr after upkeep`:`Upkeep ${fmt(x.up)}/hr${x.jet?` · free, ${Math.round((1-(x.spd||.7))*100)}% faster flights`:x.sea?" · sail between coastal cities":x.heli?" · fly across town":""}${cd>0?" · next vacation in "+fmtDur(cd):""}`}</div>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${o.biz?"":`<button class="buy" data-life="luxvac" data-k="${x.k}" ${cd>0?"disabled":""}>Vacation</button>`}<button class="buy up" data-life="luxmode" data-k="${x.k}">${o.biz?"Keep for me":"Run as business"}</button><button class="buy up" data-life="luxsell" data-k="${x.k}">Sell ${fmt(x.cost*.8)}</button></span></div>`}
-  return h+`</div>`+gldHtml()}
+  return h+`</div>`+gldHtml()+slvHtml()}
 /* population drives the economy: a country's people vs its starting population (S.popn[n].p0). Growth lifts demand a little,
    war/strike losses shrink markets and the job market. Bounded: demand ×0.80–1.10, hiring ×0.85–1.05. Reads S.popn directly (POPCFG is declared later). */
 function popRatio(n){const p=S.popn&&S.popn[n];return p&&p.p>0&&p.p0>0?p.p/p.p0:1}
@@ -1561,6 +1571,8 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-life]");if(!b
   else if(a==="enroll"){const e=EK[b.dataset.e],p=eduCost(e,c);if(jailed()){toast("Not from prison");return}if(S.cash<p||hasEdu(e.k)||(e.req&&!hasEdu(e.req))||(e.uni&&!uniCity(c)))return;S.cash-=p;S.edu.have[e.k]=Date.now();S.log.unshift(`Earned: ${e.n}`);S.log=S.log.slice(0,3);toast(`You earned your ${e.n}!`)}
   else if(a==="gldbuy"){const g=gld(),n=Math.max(1,+b.dataset.n||0),c0=g.p*(1+GLD.fee)*n;if(S.cash<c0)return;S.cash-=c0;g.oz+=n;toast(`Bought ${n} oz of gold for ${fmt(c0)}`)}
   else if(a==="gldsell"){const g=gld();if(!g.oz)return;if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm sale";return}const v=g.p*(1-GLD.fee)*g.oz;S.cash+=v;toast(`Sold ${g.oz} oz of gold for ${fmt(v)}`);g.oz=0}
+  else if(a==="slvbuy"){const g=slvr(),n=Math.max(1,+b.dataset.n||0),c0=g.p*(1+SLV.fee)*n;if(S.cash<c0)return;S.cash-=c0;g.oz+=n;toast(`Bought ${n} oz of silver for ${fmt(c0)}`)}
+  else if(a==="slvsell"){const g=slvr();if(!g.oz)return;if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm sale";return}const v=g.p*(1-SLV.fee)*g.oz;S.cash+=v;toast(`Sold ${g.oz} oz of silver for ${fmt(v)}`);g.oz=0}
   else if(a.startsWith("lux")){const x=LUXK[b.dataset.k];if(!x)return;if(!Array.isArray(S.lux))S.lux=[];const o=S.lux.find(q=>q&&q.k===x.k);
     if(a==="luxbuy"){if(o||S.cash<x.cost)return;S.cash-=x.cost;S.lux.push({k:x.k,biz:false,vac:0});toast(`Bought: ${x.n}`);bigMove(`the leader acquired ${x.n} for ${fmt(x.cost)}`,x.cost)}
     else if(!o)return;
@@ -2571,7 +2583,7 @@ setInterval(worldNews,4*60000);setTimeout(worldNews,20000);
 /* ---------- economy tick ---------- */
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
 let pops=[]; // floating income labels
-function simDay(quiet){const{nw}=totals();try{wrDay(nw,quiet)}catch(e){console.warn("wrDay",e)}S.day++;try{gldDay()}catch(e){}if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}try{gxDay(quiet)}catch(e){console.warn("gxDay",e)}try{flipDay(quiet)}catch(e){console.warn("flipDay",e)}try{wevDay()}catch(e){console.warn("wevDay",e)}try{ipoDay(quiet)}catch(e){console.warn("ipoDay",e)}
+function simDay(quiet){const{nw}=totals();try{wrDay(nw,quiet)}catch(e){console.warn("wrDay",e)}S.day++;try{gldDay()}catch(e){}try{slvDay()}catch(e){}if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}try{gxDay(quiet)}catch(e){console.warn("gxDay",e)}try{flipDay(quiet)}catch(e){console.warn("flipDay",e)}try{wevDay()}catch(e){console.warn("wevDay",e)}try{ipoDay(quiet)}catch(e){console.warn("ipoDay",e)}
   try{mktDay()}catch(e){console.warn("mktDay",e)}audits(quiet);simProps(quiet);
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||Math.random()>.004)continue;
     const kinds=[["Break-in at your",.04],["Equipment breakdown at your",.03],["Health inspection fine at your",.02],["Customer lawsuit against your",.06]],[t,f]=kinds[Math.floor(Math.random()*kinds.length)];
