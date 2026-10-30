@@ -583,25 +583,26 @@ service cloud.firestore {
     match /world/exinv {
       allow read: if true;
       allow create, update: if request.auth != null && exiOwnerUid() == request.auth.uid
-        && request.resource.data.keys().hasOnly(['uid', 'inv', 'at'])
+        && request.resource.data.keys().hasOnly(['uid', 'inv', 'k', 'at'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.inv is map && request.resource.data.inv.size() <= 40
         && request.resource.data.at == request.time;
       allow create: if request.auth != null
-        && request.resource.data.keys().hasOnly(['uid', 'inv', 'at'])
+        && request.resource.data.keys().hasOnly(['uid', 'inv', 'k', 'at'])
         && request.resource.data.uid == exiOwnerUid() && request.resource.data.uid != request.auth.uid
         && request.resource.data.inv is map && request.resource.data.inv.size() == 1
-        && exiQtyOk(request.resource.data.inv.keys()[0])
+        && request.resource.data.k is string && request.resource.data.inv.keys().hasOnly([request.resource.data.k])
+        && exiQtyOk(request.resource.data.k)
         && request.resource.data.at == request.time;
       allow update: if request.auth != null
         && resource.data.uid == exiOwnerUid() && resource.data.uid != request.auth.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inv', 'at'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inv', 'k', 'at'])
         && request.resource.data.inv is map && request.resource.data.inv.size() <= 40
-        && request.resource.data.inv.diff(resource.data.inv).affectedKeys().size() == 1
-        && exiQtyOk(request.resource.data.inv.diff(resource.data.inv).affectedKeys().toList()[0])
+        && request.resource.data.k is string
+        && request.resource.data.inv.diff(resource.data.inv).affectedKeys().hasOnly([request.resource.data.k])
+        && exiQtyOk(request.resource.data.k)
         && request.resource.data.at == request.time;
     }
-    // exfill/{id}: one trade with the exchange stock. amt > 0: the trader paid the owner; amt < 0: the owner owes the trader. The owner collects by deleting it.
     match /exfill/{id} {
       allow read: if request.auth != null && (resource.data.by == request.auth.uid || resource.data.to == request.auth.uid);
       allow create: if request.auth != null
