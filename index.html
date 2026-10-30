@@ -1103,19 +1103,29 @@ const TECH=[
 const TK=Object.fromEntries(TECH.map(t=>[t.k,t]));
 const canResearch=t=>!hasTech(t.k)&&(t.req||[]).every(hasTech);
 const BASEVEH=JSON.parse(JSON.stringify({truck:{cap:30,spd:400},hvtruck:{cap:60,spd:380},roadtrain:{cap:120,spd:350},ship:{cap:3000,spd:250},bulkship:{cap:8000,spd:230},plane:{cap:60,spd:2500},cargo747:{cap:1500,spd:2300}}));
-/* fleet upgrades bought in the Deliveries dashboard (Mark, 2026-10-26): engines = faster trucks, chassis = more weight per truck */
-const FUP={spd:{n:"Engine tuning",d:"Every truck drives faster",per:.08,max:30,base:250000,g:1.6,ico:"⚡"},cap:{n:"Reinforced chassis",d:"Every truck carries more weight",per:.12,max:10,base:300000,g:1.6,ico:"🏋"}};
-function fupLv(k){return Math.max(0,Math.min(FUP[k].max,+((S.fup||{})[k])||0))}
-function fupM(k){return 1+FUP[k].per*fupLv(k)}
-function fupCost(k){const F=FUP[k],l=fupLv(k);return l>=F.max?0:Math.round(F.base*Math.pow(F.g,Math.min(l,10))*Math.pow(1.3,Math.max(0,l-10)))}   // past level 10 each level costs 1.3x the last
-function fupBuy(k){const F=FUP[k];if(!F)return"";const l=fupLv(k),c=fupCost(k);if(l>=F.max)return`${F.n} is maxed out`;if(S.cash<c)return`Need ${fmt(c)} for ${F.n}`;S.cash-=c;S.fup=S.fup||{};S.fup[k]=l+1;applyTechs();return`${F.n} level ${l+1}: trucks now ${k==="spd"?"drive":"carry"} +${Math.round(F.per*(l+1)*100)}%`}
-function fupHtml(){let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Fleet upgrades</h3><span class="lx-tag">all trucks</span></div><div style="display:flex;flex-wrap:wrap;gap:12px">`;
-  for(const k in FUP){const F=FUP[k],l=fupLv(k),c=fupCost(k),mx=l>=F.max;
-    h+=`<div style="flex:1 1 240px;min-width:0;display:flex;flex-direction:column;gap:4px"><b>${F.ico} ${F.n} · Lv ${l}/${F.max}</b><small>${F.d}: now +${Math.round(F.per*l*100)}%${mx?"":`, next level +${Math.round(F.per*(l+1)*100)}%`}</small>
-      <div class="lx-bar"><i style="width:${l/F.max*100}%"></i></div>
-      <button class="lx-btn" data-dv="fup" data-k="${k}" ${mx||S.cash<c?'aria-disabled="true"':""} title="${mx?"Maxed out":S.cash<c?`Need ${fmt(c)}`:""}">${mx?"Maxed":`Upgrade · ${fmt(c)}`}</button></div>`}
-  return h+`</div><small style="display:block;margin-top:8px">Applies to trucks, heavy trucks and road trains, on top of research bonuses. Trips already on the road keep their old time.</small></div>`}
-function applyTechs(){const af=hasTech("autofreight")?1.2:1;for(const k in VEH){const c=VEH[k].cls;if(c==="truck"){VEH[k].spd=BASEVEH[k].spd*(hasTech("logi")?1.3:1)*af*fupM("spd");VEH[k].cap=BASEVEH[k].cap*(hasTech("haulage")?1.2:1)*fupM("cap")}else if(c==="ship"){VEH[k].cap=BASEVEH[k].cap*(hasTech("container")?2:1);VEH[k].spd=BASEVEH[k].spd*af}else VEH[k].spd=BASEVEH[k].spd*(hasTech("aero")?1.4:1)*(hasTech("hypersonic")?1.25:1)}}
+/* vehicle upgrades, bought per vehicle in the Deliveries dashboard "Your vehicles" list (Mark, 2026-10-30; was fleet-wide S.fup since 2026-10-26) */
+const FUP={spd:{n:"Engine tuning",d:"drives faster",per:.08,max:20,base:25000,g:1.6,ico:"⚡"},cap:{n:"Reinforced chassis",d:"carries more weight",per:.12,max:20,base:30000,g:1.6,ico:"🏋"}};
+const isTruck=v=>!!v&&!!VEH[v.type];   // every vehicle (trucks, road trains, ships, planes) can be upgraded since 2026-10-30
+function fupMig(){if(S.fupMig)return;S.fupMig=1;const o=S.fup||{};if(!(+o.spd||+o.cap))return;for(const v of S.fleet||[])if(isTruck(v)&&!v.up)v.up={spd:Math.min(FUP.spd.max,+o.spd||0),cap:Math.min(FUP.cap.max,+o.cap||0)}}   // old fleet-wide levels carry over to every truck owned at the switch
+function fupLv(v,k){fupMig();return isTruck(v)?Math.max(0,Math.min(FUP[k].max,+((v.up||{})[k])||0)):0}
+function fupM(v,k){return 1+FUP[k].per*fupLv(v,k)}
+function fupCostL(k,l){const F=FUP[k];return Math.round(F.base*Math.pow(F.g,Math.min(l,10))*Math.pow(1.3,Math.max(0,l-10)))}   // past level 10 each level costs 1.3x the last
+function fupCost(v,k){const l=fupLv(v,k);return l>=FUP[k].max?0:fupCostL(k,l)}
+function fupSpent(v){let s=0;for(const k in FUP)for(let l=0;l<fupLv(v,k);l++)s+=fupCostL(k,l);return s}
+const capV=(v,g)=>capU(v.type,g)*fupM(v,"cap");            // units of g this vehicle loads, with its own chassis upgrade
+const vCap=v=>VEH[v.type].cap*fupM(v,"cap");
+function fupBuy(id,k){const F=FUP[k],v=(S.fleet||[]).find(x=>x.id===id);if(!F||!v)return"";const l=fupLv(v,k),c=fupCost(v,k),nm=`${VEH[v.type].n} #${v.id}`;if(l>=F.max)return`${F.n} is maxed out on ${nm}`;if(S.cash<c)return`Need ${fmt(c)} for ${F.n}`;S.cash-=c;v.up=v.up||{};v.up[k]=l+1;return`${nm}: ${F.n} level ${l+1}, ${k==="spd"?"drives":"carries"} +${Math.round(F.per*(l+1)*100)}%`}
+function fupCell(v,k){const F=FUP[k],l=fupLv(v,k),c=fupCost(v,k),mx=l>=F.max;
+  return `<div class="dv-up"><b>${F.ico} ${F.n} · Lv ${l}/${F.max}</b><small>+${Math.round(F.per*l*100)}%${mx?"":`, next +${Math.round(F.per*(l+1)*100)}%`}</small><div class="lx-bar"><i style="width:${l/F.max*100}%"></i></div>
+    <button class="lx-btn" data-dv="fup" data-i="${v.id}" data-k="${k}" ${mx||S.cash<c?'aria-disabled="true"':""} title="${mx?"Maxed out":S.cash<c?`Need ${fmt(c)}`:""}">${mx?"Maxed":`Upgrade · ${fmt(c)}`}</button></div>`}
+function fupHtml(){const L=S.fleet||[];const op=window.DVVO!=null?window.DVVO:L.length<=6;   // open by default for small fleets, folded for big ones; remembers the player's choice
+  let h=`<details class="mdx-card dv-vd" ${op?"open":""} ontoggle="window.DVVO=this.open"><summary class="mdx-ch"><h3>Your vehicles</h3><span class="lx-tag">${L.length} · upgrades &amp; sell</span><span class="dv-chev">▾</span></summary>`;
+  if(!L.length)return h+`<div class="mdx-empty">No vehicles yet. Buy one at a depot.</div></details>`;
+  for(const v of L){const ok=vSellOk(v),p=vSellP(v),st=v.arr?"On the road":v.al||v.route||v.job?"Busy on a line":`Idle in ${dxE((CITIES[v.city]||{}).name||"?")}`;
+    h+=`<div class="dv-veh"><div><b>${dxE(VEH[v.type].n)} #${v.id}</b><small>${st} · ${fmtT(vCap(v))}</small></div>${isTruck(v)?fupCell(v,"spd")+fupCell(v,"cap"):`<small class="dv-up2">Engine and chassis upgrades are for trucks only</small>`}
+      <div><button class="lx-btn" style="border-color:#ef4444;color:#ef4444" data-dv="vsell" data-i="${v.id}" ${ok?"":'aria-disabled="true" title="Busy: sell it once it is back and off its line"'}>Sell · ${fmt(p)}</button></div></div>`}
+  return h+`<small style="display:block;margin-top:8px">Upgrades stack on top of research bonuses. Selling pays back part of the price and half of what you spent on upgrades. Trips already on the road keep their old time.</small></details>`}
+function applyTechs(){const af=hasTech("autofreight")?1.2:1;for(const k in VEH){const c=VEH[k].cls;if(c==="truck"){VEH[k].spd=BASEVEH[k].spd*(hasTech("logi")?1.3:1)*af;VEH[k].cap=BASEVEH[k].cap*(hasTech("haulage")?1.2:1)}else if(c==="ship"){VEH[k].cap=BASEVEH[k].cap*(hasTech("container")?2:1);VEH[k].spd=BASEVEH[k].spd*af}else VEH[k].spd=BASEVEH[k].spd*(hasTech("aero")?1.4:1)*(hasTech("hypersonic")?1.25:1)}}
 /* later research (retail ... asteroid): small multipliers that stack with everything else; all 1 when not researched, so old saves are unchanged */
 function techBiz(b){return (hasTech("retail")&&["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","gasstation","rest"].includes(b.k)?1.05:1)*(hasTech("smartbld")&&["apt","office","hotel"].includes(b.k)?1.06:1)*(hasTech("aimgmt")?1.08:1)}
 function techWage(){return hasTech("payroll")?.95:1}
@@ -1221,14 +1231,14 @@ function runIndustry(hours){let sold=0;const step=.25;let left=hours;
   rpPay();for(const id in S.inv)for(const g in S.inv[id])if(S.inv[id][g]<1e-6)delete S.inv[id][g];
   S.cash+=sold;S.earned=(S.earned||0)+sold;return sold}
 /* travel time of one leg in ms (trucking company / port bonuses included); shared by depart() and the Logistics hub's quotes */
-function legMs(v,c,d){const t=vcls(v.type),vt=v.type;return distKm(c,d)/VEH[vt].spd*DAYMS*(t==="truck"&&(S.own[c.id]||{}).trucking?.75:t==="ship"&&(S.own[c.id]||{}).port?.8:1)}
+function legMs(v,c,d){const t=vcls(v.type),vt=v.type;return distKm(c,d)/(VEH[vt].spd*fupM(v,"spd"))*DAYMS*(t==="truck"&&(S.own[c.id]||{}).trucking?.75:t==="ship"&&(S.own[c.id]||{}).port?.8:1)}
 /* esc = cargo already taken out of stock by the caller (Logistics hub shipments); otherwise g loads up to the vehicle's capacity from the city's stock */
-function depart(v,c,d,g,t,esc){t=t||Date.now();const km=distKm(c,d);let pq=0;if(esc)pq=esc.q;else if(g)pq=Math.min(capU(v.type,g),(S.inv[c.id]||{})[g]||0);
+function depart(v,c,d,g,t,esc){t=t||Date.now();const km=distKm(c,d);let pq=0;if(esc)pq=esc.q;else if(g)pq=Math.min(capV(v,g),(S.inv[c.id]||{})[g]||0);
   const fuel=vFuel(v.type,km,pq*(g||esc?tpu(esc?esc.g:g):0),c,d);if(S.cash<fuel)return false;S.cash-=fuel;
   let cargo=null;if(esc)cargo=esc;else if(g){const inv=S.inv[c.id]||{},q=pq;if(q>0){inv[g]-=q;if(inv[g]<1e-6)delete inv[g];cargo={g,q}}}
   try{fxMgr(v)}catch(e){}Object.assign(v,{from:c.id,dest:d.id,cargo,dep:t,arr:t+legMs(v,c,d),city:null});try{fxWear(v,km)}catch(e){}return true}
 function routeStep(v,t){const r=v.route;if(!r||v.arr)return;const A=CITIES[r.from],B=CITIES[r.to];let ok=true;if(unhOn(A)||unhOn(B))return; /* paused while an end is uninhabitable */
-  if(v.city===r.from){const have=(S.inv[r.from]||{})[r.g]||0;if(have>=Math.min(capU(v.type,r.g)*.5,{truck:20,ship:200,plane:12.5}[vcls(v.type)]))ok=depart(v,A,B,r.g,t)}
+  if(v.city===r.from){const have=(S.inv[r.from]||{})[r.g]||0;if(have>=Math.min(capV(v,r.g)*.5,{truck:20,ship:200,plane:12.5}[vcls(v.type)]))ok=depart(v,A,B,r.g,t)}
   else if(v.city===r.to)ok=depart(v,B,A,r.back||"",t);
   if(!ok){v.route=null;S.log.unshift(`Route stopped: not enough cash for fuel (#${v.id})`);S.log=S.log.slice(0,3)}}
 function runFleet(now){for(const v of S.fleet){let guard=0;
@@ -1332,7 +1342,7 @@ function shipFormHtml(c,v){const inv=S.inv[c.id]||{},V=VEH[v.type],ds=shipDests(
    <div id="sf-info" class="d" style="color:var(--muted)"></div>
    <button class="buy" data-act="go" data-id="${v.id}">Load up to ${fmtT(V.cap)} and go</button></div>`}
 function shipInfo(){const i=$("#sf-info");if(!i||!sel)return;const v=S.fleet.find(x=>x.id===shipForm);if(!v)return;const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,c=sel;
-  const km=distKm(c,d),q=g?Math.min(capU(v.type,g),(S.inv[c.id]||{})[g]||0):0,fuel=vFuel(v.type,km,q*(g?tpu(g):0),c,d);
+  const km=distKm(c,d),q=g?Math.min(capV(v,g),(S.inv[c.id]||{})[g]||0):0,fuel=vFuel(v.type,km,q*(g?tpu(g):0),c,d);
   i.innerHTML=`${g?`Load ${lxg(Math.floor(q))} units (${fmtT(q*tpu(g))} of ${fmtT(V.cap)}) · `:""}Fuel ${fmt(fuel)}${hqShip(c,d)<1?" (HQ link −25%)":""} · arrives in ${fmtDur(km/V.spd*DAYMS)}${g?` · ${Math.floor(q)} ${G[g][0].toLowerCase()} sells for ${fmt(px(d,g))} there vs ${fmt(px(c,g))} here (${px(d,g)*q-px(c,g)*q-fuel>=0?"+":""}${fmt(px(d,g)*q-px(c,g)*q-fuel)} trip profit)`:""}`}
 sheet.addEventListener("change",e=>{const t=e.target;if(t.id==="sf-g"||t.id==="sf-d")shipInfo();
   if(t.dataset.act==="auto"&&sel){(S.auto[sel.id]=S.auto[sel.id]||{})[t.dataset.g]=t.checked;save();toast(t.checked?`Auto-selling ${G[t.dataset.g][0].toLowerCase()} in ${sel.name}`:"Auto-sell off")}});
@@ -1359,7 +1369,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="vsell"){const v=S.fleet.find(x=>x.id===id);if(!v||!vSellOk(v)){toast("That vehicle is busy and can't be sold right now");return}
     if(!b.dataset.arm){b.dataset.arm=1;b.textContent=`Tap again: sell ${fmt(vSellP(v))}`;return}
     const p=vSellP(v);S.fleet=S.fleet.filter(x=>x!==v);if(shipForm===id)shipForm=null;S.cash+=p;toast(`Sold ${VEH[v.type].n} #${v.id} for ${fmt(p)}`)}
-  else if(a==="go"){const v=S.fleet.find(x=>x.id===id);if(!v||v.job||v.arr||v.cargo){toast("That vehicle is busy");return}const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,km=distKm(c,d),fuel=vFuel(v.type,km,g?Math.min(capU(v.type,g),inv0(c,g))*tpu(g):0,c,d);
+  else if(a==="go"){const v=S.fleet.find(x=>x.id===id);if(!v||v.job||v.arr||v.cargo){toast("That vehicle is busy");return}const V=VEH[v.type],d=CITIES[+$("#sf-d").value],g=$("#sf-g").value,km=distKm(c,d),fuel=vFuel(v.type,km,g?Math.min(capV(v,g),inv0(c,g))*tpu(g):0,c,d);
     if(S.cash<fuel){toast(`Need ${fmt(fuel)} for fuel`);return}
     depart(v,c,d,g);v.al=null;const rep=$("#sf-r")&&$("#sf-r").checked;v.route=rep&&g?{from:c.id,to:d.id,g,back:$("#sf-b").value}:null;
     shipForm=null;toast(rep&&g?`Route set: ${c.name} ⇄ ${d.name}`:`${V.n} #${v.id} left for ${d.name}`)}
@@ -1956,12 +1966,12 @@ function gxCancel(id){const s=PMXS(),e=s.esc[id];if(!e||PMX.busy[id])return;if(!
 const gxIdle=()=>(S.fleet||[]).filter(v=>!v.arr&&!v.cargo&&!v.route&&!v.job&&v.city!=null&&CITIES[v.city]);
 const gxVname=v=>`${VEH[v.type].n} #${v.id} (${CITIES[v.city].name})`;
 function gxVsel(a){const L=gxIdle(),E=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));if(!L.length)return "";const cur=PMX.v[a.id];
-  return `<select data-gxv="${E(a.id)}" aria-label="Vehicle to fetch it" style="flex:1;min-width:0;padding:4px;font:inherit;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px">${L.map(v=>`<option value="${v.id}" ${String(v.id)===String(cur)?"selected":""}>${E(gxVname(v))} · carries ${Math.floor(capU(v.type,a.g)).toLocaleString("en-US")}</option>`).join("")}</select>`}
+  return `<select data-gxv="${E(a.id)}" aria-label="Vehicle to fetch it" style="flex:1;min-width:0;padding:4px;font:inherit;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px">${L.map(v=>`<option value="${v.id}" ${String(v.id)===String(cur)?"selected":""}>${E(gxVname(v))} · carries ${Math.floor(capV(v,a.g)).toLocaleString("en-US")}</option>`).join("")}</select>`}
 function gxBuy(id){if(!gxOn())return toast("Sign in to the online world to buy from other players");const a=PMX.ask.find(x=>x.id===id),uid=ON.user.uid;if(!a)return toast("That listing is gone");
   if(a.uid===uid)return toast("That's your own listing");const c=CITIES[a.c];if(!hasWh(c))return toast(`You need a warehouse in ${c.name} to receive it`);
   const q=Math.floor(+PMX.q[id]||a.q),px=+a.px,amt=Math.round(q*px*100)/100;if(q<1||q>a.q)return toast(`Enter 1 to ${a.q}`);if(S.cash<amt)return toast(`That costs ${fmt(amt)}`);
   if(stored(c)+q*tpu(a.g)>whCap(c)+1e-9)return toast(`Not enough warehouse space in ${c.name}`);const idle=gxIdle(),veh=idle.find(v=>String(v.id)===String(PMX.v[id]))||idle[0];if(!veh)return toast("You need a free vehicle to go and fetch it. Buy one or wait for one to finish its trip");
-  if(capU(veh.type,a.g)+1e-9<q)return toast(`${gxVname(veh)} carries at most ${Math.floor(capU(veh.type,a.g))} ${G[a.g][0].toLowerCase()}`);if(PMX.busy.buy)return;PMX.busy.buy=1;
+  if(capV(veh,a.g)+1e-9<q)return toast(`${gxVname(veh)} carries at most ${Math.floor(capV(veh,a.g))} ${G[a.g][0].toLowerCase()}`);if(PMX.busy.buy)return;PMX.busy.buy=1;
   S.cash-=amt;save();hud();const db=ON.db,ar=db.collection("gdask").doc(a.id),sr=db.collection("gdsale").doc(a.id+"_"+uid),FV=window.firebase.firestore.FieldValue;
   db.runTransaction(async t=>{const d=await t.get(ar);if(!d.exists)throw new Error("that listing is gone");const v=d.data();if((v.q|0)<q)throw new Error(`only ${v.q} left`);if(+v.px!==px||v.g!==a.g||v.c!==a.c)throw new Error("the listing changed");
       if((v.q|0)===q)t.delete(ar);else t.update(ar,{q:(v.q|0)-q});t.set(sr,{to:v.uid,by:uid,byName:gxName(),ask:a.id,c:a.c,g:a.g,q,px,amt:q*px,at:FV.serverTimestamp()})})
@@ -9129,7 +9139,7 @@ function lxIncoming(d,g,wt){const X=LX();let t=0;const W=wt?tpu:()=>1;
 function lxSpace(d){return hasWh(d)?Math.max(0,whCap(d)-stored(d)-lxIncoming(d,"",1)):0}   // free TONNES incl. inbound
 const lxSpaceU=(d,g)=>lxSpace(d)/tpu(g);                                                  // free room in units of good g
 /* ----- shipping plans (pure: no state is changed) ----- */
-function lxLegs(vs,c,d,q,g){const km=distKm(c,d),w=g?tpu(g):1,st=vs.map(v=>({t:0,n:0,cap:capU(v.type,g||""),leg:legMs(v,c,d),ret:vFuel(v.type,km,0,c,d),ty:v.type}));
+function lxLegs(vs,c,d,q,g){const km=distKm(c,d),w=g?tpu(g):1,st=vs.map(v=>({t:0,n:0,cap:capV(v,g||""),leg:legMs(v,c,d),ret:vFuel(v.type,km,0,c,d),ty:v.type}));
   let rem=q,trips=0,last=0,fuel=0,f1=0,first=Infinity,guard=0;
   while(rem>1e-9&&guard++<400){let b=st[0];for(const x of st)if(x.t<b.t)b=x;const ld=Math.min(b.cap,rem),of=vFuel(b.ty,km,ld*w,c,d);rem-=ld;trips++;fuel+=of+(b.n>0?b.ret:0);if(b.n===0)f1+=of;
     const arr=b.t+b.leg;last=Math.max(last,arr);first=Math.min(first,arr);b.t=arr+b.leg;b.n++}
@@ -9179,7 +9189,7 @@ function lxVeh(v,t){const X=LX(),j=X.jobs.find(x=>x.id===v.job);if(!j){v.job=0;r
   if(v.arr||v.cargo||v.route||v.city==null||!CITIES[v.city])return;const A=CITIES[j.from],B=CITIES[j.to],V=VEH[v.type];j.why="";
   if(j.left>1e-6){
     if(v.city===j.from){const why=lxBlock(A,B)||(!lxVehOK(v,A,B)?"Trucks can't cross oceans":"");if(why){j.why=why;return}
-      const q=Math.min(capU(v.type,j.g),j.left),fuel=vFuel(v.type,distKm(A,B),q*tpu(j.g),A,B);
+      const q=Math.min(capV(v,j.g),j.left),fuel=vFuel(v.type,distKm(A,B),q*tpu(j.g),A,B);
       if(depart(v,A,B,"",t,{g:j.g,q,job:j.id})){j.left=j.left-q<1e-6?0:j.left-q;j.cost+=fuel}else j.why="Not enough cash for fuel"}
     else{const C=CITIES[v.city],why=lxBlock(C,A);if(why){j.why=why;return}const fuel=vFuel(v.type,distKm(C,A),0,C,A);if(depart(v,C,A,"",t))j.cost+=fuel;else j.why="Not enough cash for fuel"}}
   else v.job=0;
@@ -9260,7 +9270,7 @@ function fxTier(){const t=FX().tons;let i=0;for(let k=0;k<FXT.length;k++)if(t>=F
 function fxHire(){return (.4+.6*fuelM())*(1-fxTier().disc)}
 function fxCap(){return lxc().maxJobs+lxc().maxSh+fxTier().jobs}
 /* resale: 60% of what you paid, scaled by condition; only parked, empty, idle vehicles (no job, route, Auto-line or recall) */
-const vSellP=v=>Math.round((v.paid||(VEH[v.type]||{}).cost||0)*.6*fxCond(v)/100),vSellOk=v=>!!v&&!v.arr&&!v.job&&!v.route&&!v.al&&!v.cargo&&v.hm==null;
+const vSellP=v=>Math.round((v.paid||(VEH[v.type]||{}).cost||0)*.6*fxCond(v)/100+fupSpent(v)*.5),vSellOk=v=>!!v&&!v.arr&&!v.job&&!v.route&&!v.al&&!v.cargo&&v.hm==null;
 function fxCond(v){return v&&v.cond>=0&&v.cond<=100?+v.cond:100}
 function fxUp(v){return vPrice(v)*FXM*(1+(100-fxCond(v))/100)}
 function fxFee(v){return Math.round(vPrice(v)*FXS*(100-fxCond(v))/100*(1-fxTier().sv))}
@@ -9472,7 +9482,7 @@ function lxOrdersTab(lg){const X=LX();let h="";
   return h+`</div>`}
 function lxFleetTab(lg){const X=LX(),now=Date.now();let h="";
   const idle=S.fleet.filter(v=>!v.arr).length;
-  h+=`<div class="lx-k"><div><span>Vehicles</span><b>${S.fleet.length}</b><small>${idle} idle · ${S.fleet.length-idle} moving</small></div><div><span>Own jobs</span><b>${X.jobs.length}</b><small>shipments in progress</small></div><div><span>Hired</span><b>${X.sh.length}</b><small>with rival carriers</small></div><div><span>Capacity</span><b>${fmtT(S.fleet.reduce((a,v)=>a+VEH[v.type].cap,0))}</b><small>per wave</small></div></div>`;
+  h+=`<div class="lx-k"><div><span>Vehicles</span><b>${S.fleet.length}</b><small>${idle} idle · ${S.fleet.length-idle} moving</small></div><div><span>Own jobs</span><b>${X.jobs.length}</b><small>shipments in progress</small></div><div><span>Hired</span><b>${X.sh.length}</b><small>with rival carriers</small></div><div><span>Capacity</span><b>${fmtT(S.fleet.reduce((a,v)=>a+vCap(v),0))}</b><small>per wave</small></div></div>`;
   h+=fxCard();
   h+=`<div class="mdx-card"><div class="mdx-ch"><h3>Shipments</h3></div>`;
   if(!X.jobs.length&&!X.sh.length)h+=`<div class="mdx-empty">No shipments in progress. Use the Send tab or a standing order.</div>`;
@@ -10714,7 +10724,7 @@ function alGasFill(){for(const id in S.own){const c=CITIES[id];if(!c||unhOn(c)||
     for(const b of alGas()){const r=alGasRate(c,b);if(r<=0)continue;const key=bkey(c,b.k),have=S.stock[key]||0;if(have>=r*AL_LOW)continue;
       const q=Math.floor(Math.min(inv0(c,"fuel"),r*AL_FILL-have));if(q>=1)gasTake(c,key,{dep:q,buy:0,p:unitCost(b,c)})}}}
 /* load q units of g at w for a fetch vehicle (own stock first, else buy at w's market); returns units loaded, 0 if none */
-function alLoad(v,a,w,N,spare,now){const g=a.g,cap=capU(v.type,g),fuel=q=>vFuel(v.type,distKm(w,N),q*tpu(g),w,N);
+function alLoad(v,a,w,N,spare,now){const g=a.g,cap=capV(v,g),fuel=q=>vFuel(v.type,distKm(w,N),q*tpu(g),w,N);
   if(!a.buy){const q=Math.floor(Math.min(a.q,cap,Math.max(0,spare(w,g))));if(q>=1&&S.cash>=fuel(q)){const inv=S.inv[w.id];inv[g]-=q;if(inv[g]<1e-6)delete inv[g];return depart(v,w,N,"",now,{g,q})?q:(inv[g]=(inv[g]||0)+q,0)}
     if(q>=1){a.why="cash";return 0}if(!(alMkt(g)&&buyGood(w,g,1).v<=alLocal(N,g,1))){a.why="out";return 0}a.buy=1}   // own stock ran out at the source: buy there only if not dearer than at home
   a.why="cash";if(!alMkt(g)){a.why="out";return 0}
@@ -10745,7 +10755,7 @@ function alFetch(n,spare,now){const N=n.c,g=n.g,mkt=alMkt(g);
   if(!src.length)return "src";if(!idle.length)return "veh";
   let poor=0,dear=0,local=0;const by={};
   for(const v of idle)(by[v.city]=by[v.city]||[]).push(v);
-  const plan=(s,v)=>{const w=s.w,H=CITIES[v.city];let q=Math.min(capU(v.type,g),n.want);if(s.own)q=Math.min(q,spare(w,g));q=Math.max(1,Math.floor(q));
+  const plan=(s,v)=>{const w=s.w,H=CITIES[v.city];let q=Math.min(capV(v,g),n.want);if(s.own)q=Math.min(q,spare(w,g));q=Math.max(1,Math.floor(q));
     const fuel=vFuel(v.type,km(H,w),0,H,w)+vFuel(v.type,km(w,N),q*tpu(g),w,N)+(H!==N?vFuel(v.type,km(N,H),0,N,H):0),buy=s.own?0:buyGood(w,g,q).v;
     return {s,v,H,q,fuel,buy,u:(fuel+buy)/q}};
   const pick=(s,vs)=>{const ps=vs.map(v=>plan(s,v)),ok=ps.filter(x=>alWorth(x.fuel,x.q,N,g));if(ps.length&&!ok.length)dear=1;return ok.sort((a,b)=>a.u-b.u)[0]};
@@ -10789,9 +10799,9 @@ function alTick(now){S.alMiss=S.alMiss||{};
     // several trips at once: keep sending while stock + inbound is under AL_FILL hours, free vehicles exist and fewer than AL_PAR run
     while(n.trips<AL_PAR&&n.want>=(sent||!n.low?min:1)){
       let best=null;for(const id in S.wh){const w=CITIES[id];if(!w||w===n.c||S.wh[id]==null||spare(w,n.g)<1||lxBlock(w,n.c))continue;
-        const km=distKm(w,n.c),pq=v=>Math.max(1,Math.min(capU(v.type,n.g),spare(w,n.g),n.want)),pf=v=>vFuel(v.type,km,pq(v)*tpu(n.g),w,n.c)+vFuel(v.type,km,0,n.c,w);
+        const km=distKm(w,n.c),pq=v=>Math.max(1,Math.min(capV(v,n.g),spare(w,n.g),n.want)),pf=v=>vFuel(v.type,km,pq(v)*tpu(n.g),w,n.c)+vFuel(v.type,km,0,n.c,w);
         const vs=lxIdle(w).filter(v=>!v.al&&lxVehOK(v,w,n.c)&&alWorth(pf(v),pq(v),n.c,n.g)&&pf(v)/pq(v)<lu).sort((a,b)=>pf(a)/pq(a)-pf(b)/pq(b));if(!vs.length)continue;if(!best||km<best.km)best={w,v:vs[0],km}}
-      if(best){const {w,v}=best,q=Math.max(1,Math.min(capU(v.type,n.g),spare(w,n.g),n.want)),inv=S.inv[w.id];
+      if(best){const {w,v}=best,q=Math.max(1,Math.min(capV(v,n.g),spare(w,n.g),n.want)),inv=S.inv[w.id];
         const keep=inv[n.g]-q;inv[n.g]=q;                     // depart() loads min(capacity, stock): expose only q
         const ok=depart(v,w,n.c,n.g,now);inv[n.g]=(inv[n.g]||0)+keep;if(inv[n.g]<1e-6)delete inv[n.g];
         if(!ok){r="fuel$";break}
@@ -10822,9 +10832,9 @@ function alPlan(R,now){S.dvl=S.dvl||[];const P=S.alPause||{},cyc=(v,W,N)=>Math.m
     let guard=0;while(cov<rate&&made<24&&guard++<24){
       const ws=Object.keys(S.wh).map(i=>CITIES[i]).filter(w=>w&&w!==N&&S.wh[w.id]!=null&&inv0(w,g)>=1&&!lxBlock(w,N)).sort((a,b)=>distKm(a,N)-distKm(b,N));
       if(!ws.length&&alMkt(g))ws.push(...Object.keys(S.wh).map(i=>CITIES[i]).filter(w=>w&&w!==N&&S.wh[w.id]!=null&&!lxBlock(w,N)).sort((a,b)=>distKm(a,N)-distKm(b,N)));   // no depot holds it: nearest depot city, buying a load at its market each trip
-      let pick=null;for(const w of ws){const vs=S.fleet.filter(v=>dvIdle(v)&&!S.dvl.some(x=>x.on&&x.v===v.id)&&lxVehOK(v,CITIES[v.city],w)&&lxVehOK(v,w,N)&&capU(v.type,g)>=1).sort((a,b)=>distKm(CITIES[a.city],w)-distKm(CITIES[b.city],w));if(vs.length){pick={w,v:vs[0]};break}}
+      let pick=null;for(const w of ws){const vs=S.fleet.filter(v=>dvIdle(v)&&!S.dvl.some(x=>x.on&&x.v===v.id)&&lxVehOK(v,CITIES[v.city],w)&&lxVehOK(v,w,N)&&capV(v,g)>=1).sort((a,b)=>distKm(CITIES[a.city],w)-distKm(CITIES[b.city],w));if(vs.length){pick={w,v:vs[0]};break}}
       if(!pick){if(!ws.length)alOnce(id+":"+g+"P",`no depot of yours holds ${G[g][0].toLowerCase()} to run a line to ${N.name}`);else alOnce(id+":"+g+"V",`no free vehicle for a ${G[g][0].toLowerCase()} line to ${N.name}`);break}
-      const {w,v}=pick,line={id:S.nid++,v:v.id,src:w.id,to:N.id,g,q:capU(v.type,g),on:true,n:0,qd:0,why:"",t:now,au:1};S.dvl.push(line);mine.push(line);cov+=thr(line);made++;
+      const {w,v}=pick,line={id:S.nid++,v:v.id,src:w.id,to:N.id,g,q:capV(v,g),on:true,n:0,qd:0,why:"",t:now,au:1};S.dvl.push(line);mine.push(line);cov+=thr(line);made++;
       alLog(`${VEH[v.type].n} #${v.id} now runs ${G[g][0].toLowerCase()} ${w.name} → ${N.name} non-stop`)}}}
   if(made)dvLines(now)}
 /* Offline catch-up: when a long gap is being accrued and Auto-line is on (or its vehicles are still out), step the gap in
@@ -10871,9 +10881,9 @@ function dvStep(v,now,depth){const a=v.al,line=a.ln?dvLine(a.ln):null,live=a.ln?
     if(v.city!==a.src){const b=lxBlock(here,W);if(b||!lxVehOK(v,here,W)){why(b||"trucks can't cross oceans");if(line)return;a.st="back"}
       else{if(depart(v,here,W,"",now))why("");else why("not enough cash for fuel");return}}
     else{const b=lxBlock(W,N);if(b){why(b);return}
-      const q=Math.floor(Math.min(a.q,capU(v.type,a.g),inv0(W,a.g)));
+      const q=Math.floor(Math.min(a.q,capV(v,a.g),inv0(W,a.g)));
       if(q<1&&line&&line.au&&alMkt(a.g)){   // Auto-line standing line, depot empty: buy a load at that city's market and bring it
-        let bq=Math.floor(Math.min(a.q,capU(v.type,a.g)));const B=bq>=1?buyGood(W,a.g,bq):null,f=vFuel(v.type,distKm(W,N),bq*tpu(a.g),W,N);
+        let bq=Math.floor(Math.min(a.q,capV(v,a.g)));const B=bq>=1?buyGood(W,a.g,bq):null,f=vFuel(v.type,distKm(W,N),bq*tpu(a.g),W,N);
         if(!B||S.cash<B.v+f){why(`not enough cash to buy ${gn} in ${W.name}`);return}
         S.cash-=B.v;B.commit();if(!depart(v,W,N,"",now,{g:a.g,q:bq})){S.cash+=B.v;why("not enough cash for fuel");return}
         a.st="del";a.lq=bq;why("");return}
@@ -10910,7 +10920,7 @@ function dvCreate(f,now){const v=S.fleet.find(x=>x.id===+f.v),W=CITIES[f.from],N
   if(!v||!dvIdle(v))return "That vehicle is no longer free.";if(!W||!hasWh(W))return "Pick a depot to load from.";
   if(!N||N===W||!dvCityOk(N))return "Pick a destination city.";if(!G[g])return "Pick the goods.";
   const H=CITIES[v.city],b=lxBlock(W,N)||(H!==W?lxBlock(H,W):"");if(b)return b;if(!lxVehOK(v,H,W)||!lxVehOK(v,W,N))return "Trucks can't cross oceans.";
-  const q=Math.floor(Math.min(+f.q||0,capU(v.type,g),inv0(W,g)));if(q<1)return `No ${G[g][0].toLowerCase()} in ${W.name}.`;
+  const q=Math.floor(Math.min(+f.q||0,capV(v,g),inv0(W,g)));if(q<1)return `No ${G[g][0].toLowerCase()} in ${W.name}.`;
   const z=dvEst(v,W,N,g,q,f.rep),need=H===W?z.f1:z.f0;if(S.cash<need)return `Need ${fmt(need)} for fuel.`;
   if(f.rep){const line={id:S.nid++,v:v.id,src:W.id,to:N.id,g,q,on:true,n:0,qd:0,why:"",t:now};S.dvl.push(line);dvLines(now);
     if(!v.arr&&!(v.al&&v.al.st==="del")){const w=line.why;S.dvl=S.dvl.filter(x=>x!==line);if(v.al&&v.al.ln===line.id)v.al=null;return w||"Could not start that line."}
@@ -10929,6 +10939,9 @@ function dvCss(){if(document.getElementById("dv-css"))return;const st=document.c
 .dv-k b{display:block;font:800 21px/1.2 Figtree,sans-serif;letter-spacing:-.02em;margin-top:2px;color:var(--dxink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dv-k small{display:block;font:500 11.5px Figtree,sans-serif;color:var(--dxmut2);margin-top:2px}
 .dv-k .lx-btn{margin-top:6px;width:100%}
+.dv-vd>summary{cursor:pointer;list-style:none}.dv-vd>summary::-webkit-details-marker{display:none}.dv-chev{margin-left:auto;transition:transform .2s}.dv-vd:not([open]) .dv-chev{transform:rotate(-90deg)}
+.dv-veh{display:grid;grid-template-columns:minmax(150px,1fr) 2fr 2fr 140px;gap:12px;align-items:center;border-top:1px solid rgba(127,140,200,.3);padding:10px 0}.dv-veh>div>small,.dv-up small{display:block}.dv-up{display:flex;flex-direction:column;gap:3px;min-width:0}.dv-up2{grid-column:span 2}
+@media(max-width:700px){.dv-veh{grid-template-columns:1fr}.dv-up2{grid-column:auto}}
 .dv-tbl{width:100%;border-collapse:collapse;font:500 13px Figtree,sans-serif}
 .dv-tbl th{text-align:left;font-weight:600;color:var(--dxmut);font-size:12px;padding:6px 8px;background:var(--dxsoft);white-space:nowrap}
 .dv-tbl th:first-child{border-radius:8px 0 0 8px}.dv-tbl th:last-child{border-radius:0 8px 8px 0;text-align:right}
@@ -11004,7 +11017,7 @@ function dvRows(){const now=Date.now(),out=[];
       can=ret&&!v.route?dvB("x",v.id,"Cancel",{off:"Already heading home"}):!a&&!v.route?dvB("x",v.id,"Cancel",{off:"A manual trip can only be recalled"}):dvB("cancel",v.id,DV.arm==="c"+v.id?"Sure?":"Cancel",{cls:"red",tip:a&&a.cu?(a.ln?"Turn back and delete its line":"Turn back; delivery cancelled"):a?"Turn back and pause this Auto-line line":"Turn back and stop the route"})}
     out.push({v,ty,tc,plan,st,sc,load,fuel,rec,edit,can,a})}
   const rk={Outbound:0,Loading:1,Waiting:2,Returning:3,Parked:4};return out.sort((x,y)=>(rk[x.st]-rk[y.st])||((x.v.arr||9e15)-(y.v.arr||9e15)))}
-function dvEditRow(v){const a=v.al,e=DV.ed,W=CITIES[a.src],cap=Math.floor(capU(v.type,a.g));
+function dvEditRow(v){const a=v.al,e=DV.ed,W=CITIES[a.src],cap=Math.floor(capV(v,a.g));
   const ds=a.cu?CITIES.filter(c=>c!==W&&dvCityOk(c)&&lxVehOK(v,W,c)&&!lxBlock(W,c)).sort((x,y)=>distKm(W,x)-distKm(W,y)):[];
   return `<tr class="dv-ed"><td class="dv-w" colspan="6"><div class="dv-edf"><label>Quantity (max ${lxg(cap)})<input class="lx-in" type="number" min="1" max="${cap}" step="1" data-dve="q" value="${dxE(e.q)}"></label>${a.cu?`<label>Destination<select class="lx-in" data-dve="to">${ds.map(c=>lxOpt(c.id,`${c.name} · ${Math.round(distKm(W,c)).toLocaleString()} km`,e.to)).join("")}</select></label>`:`<label>Destination<input class="lx-in" value="${dxE(dvCn(a.to))}" disabled title="Auto-line picks the destination"></label>`}
     <span style="display:flex;gap:6px">${dvB("edsave",v.id,"Save",{cls:"pri"})}${dvB("edx",v.id,"Close")}</span></div></td></tr>`}
@@ -11015,8 +11028,8 @@ function dvForm(){const f=DV.f,F={vs:[],ws:[],gs:[],ds:[],v:null,W:null,g:"",N:n
   F.gs=GK.filter(g=>inv0(F.W,g)>=1);if(!F.gs.includes(f.g))f.g=F.gs[0];F.g=f.g;
   F.ds=CITIES.filter(c=>c!==F.W&&dvCityOk(c)&&lxVehOK(F.v,F.W,c)&&!lxBlock(F.W,c)).sort((x,y)=>distKm(F.W,x)-distKm(F.W,y));
   if(!F.ds.length)return F;if(!F.ds.some(c=>c.id===+f.to))f.to=F.ds[0].id;F.N=CITIES[f.to];
-  F.max=Math.floor(Math.min(capU(F.v.type,F.g),inv0(F.W,F.g)));if(!(f.q>0))f.q=F.max;F.q=Math.max(1,Math.min(F.max,Math.floor(f.q)));return F}
-function dvEstHtml(F){if(!F.N)return "";const q=Math.max(1,Math.min(F.max,Math.floor(DV.f.q||0)||F.max)),z=dvEst(F.v,F.W,F.N,F.g,q,DV.f.rep),warn=+DV.f.q>F.max?`<span class="w">Capped at ${lxg(F.max)} (${inv0(F.W,F.g)<capU(F.v.type,F.g)?"stock in "+dxE(F.W.name):"vehicle capacity"})</span>`:"";
+  F.max=Math.floor(Math.min(capV(F.v,F.g),inv0(F.W,F.g)));if(!(f.q>0))f.q=F.max;F.q=Math.max(1,Math.min(F.max,Math.floor(f.q)));return F}
+function dvEstHtml(F){if(!F.N)return "";const q=Math.max(1,Math.min(F.max,Math.floor(DV.f.q||0)||F.max)),z=dvEst(F.v,F.W,F.N,F.g,q,DV.f.rep),warn=+DV.f.q>F.max?`<span class="w">Capped at ${lxg(F.max)} (${inv0(F.W,F.g)<capV(F.v,F.g)?"stock in "+dxE(F.W.name):"vehicle capacity"})</span>`:"";
   return `<div><span>Load</span><b>${dxE(dvGn(F.g))} × ${lxg(q)} · ${fmtT(q*tpu(F.g))}</b></div>${z.go?`<div><span>Drive to ${dxE(F.W.name)} first</span><b>${fmtDur(z.go)} · ${fmt(z.f0)} fuel</b></div>`:""}
   <div><span>Arrives in ${dxE(F.N.name)}</span><b>${fmtDur(z.arr)}</b></div><div><span>${DV.f.rep?`Back in ${dxE(F.W.name)} for the next load`:"Back home"}</span><b>${fmtDur(z.done)}</b></div>
   <div><span>Fuel ${DV.f.rep?"(first round trip)":"(whole trip)"}</span><b>${fmt(z.fuel)}</b></div>${DV.f.rep?`<div><span>Each later round trip</span><b>${fmtDur(z.ms1+z.ms2)} · ${fmt(z.f1+z.f2)} fuel</b></div>`:""}
@@ -11030,7 +11043,7 @@ function dvFormHtml(){const F=dvForm(),f=DV.f;
     <div><span>Load</span><b>${dxE(dvGn(F.g))} × ${lxg(q)}</b></div><div><span>Arrives in</span><b>${fmtDur(z.arr)}</b></div><div><span>Fuel</span><b>${fmt(z.fuel)}${f.rep?" first round trip":""}</b></div>
     ${f.rep?`<div><span>Repeats</span><b>until you cancel it</b></div>`:""}</div>
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">${dvB("confirm",0,f.rep?"Confirm line":"Confirm & send",{cls:"pri"})}${dvB("back",0,"Back")}</div></div>`}
-  return `<div class="lx-f"><label>Vehicle (free)<select class="lx-in" data-dvf="v">${F.vs.map(v=>lxOpt(v.id,`${VEH[v.type].n} #${v.id} · in ${dvCn(v.city)} · ${fmtT(VEH[v.type].cap)}`,f.v)).join("")}</select></label>
+  return `<div class="lx-f"><label>Vehicle (free)<select class="lx-in" data-dvf="v">${F.vs.map(v=>lxOpt(v.id,`${VEH[v.type].n} #${v.id} · in ${dvCn(v.city)} · ${fmtT(vCap(v))}`,f.v)).join("")}</select></label>
     <div class="lx-row2"><label>From depot<select class="lx-in" data-dvf="from">${F.ws.map(c=>lxOpt(c.id,c.name,f.from)).join("")}</select></label>
     <label>Goods<select class="lx-in" data-dvf="g">${F.gs.map(g=>lxOpt(g,`${dvGn(g)} · ${lxg(inv0(F.W,g))} in stock`,f.g)).join("")}</select></label></div>
     <div class="lx-row2"><label>To city<select class="lx-in" data-dvf="to">${F.ds.map(c=>lxOpt(c.id,`${c.name} · ${Math.round(distKm(F.W,c)).toLocaleString()} km`,f.to)).join("")}</select></label>
@@ -11094,7 +11107,7 @@ function dvLinesHtml(){const R=alRates(),P=S.alPause||{},src=alTick.src||{};let 
       h+=`<tr><td data-l="Line"><b>${dxE(dvCn(x.src))} → ${dxE(dvCn(x.to))}</b><small>${v?`${dxE(VEH[v.type].n)} #${v.id}`:"no vehicle"} · custom line</small></td><td data-l="Load">${dxE(dvGn(x.g))} × ${lxg(x.q)}</td><td data-l="Done">${x.n||0} trips<small>${lxg(x.qd||0)} delivered</small></td>
       <td data-l="Status">${x.on?`<span class="dv-st ${x.why?"p":"o"}">${x.why?"Waiting":run?"Running":"Starting"}</span>${x.why?`<small>${dxE(x.why)}</small>`:""}`:`<span class="dv-st p">Paused</span>${x.why?`<small>${dxE(x.why)}</small>`:""}`}</td>
       <td class="dv-w"><div class="dv-a">${dvB("ledit",x.id,DV.ed&&DV.ed.k===k?"Close":"Edit")}${x.on?dvB("lpause",x.id,"Pause",{tip:"The trip under way finishes, then the vehicle parks at the source depot"}):dvB("lres",x.id,"Resume")}${dvB("lcan",x.id,DV.arm==="l"+x.id?"Sure?":"Cancel",{cls:"red",tip:"Delete the line; a load on the road is still delivered"})}</div></td></tr>`;
-      if(DV.ed&&DV.ed.k===k){const W=CITIES[x.src],ds=CITIES.filter(c=>c!==W&&dvCityOk(c)&&(!v||lxVehOK(v,W,c))).sort((p,q)=>distKm(W,p)-distKm(W,q)),cap=v?Math.floor(capU(v.type,x.g)):x.q;
+      if(DV.ed&&DV.ed.k===k){const W=CITIES[x.src],ds=CITIES.filter(c=>c!==W&&dvCityOk(c)&&(!v||lxVehOK(v,W,c))).sort((p,q)=>distKm(W,p)-distKm(W,q)),cap=v?Math.floor(capV(v,x.g)):x.q;
         h+=`<tr class="dv-ed"><td class="dv-w" colspan="5"><div class="dv-edf"><label>Quantity per trip (max ${lxg(cap)})<input class="lx-in" type="number" min="1" max="${cap}" data-dve="q" value="${dxE(DV.ed.q)}"></label><label>Destination<select class="lx-in" data-dve="to">${ds.map(c=>lxOpt(c.id,c.name,DV.ed.to)).join("")}</select></label><span style="display:flex;gap:6px">${dvB("lsave",x.id,"Save",{cls:"pri"})}${dvB("edx",0,"Close")}</span></div></td></tr>`}}
     for(const v of rt){const r=v.route,k="R"+v.id;
       h+=`<tr><td data-l="Line"><b>${dxE(dvCn(r.from))} ⇄ ${dxE(dvCn(r.to))}</b><small>${dxE(VEH[v.type].n)} #${v.id} · manual route</small></td><td data-l="Load">${dxE(dvGn(r.g))}${r.back?` <small>back: ${dxE(dvGn(r.back))}</small>`:""}</td><td data-l="Done">—</td>
@@ -11110,19 +11123,20 @@ function dvAct(a,b){const id=b.dataset.id,now=Date.now(),v=S.fleet.find(x=>Strin
   if(a==="close"){dvClose();return}if(a==="theme"){themeSet(themeGet()==="dark"?"light":"dark");b.innerHTML=themeIco();return}
   if(a!=="cancel"&&a!=="alcan"&&a!=="lcan"&&a!=="rcan")DV.arm=null;
   if(a==="albuy"){S.alNoBuy=!S.alNoBuy;dvNote(S.alNoBuy?"Auto-buy off: Auto-line only moves your own stock.":"Auto-buy on: Auto-line buys at the market when no depot has the goods.");done=true}
-  if(a==="fup"){dvNote(fupBuy(b.dataset.k));done=true}
+  if(a==="fup"){dvNote(fupBuy(+b.dataset.i,b.dataset.k));done=true}
+  if(a==="vsell"){const v=S.fleet.find(x=>x.id===+b.dataset.i);if(!v||!vSellOk(v))dvNote("That vehicle is busy and can't be sold right now");else if(!b.dataset.arm){b.dataset.arm=1;b.textContent=`Tap again: sell ${fmt(vSellP(v))}`;return}else{const p=vSellP(v);S.fleet=S.fleet.filter(x=>x!==v);S.cash+=p;dvNote(`Sold ${VEH[v.type].n} #${v.id} for ${fmt(p)}`)}done=true}
   else if(a==="aline"){S.aline=!S.aline;if(S.aline)alTick(now);dvNote(S.aline?"Auto-line on.":"Auto-line off. Trips under way finish.");done=true}
   else if(a==="recall"&&v){const ok=v.job?lxRecall(v):dvRecall(v);dvNote(ok?`${VEH[v.type].n} #${v.id} is heading back${v.cargo?" with its load":""}.`:"That vehicle is already heading back.");done=ok}
   else if(a==="cancel"&&v){if(dvArm("c"+v.id)){const ok=dvCancel(v);dvNote(ok?`Cancelled: ${VEH[v.type].n} #${v.id} is heading back.`:"Nothing to cancel.");done=ok}}
   else if(a==="edit"&&v&&v.al){const k="v"+v.id;DV.ed=DV.ed&&DV.ed.k===k?null:{k,q:Math.round(v.al.q),to:v.al.to}}
   else if(a==="edx")DV.ed=null;
-  else if(a==="edsave"&&v&&v.al&&DV.ed){const al=v.al;if(v.cargo||al.st!=="go"){dvNote("Already loaded: it can't be changed now.")}else{const q=Math.floor(+DV.ed.q||0),cap=capU(v.type,al.g);
+  else if(a==="edsave"&&v&&v.al&&DV.ed){const al=v.al;if(v.cargo||al.st!=="go"){dvNote("Already loaded: it can't be changed now.")}else{const q=Math.floor(+DV.ed.q||0),cap=capV(v,al.g);
       if(!(q>=1)){dvNote("Pick a quantity of 1 or more.")}else{al.q=Math.min(q,Math.floor(cap));if(al.cu){const N=CITIES[+DV.ed.to],W=CITIES[al.src];if(N&&N!==W&&dvCityOk(N)&&lxVehOK(v,W,N)&&!lxBlock(W,N))al.to=N.id}
         DV.ed=null;dvNote(`Updated: ${dvGn(al.g)} × ${lxg(al.q)} for ${dvCn(al.to)}.`);done=true}}}
   else if(a==="alpause"||a==="alres"){if(a==="alpause")S.alPause[id]=1;else delete S.alPause[id];dvNote(a==="alpause"?"Line paused. Trips under way finish.":"Line resumed.");if(a==="alres"&&S.aline)alTick(now);done=true}
   else if(a==="alcan"){if(dvArm("a"+id)){S.alPause[id]=1;const [cid,g]=id.split(":");let n=0;for(const x of S.fleet)if(x.al&&!x.al.cu&&String(x.al.to)===cid&&x.al.g===g&&dvRecall(x))n++;dvNote(`Line stopped${n?`: ${n} trip${n>1?"s":""} called back`:""}. Resume it any time.`);done=true}}
   else if(a==="ledit"){const x=dvLine(+id),k="L"+id;if(x)DV.ed=DV.ed&&DV.ed.k===k?null:{k,q:x.q,to:x.to}}
-  else if(a==="lsave"){const x=dvLine(+id),e=DV.ed;if(x&&e){const q=Math.floor(+e.q||0),vv=S.fleet.find(y=>y.id===x.v),N=CITIES[+e.to];if(!(q>=1))dvNote("Pick a quantity of 1 or more.");else{x.q=vv?Math.min(q,Math.floor(capU(vv.type,x.g))):q;if(N&&N.id!==x.src&&dvCityOk(N))x.to=N.id;
+  else if(a==="lsave"){const x=dvLine(+id),e=DV.ed;if(x&&e){const q=Math.floor(+e.q||0),vv=S.fleet.find(y=>y.id===x.v),N=CITIES[+e.to];if(!(q>=1))dvNote("Pick a quantity of 1 or more.");else{x.q=vv?Math.min(q,Math.floor(capV(vv,x.g))):q;if(N&&N.id!==x.src&&dvCityOk(N))x.to=N.id;
       if(vv&&vv.al&&vv.al.ln===x.id&&vv.al.st==="go"&&!vv.cargo){vv.al.q=x.q;vv.al.to=x.to}DV.ed=null;dvNote("Line updated: applies from the next load.");done=true}}}
   else if(a==="lpause"||a==="lres"){const x=dvLine(+id);if(x){x.on=a==="lres";x.why="";if(x.on)dvLines(now);dvNote(x.on?"Line resumed.":"Line paused: the trip under way finishes, then the vehicle parks.");done=true}}
   else if(a==="lcan"){if(dvArm("l"+id)){S.dvl=S.dvl.filter(x=>x.id!==+id);if(DV.ed&&DV.ed.k==="L"+id)DV.ed=null;dvNote("Line deleted. A load already on the road is still delivered, then the vehicle drives home.");done=true}}
