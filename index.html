@@ -5032,6 +5032,8 @@ function bigMove(txt,amt,always){try{const p=S.pol;if(!p||!(p.r>=0)||!p.c)return
   if(!Array.isArray(S.news))S.news=[];if(!S.news.length||!S.news[0]||S.news[0].t!==t){S.news.unshift({t,at:now});S.news=S.news.slice(0,40)}}catch(e){}}
 function govNotesHtml(){const p=S.pol;if(!p||!(p.r>=0)||!Array.isArray(p.notes)||!p.notes.length)return "";return p.notes.filter(n=>n&&typeof n.t==="string").slice(0,5).map(n=>`<div>${onEsc(n.t)}</div>`).join("")}
 const polHere=()=>CITIES[(S.loc||{city:0}).city].country;
+/* true while standing in the governed country or any country you own, so an owned country's Leader can recruit there */
+const polAtHome=()=>{const p=pol(),h=polHere();return h===p.c||!!(p.own&&p.own[h])};
 const polCost=(r,n)=>Math.round(GOVCFG.offices[r].cost*ctyScale(n));
 const polLeader=()=>{const p=pol();return p.r===GOVCFG.offices.length-1};
 /* CABINET: each country has 6 Councillors, 3 Ministers and 1 Leader shared by all online players (seen in the last 3 days).
@@ -5223,7 +5225,7 @@ function milReinforce(n){const m=mil(),w=m.wars[n];if(!w)return;if(!polLeader())
   S.cash-=cost;m.units.inf+=WARPACE.rfN;w.rf=(w.rf||0)+1;w.myMax=Math.max(w.myMax||0,milStr(w.terrain));toast(`🪖 ${WARPACE.rfN} troops sent to ${n} · war pace +${Math.round(WARPACE.rfMult*w.rf*100)}%`);try{troopFly(pol().c,n)}catch(e){}}
 const milQty=v=>{v=Math.floor(+v);return v>0?Math.min(v,9999):MILCFG.batch}; // custom recruit/disband amount, defaults to one batch
 function milRecruit(k,q){const p=pol(),m=mil(),U=MILCFG.units[k];if(!U)return;if(!polLeader())return toast("Only a Leader can raise an army");
-  if(polHere()!==p.c)return toast(`Recruit from ${p.c}`);const n=milQty(q),c=Math.round(milBatchCost(k)/MILCFG.batch*n);if(S.cash<c)return toast(`${n} ${U.n} cost ${fmt(c)}`);
+  if(!polAtHome())return toast(`Recruit from ${p.c} or a country you own`);const n=milQty(q),c=Math.round(milBatchCost(k)/MILCFG.batch*n);if(S.cash<c)return toast(`${n} ${U.n} cost ${fmt(c)}`);
   S.cash-=c;m.units[k]+=n;toast(`+${n} ${U.n}`)}
 function milDisband(k,q){const m=mil();if(!m.units[k])return;const n=Math.min(milQty(q),m.units[k]-(k==="inf"?milGar():0));if(n<=0)return toast("Those troops are on garrison duty");m.units[k]-=n;toast(`Disbanded ${n} ${MILCFG.units[k].n}`)}
 const milWarCost=n=>Math.round(annexCost(n)*MILCFG.warMob);
@@ -5281,13 +5283,13 @@ function milHour(quiet){const p=S.pol;if(!p||!p.mil)return;milEx2();const m=mil(
     if(o.calm>=C.occDays*24){delete m.occ[n];p.ctrl[n]={since:Date.now(),loy:C.occLoy};say(`${n} has been integrated into your controlled countries`)}
     else if(o.resist>C.occRevolt&&Math.random()<.12){const g=o.gar||0;delete m.occ[n];m.units.inf=Math.max(0,m.units.inf-g);p.appr=Math.max(0,p.appr-10);say(`Revolt! ${n} threw off your occupation`)}}}
 let govTab="pol";
-function milApp(){const p=pol(),m=mil(),C=MILCFG,U=C.units,now=Date.now(),lead=polLeader(),here=polHere()===p.c;
+function milApp(){const p=pol(),m=mil(),C=MILCFG,U=C.units,now=Date.now(),lead=polLeader(),here=polAtHome();
   const sb=(a,k,t,bg,dis)=>`<button class="buy" data-ph="${a}" data-k="${k}" style="color:#fff;background:${bg}!important;border-color:#f59e0b;padding:4px 8px" ${dis?"disabled":""}>${t}</button>`;
   const gar=milGar(),upk=milUpkeep(),free=Object.keys(U).reduce((a,k)=>a+(m.units[k]||0),0)-gar;let h=!lead&&upk>0&&free>0?`<div class="ph-card" style="background:${S.cash<upk*24?"#7f1d1d":"#374151"};color:#fff;margin-bottom:8px"><b>${S.cash<0?"Your reserve army is putting you in debt":S.cash<upk*24?"Cash is running low":"Army in reserve"}</b><br>Reserve upkeep costs ${fmt(upk)}/hr while you're out of office. Disband the army to stop the drain${gar?" (garrisons stay)":""}.<button class="buy" data-ph="mildisall" style="width:100%;margin-top:6px;color:#fff;background:#374151!important;border-color:#f59e0b">Disband army</button></div>`:"";h+=`<div class="ph-rows"><div><span>Strength</span><b>${Math.round(milStr())}</b></div><div><span>Morale</span><b style="color:${m.morale<40?"#f87171":"#4ade80"}">${Math.round(m.morale)}%</b></div><div><span>Supply</span><b>${Math.round(m.supply)}%</b></div><div><span>Upkeep${lead?"":" (reserve)"}</span><b>${fmt(milUpkeep())}/hr</b></div>${gar?`<div><span>On garrison</span><b>${gar} inf</b></div>`:""}${m.rep.length?`<div><span>Reparations owed</span><b style="color:#f87171">${fmt(m.rep.reduce((a,r)=>a+r.left,0))}</b></div>`:""}</div>`;
   const bx=(a,k,t,bg,dis,w)=>`<button class="buy${w?" ph-wrapbtn":""}" data-ph="${a}" data-k="${k}" style="${dis?"":`color:#fff;background:${bg}!important;`}border-color:#f59e0b;padding:4px 6px;margin:0;font-size:11px;white-space:nowrap;${w?"flex:1;min-width:0":"width:34px;min-width:0;flex:none"}" ${dis?"disabled":""}>${t}</button>`;
   const urow=(top,sub,btns)=>`<div style="display:block"><div style="display:flex;justify-content:space-between;gap:6px;align-items:baseline"><span>${top}</span><small style="opacity:.7;text-align:right">${sub}</small></div><div style="display:flex;gap:5px;margin-top:4px">${btns}</div></div>`;
   h+=bgCard();
-  h+=`<div class="ph-sub" style="margin-top:10px">Army${lead&&!here?` · recruit from ${p.c}`:""}${lead?"":` · <span style="color:#fbbf24">Reserve (${Math.round(C.reserveUp*100)}% upkeep)</span>`}</div><div class="ph-rows">${Object.keys(U).map(k=>urow(`${U[k].n} <b>× ${m.units[k]}</b>`,`str ${U[k].str} · ${fmt(U[k].up*(lead?1-presFx("upk"):C.reserveUp))}/hr ea`,`<input type="number" min="1" max="9999" value="${C.batch}" data-mq="${k}" aria-label="How many units" style="width:52px;padding:3px;border-radius:6px;border:1px solid #f59e0b;font-size:11px">`+bx("milrec",k,`Recruit · ${fmt(milBatchCost(k)/C.batch)} ea`,"#7f1d1d",!lead||!here,1)+bx("mildis",k,"Disband","#374151",!m.units[k]))).join("")}</div>`;
+  h+=`<div class="ph-sub" style="margin-top:10px">Army${lead&&!here?` · recruit from ${p.c} or a country you own`:""}${lead?"":` · <span style="color:#fbbf24">Reserve (${Math.round(C.reserveUp*100)}% upkeep)</span>`}</div><div class="ph-rows">${Object.keys(U).map(k=>urow(`${U[k].n} <b>× ${m.units[k]}</b>`,`str ${U[k].str} · ${fmt(U[k].up*(lead?1-presFx("upk"):C.reserveUp))}/hr ea`,`<input type="number" min="1" max="9999" value="${C.batch}" data-mq="${k}" aria-label="How many units" style="width:52px;padding:3px;border-radius:6px;border:1px solid #f59e0b;font-size:11px">`+bx("milrec",k,`Recruit · ${fmt(milBatchCost(k)/C.batch)} ea`,"#7f1d1d",!lead||!here,1)+bx("mildis",k,"Disband","#374151",!m.units[k]))).join("")}</div>`;
   const wk=Object.keys(m.wars);
   for(const n of wk){const w=m.wars[n],pc=Math.max(0,w.pcd-now);
     h+=`<div class="ph-sub" style="margin-top:10px">War with ${n} · ${w.terrain} · weariness ${Math.round(w.weariness)}</div><div style="height:8px;border-radius:4px;background:#7f1d1d;overflow:hidden"><div style="height:100%;width:${w.front}%;background:#22c55e"></div></div>
@@ -6559,7 +6561,7 @@ const cabFundOf=b=>b.k==="war"?"war":b.k==="arms"?"arms":"wto";
 function cabRun(id){const b=CB.bills.find(x=>x.id===id),p=pol(),m=mil();if(!b||b.done||cabState(b)!=="passed"||!polLeader())return;if(CB.busy.run)return;
   const k=cabFundOf(b),c=cabCost(b);if(CB.fund[k]<c)return toast(`The ${k==="wto"?"take-over":k} fund needs ${fmt(c)}`);
   if(b.k==="war"&&!m.wars[b.tg])return toast(`You are not at war with ${b.tg}`);if(b.k==="wto"&&(p.ctrl[b.tg]||b.tg===p.c))return toast(`${b.tg} is already ours`);
-  if(b.k==="wto"&&Date.now()<p.acd)return toast("Influence cooldown: "+fmtDur(p.acd-Date.now()));if(b.k==="arms"&&polHere()!==p.c)return toast(`Recruit from ${p.c}`);
+  if(b.k==="wto"&&Date.now()<p.acd)return toast("Influence cooldown: "+fmtDur(p.acd-Date.now()));if(b.k==="arms"&&!polAtHome())return toast(`Recruit from ${p.c}`);
   CB.busy.run=1;const FV=window.firebase.firestore.FieldValue,root=ON.db.collection("cab").doc(p.c);
   // take the money from the fund first (only if it's still there), then carry the bill out with the normal mechanics
   ON.db.runTransaction(async t=>{const d=await t.get(root),have=d.exists?+d.data()[k]||0:0;if(have<c)throw new Error("fund too small");t.set(root,{[k]:have-c},{merge:true});t.update(root.collection("bill").doc(id),{done:true})})
