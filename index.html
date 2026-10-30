@@ -1477,26 +1477,46 @@ const LUX=[
  {k:"pent",g:"Homes",n:"City penthouse",cost:900000,up:1200,gr:13700,vac:35,d:"Top floor, skyline views. Short-let to executives."},
  {k:"mansion",g:"Homes",n:"Hillside mansion",cost:3000000,up:5000,gr:40000,vac:50,d:"Pool, cinema, staff quarters. Hire it out for events."},
  {k:"estate",g:"Homes",n:"Private island estate",cost:12000000,up:20000,gr:145000,vac:70,d:"Your own island. Celebrities pay a fortune to rent it."},
- {k:"jet",g:"Planes",n:"Light jet",cost:2500000,up:6000,gr:40000,vac:40,jet:1,d:"Six seats. Keep it: your flights are free and 30% faster. Or run charters."},
- {k:"bizjet",g:"Planes",n:"Long-range business jet",cost:20000000,up:40000,gr:290000,vac:60,jet:1,d:"Crosses oceans non-stop. Free, 30% faster flights when kept for yourself."},
- {k:"speed",g:"Boats",n:"Speedboat",cost:120000,up:250,gr:1900,vac:20,d:"Weekend fun, or day trips for tourists."},
- {k:"yacht",g:"Boats",n:"Motor yacht",cost:4000000,up:9000,gr:61000,vac:55,d:"Crewed yacht. Charter it out by the week."},
- {k:"superyacht",g:"Boats",n:"Superyacht",cost:30000000,up:60000,gr:420000,vac:75,d:"Helipad and submarine. Billionaire charters."},
+ {k:"jet",g:"Planes",n:"Light jet",cost:2500000,up:6000,gr:40000,vac:40,jet:1,spd:.7,d:"Six seats. Keep it: your flights are free and 30% faster. Or run charters."},
+ {k:"bizjet",g:"Planes",n:"Long-range business jet",cost:20000000,up:40000,gr:290000,vac:60,jet:1,spd:.6,d:"Crosses oceans non-stop. Keep it: free flights, 40% faster."},
+ {k:"sonic",g:"Planes",n:"Supersonic jet",cost:90000000,up:160000,gr:1150000,vac:80,jet:1,spd:.4,d:"Mach 1.8 private jet. Keep it: free flights, 60% faster."},
+ {k:"heli",g:"Planes",n:"Private helicopter",cost:1500000,up:3500,gr:24000,vac:30,heli:1,d:"Keep it: fly across town in seconds, skipping traffic."},
+ {k:"speed",g:"Boats",n:"Speedboat",cost:120000,up:250,gr:1900,vac:20,sea:{kpm:60,max:1500},d:"Weekend fun, or day trips for tourists. Keep it: hop between nearby coastal cities."},
+ {k:"yacht",g:"Boats",n:"Motor yacht",cost:4000000,up:9000,gr:61000,vac:55,sea:{kpm:90},d:"Crewed yacht. Charter it out by the week. Keep it: sail to any coastal city."},
+ {k:"superyacht",g:"Boats",n:"Superyacht",cost:30000000,up:60000,gr:420000,vac:75,sea:{kpm:130},d:"Helipad and submarine. Billionaire charters. Keep it: fast crossings to any coastal city."},
+ {k:"hydro",g:"Boats",n:"Hydrofoil superyacht",cost:65000000,up:120000,gr:830000,vac:80,sea:{kpm:200},d:"Flies above the waves. Keep it: the fastest private boat at sea."},
  {k:"cruise",g:"Ships",n:"Cruise ship",cost:150000000,up:400000,gr:2300000,vac:90,d:"3,000 cabins. Sell cruises, or take the whole ship on holiday."}];
 const LUXK=Object.fromEntries(LUX.map(x=>[x.k,x]));
 const luxList=()=>Array.isArray(S.lux)?S.lux.filter(o=>o&&LUXK[o.k]):[];
 function luxIncome(){return luxList().reduce((a,o)=>{const x=LUXK[o.k];return a-x.up+(o.biz?x.gr:0)},0)}
-function luxAssets(){return luxList().reduce((a,o)=>a+LUXK[o.k].cost*.8,0)}
+function luxAssets(){return luxList().reduce((a,o)=>a+LUXK[o.k].cost*.8,0)+gldOz()*gldP()}
+/* Gold reserves: buy and sell gold bars (1 oz each). The price drifts daily, pulls back toward $2,400, gets random spikes and climbs while wars are on, so gold holds value when everything else falls. */
+const GLD={base:2400,vol:.015,war:.004,fee:.01};
+function gld(){let g=S.gold;if(!g||typeof g!=="object")g=S.gold={};g.oz=Math.max(0,Math.floor(+g.oz||0));if(!(g.p>0))g.p=GLD.base;return g}
+const gldOz=()=>gld().oz,gldP=()=>gld().p;
+function gldDay(){const g=gld();let wars=0;try{const m=S.pol&&S.pol.mil;wars=m&&m.wars?Object.keys(m.wars).length:0}catch(e){}
+  const pull=(GLD.base-g.p)/GLD.base*.05,shock=Math.random()<.04?(Math.random()*.08):0;
+  g.p=Math.max(800,Math.min(12000,g.p*(1+pull+(Math.random()*2-1)*GLD.vol+Math.min(.03,wars*GLD.war)+shock)))}
+function gldHtml(){const g=gld(),buy=g.p*(1+GLD.fee),sell=g.p*(1-GLD.fee),b=n=>`<button class="buy" data-life="gldbuy" data-n="${n}" ${S.cash<buy*n?"disabled":""}>Buy ${n} oz ${fmt(buy*n)}</button>`;
+  return `<div class="sec">Gold reserves</div><div class="list"><div class="row${g.oz?" own":""}"><div class="n">🪙 Gold bars <span class="tag">${fmt(g.p)}/oz</span></div><div class="d">You hold <b>${g.oz.toLocaleString()} oz</b> worth <b>${fmt(g.oz*g.p)}</b>. Gold rises when wars heat up and holds value in a crash. 1% dealer fee each way.</div>
+  <span style="display:flex;flex-wrap:wrap;gap:6px;grid-column:1/-1">${b(10)}${b(100)}${b(1000)}<button class="buy up" data-life="gldsell" ${g.oz?"":"disabled"}>Sell all ${fmt(sell*g.oz)}</button></span></div></div>`}
 const luxJet=()=>luxList().some(o=>!o.biz&&LUXK[o.k].jet);
+// fastest kept jet: flight time multiplier (1 = no jet)
+const luxJetSpd=()=>luxList().filter(o=>!o.biz&&LUXK[o.k].jet).reduce((m,o)=>Math.min(m,LUXK[o.k].spd||.7),1);
+const luxHeli=()=>luxList().some(o=>!o.biz&&LUXK[o.k].heli);
+// fastest kept boat that can make this trip (both ends coastal; speedboats only short hops)
+function luxBoatOpt(from,to,km){if(typeof s1Coast!=="function"||!s1Coast(from)||!s1Coast(to))return null;let b=null;
+  for(const o of luxList()){const x=LUXK[o.k];if(o.biz||!x.sea||(x.sea.max&&km>x.sea.max))continue;if(!b||x.sea.kpm>b.sea.kpm)b=x}
+  return b?{m:"boat",n:"⛵ Sail your "+b.n.toLowerCase(),price:Math.round(km*.4),min:.5+km/b.sea.kpm,note:"Private boat · marina fees only"}:null}
 function luxHtml(){const own=luxList(),now=Date.now();let h=`<div class="sec">Luxury</div><div class="list">`;
   h+=`<p class="d" style="font-size:12px;color:var(--muted);padding:4px 0">Keep an item for yourself to take vacations (restores mood and food), or charter it out for hourly income. Upkeep is paid either way. Sells back for 80%.</p>`;
   let g0="";for(const x of LUX){const o=own.find(q=>q.k===x.k);if(x.g!==g0){g0=x.g;h+=`<div class="d" style="font-weight:700;padding:6px 0 2px">${g0}</div>`}
     const net=x.gr-x.up;
     if(!o){h+=`<div class="row"><div class="n">${x.n}</div><div class="d">${x.d} <b>${fmt(x.cost)}</b> · upkeep ${fmt(x.up)}/hr · charter nets ${fmt(net)}/hr</div><button class="buy" data-life="luxbuy" data-k="${x.k}" ${S.cash<x.cost?"disabled":""}>Buy ${fmt(x.cost)}</button></div>`;continue}
     const cd=(o.vac||0)+12*DAYMS-now;
-    h+=`<div class="row own"><div class="n">${x.n} <span class="tag boom">${o.biz?"Chartered":"Personal"}</span></div><div class="d">${o.biz?`Earning <b style="color:var(--good)">${fmt(net)}</b>/hr after upkeep`:`Upkeep ${fmt(x.up)}/hr${x.jet?" · free, 30% faster flights":""}${cd>0?" · next vacation in "+fmtDur(cd):""}`}</div>
+    h+=`<div class="row own"><div class="n">${x.n} <span class="tag boom">${o.biz?"Chartered":"Personal"}</span></div><div class="d">${o.biz?`Earning <b style="color:var(--good)">${fmt(net)}</b>/hr after upkeep`:`Upkeep ${fmt(x.up)}/hr${x.jet?` · free, ${Math.round((1-(x.spd||.7))*100)}% faster flights`:x.sea?" · sail between coastal cities":x.heli?" · fly across town":""}${cd>0?" · next vacation in "+fmtDur(cd):""}`}</div>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${o.biz?"":`<button class="buy" data-life="luxvac" data-k="${x.k}" ${cd>0?"disabled":""}>Vacation</button>`}<button class="buy up" data-life="luxmode" data-k="${x.k}">${o.biz?"Keep for me":"Run as business"}</button><button class="buy up" data-life="luxsell" data-k="${x.k}">Sell ${fmt(x.cost*.8)}</button></span></div>`}
-  return h+`</div>`}
+  return h+`</div>`+gldHtml()}
 /* population drives the economy: a country's people vs its starting population (S.popn[n].p0). Growth lifts demand a little,
    war/strike losses shrink markets and the job market. Bounded: demand ×0.80–1.10, hiring ×0.85–1.05. Reads S.popn directly (POPCFG is declared later). */
 function popRatio(n){const p=S.popn&&S.popn[n];return p&&p.p>0&&p.p0>0?p.p/p.p0:1}
@@ -1539,6 +1559,8 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-life]");if(!b
   else if(a==="apply"){const j=JK[b.dataset.j];if(jailed()){toast("Not from prison");return}if(S.exp<j.exp||missing(j).length||!S.home||S.home.city!==c.id||S.app)return;
     S.app={k:j.k,city:c.id,t:Date.now()+90000,p:hireChance(j,c)};toast("Application sent. You'll hear back in about a minute and a half.")}
   else if(a==="enroll"){const e=EK[b.dataset.e],p=eduCost(e,c);if(jailed()){toast("Not from prison");return}if(S.cash<p||hasEdu(e.k)||(e.req&&!hasEdu(e.req))||(e.uni&&!uniCity(c)))return;S.cash-=p;S.edu.have[e.k]=Date.now();S.log.unshift(`Earned: ${e.n}`);S.log=S.log.slice(0,3);toast(`You earned your ${e.n}!`)}
+  else if(a==="gldbuy"){const g=gld(),n=Math.max(1,+b.dataset.n||0),c0=g.p*(1+GLD.fee)*n;if(S.cash<c0)return;S.cash-=c0;g.oz+=n;toast(`Bought ${n} oz of gold for ${fmt(c0)}`)}
+  else if(a==="gldsell"){const g=gld();if(!g.oz)return;if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm sale";return}const v=g.p*(1-GLD.fee)*g.oz;S.cash+=v;toast(`Sold ${g.oz} oz of gold for ${fmt(v)}`);g.oz=0}
   else if(a.startsWith("lux")){const x=LUXK[b.dataset.k];if(!x)return;if(!Array.isArray(S.lux))S.lux=[];const o=S.lux.find(q=>q&&q.k===x.k);
     if(a==="luxbuy"){if(o||S.cash<x.cost)return;S.cash-=x.cost;S.lux.push({k:x.k,biz:false,vac:0});toast(`Bought: ${x.n}`);bigMove(`the leader acquired ${x.n} for ${fmt(x.cost)}`,x.cost)}
     else if(!o)return;
@@ -2549,7 +2571,7 @@ setInterval(worldNews,4*60000);setTimeout(worldNews,20000);
 /* ---------- economy tick ---------- */
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
 let pops=[]; // floating income labels
-function simDay(quiet){const{nw}=totals();try{wrDay(nw,quiet)}catch(e){console.warn("wrDay",e)}S.day++;if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}try{gxDay(quiet)}catch(e){console.warn("gxDay",e)}try{flipDay(quiet)}catch(e){console.warn("flipDay",e)}try{wevDay()}catch(e){console.warn("wevDay",e)}try{ipoDay(quiet)}catch(e){console.warn("ipoDay",e)}
+function simDay(quiet){const{nw}=totals();try{wrDay(nw,quiet)}catch(e){console.warn("wrDay",e)}S.day++;try{gldDay()}catch(e){}if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}try{gxDay(quiet)}catch(e){console.warn("gxDay",e)}try{flipDay(quiet)}catch(e){console.warn("flipDay",e)}try{wevDay()}catch(e){console.warn("wevDay",e)}try{ipoDay(quiet)}catch(e){console.warn("ipoDay",e)}
   try{mktDay()}catch(e){console.warn("mktDay",e)}audits(quiet);simProps(quiet);
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||Math.random()>.004)continue;
     const kinds=[["Break-in at your",.04],["Equipment breakdown at your",.03],["Health inspection fine at your",.02],["Customer lawsuit against your",.06]],[t,f]=kinds[Math.floor(Math.random()*kinds.length)];
@@ -13036,7 +13058,7 @@ window.addEventListener("resize",swPlace);setInterval(swRender,2000);swRender();
 const hasAirport=c=>c.size>=2;
 const airportPos=c=>autoPos("airport:"+c.id,c,14,24);
 const stationPos=c=>autoPos("station:"+c.id,c,.3,1.2);
-const CARS=[{k:"compact",n:"Used compact",p:6500,f:1,fuel:.12},{k:"sedan",n:"Sedan",p:24000,f:1.1,fuel:.14},{k:"suv",n:"SUV",p:38000,f:1.1,fuel:.19},{k:"sports",n:"Sports car",p:95000,f:1.45,fuel:.24}];
+const CARS=[{k:"compact",n:"Used compact",p:6500,f:1,fuel:.12},{k:"sedan",n:"Sedan",p:24000,f:1.1,fuel:.14},{k:"suv",n:"SUV",p:38000,f:1.1,fuel:.19},{k:"sports",n:"Sports car",p:95000,f:1.45,fuel:.24},{k:"limo",n:"Luxury limousine",p:450000,f:1.6,fuel:.3,lux:1},{k:"supercar",n:"Supercar",p:1200000,f:1.9,fuel:.38,lux:1},{k:"hypercar",n:"Hypercar",p:3500000,f:2.4,fuel:.5,lux:1}];
 const CK=Object.fromEntries(CARS.map(c=>[c.k,c]));
 if(!S.loc){const id=S.home?S.home.city:(Object.keys(S.own)[0]!=null?+Object.keys(S.own)[0]:0),c=CITIES[id];S.loc={city:c.id,lat:c.lat,lon:c.lon}}
 const here=()=>CITIES[S.loc.city];
@@ -13050,6 +13072,7 @@ function cityOptions(from,to){const km=kmBetween(from,to),same=landmass(from)===
   {const g=typeof g1Opt==="function"?g1Opt(from,to,km):null;if(g)o.unshift(g)}
   {const g=typeof s1Opt==="function"?s1Opt(from,to,km):null;if(g)o.splice(o[0]&&o[0].m==="g1"?1:0,0,g)}
   {const g=typeof a1Opt==="function"?a1Opt(from,to,km):null;if(g)o.unshift(g)}
+  {const g=luxBoatOpt(from,to,km);if(g)o.push(g)}
   if(same&&S.car)o.push({m:"car",n:"Drive your "+CK[S.car.k].n.toLowerCase(),price:Math.round(km*CK[S.car.k].fuel),min:km/(200*CK[S.car.k].f),note:"Fuel only"});
   return{km,o}}
 /* within a city: walk, bus, taxi, your car */
@@ -13057,11 +13080,12 @@ function rideOptions(from,to){const km=Math.hypot((to.lat-from.lat)*111,(to.lon-
   if(km<4)o.push({m:"walk",n:"Walk",price:0,sec:km*60});
   o.push({m:"cbus",n:"City bus",price:3.25,sec:30+km*15});
   o.push({m:"taxi",n:"Taxi",price:+(4+1.9*km).toFixed(2),sec:15+km*8});
+  if(luxHeli())o.push({m:"heli",n:"Your helicopter",price:+(20+km*6).toFixed(2),sec:8+km*1.5});
   if(S.car)o.push({m:"drive",n:"Your car",price:+(km*CK[S.car.k].fuel).toFixed(2),sec:10+km*7/CK[S.car.k].f});
   return{km,o}}
 function startTrip(dest,opt,local){if(jailed()){toast("You can't travel from prison");return false}const dc=!local&&dest?CITIES[dest.city!=null?dest.city:dest.id]:null;if(dc&&unhOn(dc)){toast(`${dc.name} is uninhabitable for ${unhLeft(dc)}: nobody can travel there`);return false}if(dc&&warLvl(dc.country)>=4&&!(opt.m==="g1"&&g1L()&&g1L().war)&&!(opt.m==="s1"&&s1L()&&s1L().war)&&!(opt.m==="a1"&&a1L()&&a1L().war)){toast(`${dc.country} is at war: transport there is suspended`);return false}
   {const here=S.loc?S.own[S.loc.city]||{}:{},there=dest&&dest.city!=null&&!local?S.own[dest.city]||{}:{},anyAir=Object.values(S.own).some(o=>o.airline);let f=1,why="";
-    if(opt.m==="plane"&&typeof luxJet==="function"&&luxJet()){f=0;why="your private jet";opt={...opt,min:opt.min*.7}}
+    if(opt.m==="plane"&&typeof luxJet==="function"&&luxJet()){f=0;why="your private jet";opt={...opt,min:opt.min*luxJetSpd()}}
     else if(opt.m==="plane"){if(anyAir){f*=.5;why="your airline"}if(here.airport||there.airport){f*=.75;why=why?why+" + your airport":"your airport"}}
     else if(opt.m==="train"&&(here.rail||there.rail)){f=.5;why="your railway"}
     else if((opt.m==="bus"||opt.m==="cbus")&&(here.busline||there.busline)){f=.5;why="your bus line"}
@@ -13069,7 +13093,7 @@ function startTrip(dest,opt,local){if(jailed()){toast("You can't travel from pri
     if(f<1){opt={...opt,price:Math.round(opt.price*f*100)/100};setTimeout(()=>toast(`${Math.round((1-f)*100)}% off with ${why}`),900)}}
   if(S.cash<opt.price){toast(`You need ${fmt(opt.price)} for that`);return false}
   S.cash-=opt.price;const dur=(local?opt.sec*1000:opt.min*60000);
-  const toPt=local?dest:(opt.m==="plane"?airportPos(dest):opt.m==="car"||opt.m==="g1"||opt.m==="s1"||opt.m==="a1"?dest:stationPos(dest));
+  const toPt=local?dest:(opt.m==="plane"?airportPos(dest):opt.m==="car"||opt.m==="boat"||opt.m==="g1"||opt.m==="s1"||opt.m==="a1"?dest:stationPos(dest));
   if(typeof bunkExit==="function")bunkExit(1);S.trip={mode:opt.m,n:opt.n,from:{...S.loc},to:{city:dest.city!=null?dest.city:dest.id,lat:toPt.lat,lon:toPt.lon,label:dest.label||dest.name},dep:Date.now(),arr:Date.now()+dur,local:!!local};if(opt.m==="g1")try{g1Trip(dest)}catch(e){}if(opt.m==="s1")try{s1Trip(dest)}catch(e){}if(opt.m==="a1"){S.trip.mode="plane";S.trip.a1=1}
   S.log.unshift(local?`${opt.n} to ${S.trip.to.label}`:`${opt.n} to ${dest.name} · ${fmtDur(dur).replace(" min","m")} · ${fmt(opt.price)}`);S.log=S.log.slice(0,3);save();hud();draw();return true}
 function runTrip(now){const t=S.trip;if(!t||now<t.arr)return;S.loc={city:t.to.city,lat:t.to.lat,lon:t.to.lon};S.trip=null;onLocPub();
