@@ -377,6 +377,16 @@ service cloud.firestore {
         && request.resource.data.xb == request.time
         && (resource.data.xb == null || resource.data.xb < request.time - duration.value(5, 'm'));
     }
+    // Shared market history (index.html mkhPublish): the developer's save writes daily candles world/mkh, everyone reads it.
+    match /world/mkh {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1'
+        && request.resource.data.keys().hasOnly(['k', 'day', 'updated'])
+        && request.resource.data.k is map && request.resource.data.k.size() <= 40
+        && request.resource.data.day is int
+        && request.resource.data.updated == request.time;
+    }
     // Weekly world events (index.html wev*): one event per UTC week w (week 0 = Mon 5 Jan 1970), scored Mon 00:00 to Sat 23:59 UTC.
     // world/evt: the master world (developer's save) publishes the current event, the server-wide total and the top 10; everyone reads it.
     function validEvt(d) {
@@ -561,6 +571,49 @@ service cloud.firestore {
         && request.resource.data.vol is number && request.resource.data.vol >= 0 && request.resource.data.vol <= 1000000000000000
         && request.resource.data.at == request.time;
       allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+    // Exchange stock (index.html exi*): world/exinv {uid, inv: {SYM: qty}, at}. The exchange owner (world/nyse uid) stocks it freely.
+    // Any other signed-in player may change one asset's quantity per write (buy: down, sell: up, never below 0) and writes exfill/{id} for the owner.
+    function exiOwnerUid() {
+      return get(/databases/$(database)/documents/world/nyse).data.uid;
+    }
+    function exiQtyOk(k) {
+      return request.resource.data.inv[k] is number && request.resource.data.inv[k] >= 0;
+    }
+    match /world/exinv {
+      allow read: if true;
+      allow create, update: if request.auth != null && exiOwnerUid() == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'inv', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.inv is map && request.resource.data.inv.size() <= 40
+        && request.resource.data.at == request.time;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['uid', 'inv', 'at'])
+        && request.resource.data.uid == exiOwnerUid() && request.resource.data.uid != request.auth.uid
+        && request.resource.data.inv is map && request.resource.data.inv.size() == 1
+        && exiQtyOk(request.resource.data.inv.keys()[0])
+        && request.resource.data.at == request.time;
+      allow update: if request.auth != null
+        && resource.data.uid == exiOwnerUid() && resource.data.uid != request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inv', 'at'])
+        && request.resource.data.inv is map && request.resource.data.inv.size() <= 40
+        && request.resource.data.inv.diff(resource.data.inv).affectedKeys().size() == 1
+        && exiQtyOk(request.resource.data.inv.diff(resource.data.inv).affectedKeys().toList()[0])
+        && request.resource.data.at == request.time;
+    }
+    // exfill/{id}: one trade with the exchange stock. amt > 0: the trader paid the owner; amt < 0: the owner owes the trader. The owner collects by deleting it.
+    match /exfill/{id} {
+      allow read: if request.auth != null && (resource.data.by == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['by', 'byName', 'to', 's', 'q', 'amt', 'at'])
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.to == exiOwnerUid() && request.resource.data.to != request.auth.uid
+        && request.resource.data.byName is string && request.resource.data.byName.size() <= 20
+        && request.resource.data.s is string && request.resource.data.s.size() <= 8
+        && request.resource.data.q is number && request.resource.data.q > 0
+        && request.resource.data.amt is int && request.resource.data.amt >= -1000000000000000 && request.resource.data.amt <= 1000000000000000
+        && request.resource.data.at == request.time;
+      allow delete: if request.auth != null && resource.data.to == request.auth.uid;
     }
     match /excom/{id} {
       allow read: if request.auth != null && (resource.data.by == request.auth.uid || resource.data.to == request.auth.uid);

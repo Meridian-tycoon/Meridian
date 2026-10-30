@@ -3535,7 +3535,7 @@ function wwGovMirror(quiet){if(!wwShared()||!WW.gp)return;for(const n in WW.gp){
 function wjPub(w,s){try{if(!ON.ready||!ON.user)return;const gid=w.gid||(WRM?w.id:0);if(!gid)return;const r=ON.db.collection("wjoin").doc(ON.user.uid);
   if(!s)return void r.delete().catch(()=>{});
   r.set({w:gid,s,n:wlPT(),name:wlName().slice(0,20),c:String(dipPlayerC()||"").slice(0,40),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't share your troops: "+(e&&e.code||e)})}catch(e){}}
-function wwListen(){try{evListen()}catch(e){}try{g1Listen()}catch(e){}try{mkwListen()}catch(e){}try{lnListen()}catch(e){}if(ON.unsubWW)return;
+function wwListen(){try{evListen()}catch(e){}try{g1Listen()}catch(e){}try{mkwListen()}catch(e){}try{mkhListen()}catch(e){}try{lnListen()}catch(e){}if(ON.unsubWW)return;
   ON.unsubWW=ON.db.collection("world").doc("wars").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list))return;WW={list:v.list,ruler:v.ruler||{},tl:Array.isArray(v.tl)?v.tl:[],gp:v.gp&&typeof v.gp==="object"?v.gp:null};
     try{localStorage.setItem(WWKEY,JSON.stringify(WW))}catch(e){}if(ON.authKnown&&!WRM){wwMirror(false);draw();onRefresh()}},e=>{ON.err="Couldn't load world wars: "+(e&&e.code||e)});
   ON.unsubWJ=ON.db.collection("wjoin").onSnapshot(q=>{const a=[],old=Date.now()-3*864e5;q.forEach(x=>{const v=x.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():Date.now();if(ON.user&&x.id===ON.user.uid)return;if(at<old||!Number.isInteger(v.w)||(v.s!=="a"&&v.s!=="b"))return;a.push({uid:x.id,w:v.w,s:v.s,n:+v.n||0,name:v.name,c:v.c,at})});
@@ -4903,9 +4903,9 @@ function mktStep(){const m=MK(),now=Date.now();const war=typeof tension==="funct
     if(shock&&Math.abs(shock)>0)mktNews(a,shock)}
   if(m.xb){const b=m.xb;if(b.lf&&b.lf!==1&&!(now-m.live<5*60000&&m.liveSet&&m.liveSet.XRP))m.px.XRP=Math.max(AK.XRP.p0*.05,m.px.XRP/b.lf);delete m.xb}   // XRP boom was removed: undo any boom price saved in old saves
   if(sh&&m.xb2&&!(now-m.live<5*60000&&m.liveSet&&m.liveSet.XRP))m.xb2.lf=xrpBoomF(m,now);   // the master's XRP price already carries the boom
-  wevMk(m,now,sh);xrpBoomStep(m,now);try{mkwPublish(m,now)}catch(e){}try{ipoTick(now)}catch(e){console.warn("ipoTick",e)}
+  wevMk(m,now,sh);xrpBoomStep(m,now);try{mkwPublish(m,now)}catch(e){}try{mkhPublish(m)}catch(e){}try{ipoTick(now)}catch(e){console.warn("ipoTick",e)}
   for(const a of ASSETS){const h=m.h[a.s];h.push(m.px[a.s]);if(h.length>90)h.shift()}try{mkdTick(m)}catch(e){}
-  const d=Math.floor(now/(24*DAYMS));if(m.day!==d){if(m.day!=null)mkdClose(m);m.day=d;for(const a of ASSETS)m.open[a.s]=m.px[a.s]}}
+  const d=Math.floor(now/(24*DAYMS));if(m.day!==d){if(m.day!=null)mkdClose(m);m.day=d;try{mkhPublish(m,1)}catch(e){}for(const a of ASSETS)m.open[a.s]=m.px[a.s]}}
 /* XRP boom: a 5-min rally (up to 1000x: ~100 s up, ~55 s hold, ~140 s back down) that starts whenever a government uses a WMD (xrpBoomGo, called from wmdStrike and wpnFire). A running boom is not restarted. Saves from the old always-on boom are eased back to the normal price by xrpBoomStep. */
 const XRPB={dur:5*60000,peak:999};
 function xrpBoomF(m,now){const b=m.xb2;if(!b||!b.t0)return 1;const t=(now-b.t0)/XRPB.dur;if(t<=0||t>=1)return 1;
@@ -4924,6 +4924,13 @@ function mkwTs(t){return window.firebase.firestore.Timestamp.fromMillis(t)}
 function mkwPublish(m,now){if(typeof ON==="undefined"||!ON.ready||!ON.user||!devUid(ON.user.uid))return;const b=m.xb2,on=b&&!b.end&&now-b.t0<XRPB.dur;
   if(now-(ON.mkPub||0)<(on?15000:30000))return;ON.mkPub=now;const px={};for(const a of ASSETS)px[a.s.replace(".","_")]=+m.px[a.s].toPrecision(8);const pc=S.pand&&S.pand.cur;if(pc&&pc.k)px._pand={k:String(pc.k),left:Math.max(0,pc.left|0)};
   ON.db.collection("world").doc("mkt").set({px,xb:on?mkwTs(b.t0):null,updated:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't publish the market: "+(e&&e.code||e)})}
+/* shared daily candles: the master world publishes world/mkh {k:{SYM:[o,h,l,c,...]}, day, updated} once per session and at each new day; other saves use it so every player sees the same history */
+function mkhPublish(m,force){if(typeof ON==="undefined"||!ON.ready||!ON.user||!devUid(ON.user.uid))return;const day=m.day|0;if(!force&&ON.mkhDay===day)return;ON.mkhDay=day;const dk=mkdHist(m),k={};
+  for(const a of ASSETS){const f=[];for(const c of dk[a.s].slice(-65))f.push(+c.o.toPrecision(7),+c.h.toPrecision(7),+c.l.toPrecision(7),+c.c.toPrecision(7));k[a.s.replace(".","_")]=f}
+  ON.db.collection("world").doc("mkh").set({k,day,updated:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.mkhDay=null;ON.err="Couldn't publish market history: "+(e&&e.code||e)})}
+function mkhListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubMH)return;ON.unsubMH=ON.db.collection("world").doc("mkh").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!v.k||(ON.user&&devUid(ON.user.uid)))return;
+  const m=MK(),dk=mkdHist(m);let n=0;for(const a of ASSETS){const f=v.k[a.s.replace(".","_")];if(!Array.isArray(f)||f.length<8)continue;const c=[];for(let i=0;i+3<f.length;i+=4){const o=+f[i],h=+f[i+1],l=+f[i+2],cl=+f[i+3];if(o>0&&h>0&&l>0&&cl>0)c.push({o,h,l,c:cl})}if(c.length>=2){dk[a.s]=c;n++}}
+  if(n){m.dkSh=1;if(MKD.open)mkdRender()}},()=>{})}catch(e){}}
 function mkwBoom(now){if(typeof ON==="undefined"||!ON.ready||!ON.user||devUid(ON.user.uid))return;ON.db.collection("world").doc("mkt").update({xb:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{})}
 function mkwListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubMK)return;ON.unsubMK=ON.db.collection("world").doc("mkt").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!v.px)return;
   const px={};for(const a of ASSETS){const x=+v.px[a.s.replace(".","_")];if(x>0&&isFinite(x))px[a.s]=x}const ms=x=>x&&x.toMillis?x.toMillis():0;
@@ -4986,7 +4993,7 @@ function mktApp(){const m=MK();
   if(mkTab==="p")h+=ipoPortHtml();
   return h}
 /* ---------- Market dashboard: stocks and crypto on a big HQ-style board, with 7/14/21/28-day trend filters ---------- */
-const MKD={el:null,open:false,rng:7,inner:false,ct:"candle",cd:null};
+const MKD={el:null,open:false,rng:7,inner:false,ct:"candle",cd:null,sel:null,hi:null,hold:false,q:"",sort:"name",own:false,amt:"",tab:"mk"};
 /* daily candles per asset (m.dk: {o,h,l,c}, last 65 days) like a trading site's daily chart; m.dd holds today's running open/high/low.
    Old saves get a back-filled 60-day history from the recent price moves so the filters work at once. */
 function mkdHist(m){m.dk=m.dk||{};m.dd=m.dd||{};for(const a of ASSETS){const px=m.px[a.s];if(!m.dd[a.s])m.dd[a.s]={o:m.open[a.s]||px,h:Math.max(px,m.open[a.s]||px),l:Math.min(px,m.open[a.s]||px)};
@@ -5009,9 +5016,10 @@ function mkdChart(K,col){if(K.length<2)return"";const w=640,ht=240,B=20,N=K.leng
   const ticks=[0,Math.round((N-1)/3),Math.round(2*(N-1)/3),N-1].map(i=>`<span style="position:absolute;left:${X(i)/w*100}%;transform:translateX(${i===0?0:i===N-1?-100:-50}%)">${K[i].now?"Today":mkdDay(N-1-i)}</span>`).join("");
   const yl=lv.map(v=>`<span style="position:absolute;left:4px;top:${Y(v)/ht*100}%;transform:translateY(-50%)">${fp(v)}</span>`).join("")+`<span style="position:absolute;left:0;top:${Y(last)/ht*100}%;transform:translateY(-50%);background:${col};color:#fff;padding:1px 4px;border-radius:4px;font-weight:700">${fp(last)}</span>`;
   MKD.cd=K;
-  return `<div class="mkd-ohlc" style="font-size:12px;font-family:var(--mono);min-height:18px;opacity:.9"></div><div style="display:grid;grid-template-columns:1fr 84px"><div class="mkd-plot" style="position:relative;touch-action:pan-y"><svg viewBox="0 0 ${w} ${ht}" width="100%" height="${ht}" preserveAspectRatio="none" role="img" aria-label="Price chart">${grid}${body}${maPts?`<polyline points="${maPts}" fill="none" stroke="#f59e0b" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`:""}<line x1="0" x2="${w}" y1="${Y(last)}" y2="${Y(last)}" stroke="${col}" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/><line class="mkd-xh" x1="0" x2="0" y1="0" y2="${ht-B}" stroke="#94a3b8" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" style="display:none"/></svg><div style="position:absolute;left:0;right:0;bottom:0;height:16px;font-size:11px;opacity:.75">${ticks}</div></div><div style="position:relative;height:${ht}px;font-size:11px;font-family:var(--mono);border-left:1px solid #94a3b833">${yl}</div></div>
-  <div style="font-size:11px;opacity:.75;margin-top:4px"><span style="color:#f59e0b">━</span> 7-day moving average · <span style="color:${col}">┅</span> last price · hover or drag the chart for each day's open, high, low and close</div>`}
-function mkdOhlc(i){const K=MKD.cd,el=MKD.el&&MKD.el.querySelector(".mkd-ohlc");if(!K||!el)return;const k=K[i],N=K.length,p=i?K[i-1].c:k.o,ch=k.c/p-1,c=ch>=0?"#16a34a":"#dc2626";
+  return `<div class="mkd-ohlc" style="font-size:12px;font-family:var(--mono);min-height:18px;opacity:.9"></div><div style="display:grid;grid-template-columns:1fr 84px"><div class="mkd-plot" style="position:relative;touch-action:none"><svg viewBox="0 0 ${w} ${ht}" width="100%" height="${ht}" preserveAspectRatio="none" role="img" aria-label="Price chart">${grid}${body}${maPts?`<polyline points="${maPts}" fill="none" stroke="#f59e0b" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`:""}<line x1="0" x2="${w}" y1="${Y(last)}" y2="${Y(last)}" stroke="${col}" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/><line class="mkd-xh" x1="0" x2="0" y1="0" y2="${ht-B}" stroke="#94a3b8" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" style="display:none"/></svg><div style="position:absolute;left:0;right:0;bottom:0;height:16px;font-size:11px;opacity:.75">${ticks}</div></div><div style="position:relative;height:${ht}px;font-size:11px;font-family:var(--mono);border-left:1px solid #94a3b833">${yl}</div></div>
+  <div style="font-size:11px;opacity:.75;margin-top:4px"><span style="color:#f59e0b">━</span> 7-day moving average · <span style="color:${col}">┅</span> last price · hover, or press and drag on a phone, for each day's open, high, low and close</div>`}
+function mkdOhlc(i){const K=MKD.cd,el=MKD.el&&MKD.el.querySelector(".mkd-ohlc");if(!K||!el)return;const N=K.length,xh=MKD.el.querySelector(".mkd-xh");if(i==null||i>=N){if(xh)xh.style.display="none";i=N-1}else if(xh){const x=640/N*(i+.5);xh.setAttribute("x1",x);xh.setAttribute("x2",x);xh.style.display=""}
+  const k=K[i],p=i?K[i-1].c:k.o,ch=k.c/p-1,c=ch>=0?"#16a34a":"#dc2626";
   el.innerHTML=`<b>${k.now?"Today":mkdDay(N-1-i)}</b> O ${fp(k.o)} H ${fp(k.h)} L ${fp(k.l)} C <b style="color:${c}">${fp(k.c)} (${ch>=0?"+":""}${(ch*100).toFixed(2)}%)</b>`}
 /* stats and a day-by-day list for the picked asset */
 function mkdStats(K){const h=K.map(k=>k.c),N=h.length-1,o=h[0],c=h[N],ch=c-o,rets=h.slice(1).map((v,i)=>v/h[i]-1),avg=h.reduce((a,b)=>a+b,0)/h.length,
@@ -5023,32 +5031,112 @@ function mkdStats(K){const h=K.map(k=>k.c),N=h.length-1,o=h[0],c=h[N],ch=c-o,ret
 function mkdOpen(){if(!document.getElementById("mdx-css")){const st=document.createElement("style");st.id="mdx-css";st.textContent=DXCSS;document.head.appendChild(st)}
   bxdCss();
   if(!document.getElementById("mkd-css")){const st=document.createElement("style");st.id="mkd-css";st.textContent=`.mkd-rg{display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 4px}.mkd-rg button{padding:7px 14px;border-radius:999px;border:1px solid #94a3b855;background:transparent;color:inherit;font:inherit;font-size:13px;cursor:pointer}.mkd-rg button[aria-pressed=true]{background:#16a34a;border-color:#16a34a;color:#fff;font-weight:700}
-  .mkd-cols{display:grid;grid-template-columns:1fr;gap:16px;margin-top:12px}.bxd-wide .mkd-cols{grid-template-columns:1fr 1fr}.mkd-t{width:100%;border-collapse:collapse;font-size:13px}.mkd-t td,.mkd-t th{padding:6px 4px;text-align:right;white-space:nowrap}.mkd-t td:first-child,.mkd-t th:first-child{text-align:left}.mkd-t th{font-size:11px;opacity:.7;font-weight:600}.mkd-t tr[data-ph]{cursor:pointer}.mkd-t tr[data-ph]:hover{background:#94a3b81a}.mkd-t small{display:block;opacity:.7}`;document.head.appendChild(st)}
+  .mkd-cols{display:grid;grid-template-columns:1fr;gap:16px;margin-top:12px}.bxd-wide .mkd-cols{grid-template-columns:1fr 1fr}.mkd-t{width:100%;border-collapse:collapse;font-size:13px}.mkd-t td,.mkd-t th{padding:6px 4px;text-align:right;white-space:nowrap}.mkd-t td:first-child,.mkd-t th:first-child{text-align:left}.mkd-t th{font-size:11px;opacity:.7;font-weight:600}.mkd-t tr[data-md]{cursor:pointer}.mkd-t tr[data-md]:hover{background:#94a3b81a}.mkd-t small{display:block;opacity:.7}
+  .mkd-tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:12px}.mkd-tools input{flex:1 1 160px;min-width:0;padding:7px 12px;border-radius:999px;border:1px solid #94a3b855;background:transparent;color:inherit;font:inherit;font-size:13px}.mkd-tools .mkd-rg{margin:0}
+  .mkd-tr{display:grid;gap:6px;margin-top:6px}.mkd-tr button{padding:8px 4px;border-radius:8px;border:1px solid #94a3b855;background:transparent;color:inherit;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mkd-tr button.b{background:#16a34a;border-color:#16a34a;color:#fff}.mkd-tr button:disabled{opacity:.4;cursor:default}
+  .mkd-tr input{padding:8px;border-radius:8px;border:1px solid #94a3b855;background:transparent;color:inherit;font:inherit;min-width:0}`;document.head.appendChild(st)}
   if(!MKD.el){const el=MKD.el=document.createElement("div");el.className="mdx-win mx-win";el.setAttribute("role","dialog");el.setAttribute("aria-label","Market dashboard");document.body.appendChild(el);
-    el.addEventListener("pointermove",e=>{const pl=e.target.closest(".mkd-plot");if(!pl||!MKD.cd)return;const rc=pl.getBoundingClientRect(),N=MKD.cd.length,i=Math.max(0,Math.min(N-1,Math.floor((e.clientX-rc.left)/rc.width*N))),xh=pl.querySelector(".mkd-xh");if(xh){const x=640/N*(i+.5);xh.setAttribute("x1",x);xh.setAttribute("x2",x);xh.style.display=""}mkdOhlc(i)});
-    el.addEventListener("pointerout",e=>{if(!e.target.closest||!e.target.closest(".mkd-plot")||(e.relatedTarget&&e.relatedTarget.closest&&e.relatedTarget.closest(".mkd-plot")))return;const xh=MKD.el.querySelector(".mkd-xh");if(xh)xh.style.display="none";if(MKD.cd)mkdOhlc(MKD.cd.length-1)});
-    el.addEventListener("click",e=>{const x=e.target.closest("[data-md]");if(x){const k=x.dataset.md;if(k==="close")mkdHide();else if(k==="theme"){themeSet(themeGet()==="dark"?"light":"dark");x.innerHTML=themeIco()}else if(k==="rng"){MKD.rng=+x.dataset.k;mkdRender()}else if(k==="ct"){MKD.ct=x.dataset.k;mkdRender()}return}
-      const b=e.target.closest("[data-ph]");if(!b||b.disabled||!PH.el)return;const t=b.cloneNode(true);t.style.display="none";PH.el.appendChild(t);try{t.click()}finally{t.remove()}mkdRender()})}
+    const at=e=>{const pl=e.target.closest&&e.target.closest(".mkd-plot");if(!pl||!MKD.cd)return;const rc=pl.getBoundingClientRect(),N=MKD.cd.length;MKD.hi=Math.max(0,Math.min(N-1,Math.floor((e.clientX-rc.left)/rc.width*N)));mkdOhlc(MKD.hi)};
+    el.addEventListener("pointermove",at);el.addEventListener("pointerdown",e=>{if(e.target.closest&&e.target.closest(".mkd-plot")){MKD.hold=true;at(e)}});
+    el.addEventListener("pointerup",e=>{if(e.pointerType!=="mouse")MKD.hold=false});
+    el.addEventListener("pointerout",e=>{if(!e.target.closest||!e.target.closest(".mkd-plot")||(e.relatedTarget&&e.relatedTarget.closest&&e.relatedTarget.closest(".mkd-plot")))return;MKD.hold=false;MKD.hi=null;if(MKD.cd)mkdOhlc(null)});
+    el.addEventListener("input",e=>{const t=e.target;if(t.id==="mkd-q"){MKD.q=t.value;const p=t.selectionStart;mkdRender();const n=MKD.el.querySelector("#mkd-q");if(n){n.focus();n.setSelectionRange(p,p)}}else if(t.id==="exi-amt"){EXI.amt=t.value;const o=MKD.el.querySelector("#exi-amtt");if(o)o.textContent=exiAmtTxt();MKD.el.querySelectorAll("[data-md=exi]").forEach(b=>b.disabled=false)}else if(t.id==="mkd-amt"){MKD.amt=t.value;const o=MKD.el.querySelector("#mkd-amtt");if(o)o.textContent=mkdAmtTxt()}});
+    el.addEventListener("click",e=>{const x=e.target.closest("[data-md]");if(!x||x.disabled)return;const k=x.dataset.md,v=x.dataset.k;
+      if(k==="close")return mkdHide();if(k==="theme"){themeSet(themeGet()==="dark"?"light":"dark");x.innerHTML=themeIco();return}
+      if(k==="rng")MKD.rng=+v;else if(k==="ct")MKD.ct=v;else if(k==="sort")MKD.sort=v;else if(k==="own")MKD.own=!MKD.own;
+      else if(k==="sel"){MKD.sel=MKD.sel===v?null:v;MKD.amt="";MKD.hi=null;const b=MKD.el.querySelector(".mdx-body");if(b&&MKD.sel)b.scrollTop=0}
+      else if(k==="trade")trade(MKD.sel,+x.dataset.q);else if(k==="tab"){MKD.tab=v}else if(k==="exsel"){EXI.sel=v;EXI.amt=""}else if(k==="exi"){exiDo(v);return}
+      else if(k==="amt"){const q=parseFloat(String(MKD.amt).replace(/,/g,""));if(!(q>0)){toast("Type an amount first");return}trade(MKD.sel,+x.dataset.q*q)}
+      mkdRender()})}
   const vw=innerWidth,vh=innerHeight,el=MKD.el;if(vw<560){el.classList.add("mdx-full");el.classList.remove("bxd-wide");Object.assign(el.style,{left:"0px",top:"0px",width:vw+"px",height:vh+"px"})}
   else{el.classList.remove("mdx-full");el.classList.toggle("bxd-wide",vw>=900);const w=Math.min(1100,vw-48),h=Math.min(800,vh-48);Object.assign(el.style,{left:(vw-w)/2+"px",top:(vh-h)/2+"px",width:w+"px",height:h+"px"})}
-  el.style.display="flex";MKD.open=true;mkdRender();clearInterval(MKD.iv);MKD.iv=setInterval(()=>{if(!MKD.open)return clearInterval(MKD.iv);const a=document.activeElement;if(MKD.el.contains(a)&&/^(SELECT|INPUT)$/.test(a.tagName))return;mkdRender()},2000)}
-function mkdHide(){MKD.open=false;clearInterval(MKD.iv);if(MKD.el)MKD.el.style.display="none"}
+  if(MKD.sel==null&&mkSel)MKD.sel=mkSel;
+  el.style.display="flex";MKD.open=true;mkdRender();clearInterval(MKD.iv);
+  /* live refresh every 2 s, paused while typing or while a finger is on the chart; the picked day on the chart is kept */
+  MKD.iv=setInterval(()=>{if(!MKD.open)return clearInterval(MKD.iv);const a=document.activeElement;if(MKD.hold||(MKD.el.contains(a)&&/^(SELECT|INPUT)$/.test(a.tagName)))return;mkdRender()},2000)}
+function mkdHide(){MKD.open=false;MKD.hold=false;clearInterval(MKD.iv);if(MKD.el)MKD.el.style.display="none"}
+function mkdAmtTxt(){const s=MKD.sel,q=parseFloat(String(MKD.amt||"").replace(/,/g,""));if(!s||!(q>0))return"Type an amount to see the total";const p=MK().px[s],a=AK[s];return `Buy costs ${fmt(p*q*(1+fee(a)))} · sell pays ${fmt(p*q*(1-fee(a)))} (fee ${fee(a)*100}%)`}
+/* buy/sell panel for the picked asset: quick sizes, sell all, custom amount (calls trade() directly, no phone needed) */
+function mkdTrade(a){const m=MK(),p=m.px[a.s],hd=m.hold[a.s],f=fee(a);
+  const qs=a.t==="c"?[.001,.01,.1,1].map(x=>x*Math.max(1,10**Math.floor(Math.log10(1000/p)))):[1,10,100];
+  return `<div class="mdx-card" style="margin-top:12px"><h3 style="margin:0 0 6px">Trade ${a.s}</h3><div class="ph-rows" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));column-gap:24px"><div><span>Cash</span><b>${fmt(S.cash)}</b></div><div><span>You own</span><b>${hd?fq(hd.q):0}</b></div>${hd?`<div><span>Value</span><b>${fmt(hd.q*p)}</b></div><div><span>Avg cost</span><b>${fp(hd.avg)}</b></div><div><span>Gain</span><b style="color:${p>=hd.avg?"#16a34a":"#dc2626"}">${fmt((p-hd.avg)*hd.q)}</b></div>`:""}<div><span>Fee</span><b>${f*100}%</b></div></div>
+  <div class="mkd-tr" style="grid-template-columns:repeat(${qs.length},1fr)">${qs.map(q=>`<button class="b" data-md="trade" data-q="${q}" ${S.cash<p*q*(1+f)?"disabled":""}>Buy ${fq(q)}</button>`).join("")}</div>
+  <div class="mkd-tr" style="grid-template-columns:repeat(${qs.length},1fr)">${qs.map(q=>`<button data-md="trade" data-q="${-q}" ${!hd||hd.q<q-1e-9?"disabled":""}>Sell ${fq(q)}</button>`).join("")}</div>
+  ${hd?`<div class="mkd-tr"><button data-md="trade" data-q="${-hd.q}">Sell all · ${fmt(hd.q*p*(1-f))}</button></div>`:""}
+  <div class="mkd-tr" style="grid-template-columns:1fr auto auto;margin-top:10px"><input id="mkd-amt" type="text" inputmode="decimal" autocomplete="off" placeholder="${a.t==="c"?"Amount of "+a.s:"Number of shares"}" value="${dxE(MKD.amt||"")}"><button class="b" data-md="amt" data-q="1">Buy</button><button data-md="amt" data-q="-1">Sell</button></div>
+  <div id="mkd-amtt" class="ph-sub" style="margin-top:4px">${mkdAmtTxt()}</div></div>`}
 function mkdRender(){if(!MKD.el)return;const m=MK(),n=MKD.rng,body=MKD.el.querySelector(".mdx-body"),sy=body?body.scrollTop:0;
   const kp=(lb,v,ft,bg,fg,ic)=>`<div class="mdx-card mdx-kpi"><span class="mdx-ic" style="background:${bg};color:${fg};font-size:20px">${ic}</span><div class="mdx-lb"><span>${lb}</span></div><div class="mdx-big">${v}</div><div class="mdx-kfoot"><small>${ft}</small></div></div>`;
   const v=holdVal(),cost=Object.entries(m.hold).reduce((t,[s,x])=>t+x.q*x.avg,0),pl=v-cost;
   const rows=ASSETS.map(a=>{const h=mkdSeries(m,a.s,n),ch=(h[h.length-1]/h[0]-1)*100;return{a,h,ch}});
   const best=rows.reduce((b,r)=>!b||r.ch>b.ch?r:b,null),worst=rows.reduce((b,r)=>!b||r.ch<b.ch?r:b,null);
-  const tbl=(t,title)=>`<div class="mdx-card"><h3 style="margin:0 0 8px">${title} · last ${n} days</h3><table class="mkd-t"><tr><th>Asset</th><th>Price</th><th>${n}d change</th><th>Trend</th><th>${n}d high / low</th></tr>${rows.filter(r=>r.a.t===t).map(({a,h,ch})=>{const col=ch>=0?"#16a34a":"#dc2626",hd=m.hold[a.s];
-    return `<tr data-ph="mksel" data-k="${a.s}"${mkSel===a.s?' style="background:#16a34a22"':""}><td><b>${a.s}</b><small>${hd?"own "+fq(hd.q):a.n}</small></td><td style="font-family:var(--mono)">${fp(m.px[a.s])}</td><td style="color:${col};font-weight:700">${ch>=0?"+":""}${ch.toFixed(2)}%</td><td title="${n}-day trend: ${fp(h[0])} → ${fp(h[h.length-1])}">${sparkS(h,col)}</td><td style="font-family:var(--mono)"><small>${fp(Math.max(...h))}</small><small>${fp(Math.min(...h))}</small></td></tr>`}).join("")}</table></div>`;
-  let det="";MKD.cd=null;if(mkSel&&AK[mkSel]){const a=AK[mkSel],K=mkdCandles(m,a.s,n),h=K.map(k=>k.c),ch=(h[h.length-1]/h[0]-1)*100,col=ch>=0?"#16a34a":"#dc2626";
-    MKD.inner=true;let tr="";try{tr=mktApp()}finally{MKD.inner=false}
-    det=`<div class="mdx-card" style="margin-top:12px"><h3 style="margin:0">${a.n} · ${a.s} <span style="color:${col}">${ch>=0?"+":""}${ch.toFixed(2)}% over ${n} days</span></h3><div class="ph-sub" style="margin:4px 0 8px">Daily candles from ${mkdDay(n)} to today · each candle is one day: open, high, low and close</div><div class="mkd-rg" style="margin:0 0 6px">${[["candle","Candles"],["line","Line"]].map(([k,t])=>`<button data-md="ct" data-k="${k}" aria-pressed="${MKD.ct===k}">${t}</button>`).join("")}</div>${mkdChart(K,col)}${mkdStats(K)}<div class="bxd-con" style="margin-top:12px">${tr}</div></div>`}
+  const q=(MKD.q||"").trim().toLowerCase(),srt=MKD.sort||"name";
+  const shown=rows.filter(r=>(!MKD.own||m.hold[r.a.s])&&(!q||r.a.s.toLowerCase().includes(q)||r.a.n.toLowerCase().includes(q)));
+  if(srt==="gain")shown.sort((x,y)=>y.ch-x.ch);else if(srt==="loss")shown.sort((x,y)=>x.ch-y.ch);else if(srt==="price")shown.sort((x,y)=>m.px[y.a.s]-m.px[x.a.s]);
+  const tbl=(t,title)=>{const rs=shown.filter(r=>r.a.t===t);return `<div class="mdx-card"><h3 style="margin:0 0 8px">${title} · last ${n} days</h3>${rs.length?`<table class="mkd-t"><tr><th>Asset</th><th>Price</th><th>${n}d change</th><th>Trend</th><th>${n}d high / low</th></tr>${rs.map(({a,h,ch})=>{const col=ch>=0?"#16a34a":"#dc2626",hd=m.hold[a.s],K=mkdCandles(m,a.s,n);
+    return `<tr data-md="sel" data-k="${a.s}"${MKD.sel===a.s?' style="background:#16a34a22"':""}><td><b>${a.s}</b><small>${hd?"own "+fq(hd.q):a.n}</small></td><td style="font-family:var(--mono)">${fp(m.px[a.s])}</td><td style="color:${col};font-weight:700">${ch>=0?"+":""}${ch.toFixed(2)}%</td><td title="${n}-day trend: ${fp(h[0])} → ${fp(h[h.length-1])}">${sparkS(h,col)}</td><td style="font-family:var(--mono)"><small>${fp(Math.max(...K.map(k=>k.h)))}</small><small>${fp(Math.min(...K.map(k=>k.l)))}</small></td></tr>`}).join("")}</table>`:`<p class="ph-sub">${MKD.own?"You don't own any here.":"No match."}</p>`}</div>`};
+  let det="";MKD.cd=null;const sa=MKD.sel&&AK[MKD.sel];if(sa){const a=sa,K=mkdCandles(m,a.s,n),h=K.map(k=>k.c),ch=(h[h.length-1]/h[0]-1)*100,col=ch>=0?"#16a34a":"#dc2626";
+    det=`<div class="mdx-card" style="margin-top:12px"><div style="display:flex;gap:8px;align-items:center"><h3 style="margin:0;flex:1">${a.n} · ${a.s} <span style="color:${col}">${ch>=0?"+":""}${ch.toFixed(2)}% over ${n} days</span></h3><button class="mdx-x" data-md="sel" data-k="${a.s}" aria-label="Close chart">×</button></div><div class="ph-sub" style="margin:4px 0 8px">Daily candles from ${mkdDay(n)} to today · each candle is one day: open, high, low and close${m.dkSh?" · same history for every player":""}</div><div class="mkd-rg" style="margin:0 0 6px">${[["candle","Candles"],["line","Line"]].map(([k,t])=>`<button data-md="ct" data-k="${k}" aria-pressed="${MKD.ct===k}">${t}</button>`).join("")}</div>${mkdChart(K,col)}${mkdStats(K)}</div>${mkdTrade(a)}`}
   MKD.el.innerHTML=`<div class="mdx-bar"><span class="mdx-logo" style="background:#14532d;font-size:15px">📈</span><b>Market dashboard</b><button class="mdx-th" data-md="theme" aria-label="Switch light or dark theme" style="margin-left:auto">${themeIco()}</button><button class="mdx-x" data-md="close" aria-label="Close dashboard">×</button></div>
   <div class="mdx-body"><div class="mdx-in"><div class="mdx-hd"><h2>Stock &amp; crypto markets <span>📈</span></h2><div class="mdx-date"><span class="mdx-live"></span>${ASSETS.filter(a=>a.t==="s").length} stocks · ${ASSETS.filter(a=>a.t==="c").length} coins · prices update live</div></div>
-  <div class="mdx-kpis">${kp("Portfolio",fmt(v),`cost ${fmt(cost)}`,"#dcfce7","#16a34a","💼")}${kp("Open gain",fmt(pl),`${fmt(m.realized)} realized`,pl<0?"#fee2e2":"#e0ecff",pl<0?"#dc2626":"#2563eb","📊")}${kp(`Best ${n}d`,best?best.a.s:"—",best?`${best.ch>=0?"+":""}${best.ch.toFixed(1)}%`:"","#dcfce7","#16a34a","🚀")}${kp(`Worst ${n}d`,worst?worst.a.s:"—",worst?`${worst.ch.toFixed(1)}%`:"","#fee2e2","#dc2626","📉")}</div>
-  <div class="mkd-rg" role="group" aria-label="Trend period">${[7,14,21,28,45,60].map(d=>`<button data-md="rng" data-k="${d}" aria-pressed="${n===d}">${d} days</button>`).join("")}</div>
-  ${det}<div class="mkd-cols">${tbl("s","📈 Stocks")}${tbl("c","🪙 Crypto")}</div></div></div>`;
-  const nb=MKD.el.querySelector(".mdx-body");if(nb)nb.scrollTop=sy;if(MKD.cd)mkdOhlc(MKD.cd.length-1)}
+  <div class="mkd-rg" role="tablist" style="margin:0 0 12px">${[["mk","📈 Markets"],["ex","🏛 Exchange stock"]].map(([k,t])=>`<button role="tab" data-md="tab" data-k="${k}" aria-pressed="${(MKD.tab||"mk")===k}">${t}</button>`).join("")}</div><div class="mdx-kpis">${kp("Portfolio",fmt(v),`cost ${fmt(cost)}`,"#dcfce7","#16a34a","💼")}${kp("Open gain",fmt(pl),`${fmt(m.realized)} realized`,pl<0?"#fee2e2":"#e0ecff",pl<0?"#dc2626":"#2563eb","📊")}${kp(`Best ${n}d`,best?best.a.s:"—",best?`${best.ch>=0?"+":""}${best.ch.toFixed(1)}%`:"","#dcfce7","#16a34a","🚀")}${kp(`Worst ${n}d`,worst?worst.a.s:"—",worst?`${worst.ch.toFixed(1)}%`:"","#fee2e2","#dc2626","📉")}</div>
+  <div class="mkd-rg" role="group" aria-label="Trend period"${MKD.tab==="ex"?' style="display:none"':""}>${[7,14,21,28,45,60].map(d=>`<button data-md="rng" data-k="${d}" aria-pressed="${n===d}">${d} days</button>`).join("")}</div>
+  ${MKD.tab==="ex"?exiHtml():`${det}<div class="mkd-tools"><input id="mkd-q" type="search" placeholder="Search name or symbol" value="${dxE(MKD.q||"")}" autocomplete="off"><div class="mkd-rg" role="group" aria-label="Sort">${[["name","A–Z"],["gain","Top gainers"],["loss","Top losers"],["price","Price"]].map(([k,t])=>`<button data-md="sort" data-k="${k}" aria-pressed="${srt===k}">${t}</button>`).join("")}<button data-md="own" aria-pressed="${!!MKD.own}">Owned only</button></div></div>
+  <div class="mkd-cols">${tbl("s","📈 Stocks")}${tbl("c","🪙 Crypto")}</div>`}</div></div>`;
+  const nb=MKD.el.querySelector(".mdx-body");if(nb)nb.scrollTop=sy;if(MKD.cd)mkdOhlc(MKD.hi)}
+/* ---------- Exchange stock (Mark, 2026-10-30): the exchange owner buys shares into the exchange (world/exinv {uid,inv:{SYM:qty},at});
+   other players buy from that stock or sell into it at the market price. Each fill writes exfill/{id} {amt}: + the owner is paid (a player bought),
+   − the owner pays (a player sold). The owner's save collects fills by deleting them, like excom commissions. ---------- */
+const EXI={inv:{},uid:null,ok:0,fills:[],busy:{},sel:"AAPL",amt:"",err:""};
+const exiK=s=>s.replace(".","_");
+const exiOwner=()=>!!(exOk()&&EX.ny&&EX.ny.uid===ON.user.uid&&exOwn());
+const exiQty=s=>EXI.uid&&EX.ny&&EXI.uid===EX.ny.uid?Math.max(0,+EXI.inv[exiK(s)]||0):0;
+function exiRound(a,q){return a.t==="c"?Math.floor(q*1e6+1e-9)/1e6:Math.floor(q)}
+function exiListen(uid){const db=ON.db;
+  EX.sub.x=db.collection("world").doc("exinv").onSnapshot(d=>{const v=d.exists?d.data()||{}:{};EXI.inv=v.inv&&typeof v.inv==="object"?v.inv:{};EXI.uid=v.uid||null;EXI.ok=1;if(exiOwner()&&EXI.uid!==ON.user.uid&&!EXI.reset){EXI.reset=1;db.collection("world").doc("exinv").set({uid:ON.user.uid,inv:{},at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{EXI.reset=0})}if(MKD.open&&MKD.tab==="ex")mkdRender()},e=>{EXI.err="Couldn't load the exchange stock: "+(e&&e.code||e)});
+  EX.sub.f=db.collection("exfill").where("to","==",uid).onSnapshot(q=>{const a=[];q.forEach(d=>a.push(Object.assign({id:d.id},d.data()||{})));EXI.fills=a;exiCollect()},()=>{})}
+/* owner: apply each fill to cash (buys pay the owner, sells cost the owner) */
+function exiCollect(){if(!exiOwner())return;for(const o of EXI.fills){if(EXI.busy[o.id])continue;EXI.busy[o.id]=1;const ref=ON.db.collection("exfill").doc(o.id);
+  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)throw new Error("gone");t.delete(ref);return Math.max(-1e15,Math.min(1e15,Math.round(+d.data().amt||0)))})
+    .then(v=>{delete EXI.busy[o.id];S.cash+=v;if(v>0)S.earned=(S.earned||0)+v;const x=exFix();if(x){x.sold=(x.sold||0)+(v>0?v:0);x.bought=(x.bought||0)+(v<0?-v:0)}
+      toast(v>=0?`🏛 ${o.byName||"A player"} bought ${fq(+o.q||0)} ${o.s} from your exchange: +${fmt(v)}`:`🏛 ${o.byName||"A player"} sold ${fq(+o.q||0)} ${o.s} to your exchange: −${fmt(-v)}`);save();hud();if(MKD.open)mkdRender()},()=>{delete EXI.busy[o.id]})}}
+/* change one stock's quantity in world/exinv inside a transaction; f(cur) returns the new quantity or throws */
+function exiTx(s,f,fill){const ref=ON.db.collection("world").doc("exinv"),k=exiK(s);
+  return ON.db.runTransaction(async t=>{const d=await t.get(ref),v=d.exists?d.data():null,own=EX.ny&&EX.ny.uid;
+    if(!own)throw new Error("No one owns the exchange");const inv=v&&v.uid===own?Object.assign({},v.inv||{}):{};const nq=f(Math.max(0,+inv[k]||0));inv[k]=nq;
+    if(!v||v.uid!==own)t.set(ref,{uid:own,inv,at:window.firebase.firestore.FieldValue.serverTimestamp()});else t.update(ref,{["inv."+k]:nq,at:window.firebase.firestore.FieldValue.serverTimestamp()});
+    if(fill)t.set(ON.db.collection("exfill").doc(),Object.assign({by:ON.user.uid,byName:String(onProf().name||"Tycoon").slice(0,20),to:own,at:window.firebase.firestore.FieldValue.serverTimestamp()},fill));return nq})}
+function exiHold(s,q,p){const m=MK(),h=m.hold[s]=m.hold[s]||{q:0,avg:0};if(q>0){h.avg=(h.avg*h.q+p*q)/(h.q+q);h.q+=q}else{q=-q;m.realized+=(p-h.avg)*q;h.q-=q;if(h.q<1e-9)delete m.hold[s]}}
+/* players: buy from / sell to the exchange's stock; owner: stock up (pay the market) or unstock (sell back to the market) */
+function exiDo(kind){if(!exOk())return toast("Sign in to trade with the exchange");if(!EX.ny||!EX.ny.uid)return toast("No one owns the exchange yet");if(EXI.busy.t)return;
+  const s=EXI.sel,a=AK[s];if(!a)return toast("Pick a stock");let q=exiRound(a,Number(String(EXI.amt).replace(/,/g,"").trim()));if(!(q>0)||!isFinite(q))return toast(a.t==="c"?"Enter an amount above 0":"Enter a whole number of shares");
+  const m=MK(),p=m.px[s],f=fee(a),own=exiOwner(),hd=m.hold[s],k=exiK(s);
+  if(!own&&EX.ny.uid===ON.user.uid)return toast("Open your exchange to stock it");
+  let run,ok;
+  if(kind==="buy"){if(own)return;const cost=p*q*(1+f);if(S.cash<cost)return toast(`Need ${fmt(cost)}`);if(exiQty(s)<q-1e-9)return toast(`The exchange only has ${fq(exiQty(s))} ${s}`);
+    run=()=>exiTx(s,c=>{if(c<q-1e-9)throw new Error(`The exchange only has ${fq(c)} ${s}`);return exiRound(a,c-q)},{s,q,amt:Math.min(1e15,Math.round(p*q))});ok=()=>{S.cash-=cost;exiHold(s,q,p);toast(`Bought ${fq(q)} ${s} from the exchange`)}}
+  else if(kind==="sell"){if(own)return;if(!hd||hd.q<q-1e-9)return toast(`You own ${hd?fq(hd.q):0} ${s}`);const v=p*q*(1-f);
+    run=()=>exiTx(s,c=>exiRound(a,c+q),{s,q,amt:-Math.min(1e15,Math.round(p*q))});ok=()=>{S.cash+=v;exiHold(s,-q,p);toast(`Sold ${fq(q)} ${s} to the exchange for ${fmt(v)}`)}}
+  else if(kind==="stock"){if(!own)return;const cost=p*q*(1+f);if(S.cash<cost)return toast(`Need ${fmt(cost)}`);
+    run=()=>exiTx(s,c=>exiRound(a,c+q));ok=()=>{S.cash-=cost;toast(`Stocked ${fq(q)} ${s} on the exchange for ${fmt(cost)}`)}}
+  else if(kind==="unstock"){if(!own)return;if(exiQty(s)<q-1e-9)return toast(`The exchange only has ${fq(exiQty(s))} ${s}`);const v=p*q*(1-f);
+    run=()=>exiTx(s,c=>{if(c<q-1e-9)throw new Error(`The exchange only has ${fq(c)} ${s}`);return exiRound(a,c-q)});ok=()=>{S.cash+=v;toast(`Sold ${fq(q)} ${s} from the exchange stock for ${fmt(v)}`)}}
+  else return;
+  EXI.busy.t=1;run().then(()=>{EXI.busy.t=0;ok();EXI.amt="";save();hud();if(MKD.open)mkdRender()},e=>{EXI.busy.t=0;toast(e&&e.message&&!/permission/i.test(e.message)?e.message:"The exchange trade didn't go through: "+(e&&e.code||e));if(MKD.open)mkdRender()})}
+function exiHtml(){const m=MK(),own=exiOwner(),ny=EX.ny;
+  if(!exOk())return `<div class="mdx-card" style="margin-top:12px"><p class="ph-sub">Sign in to see the exchange's stock.</p></div>`;
+  if(!ny||!ny.uid)return `<div class="mdx-card" style="margin-top:12px"><p class="ph-sub">No one owns the New York Stock Exchange yet. Open it in ${EXC.city} to stock it.</p></div>`;
+  const rows=ASSETS.map(a=>({a,q:exiQty(a.s)})),tot=rows.reduce((t,r)=>t+r.q*m.px[r.a.s],0),held=rows.filter(r=>r.q>0),sa=AK[EXI.sel]||AK.AAPL,sq=exiQty(sa.s),p=m.px[sa.s],f=fee(sa),hd=m.hold[sa.s];
+  const q=exiRound(sa,Number(String(EXI.amt).replace(/,/g,""))),qv=q>0&&isFinite(q)?q:0;
+  const btn=(k,t,b,dis)=>`<button data-md="exi" data-k="${k}"${b?' class="b"':""} ${dis||EXI.busy.t?"disabled":""}>${t}</button>`;
+  return `<div class="mdx-card" style="margin-top:12px"><h3 style="margin:0">🏛 ${devEsc(ny.name||"Stock exchange")}</h3><div class="ph-sub" style="margin:4px 0 10px">Owned by ${devEsc(own?"you":ny.own||"a player")} · holding ${held.length} assets worth ${fmt(tot)} at market prices${own?" · players buy from this stock and pay you; when they sell to the exchange, you pay them":" · buy from what the exchange holds, or sell your shares to it, at the market price"}</div>
+  ${EXI.err?`<p class="ph-sub" style="color:#dc2626">${devEsc(EXI.err)}</p>`:""}
+  <table class="mkd-t"><tr><th>Asset</th><th>Price</th><th>In stock</th><th>Stock value</th><th>You own</th></tr>${rows.filter(r=>own||r.q>0||m.hold[r.a.s]).map(({a,q})=>`<tr data-md="exsel" data-k="${a.s}"${EXI.sel===a.s?' style="background:#16a34a22"':""}><td><b>${a.s}</b><small>${a.n}</small></td><td style="font-family:var(--mono)">${fp(m.px[a.s])}</td><td style="font-family:var(--mono);font-weight:700;color:${q>0?"inherit":"#dc2626"}">${q>0?fq(q):"none"}</td><td style="font-family:var(--mono)">${q>0?fmt(q*m.px[a.s]):"—"}</td><td style="font-family:var(--mono)">${m.hold[a.s]?fq(m.hold[a.s].q):"—"}</td></tr>`).join("")||`<tr><td colspan="5" class="ph-sub">The exchange has nothing in stock yet.</td></tr>`}</table></div>
+  <div class="mdx-card" style="margin-top:12px"><h3 style="margin:0 0 6px">${own?"Stock your exchange":"Trade with the exchange"} · ${sa.s}</h3><div class="ph-rows" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));column-gap:24px"><div><span>Price</span><b>${fp(p)}</b></div><div><span>Exchange has</span><b>${fq(sq)}</b></div><div><span>You own</span><b>${hd?fq(hd.q):0}</b></div><div><span>Cash</span><b>${fmt(S.cash)}</b></div></div>
+  <div class="mkd-tr" style="grid-template-columns:1fr auto auto;margin-top:8px"><input id="exi-amt" type="text" inputmode="decimal" autocomplete="off" placeholder="${sa.t==="c"?"Amount of "+sa.s:"Number of shares"}" value="${devEsc(EXI.amt)}">${own?btn("stock","Stock up",1,!qv||S.cash<p*qv*(1+f))+btn("unstock","Unstock",0,!qv||sq<qv-1e-9):btn("buy","Buy",1,!qv||sq<qv-1e-9||S.cash<p*qv*(1+f))+btn("sell","Sell",0,!qv||!hd||hd.q<qv-1e-9)}</div>
+  <div id="exi-amtt" class="ph-sub" style="margin-top:4px">${exiAmtTxt()}</div>${own&&EXI.fills.length?`<p class="ph-sub">Collecting ${EXI.fills.length} trade${EXI.fills.length>1?"s":""}…</p>`:""}</div>`}
+function exiAmtTxt(){const a=AK[EXI.sel];if(!a)return"";const q=exiRound(a,Number(String(EXI.amt).replace(/,/g,"")));if(!(q>0)||!isFinite(q))return exiOwner()?"Stock up buys shares at the market price into the exchange. Unstock sells them back to the market.":"Pick an asset, type an amount, then buy or sell.";
+  const p=MK().px[a.s],f=fee(a);return exiOwner()?`Stock up costs ${fmt(p*q*(1+f))} · unstock pays ${fmt(p*q*(1-f))}`:`Buy costs ${fmt(p*q*(1+f))} · sell pays ${fmt(p*q*(1-f))} (fee ${f*100}%)`}
 /* ---------- playtest progress reports: opt-in, sent to a Google Form (config: PLAYTEST near the state section) ---------- */
 const ptOK=()=>!!PLAYTEST.form;
 const ptEsc=t=>String(t).replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
@@ -11997,6 +12085,7 @@ function exEnsure(){if(!exOk()){if(EX.on){for(const k in EX.sub)try{EX.sub[k]()}
       if(EX.ny&&EX.ny.to===uid&&EX.offerSeen!==EX.ny.price){EX.offerSeen=EX.ny.price;toast(`🏛 ${EX.ny.own||"A player"} offers you ${EX.ny.name} for ${fmt(EX.ny.price)}. Open the Exchange app to buy it`)}
       exRefresh()},er("exchange owner"));
     EX.sub.p=ON.db.collection("exsale").doc(uid).onSnapshot(d=>{if(d.exists)exPaid()},()=>{});
+    try{exiListen(uid)}catch(e){}
     EX.sub.i=ON.db.collection("excom").where("to","==",uid).onSnapshot(q=>{EX.inb=arr(q);if(exFix())exCollect(1);exRefresh()},er("commissions"))}
   if(exOwn()&&now-EX.last>EXC.pub){EX.last=now;const x=exDay(now);
     ON.db.collection("exch").doc(uid).set({name:x.name,own:String(onProf().name||"Tycoon").slice(0,20),fee:EXC.com,vol:Math.min(1e15,Math.round(x.d.vol+x.d.fee/EXC.take)),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{EX.err="Couldn't list your exchange: "+(e&&e.code||e)})}}
@@ -13792,7 +13881,7 @@ const PATCH_NOTES=[
   "Airline city cards now include income from route flights.",
   "Owned countries are separate from your sphere, show on the leaderboard, and cost at least $1T to buy.",
   "Player market: no more price limits or listing caps, buy other players' listings from the phone Market app, and a free vehicle must go and fetch what you buy.",
-  "Stocks app: a new Market dashboard shows every stock and coin on one big page, with 7 to 60-day trend filters."]}
+  "Stocks app: a new Market dashboard shows every stock and coin on one big page, with 7 to 60-day trend filters, and an Exchange stock tab: the exchange owner stocks shares that other players buy and sell."]}
 ];
 (function(){const K="meridian-patch-seen",n=PATCH_NOTES[0];if(!n)return;let seen=null;try{seen=localStorage.getItem(K)}catch(e){}
 if(seen===n.v&&!/[?&]patchnotes/.test(location.search))return;
