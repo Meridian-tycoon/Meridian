@@ -1103,9 +1103,9 @@ const TECH=[
 const TK=Object.fromEntries(TECH.map(t=>[t.k,t]));
 const canResearch=t=>!hasTech(t.k)&&(t.req||[]).every(hasTech);
 const BASEVEH=JSON.parse(JSON.stringify({truck:{cap:30,spd:400},hvtruck:{cap:60,spd:380},roadtrain:{cap:120,spd:350},ship:{cap:3000,spd:250},bulkship:{cap:8000,spd:230},plane:{cap:60,spd:2500},cargo747:{cap:1500,spd:2300}}));
-/* truck upgrades, bought per vehicle in the Deliveries dashboard "Your vehicles" list (Mark, 2026-10-30; was fleet-wide S.fup since 2026-10-26) */
-const FUP={spd:{n:"Engine tuning",d:"drives faster",per:.08,max:30,base:25000,g:1.6,ico:"⚡"},cap:{n:"Reinforced chassis",d:"carries more weight",per:.12,max:10,base:30000,g:1.6,ico:"🏋"}};
-const isTruck=v=>!!v&&VEH[v.type]&&VEH[v.type].cls==="truck";
+/* vehicle upgrades, bought per vehicle in the Deliveries dashboard "Your vehicles" list (Mark, 2026-10-30; was fleet-wide S.fup since 2026-10-26) */
+const FUP={spd:{n:"Engine tuning",d:"drives faster",per:.08,max:20,base:25000,g:1.6,ico:"⚡"},cap:{n:"Reinforced chassis",d:"carries more weight",per:.12,max:20,base:30000,g:1.6,ico:"🏋"}};
+const isTruck=v=>!!v&&!!VEH[v.type];   // every vehicle (trucks, road trains, ships, planes) can be upgraded since 2026-10-30
 function fupMig(){if(S.fupMig)return;S.fupMig=1;const o=S.fup||{};if(!(+o.spd||+o.cap))return;for(const v of S.fleet||[])if(isTruck(v)&&!v.up)v.up={spd:Math.min(FUP.spd.max,+o.spd||0),cap:Math.min(FUP.cap.max,+o.cap||0)}}   // old fleet-wide levels carry over to every truck owned at the switch
 function fupLv(v,k){fupMig();return isTruck(v)?Math.max(0,Math.min(FUP[k].max,+((v.up||{})[k])||0)):0}
 function fupM(v,k){return 1+FUP[k].per*fupLv(v,k)}
@@ -1114,7 +1114,7 @@ function fupCost(v,k){const l=fupLv(v,k);return l>=FUP[k].max?0:fupCostL(k,l)}
 function fupSpent(v){let s=0;for(const k in FUP)for(let l=0;l<fupLv(v,k);l++)s+=fupCostL(k,l);return s}
 const capV=(v,g)=>capU(v.type,g)*fupM(v,"cap");            // units of g this vehicle loads, with its own chassis upgrade
 const vCap=v=>VEH[v.type].cap*fupM(v,"cap");
-function fupBuy(id,k){const F=FUP[k],v=(S.fleet||[]).find(x=>x.id===id);if(!F||!v)return"";if(!isTruck(v))return"Upgrades are for trucks only";const l=fupLv(v,k),c=fupCost(v,k),nm=`${VEH[v.type].n} #${v.id}`;if(l>=F.max)return`${F.n} is maxed out on ${nm}`;if(S.cash<c)return`Need ${fmt(c)} for ${F.n}`;S.cash-=c;v.up=v.up||{};v.up[k]=l+1;return`${nm}: ${F.n} level ${l+1}, ${k==="spd"?"drives":"carries"} +${Math.round(F.per*(l+1)*100)}%`}
+function fupBuy(id,k){const F=FUP[k],v=(S.fleet||[]).find(x=>x.id===id);if(!F||!v)return"";const l=fupLv(v,k),c=fupCost(v,k),nm=`${VEH[v.type].n} #${v.id}`;if(l>=F.max)return`${F.n} is maxed out on ${nm}`;if(S.cash<c)return`Need ${fmt(c)} for ${F.n}`;S.cash-=c;v.up=v.up||{};v.up[k]=l+1;return`${nm}: ${F.n} level ${l+1}, ${k==="spd"?"drives":"carries"} +${Math.round(F.per*(l+1)*100)}%`}
 function fupCell(v,k){const F=FUP[k],l=fupLv(v,k),c=fupCost(v,k),mx=l>=F.max;
   return `<div class="dv-up"><b>${F.ico} ${F.n} · Lv ${l}/${F.max}</b><small>+${Math.round(F.per*l*100)}%${mx?"":`, next +${Math.round(F.per*(l+1)*100)}%`}</small><div class="lx-bar"><i style="width:${l/F.max*100}%"></i></div>
     <button class="lx-btn" data-dv="fup" data-i="${v.id}" data-k="${k}" ${mx||S.cash<c?'aria-disabled="true"':""} title="${mx?"Maxed out":S.cash<c?`Need ${fmt(c)}`:""}">${mx?"Maxed":`Upgrade · ${fmt(c)}`}</button></div>`}
