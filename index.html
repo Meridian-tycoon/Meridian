@@ -578,6 +578,7 @@ let SLOT=1;try{SLOT=+localStorage.getItem(SLOTKEY)||1}catch(e){}
 const KEY=slotKey(SLOT);
 let S={cash:1500,day:1,own:{},events:{},log:[],hist:[],goals:[],mgr:{},speed:1,debt:0,rivals:null,last:Date.now(),earned:0}; // own[cityId][bizKey]=level
 let FRESHGAME=true;try{const raw=localStorage.getItem(KEY);if(raw){FRESHGAME=false;S=Object.assign(S,JSON.parse(raw));if(S.tut==null)S.tut=9}}catch(e){}
+S.aline=false;S.alNoBuy=true;   // Auto-line removed (Mark, 2026-10-30): always off; trips already on the road finish and park
 if(FRESHGAME)S.alNoBuy=true;   // new players: Auto-line only moves their own stock until they turn market buying on (Mark, 2026-10-30)
 if(FRESHGAME)S.pickStart=1; // new game: choose a starting city before playing (kept in the save so a reload mid-choice asks again; old saves never have it)
 /* playtest progress reports (opt-in). Fill in to switch on: form = Google Form "formResponse" URL, f = each field's "entry.NNN" id (empty ids are skipped). */
@@ -1313,7 +1314,7 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
         <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2"><button class="buy up" data-act="buy" data-g="${g}" data-q="10" ${S.cash<p*10||nop?"disabled":""}>+10</button><button class="buy" data-act="buy" data-g="${g}" data-q="100" ${S.cash<p*100||nop||!hasHQ(c)?"disabled":""}>+100</button></span></div>`}
       h+=`</div>`}
       const here=S.fleet.filter(v=>v.city===c.id&&!v.arr),incoming=S.fleet.filter(v=>v.arr&&v.dest===c.id);
-      h+=alHtml()+hireHtml(c)+supHtml(c);
+      h+=hireHtml(c)+supHtml(c);
       if(S.hired.some(x=>x.from===c.id||x.to===c.id))h+=`<div class="sec">Hired shipments</div><div class="list">`+S.hired.filter(x=>x.from===c.id||x.to===c.id).map(x=>`<div class="row"><div class="n">${RIVALS[x.ri].n}: ${gq(x.q)} ${G[x.g][0].toLowerCase()}</div><div class="d">${CITIES[x.from].name} → ${CITIES[x.to].name} · arrives in ${fmtDur(x.arr-Date.now())}</div><span></span></div>`).join("")+`</div>`;
       h+=`<div class="sec">Your own fleet · parked here</div><div class="list">`;
       if(!here.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">No vehicles here.</p>`;
@@ -1357,7 +1358,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="sellland"){const s=S.sites.find(x=>x.id===id);if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}S.cash+=s.lease?0:plotPrice(c,zoneOf(s)||"farm",s.size)*.75;S.sites=S.sites.filter(x=>x!==s);toast("Land sold")}
   else if(a==="wh"){const p=whCost(c);if(S.cash<p)return;S.cash-=p;ensureWh(c);toast(`Warehouse open in ${c.name}`)}
   else if(a==="dvopen"){dvOpen();return}
-  else if(a==="aline"){S.aline=!S.aline;if(S.aline)alTick(Date.now());toast(S.aline?"Auto-line on":"Auto-line off")}
+  
   else if(a==="lmfold"){S.lmOpen=!S.lmOpen;renderSheet();return}
   else if(a==="whmove"){if(!pendingPos||pendingPos.city!==c.id){toast("Tap Move, then pick the spot on the map");return}S.pos["wh:"+c.id]={...pendingPos};pendingPos=null;toast("Warehouse moved")}
   else if(a==="whsell"){if(!hasWh(c))return;if(stored(c)>=.05){toast("Sell or ship the goods first");return}if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}const v=whSell(c);S.cash+=v;delete S.wh[c.id];delete S.inv[c.id];delete S.auto[c.id];delete S.pos["wh:"+c.id];toast(`Warehouse sold for ${fmt(v)}`)}
@@ -5851,14 +5852,7 @@ function propsApp(){const ss=S.sites.filter(s=>siteOp(s)&&CITIES[s.city]),fd=n=>
   const T=[["all","All"],["fac","Factories"],["mine","Mines"],["farm","Farms"]],cnt=k=>k==="all"?ss.length:ss.filter(s=>propsKind(siteOp(s))===k).length;
   const gap=dvGap(),more=gap.reduce((a,x)=>a+(x.more||0),0),idle=S.fleet.filter(v=>dvIdle(v)&&!(S.dvl||[]).some(x=>x.on&&x.v===v.id)).length,lines=(S.dvl||[]).filter(x=>x.au&&x.on).length;
   const warns=Object.entries(S.alMiss||{}).filter(([k,m])=>typeof m==="string"&&!k.endsWith("L")).map(([,m])=>m).slice(0,3);
-  let h=`<div class="ph-card"><b>🚚 Auto-line: ${S.aline?`<span style="color:#4ade80">ON</span>`:`<span style="color:#f87171">OFF</span>`}</b>
-    <span>${S.aline?`${lines} truck line${lines===1?"":"s"} working${more?` · <b style="color:#fbbf24">${more} more truck${more>1?"s":""} needed</b>`:gap.length?" · all supplied ✓":""}`:S.fleet.length?"Your trucks keep your shops, gas stations and factories stocked on their own.":"Buy a truck on a city's Depot tab first."}</span>
-    ${S.aline?warns.map(m=>`<span style="color:#fbbf24;font-size:13px">⚠️ ${m.charAt(0).toUpperCase()+m.slice(1)}</span>`).join(""):""}
-    <button class="buy" data-ph="propsal" style="width:100%;margin-top:6px;color:#fff;background:${S.aline?"#7f1d1d":"#166534"}!important;border-color:#f59e0b">${S.aline?"Turn off Auto-line":"Turn on Auto-line"}</button>
-    <details style="margin-top:6px"><summary style="cursor:pointer;font-size:13px;color:var(--muted)">⚙️ Advanced</summary>
-    <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px"><span style="font-size:12px">Market buying: <b>${S.alNoBuy?"Off (only your own stock moves)":"On (buys when no depot has the goods)"}</b>. Change it in Deliveries.</span>
-    ${S.aline?`<button class="buy" data-ph="propsrun" style="width:100%">Recalculate now</button>`:""}
-    <button class="buy" data-ph="dvopen" style="width:100%">Open Deliveries (custom lines, market buying)</button><button class="buy" data-tutx="dvguide" style="width:100%">📘 Guide: deliveries in 3 steps</button></div></details></div>`;
+  let h=`<div class="ph-card"><b>🚚 Deliveries</b><span>Send your trucks on one-off or repeating deliveries from the Deliveries dashboard.</span><button class="buy" data-ph="dvopen" style="width:100%;margin-top:6px">Open Deliveries</button></div>`;
   h+=`<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">${T.map(([k,n])=>`<button class="buy" data-ph="propstab" data-k="${k}" style="flex:1;${propsTab===k?"background:#166534!important;color:#fff":""}">${n} ${cnt(k)}</button>`).join("")}</div>`;
   const list=ss.filter(s=>propsTab==="all"||propsKind(siteOp(s))===propsTab);
   if(!list.length)h+=`<div class="ph-card"><span>No properties here yet. Buy land and build from a city's sheet on the map.</span></div>`;
@@ -8892,7 +8886,7 @@ const TUT0=[
 const TUTDV=[
  {a:null,t:"1. Open a depot",b:"Tap a city, open the Depot tab and open a warehouse. Trucks load and unload there.",ok:()=>Object.keys(S.wh||{}).some(i=>S.wh[i]!=null)},
  {a:null,t:"2. Buy a truck",b:"On the same Depot tab, buy a truck. More cities need more trucks.",ok:()=>S.fleet.length>0},
- {a:null,t:"3. Turn on Auto-line",b:"In the Properties app on your phone (or Deliveries), turn on Auto-line. Your trucks now keep your shops, gas stations and factories stocked on their own. The card tells you if you need more trucks.",ok:()=>!!S.aline}];
+ {a:null,t:"3. Send a delivery",b:"Open Deliveries (Properties app on your phone, or the Depot tab) and create a delivery. Tick Repeat to keep it running.",ok:()=>(S.dvl||[]).length>0||S.fleet.some(v=>v.arr)}];
 let TUT=S.tutK==="dv"?TUTDV:TUT0;
 const TIPS={
  land:"Deposits shows what is under this city's ground. Mines need a matching deposit, and oil wells need an oil deposit plus Oil drilling research. Search oil, coal, ore, sand or uranium on the empire screen to find cities that have one.",
@@ -11055,10 +11049,10 @@ function dvSetF(k,val){const f=DV.f;if(k==="rep")f.rep=!!val;else if(k==="q")f.q
 function dvPage(){const now=Date.now(),rows=dvRows(),A=S.fleet.filter(v=>v.al&&v.al.fx&&v.al.st!=="back").length,idle=S.fleet.filter(dvIdle).length;
   let units=0,val=0;for(const v of S.fleet)if(v.arr&&v.cargo&&G[v.cargo.g]){units+=v.cargo.q;const d=CITIES[v.dest];val+=v.cargo.q*(d?px(d,v.cargo.g):G[v.cargo.g][1])}
   const k=(lb,v,ft,extra)=>`<div class="mdx-card"><span>${lb}</span><b>${v}</b><small>${ft}</small>${extra||""}</div>`;
-  let h=`<div class="mdx-kpis dv-k">${k("Active deliveries",rows.filter(r=>r.st!=="Parked").length,`${rows.filter(r=>r.st==="Outbound").length} outbound · ${rows.filter(r=>r.st==="Returning").length} returning`)}${k("Fetch trips",A,"Auto-line city-to-city")}${k("Vehicles",`${idle} / ${S.fleet.length-idle}`,"idle / busy")}${k("Goods in transit",lxg(units),`worth ${fmt(val)}`)}${k("Auto-line",S.aline?"ON":"OFF",S.aline?"keeping stock topped up":"automatic restock off",`<button class="lx-btn${S.aline?" on":""}" data-dv="aline" aria-pressed="${S.aline}">${S.aline?"Turn off":"Turn on"}</button>`)}${k("Auto-buy from market",S.alNoBuy?"OFF":"ON",S.alNoBuy?"only your own depot stock is moved":"buys goods when no depot has them",`<button class="lx-btn${S.alNoBuy?"":" on"}" data-dv="albuy" aria-pressed="${!S.alNoBuy}">${S.alNoBuy?"Turn on":"Turn off"}</button>`)}</div>`;
+  let h=`<div class="mdx-kpis dv-k">${k("Active deliveries",rows.filter(r=>r.st!=="Parked").length,`${rows.filter(r=>r.st==="Outbound").length} outbound · ${rows.filter(r=>r.st==="Returning").length} returning`)}${k("Vehicles",`${idle} / ${S.fleet.length-idle}`,"idle / busy")}${k("Goods in transit",lxg(units),`worth ${fmt(val)}`)}</div>`;
   if(DV.note&&now-DV.nt<8000)h+=`<div class="lx-note" role="status" style="${/^(Need|No |Not|That|Pick|Trucks|Could)/.test(DV.note)?"color:#b91c1c":""}">${dxE(DV.note)}</div>`;
   h+=`<div class="mdx-card"><div class="mdx-ch"><h3>Active deliveries</h3><span style="margin-left:auto;display:flex;align-items:center;gap:6px;font:600 12px Figtree,sans-serif;color:#2563eb"><span class="mdx-live"></span>Live</span></div>`;
-  if(!rows.length)h+=`<div class="mdx-empty">No deliveries under way. Turn on Auto-line or create one below.</div>`;
+  if(!rows.length)h+=`<div class="mdx-empty">No deliveries under way. Create one below.</div>`;
   else{h+=`<div class="mdx-tblw"><table class="dv-tbl"><thead><tr><th>Vehicle</th><th>From → to</th><th>Load</th><th>Status · ETA</th><th>Fuel</th><th>Actions</th></tr></thead><tbody>`;
     for(const r of rows){const v=r.v,A0=v.arr?CITIES[v.from]:CITIES[v.city],B0=v.arr?CITIES[v.dest]:null;
       h+=`<tr><td data-l="Vehicle"><b>${dxE(VEH[v.type].n)} #${v.id}</b><span class="lx-tag${r.tc?" "+r.tc:""}" style="margin-left:0;margin-top:3px">${r.ty}</span></td>
@@ -11069,7 +11063,7 @@ function dvPage(){const now=Date.now(),rows=dvRows(),A=S.fleet.filter(v=>v.al&&v
       <td class="dv-w"><div class="dv-a">${r.rec}${r.edit}${r.can}</div></td></tr>`;
       if(DV.ed&&DV.ed.k==="v"+v.id&&r.a&&(r.a.fx||r.a.cu)&&r.a.st==="go"&&!v.cargo)h+=dvEditRow(v)}
     h+=`</tbody></table></div>`}
-  const [alh,cuh]=dvLinesHtml();h+=`</div>${dvGapHtml()}${fupHtml()}${alh}<div class="dv-two">${cuh}<div class="mdx-card" style="min-width:0"><div class="mdx-ch"><h3>Create a custom delivery</h3></div>${dvFormHtml()}</div></div>`;
+  const [alh,cuh]=dvLinesHtml();h+=`</div>${fupHtml()}<div class="dv-two">${cuh}<div class="mdx-card" style="min-width:0"><div class="mdx-ch"><h3>Create a custom delivery</h3></div>${dvFormHtml()}</div></div>`;
   return h}
 /* Truck tracker: for every city + good your businesses use, the trucks Auto-line runs vs the trucks the use rate needs
    (load ÷ round trip from the nearest depot city must match units/h). Estimate uses a standard truck when none runs yet. */
@@ -11125,7 +11119,7 @@ function dvAct(a,b){const id=b.dataset.id,now=Date.now(),v=S.fleet.find(x=>Strin
   if(a==="albuy"){S.alNoBuy=!S.alNoBuy;dvNote(S.alNoBuy?"Auto-buy off: Auto-line only moves your own stock.":"Auto-buy on: Auto-line buys at the market when no depot has the goods.");done=true}
   if(a==="fup"){dvNote(fupBuy(+b.dataset.i,b.dataset.k));done=true}
   if(a==="vsell"){const v=S.fleet.find(x=>x.id===+b.dataset.i);if(!v||!vSellOk(v))dvNote("That vehicle is busy and can't be sold right now");else if(!b.dataset.arm){b.dataset.arm=1;b.textContent=`Tap again: sell ${fmt(vSellP(v))}`;return}else{const p=vSellP(v);S.fleet=S.fleet.filter(x=>x!==v);S.cash+=p;dvNote(`Sold ${VEH[v.type].n} #${v.id} for ${fmt(p)}`)}done=true}
-  else if(a==="aline"){S.aline=!S.aline;if(S.aline)alTick(now);dvNote(S.aline?"Auto-line on.":"Auto-line off. Trips under way finish.");done=true}
+  
   else if(a==="recall"&&v){const ok=v.job?lxRecall(v):dvRecall(v);dvNote(ok?`${VEH[v.type].n} #${v.id} is heading back${v.cargo?" with its load":""}.`:"That vehicle is already heading back.");done=ok}
   else if(a==="cancel"&&v){if(dvArm("c"+v.id)){const ok=dvCancel(v);dvNote(ok?`Cancelled: ${VEH[v.type].n} #${v.id} is heading back.`:"Nothing to cancel.");done=ok}}
   else if(a==="edit"&&v&&v.al){const k="v"+v.id;DV.ed=DV.ed&&DV.ed.k===k?null:{k,q:Math.round(v.al.q),to:v.al.to}}
