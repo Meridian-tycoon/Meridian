@@ -578,6 +578,7 @@ let SLOT=1;try{SLOT=+localStorage.getItem(SLOTKEY)||1}catch(e){}
 const KEY=slotKey(SLOT);
 let S={cash:1500,day:1,own:{},events:{},log:[],hist:[],goals:[],mgr:{},speed:1,debt:0,rivals:null,last:Date.now(),earned:0}; // own[cityId][bizKey]=level
 let FRESHGAME=true;try{const raw=localStorage.getItem(KEY);if(raw){FRESHGAME=false;S=Object.assign(S,JSON.parse(raw));if(S.tut==null)S.tut=9}}catch(e){}
+if(FRESHGAME)S.alNoBuy=true;   // new players: Auto-line only moves their own stock until they turn market buying on (Mark, 2026-10-30)
 if(FRESHGAME)S.pickStart=1; // new game: choose a starting city before playing (kept in the save so a reload mid-choice asks again; old saves never have it)
 /* playtest progress reports (opt-in). Fill in to switch on: form = Google Form "formResponse" URL, f = each field's "entry.NNN" id (empty ids are skipped). */
 const PLAYTEST={form:"https://docs.google.com/forms/d/e/1FAIpQLScN0SmD630lPaC073ltMKdyGbunUb_QaTjA9F9u7G6zyoLjUw/formResponse", // Google Form "formResponse" URL
@@ -5839,11 +5840,15 @@ function propsKind(o){return o.cat==="Factory"?"fac":o.cat==="Mine"?"mine":(o.ca
 function propsApp(){const ss=S.sites.filter(s=>siteOp(s)&&CITIES[s.city]),fd=n=>Math.round(n).toLocaleString();
   const T=[["all","All"],["fac","Factories"],["mine","Mines"],["farm","Farms"]],cnt=k=>k==="all"?ss.length:ss.filter(s=>propsKind(siteOp(s))===k).length;
   const gap=dvGap(),more=gap.reduce((a,x)=>a+(x.more||0),0),idle=S.fleet.filter(v=>dvIdle(v)&&!(S.dvl||[]).some(x=>x.on&&x.v===v.id)).length,lines=(S.dvl||[]).filter(x=>x.au&&x.on).length;
-  let h=`<div class="ph-card"><b>🚚 Auto-line</b><span>Works out what your properties use each day and keeps owned trucks running to supply it from your depots (or buys at the market if that is switched on in Deliveries).</span>
-    <span>${S.aline?`<b style="color:#4ade80">On</b>`:`<b style="color:#f87171">Off</b>`} · ${lines} line${lines===1?"":"s"} running · ${idle} idle vehicle${idle===1?"":"s"}${more?` · <b style="color:#fbbf24">${more} more truck${more>1?"s":""} needed</b>`:S.aline&&gap.length?` · supply covered`:""}</span>
-    <button class="buy" data-ph="propsal" style="width:100%;margin-top:6px;color:#fff;background:${S.aline?"#7f1d1d":"#166534"}!important;border-color:#f59e0b">${S.aline?"Turn Auto-line off":"Auto-line: calculate and fulfil what's needed"}</button>
-    ${S.aline?`<button class="buy" data-ph="propsrun" style="width:100%;margin-top:6px">Recalculate now</button>`:""}
-    <button class="buy" data-ph="dvopen" style="width:100%;margin-top:6px">Open Deliveries dashboard</button><button class="buy" data-tutx="dvguide" style="width:100%;margin-top:6px">📘 Guide: deliveries and managers</button></div>`;
+  const warns=Object.entries(S.alMiss||{}).filter(([k,m])=>typeof m==="string"&&!k.endsWith("L")).map(([,m])=>m).slice(0,3);
+  let h=`<div class="ph-card"><b>🚚 Auto-line: ${S.aline?`<span style="color:#4ade80">ON</span>`:`<span style="color:#f87171">OFF</span>`}</b>
+    <span>${S.aline?`${lines} truck line${lines===1?"":"s"} working${more?` · <b style="color:#fbbf24">${more} more truck${more>1?"s":""} needed</b>`:gap.length?" · all supplied ✓":""}`:S.fleet.length?"Your trucks keep your shops, gas stations and factories stocked on their own.":"Buy a truck on a city's Depot tab first."}</span>
+    ${S.aline?warns.map(m=>`<span style="color:#fbbf24;font-size:13px">⚠️ ${m.charAt(0).toUpperCase()+m.slice(1)}</span>`).join(""):""}
+    <button class="buy" data-ph="propsal" style="width:100%;margin-top:6px;color:#fff;background:${S.aline?"#7f1d1d":"#166534"}!important;border-color:#f59e0b">${S.aline?"Turn off Auto-line":"Turn on Auto-line"}</button>
+    <details style="margin-top:6px"><summary style="cursor:pointer;font-size:13px;color:var(--muted)">⚙️ Advanced</summary>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px"><span style="font-size:12px">Market buying: <b>${S.alNoBuy?"Off (only your own stock moves)":"On (buys when no depot has the goods)"}</b>. Change it in Deliveries.</span>
+    ${S.aline?`<button class="buy" data-ph="propsrun" style="width:100%">Recalculate now</button>`:""}
+    <button class="buy" data-ph="dvopen" style="width:100%">Open Deliveries (custom lines, market buying)</button><button class="buy" data-tutx="dvguide" style="width:100%">📘 Guide: deliveries in 3 steps</button></div></details></div>`;
   h+=`<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">${T.map(([k,n])=>`<button class="buy" data-ph="propstab" data-k="${k}" style="flex:1;${propsTab===k?"background:#166534!important;color:#fff":""}">${n} ${cnt(k)}</button>`).join("")}</div>`;
   const list=ss.filter(s=>propsTab==="all"||propsKind(siteOp(s))===propsTab);
   if(!list.length)h+=`<div class="ph-card"><span>No properties here yet. Buy land and build from a city's sheet on the map.</span></div>`;
@@ -8875,12 +8880,9 @@ const TUT0=[
  {a:"#pfbtn",t:"7. Check your empire",b:"Open the empire screen for net worth, goals with cash rewards and city search. 1 real hour is 1 game day.",ok:()=>mode==="pf"&&sheet.classList.contains("open")}];
 /* second guide: deliveries and managers (Mark, 2026-10-26). Started from Settings or the Properties app. */
 const TUTDV=[
- {a:null,t:"1. Open a depot",b:"Tap a city where you own businesses or land, open the Depot tab and open a warehouse. Trucks load and unload at depots, and your land's output is stored there.",ok:()=>Object.keys(S.wh||{}).some(i=>S.wh[i]!=null)},
- {a:null,t:"2. Buy a truck",b:"On the same Depot tab, buy a truck. It waits parked at that depot until you give it work.",ok:()=>S.fleet.length>0},
- {a:null,t:"3. Hire a city manager",b:"On the Business tab, hire the city manager. Managers restock your businesses from the depot on their own, and buy at the market if a business stays empty for an hour.",ok:()=>Object.keys(S.mgr||{}).length>0},
- {a:null,t:"4. Open Deliveries",b:"Open the Deliveries dashboard from the Depot tab, or from the Properties app on your phone.",ok:()=>!!(typeof DV!=="undefined"&&DV.open)},
- {a:null,t:"5. Turn on Auto-line",b:"In Deliveries, turn on Auto-line. It works out what your businesses and factories use each day and keeps your trucks running to supply them. The truck tracker shows if you need more trucks.",ok:()=>!!S.aline},
- {a:null,t:"6. Lines by hand",b:"You can also make your own standing line in Deliveries: pick a vehicle, the depot to load at, the city to deliver to, a good and an amount. Turn on Auto-buy from market there if a depot runs dry.",ok:()=>true}];
+ {a:null,t:"1. Open a depot",b:"Tap a city, open the Depot tab and open a warehouse. Trucks load and unload there.",ok:()=>Object.keys(S.wh||{}).some(i=>S.wh[i]!=null)},
+ {a:null,t:"2. Buy a truck",b:"On the same Depot tab, buy a truck. More cities need more trucks.",ok:()=>S.fleet.length>0},
+ {a:null,t:"3. Turn on Auto-line",b:"In the Properties app on your phone (or Deliveries), turn on Auto-line. Your trucks now keep your shops, gas stations and factories stocked on their own. The card tells you if you need more trucks.",ok:()=>!!S.aline}];
 let TUT=S.tutK==="dv"?TUTDV:TUT0;
 const TIPS={
  land:"Deposits shows what is under this city's ground. Mines need a matching deposit, and oil wells need an oil deposit plus Oil drilling research. Search oil, coal, ore, sand or uranium on the empire screen to find cities that have one.",
@@ -10706,7 +10708,7 @@ function alPlanned(c,g){let t=0;for(const v of S.fleet){const a=v.al;if(a&&(a.fx
 const alTrips=(c,g)=>S.fleet.filter(v=>v.al&&!v.al.cu&&v.al.to===c.id&&v.al.g===g&&(v.al.fx?v.al.st!=="back":!!(v.arr&&v.cargo&&!v.cargo.rc))).length;
 const alBusy=(c,g)=>alTrips(c,g)>0;
 function alLog(m){S.log.unshift("Auto-line: "+m);S.log=S.log.slice(0,3)}
-function alOnce(k,m){S.alMiss=S.alMiss||{};if(!S.alMiss[k]){S.alMiss[k]=1;alLog(m)}}
+function alOnce(k,m){S.alMiss=S.alMiss||{};if(!S.alMiss[k]){S.alMiss[k]=m;alLog(m)}}   // the message is kept so the Properties card can show it
 /* fuel in a city's depot tops up its gas stations that are under AL_LOW hours (as the manual restock: depot fuel goes in first, free) */
 function alGasFill(){for(const id in S.own){const c=CITIES[id];if(!c||unhOn(c)||!(inv0(c,"fuel")>=1))continue;
     for(const b of alGas()){const r=alGasRate(c,b);if(r<=0)continue;const key=bkey(c,b.k),have=S.stock[key]||0;if(have>=r*AL_LOW)continue;
