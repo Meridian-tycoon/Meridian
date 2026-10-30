@@ -1,0 +1,49 @@
+name: Patch notes
+# Every push to main that changes the game (index.html) gets a new "What's new"
+# entry built from the merged PR titles. Players see it once after reloading.
+on:
+  push:
+    branches: [main]
+    paths: [index.html]
+permissions:
+  contents: write
+  pull-requests: read
+concurrency: patch-notes
+jobs:
+  notes:
+    # Skip our own commit (GITHUB_TOKEN pushes don't retrigger anyway).
+    if: "!contains(github.event.head_commit.message, '[patch-notes]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Build entry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -e
+          # If a PR already wrote its own entry by hand, keep it and do nothing.
+          if git diff "$BEFORE" "$AFTER" -- index.html | grep -q '^+ {v:"'; then
+            echo "Manual entry found, skipping."; exit 0
+          fi
+          titles=(); nums=()
+          for sha in $(git rev-list "$BEFORE..$AFTER" 2>/dev/null || echo "$AFTER"); do
+            while IFS=$'\t' read -r n t; do
+              [ -z "$n" ] && continue
+              case " ${nums[*]} " in *" $n "*) continue;; esac
+              nums+=("$n"); titles+=("$t")
+            done < <(gh api "repos/${{ github.repository }}/commits/$sha/pulls" --jq '.[] | select(.merged_at) | "\(.number)\t\(.title)"')
+          done
+          if [ ${#titles[@]} -eq 0 ]; then
+            titles+=("$(git log -1 --format=%s "$AFTER")"); tag="${AFTER:0:7}"
+          else
+            tag="$(IFS=-; echo "${nums[*]}")"
+          fi
+          node .github/scripts/add-patch-note.mjs "$(date -u +%Y.%m.%d)-$tag" "${titles[@]}"
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Patch notes for #$tag [patch-notes]"
+          git push
