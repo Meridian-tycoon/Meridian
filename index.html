@@ -5375,9 +5375,10 @@ function polRun(){const p=pol(),C=GOVCFG,now=Date.now(),r=p.r+1,O=C.offices[r];i
   if(dipRuler(n))return toast(`${n} is occupied by ${dipRuler(n)}`);
   if(OFFICE_CD_ON&&urqCdOn()&&now<p.cd)return toast("Campaign cooldown: "+fmtDur(p.cd-now));
   if(OFFICE_CD_ON&&p.r>=0&&now-p.since<C.minHold*DAYMS)return toast("Serve a little longer first: "+fmtDur(p.since+C.minHold*DAYMS-now));
-  const {nw}=totals(),cost=polCost(r,n);if(nw<O.nw)return toast(`Need net worth ${fmt(O.nw)}`);if(S.cash<cost)return toast(`Campaign costs ${fmt(cost)}`);
-  const full=cabFull(n,r),foe=full?cabWeak(n,r):null;if(full&&!foe)return toast(`Every ${O.n} seat in ${n} is held by immune players`);
-  const ch=polChance(r);S.cash-=cost;
+  const mod=typeof ON!=="undefined"&&ON.user&&isMod(ON.user.uid,n); // Moderators: no net worth bar, no seat limit, always win in their country
+  const {nw}=totals(),cost=polCost(r,n);if(!mod&&nw<O.nw)return toast(`Need net worth ${fmt(O.nw)}`);if(S.cash<cost)return toast(`Campaign costs ${fmt(cost)}`);
+  const full=!mod&&cabFull(n,r),foe=full?cabWeak(n,r):null;if(full&&!foe)return toast(`Every ${O.n} seat in ${n} is held by immune players`);
+  const ch=mod?1:polChance(r);S.cash-=cost;
   if(Math.random()<ch){p.r=r;p.c=n;p.since=now;if(foe)logPol(`You beat ${String(foe.name||"a player").slice(0,20)} for a ${O.n} seat`);try{onPublish(true)}catch(e){}p.appr=Math.max(p.r>0?p.appr:0,C.apprStart);logPol(`You won! You are now ${O.n} of ${n}`);if(r===C.offices.length-1)govAnn(n,"elect");else govAnn(n,"office",O.n);if(typeof confetti==="function")confetti(60,innerWidth/2,innerHeight/3)}
   else{p.cd=now+C.loseCd*DAYMS;if(p.r>=0)p.appr=Math.max(0,p.appr-5);logPol(`You lost the race for ${O.n} of ${n} (${Math.round(ch*100)}% chance)`)}}
 const polPRq=p=>{const gb=Math.max(0,Math.min(GOVCFG.prGain,95-p.appr)),g=Math.max(0,Math.min(95-p.appr,gb*(1+presFx("pr"))));return {g,c:Math.round(polCost(p.r,p.c)*GOVCFG.prCost*gb/GOVCFG.prGain*(1-presFx("cost")))}}; // cost scales with approval actually gained (capped at 95)
