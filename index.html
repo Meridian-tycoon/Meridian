@@ -12146,7 +12146,7 @@ function spDraw(){const s=SP(),now=Date.now(),P=spPorts(),E=dxE,tabs=[["ov","Ove
       +card("Recent launches",`<table class="mdx-tbl"><tr><th>Time</th><th>Program</th><th>Payload</th><th>Outcome</th></tr>${past.map(e=>ev(e,0)).join("")}</table>${spy?"":`<div class="mdx-note" style="color:var(--dxmut)">Put a spy satellite in orbit to see payloads and outcomes.</div>`}`)+`</div>`
       +`<div style="margin-top:16px"></div>`+card("Player space programs",pl.length?`<div class="mdx-rows">${pl.map(p=>`<div><span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${/^#[0-9a-f]{6}$/i.test(p.col||"")?p.col:"#94a3b8"}"></span> ${E(String(p.name||"Tycoon").slice(0,20))}</span><b>${Math.floor(+p.sats)}${+p.sats>=3?"+":""} 🛰️</b></div>`).join("")}</div>`:`<div class="mdx-rows"><div><span>${typeof ON!=="undefined"&&ON.user?"No other online player has satellites yet.":"Sign in (Saves › Online) to see other players' satellites."}</span><b></b></div></div>`)}
   SPW.el.innerHTML=`<div class="mdx-bar"><span class="mdx-logo" style="background:#312e81;font-size:15px">🚀</span><b>Mission control</b><div class="mdx-seg" style="overflow-x:auto;max-width:60%">${tabs.map(t=>`<button data-sp="tab" data-k="${t[0]}" class="${s.tab===t[0]?"on":""}">${t[1]}</button>`).join("")}</div><button class="mdx-th" data-sp="theme" aria-label="Switch light or dark theme">${themeIco()}</button><button class="mdx-x" data-sp="close" aria-label="Close dashboard">×</button></div>
-  <div class="mdx-body"><div class="mdx-in"><div class="mdx-hd"><h2>Space program <span>🛰️</span></h2><div class="mdx-date"><span class="mdx-live"></span>${ready?ready+" launch"+(ready===1?"":"es")+" ready":P.length?"Next launch "+spDur(eta):"No spaceport"}</div></div>${body}</div></div>`;if(s.tab==="col")try{colPaint()}catch(e){}if(s.tab==="mb")try{mbPaint()}catch(e){}}
+  <div class="mdx-body"><div class="mdx-in"><div class="mdx-hd"><h2>Space program <span>🛰️</span></h2><div class="mdx-date"><span class="mdx-live"></span>${ready?ready+" launch"+(ready===1?"":"es")+" ready":P.length?"Next launch "+spDur(eta):"No spaceport"}</div></div>${body}</div></div>`;if(s.tab==="col")try{colPaint()}catch(e){}}
 /* ===== Planet visuals (display only, toggle S.set.pfx): wealth glow, election flashes, rocket launches, seasons =====
    Transient lists only (never saved). pfxDraw(ctx,now,z) is called from drawNow() inside the globe clip. */
 const PFX={el:[],ln:[],ws:null,wt:0,sats:{},ai:{},hf:null,raf:0,lt:0};
@@ -12932,29 +12932,74 @@ setInterval(()=>{try{frTick()}catch(e){}},10000);
 /* ===== Mars base (v1): an interactive Mars surface where player governments place space buildings =====
    S.mb={b:[{id,k,x,y,c,at}],seq,sel}. Local to the save for now (shared online placement is a later step).
    Only a player in office (colGov) builds; companies get in later via grant, large holding or license. */
-const MBCFG={cols:14,rows:9,max:60,refund:.5};
+const MBCFG={max:60,refund:.5,gap:2};
 const MBK={hab:["Habitat dome","🫧",2e8,"Pressurised glass dome where colonists live"],lander:["Lander pad","🚀",1.5e8,"Landing legs and a scorched pad for supply ships"],
   green:["Greenhouse dome","🌱",3e8,"Green-lit dome growing food"],solar:["Solar array","🔆",1e8,"Rows of panels powering the base"],
   ice:["Ice drill","🧊",2.5e8,"Drill rig pulling water ice from the regolith"],lab:["Research station","🔬",4e8,"Twin modules with a dish on top"],
   mast:["Comms mast","📡",1.2e8,"Tall relay mast talking to Earth"],rover:["Rover garage","🛞",1.8e8,"Half-cylinder hangar for surface rovers"]};
 function MB(){let m=S.mb;if(!m||typeof m!=="object"||Array.isArray(m))m=S.mb={};if(!Array.isArray(m.b))m.b=[];if(!(m.seq>=0))m.seq=0;if(!MBK[m.sel])m.sel="hab";
-  m.b=m.b.filter(b=>b&&MBK[b.k]&&b.x>=0&&b.x<MBCFG.cols&&b.y>=0&&b.y<MBCFG.rows).slice(0,MBCFG.max);return m}
-function mbAt(x,y){return MB().b.find(b=>b.x===x&&b.y===y)||null}
+  m.b=m.b.filter(b=>b&&MBK[b.k]).map(b=>b.lng==null&&b.x!=null?Object.assign(b,{lng:(b.x+.5)/14*120-60,lat:30-(b.y+.5)/9*60}):b).filter(b=>isFinite(b.lng)&&Math.abs(b.lat)<=85).slice(0,MBCFG.max);return m}
 function mbWhy(k){if(!hasTech("mars")&&!spDev())return "Research Mars colony first";if(!colGov()&&!spDev())return "Only a player government can build on Mars. Companies get in later through a grant, a large holding or a license";
   const m=MB();if(m.b.length>=MBCFG.max)return `Mars base is full (${MBCFG.max} buildings)`;if(!spDev()&&!(S.cash>=MBK[k][2]))return `Needs ${tfM(MBK[k][2])} in cash`;return ""}
-function mbBuild(x,y){const m=MB(),k=m.sel,old=mbAt(x,y);
-  if(old){if(!colGov()&&!spDev())return toast("Only a player government can change Mars buildings");if(!confirm(`Demolish this ${MBK[old.k][0]}? You get ${Math.round(MBCFG.refund*100)}% back.`))return;
-    m.b=m.b.filter(b=>b!==old);if(!spDev())S.cash+=Math.round(MBK[old.k][2]*MBCFG.refund);toast(`${MBK[old.k][1]} ${MBK[old.k][0]} demolished`);save();hud();spRefresh();return}
+function mbDemolish(id){const m=MB(),old=m.b.find(b=>b.id===id);if(!old)return;if(!colGov()&&!spDev())return toast("Only a player government can change Mars buildings");
+  if(!confirm(`Demolish this ${MBK[old.k][0]}? You get ${Math.round(MBCFG.refund*100)}% back.`))return;
+  m.b=m.b.filter(b=>b!==old);if(!spDev())S.cash+=Math.round(MBK[old.k][2]*MBCFG.refund);toast(`${MBK[old.k][1]} ${MBK[old.k][0]} demolished`);save();hud();spRefresh();mgSync()}
+function mbBuild(lng,lat){const m=MB(),k=m.sel;if(Math.abs(lat)>80)return toast("Too close to the pole: the ice cap can't hold a building");
+  if(m.b.some(b=>Math.hypot((b.lng-lng)*Math.cos(lat*Math.PI/180),b.lat-lat)<MBCFG.gap))return toast("Too close to another building");
   const why=mbWhy(k);if(why)return toast(why);if(!spDev())S.cash-=MBK[k][2];
-  m.b.push({id:++m.seq,k,x,y,c:colGov()||"Dev",at:Date.now()});toast(`${MBK[k][1]} ${MBK[k][0]} built on Mars`);try{S.log.unshift(`${MBK[k][0]} built on Mars`);S.log=S.log.slice(0,3)}catch(e){}save();hud();spRefresh()}
-function mbClick(a,k){if(a==="mbsel"&&MBK[k]){MB().sel=k;save();spRender();return}if(a==="mbfund"){tfFund(+k);return}}
-// cached Mars ground: dusty gradient, dunes, craters and rocks (seeded, so it never jumps)
-function mbGround(W,H){const key=W+"x"+H;if(CO.bg["mb"+key])return CO.bg["mb"+key];const c=document.createElement("canvas");c.width=W;c.height=H;const x=c.getContext("2d");let h=29;const rnd=()=>{h=(h*16807)%2147483647;return h/2147483647};
-  const g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,"#e0a27a");g.addColorStop(.18,"#c46a3c");g.addColorStop(1,"#8a3a1c");x.fillStyle=g;x.fillRect(0,0,W,H);
-  for(let i=0;i<14;i++){x.fillStyle=`rgba(${rnd()<.5?"70,25,8":"240,170,120"},.13)`;x.beginPath();x.ellipse(rnd()*W,rnd()*H,W*(.08+rnd()*.15),H*(.03+rnd()*.06),rnd()*.4-.2,0,7);x.fill()}
-  for(let i=0;i<22;i++){const cx=rnd()*W,cy=rnd()*H,r=4+rnd()*rnd()*28;x.fillStyle="rgba(60,20,6,.28)";x.beginPath();x.ellipse(cx,cy,r,r*.55,0,0,7);x.fill();x.strokeStyle="rgba(250,190,150,.35)";x.lineWidth=1.2;x.beginPath();x.ellipse(cx,cy+r*.08,r,r*.55,0,.2,2.9);x.stroke()}
-  for(let i=0;i<120;i++){x.fillStyle=`rgba(50,18,5,${.2+rnd()*.3})`;x.beginPath();x.arc(rnd()*W,rnd()*H,.6+rnd()*1.6,0,7);x.fill()}
-  return CO.bg["mb"+key]=c}
+  m.b.push({id:++m.seq,k,lng:+lng.toFixed(3),lat:+lat.toFixed(3),c:colGov()||"Dev",at:Date.now()});toast(`${MBK[k][1]} ${MBK[k][0]} built on Mars`);try{S.log.unshift(`${MBK[k][0]} built on Mars`);S.log=S.log.slice(0,3)}catch(e){}save();hud();spRefresh();mgSync()}
+function mbClick(a,k){if(a==="mbsel"&&MBK[k]){MB().sel=k;save();spRender();mgBar();return}if(a==="mbfund"){tfFund(+k);return}if(a==="mbglobe"){mgOpen();return}}
+// Mars surface texture: equirectangular, seeded, with the big landmarks in roughly the right places
+function mgTex(){if(CO.bg.mgTex)return CO.bg.mgTex;const W=2048,H=1024,c=document.createElement("canvas");c.width=W;c.height=H;const x=c.getContext("2d");let h=41;const rnd=()=>{h=(h*16807)%2147483647;return h/2147483647};
+  const P=(lng,lat)=>[(lng+180)/360*W,(90-lat)/180*H];x.fillStyle="#c1653a";x.fillRect(0,0,W,H);
+  const blob=(lng,lat,rx,ry,col,rot)=>{const [px,py]=P(lng,lat);const g=x.createRadialGradient(px,py,0,px,py,rx/360*W);g.addColorStop(0,col);g.addColorStop(1,"rgba(0,0,0,0)");x.save();x.translate(px,py);x.rotate(rot||0);x.scale(1,ry/rx);x.translate(-px,-py);x.fillStyle=g;x.beginPath();x.arc(px,py,rx/360*W,0,7);x.fill();x.restore()};
+  for(let i=0;i<260;i++)blob(rnd()*360-180,rnd()*150-75,4+rnd()*22,3+rnd()*12,rnd()<.5?"rgba(120,45,18,.22)":"rgba(230,150,100,.18)",rnd()*3);
+  // dark albedo: Syrtis Major, Acidalia, Mare Erythraeum, Sinus Meridiani, Cimmerium
+  [[70,9,18,12],[-30,47,30,12],[-40,-25,40,10],[0,-3,25,6],[150,-25,40,10],[110,-20,25,8],[-100,-30,25,8],[30,-15,30,8]].forEach(q=>blob(q[0],q[1],q[2],q[3],"rgba(70,28,12,.55)",0));
+  // bright: Hellas, Argyre, Tharsis, Arabia
+  [[70,-42,22,16],[-43,-50,12,9],[-105,5,30,22],[20,20,25,12],[150,25,30,14]].forEach(q=>blob(q[0],q[1],q[2],q[3],"rgba(240,175,125,.5)",0));
+  // Olympus Mons and the Tharsis volcanoes
+  for(const v of [[-134,18,9],[-112,-1,4],[-104,13,4],[-121,-9,4],[-99,40,6]]){const [px,py]=P(v[0],v[1]),r=v[2]/360*W;const g=x.createRadialGradient(px-r*.3,py-r*.3,r*.1,px,py,r);g.addColorStop(0,"#e9a77a");g.addColorStop(.7,"#b35a30");g.addColorStop(1,"rgba(110,40,15,.0)");x.fillStyle=g;x.beginPath();x.arc(px,py,r,0,7);x.fill();
+    x.fillStyle="rgba(80,30,10,.6)";x.beginPath();x.arc(px,py,r*.18,0,7);x.fill()}
+  // Valles Marineris
+  x.strokeStyle="rgba(60,22,8,.75)";x.lineCap="round";for(let w=0;w<3;w++){x.lineWidth=7-w*2;x.beginPath();let [sx,sy]=P(-95,-6);x.moveTo(sx,sy);for(let l=-90;l<=-40;l+=2){const [qx,qy]=P(l,-8-Math.sin((l+90)/50*3.2)*3+w*.6);x.lineTo(qx,qy)}x.stroke()}
+  // craters
+  for(let i=0;i<900;i++){const lng=rnd()*360-180,lat=rnd()*160-80,[px,py]=P(lng,lat),r=(1+rnd()*rnd()*rnd()*14)/Math.max(.25,Math.cos(lat*Math.PI/180))*(W/2048),ry=1+rnd()*rnd()*rnd()*14;
+    x.save();x.translate(px,py);x.scale(r/ry,1);x.fillStyle="rgba(70,25,8,.35)";x.beginPath();x.arc(0,0,ry,0,7);x.fill();x.strokeStyle="rgba(245,185,140,.35)";x.lineWidth=1;x.beginPath();x.arc(0,ry*.08,ry,.3,2.8);x.stroke();x.restore()}
+  // polar caps
+  const cap=(top)=>{const g=x.createLinearGradient(0,top?0:H,0,top?H*.09:H*.91);g.addColorStop(0,"rgba(250,248,245,.97)");g.addColorStop(.7,"rgba(245,235,225,.75)");g.addColorStop(1,"rgba(245,235,225,0)");x.fillStyle=g;x.fillRect(0,top?0:H*.91,W,H*.09)};cap(1);cap(0);
+  return CO.bg.mgTex=c}
+// remap the equirectangular texture into Web Mercator rows (what a MapLibre image source expects), ±85°
+function mgMerc(){if(CO.bg.mgMerc)return CO.bg.mgMerc;const src=mgTex(),W=src.width,H=1024,c=document.createElement("canvas");c.width=W;c.height=H;const x=c.getContext("2d"),L=85.0511,ym=Math.log(Math.tan(Math.PI/4+L*Math.PI/360));
+  for(let r=0;r<H;r++){const y=ym*(1-2*(r+.5)/H),lat=(2*Math.atan(Math.exp(y))-Math.PI/2)*180/Math.PI,sy=(90-lat)/180*src.height;x.drawImage(src,0,Math.max(0,Math.min(src.height-1,sy)),W,1,0,r,W,1)}
+  return CO.bg.mgMerc=c.toDataURL("image/jpeg",.88)}
+function mgIcon(k){const key="mgi"+k;if(CO.bg[key])return CO.bg[key];const c=document.createElement("canvas");c.width=c.height=72;const x=c.getContext("2d");mbSprite(x,k,36,40,72);return CO.bg[key]=c.toDataURL()}
+const MG={el:null,map:null,mk:[],ghost:null};
+function mgStyle(){return{version:8,sources:{mars:{type:"image",url:mgMerc(),coordinates:[[-180,85.0511],[180,85.0511],[180,-85.0511],[-180,-85.0511]]},
+    sites:{type:"geojson",data:{type:"FeatureCollection",features:COLP.mars.sites.map(q=>({type:"Feature",properties:{n:q[0]},geometry:{type:"Point",coordinates:[(q[2]-.5)*360,(.5-q[3])*170]}}))}}},
+  layers:[{id:"bg",type:"background",paint:{"background-color":"#c1653a"}},{id:"mars",type:"raster",source:"mars",paint:{"raster-fade-duration":0}},
+    {id:"terra",type:"background",paint:{"background-color":"#22c55e","background-opacity":Math.min(.25,tfPct()/400)}},
+    {id:"site",type:"circle",source:"sites",paint:{"circle-radius":3,"circle-color":"#fde68a","circle-stroke-color":"#7c2d12","circle-stroke-width":1}}]}}
+function mgOpen(){if(typeof maplibregl==="undefined")return toast("Map engine didn't load");if(!hasTech("mars")&&!spDev())return toast("Research Mars colony first");
+  if(!MG.el){const el=MG.el=document.createElement("div");el.id="mgwin";el.style.cssText="position:fixed;inset:0;z-index:2147483000;background:radial-gradient(ellipse at 50% 40%,#1a0f14,#05060d 70%);display:none";
+    el.innerHTML=`<div id="mgmap" style="position:absolute;inset:0"></div><div style="z-index:5;position:absolute;left:12px;right:12px;top:12px;display:flex;gap:8px;align-items:center;pointer-events:none;font-family:Figtree,system-ui,sans-serif;color:#fde68a">
+      <b style="font-size:18px;text-shadow:0 1px 4px #000">🔴 Mars</b><span id="mginfo" style="font-size:12px;color:#fed7aa;text-shadow:0 1px 3px #000"></span><span style="flex:1"></span>
+      <button data-mg="close" style="pointer-events:auto;border:0;border-radius:999px;padding:8px 14px;background:#1f2937;color:#fff;cursor:pointer;font-weight:700">✕ Back to Earth</button></div>
+      <div id="mgbar" style="z-index:5;position:absolute;left:8px;right:8px;bottom:10px;display:flex;gap:6px;overflow-x:auto;padding:6px;background:rgba(15,10,12,.78);border-radius:14px;font-family:Figtree,system-ui,sans-serif"></div>`;
+    document.body.appendChild(el);el.addEventListener("click",e=>{const b=e.target.closest("[data-mg]");if(!b)return;const a=b.dataset.mg;if(a==="close")mgClose();else if(MBK[a]){MB().sel=a;save();mgBar();spRefresh()}})}
+  MG.el.style.display="block";
+  if(!MG.map){MG.map=new maplibregl.Map({container:"mgmap",style:mgStyle(),center:[-60,10],zoom:1.6,minZoom:.6,maxZoom:7,renderWorldCopies:false,attributionControl:false,dragRotate:false});
+    MG.map.on("style.load",()=>{try{MG.map.setProjection({type:"globe"})}catch(e){}});
+    MG.map.on("click",e=>{if(e.originalEvent&&e.originalEvent.target.closest(".mgb"))return;mbBuild(e.lngLat.lng,e.lngLat.lat)});
+    MG.map.on("mousemove",e=>{if(!MG.ghost){const d=document.createElement("img");d.style.cssText="width:44px;height:44px;opacity:.55;pointer-events:none";MG.ghost=new maplibregl.Marker({element:d,anchor:"bottom"}).setLngLat(e.lngLat).addTo(MG.map)}
+      MG.ghost.getElement().src=mgIcon(MB().sel);MG.ghost.setLngLat(e.lngLat)})}
+  else MG.map.resize();mgBar();mgSync()}
+function mgClose(){if(MG.el)MG.el.style.display="none"}
+function mgBar(){if(!MG.el)return;const m=MB(),why=mbWhy(m.sel);MG.el.querySelector("#mgbar").innerHTML=Object.keys(MBK).map(k=>{const v=MBK[k],on=m.sel===k;
+    return `<button data-mg="${k}" title="${dxE(v[3])}" style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:86px;padding:6px 8px;border-radius:10px;cursor:pointer;border:2px solid ${on?"#f97316":"transparent"};background:${on?"rgba(249,115,22,.18)":"rgba(255,255,255,.05)"};color:#fff;font:600 11px Figtree,system-ui,sans-serif"><img src="${mgIcon(k)}" style="width:36px;height:36px" alt="">${dxE(v[0])}<small style="color:#fdba74">${tfM(v[2])}</small></button>`}).join("");
+  MG.el.querySelector("#mginfo").textContent=`${m.b.length}/${MBCFG.max} buildings · terraformed ${Math.floor(tfPct())}% · ${why||"tap the planet to build, tap a building to demolish"}`}
+function mgSync(){if(!MG.map||!MG.el||MG.el.style.display==="none")return;MG.mk.forEach(k=>k.remove());MG.mk=MB().b.map(b=>{const d=document.createElement("img");d.className="mgb";d.src=mgIcon(b.k);d.title=MBK[b.k][0]+" · "+b.c;d.style.cssText="width:40px;height:40px;cursor:pointer";
+  d.addEventListener("click",e=>{e.stopPropagation();mbDemolish(b.id)});return new maplibregl.Marker({element:d,anchor:"bottom"}).setLngLat([b.lng,b.lat]).addTo(MG.map)});mgBar()}
 // space-style building sprites, drawn in a cell of size s centred at (cx,cy)
 function mbSprite(x,k,cx,cy,s){const r=s*.4;x.save();x.translate(cx,cy);x.fillStyle="rgba(0,0,0,.28)";x.beginPath();x.ellipse(0,r*.75,r*1.05,r*.28,0,0,7);x.fill();
   const metal="#cbd5e1",dark="#475569",glass=(a)=>`rgba(186,230,253,${a})`;x.lineWidth=1.3;x.strokeStyle=dark;
@@ -12976,24 +13021,14 @@ function mbSprite(x,k,cx,cy,s){const r=s*.4;x.save();x.translate(cx,cy);x.fillSt
   else if(k==="rover"){x.fillStyle=metal;x.beginPath();x.moveTo(-r,r*.7);x.lineTo(-r,r*.1);x.arc(0,r*.1,r,Math.PI,0);x.lineTo(r,r*.7);x.closePath();x.fill();x.stroke();
     for(let i=-2;i<=2;i++){x.beginPath();x.moveTo(i*r*.35,r*.7);x.lineTo(i*r*.35,r*.1-Math.sqrt(Math.max(0,1-(i*.35)**2))*r);x.stroke()}x.fillStyle="#1f2937";x.fillRect(-r*.4,r*.25,r*.8,r*.45)}
   x.restore()}
-function mbPaint(){if(!SPW.el)return;const cv=SPW.el.querySelector("canvas[data-mbcv]");if(!cv)return;const m=MB(),W=cv.clientWidth||600,s=W/MBCFG.cols,H=Math.round(s*MBCFG.rows),dpr=Math.min(2,devicePixelRatio||1);
-  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);cv.style.height=H+"px"}
-  const x=cv.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);x.drawImage(mbGround(Math.round(W),H),0,0,W,H);
-  x.strokeStyle="rgba(255,230,210,.13)";x.lineWidth=1;x.beginPath();for(let i=1;i<MBCFG.cols;i++){x.moveTo(i*s,0);x.lineTo(i*s,H)}for(let j=1;j<MBCFG.rows;j++){x.moveTo(0,j*s);x.lineTo(W,j*s)}x.stroke();
-  const t=tfPct();if(t>0){x.fillStyle=`rgba(34,197,94,${Math.min(.22,t/400)})`;x.fillRect(0,0,W,H)}
-  for(const b of [...m.b].sort((a,c)=>a.y-c.y))mbSprite(x,b.k,b.x*s+s/2,b.y*s+s/2,s);
-  const hv=MB().hv;if(hv&&!mbAt(hv[0],hv[1])){x.globalAlpha=.5;mbSprite(x,m.sel,hv[0]*s+s/2,hv[1]*s+s/2,s);x.globalAlpha=1;x.strokeStyle="#fde68a";x.strokeRect(hv[0]*s+1,hv[1]*s+1,s-2,s-2)}
-  if(!cv._mb){cv._mb=1;const cell=e=>{const r=cv.getBoundingClientRect(),q=r.width/MBCFG.cols;return[Math.floor((e.clientX-r.left)/q),Math.floor((e.clientY-r.top)/q)]};
-    cv.addEventListener("click",e=>{const [cx,cy]=cell(e);if(cx>=0&&cy>=0&&cx<MBCFG.cols&&cy<MBCFG.rows)mbBuild(cx,cy)});
-    cv.addEventListener("mousemove",e=>{const c=cell(e),o=MB().hv;if(!o||o[0]!==c[0]||o[1]!==c[1]){MB().hv=c;mbPaint()}});cv.addEventListener("mouseleave",()=>{MB().hv=null;mbPaint()})}}
 function mbTab(){const E=dxE,m=MB(),g=colGov(),dev=spDev(),card=(t,b)=>`<div class="mdx-card" style="margin-bottom:16px"><div class="mdx-ch"><h3>${t}</h3></div>${b}</div>`;
   if(!hasTech("mars")&&!dev)return card("🔒 Mars base",`<div class="mdx-rows"><div><span>Research <b>Mars colony</b> to start building on the Martian surface.</span><b></b></div></div>`);
   const pick=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">${Object.keys(MBK).map(k=>{const v=MBK[k],on=m.sel===k;
     return `<button data-sp="mbsel" data-k="${k}" aria-pressed="${on}" title="${E(v[3])}" style="text-align:left;cursor:pointer;padding:8px 10px;border-radius:12px;border:2px solid ${on?"#c2410c":"var(--dxline)"};background:${on?"var(--dxtint)":"transparent"};color:inherit"><b>${v[1]} ${E(v[0])}</b><br><small style="color:var(--dxmut)">${tfM(v[2])}</small></button>`}).join("")}</div>`;
   const why=mbWhy(m.sel),cnt={};m.b.forEach(b=>cnt[b.k]=(cnt[b.k]||0)+1);
   const who=g?`Building as the government of <b>${E(g)}</b>.`:dev?"Dev account: building for free.":`<span style="color:#dc2626">Only player governments build on Mars.</span> Companies will get in through a government grant, a large holding, or a paid license (coming next).`;
-  const map=`<canvas data-mbcv style="width:100%;display:block;border-radius:12px;cursor:crosshair;touch-action:manipulation"></canvas>
-    <div class="mdx-note" style="color:var(--dxmut)">${who} Pick a building, then tap an empty plot to build it. Tap a building to demolish it (${Math.round(MBCFG.refund*100)}% back). ${m.b.length}/${MBCFG.max} plots used.${why&&!(why.startsWith("Mars base is full"))?` <b style="color:#dc2626">${E(why)}</b>`:""}</div>`;
+  const map=`<button data-sp="mbglobe" style="display:block;width:100%;border:0;padding:0;cursor:pointer;border-radius:12px;overflow:hidden;background:radial-gradient(ellipse at 50% 50%,#2a1418,#05060d 70%)"><div style="width:180px;height:180px;margin:14px auto 6px;border-radius:50%;background:url(${mgTex().toDataURL("image/jpeg",.7)}) 0 0/360px 180px;box-shadow:inset -30px -20px 50px rgba(0,0,0,.65),0 0 30px rgba(249,115,22,.35);animation:mgspin 30s linear infinite"></div><b style="display:block;color:#fde68a;padding:0 0 14px">🔴 Open Mars globe</b></button><style>@keyframes mgspin{to{background-position:-360px 0}}</style>
+    <div class="mdx-note" style="color:var(--dxmut)">${who} Spin Mars like the Earth map, pick a building in the bar and tap anywhere on the planet to build it. Tap a building to demolish it (${Math.round(MBCFG.refund*100)}% back). ${m.b.length}/${MBCFG.max} buildings.${why&&!(why.startsWith("Mars base is full"))?` <b style="color:#dc2626">${E(why)}</b>`:""}</div>`;
   const sum=m.b.length?`<div class="mdx-rows">${Object.keys(cnt).map(k=>`<div><span>${MBK[k][1]} ${E(MBK[k][0])}</span><b>${cnt[k]}</b></div>`).join("")}</div>`:`<div class="mdx-rows"><div><span>No buildings yet. Start with a Lander pad and a Habitat dome.</span><b></b></div></div>`;
   const W=tfRemote()&&TFW?TFW:{feed:S.tf?TF().feed:[],top:S.tf?TF().top:{}},feed=(W.feed||[]).slice(0,12),pc=tfPct();
   const fbtn=TFCFG.tiers.map(a=>`<button class="mdx-pill" data-sp="mbfund" data-k="${a}" ${pc>=100||(!dev&&S.cash<a)?"disabled":""} style="border:0;cursor:pointer;color:#fff;background:#15803d;opacity:${pc>=100||(!dev&&S.cash<a)?.5:1}">Fund ${tfM(a)}</button>`).join(" ");
