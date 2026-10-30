@@ -4993,7 +4993,7 @@ function mktApp(){const m=MK();
   if(mkTab==="p")h+=ipoPortHtml();
   return h}
 /* ---------- Market dashboard: stocks and crypto on a big HQ-style board, with 7/14/21/28-day trend filters ---------- */
-const MKD={el:null,open:false,rng:7,inner:false,ct:"candle",cd:null,sel:null,hi:null,hold:false,q:"",sort:"name",own:false,amt:""};
+const MKD={el:null,open:false,rng:7,inner:false,ct:"candle",cd:null,sel:null,hi:null,hold:false,q:"",sort:"name",own:false,amt:"",tab:"mk"};
 /* daily candles per asset (m.dk: {o,h,l,c}, last 65 days) like a trading site's daily chart; m.dd holds today's running open/high/low.
    Old saves get a back-filled 60-day history from the recent price moves so the filters work at once. */
 function mkdHist(m){m.dk=m.dk||{};m.dd=m.dd||{};for(const a of ASSETS){const px=m.px[a.s];if(!m.dd[a.s])m.dd[a.s]={o:m.open[a.s]||px,h:Math.max(px,m.open[a.s]||px),l:Math.min(px,m.open[a.s]||px)};
@@ -5040,12 +5040,12 @@ function mkdOpen(){if(!document.getElementById("mdx-css")){const st=document.cre
     el.addEventListener("pointermove",at);el.addEventListener("pointerdown",e=>{if(e.target.closest&&e.target.closest(".mkd-plot")){MKD.hold=true;at(e)}});
     el.addEventListener("pointerup",e=>{if(e.pointerType!=="mouse")MKD.hold=false});
     el.addEventListener("pointerout",e=>{if(!e.target.closest||!e.target.closest(".mkd-plot")||(e.relatedTarget&&e.relatedTarget.closest&&e.relatedTarget.closest(".mkd-plot")))return;MKD.hold=false;MKD.hi=null;if(MKD.cd)mkdOhlc(null)});
-    el.addEventListener("input",e=>{const t=e.target;if(t.id==="mkd-q"){MKD.q=t.value;const p=t.selectionStart;mkdRender();const n=MKD.el.querySelector("#mkd-q");if(n){n.focus();n.setSelectionRange(p,p)}}else if(t.id==="mkd-amt"){MKD.amt=t.value;const o=MKD.el.querySelector("#mkd-amtt");if(o)o.textContent=mkdAmtTxt()}});
+    el.addEventListener("input",e=>{const t=e.target;if(t.id==="mkd-q"){MKD.q=t.value;const p=t.selectionStart;mkdRender();const n=MKD.el.querySelector("#mkd-q");if(n){n.focus();n.setSelectionRange(p,p)}}else if(t.id==="exi-amt"){EXI.amt=t.value;const o=MKD.el.querySelector("#exi-amtt");if(o)o.textContent=exiAmtTxt();MKD.el.querySelectorAll("[data-md=exi]").forEach(b=>b.disabled=false)}else if(t.id==="mkd-amt"){MKD.amt=t.value;const o=MKD.el.querySelector("#mkd-amtt");if(o)o.textContent=mkdAmtTxt()}});
     el.addEventListener("click",e=>{const x=e.target.closest("[data-md]");if(!x||x.disabled)return;const k=x.dataset.md,v=x.dataset.k;
       if(k==="close")return mkdHide();if(k==="theme"){themeSet(themeGet()==="dark"?"light":"dark");x.innerHTML=themeIco();return}
       if(k==="rng")MKD.rng=+v;else if(k==="ct")MKD.ct=v;else if(k==="sort")MKD.sort=v;else if(k==="own")MKD.own=!MKD.own;
       else if(k==="sel"){MKD.sel=MKD.sel===v?null:v;MKD.amt="";MKD.hi=null;const b=MKD.el.querySelector(".mdx-body");if(b&&MKD.sel)b.scrollTop=0}
-      else if(k==="trade")trade(MKD.sel,+x.dataset.q);
+      else if(k==="trade")trade(MKD.sel,+x.dataset.q);else if(k==="tab"){MKD.tab=v}else if(k==="exsel"){EXI.sel=v;EXI.amt=""}else if(k==="exi"){exiDo(v);return}
       else if(k==="amt"){const q=parseFloat(String(MKD.amt).replace(/,/g,""));if(!(q>0)){toast("Type an amount first");return}trade(MKD.sel,+x.dataset.q*q)}
       mkdRender()})}
   const vw=innerWidth,vh=innerHeight,el=MKD.el;if(vw<560){el.classList.add("mdx-full");el.classList.remove("bxd-wide");Object.assign(el.style,{left:"0px",top:"0px",width:vw+"px",height:vh+"px"})}
@@ -5079,11 +5079,64 @@ function mkdRender(){if(!MKD.el)return;const m=MK(),n=MKD.rng,body=MKD.el.queryS
     det=`<div class="mdx-card" style="margin-top:12px"><div style="display:flex;gap:8px;align-items:center"><h3 style="margin:0;flex:1">${a.n} · ${a.s} <span style="color:${col}">${ch>=0?"+":""}${ch.toFixed(2)}% over ${n} days</span></h3><button class="mdx-x" data-md="sel" data-k="${a.s}" aria-label="Close chart">×</button></div><div class="ph-sub" style="margin:4px 0 8px">Daily candles from ${mkdDay(n)} to today · each candle is one day: open, high, low and close${m.dkSh?" · same history for every player":""}</div><div class="mkd-rg" style="margin:0 0 6px">${[["candle","Candles"],["line","Line"]].map(([k,t])=>`<button data-md="ct" data-k="${k}" aria-pressed="${MKD.ct===k}">${t}</button>`).join("")}</div>${mkdChart(K,col)}${mkdStats(K)}</div>${mkdTrade(a)}`}
   MKD.el.innerHTML=`<div class="mdx-bar"><span class="mdx-logo" style="background:#14532d;font-size:15px">📈</span><b>Market dashboard</b><button class="mdx-th" data-md="theme" aria-label="Switch light or dark theme" style="margin-left:auto">${themeIco()}</button><button class="mdx-x" data-md="close" aria-label="Close dashboard">×</button></div>
   <div class="mdx-body"><div class="mdx-in"><div class="mdx-hd"><h2>Stock &amp; crypto markets <span>📈</span></h2><div class="mdx-date"><span class="mdx-live"></span>${ASSETS.filter(a=>a.t==="s").length} stocks · ${ASSETS.filter(a=>a.t==="c").length} coins · prices update live</div></div>
-  <div class="mdx-kpis">${kp("Portfolio",fmt(v),`cost ${fmt(cost)}`,"#dcfce7","#16a34a","💼")}${kp("Open gain",fmt(pl),`${fmt(m.realized)} realized`,pl<0?"#fee2e2":"#e0ecff",pl<0?"#dc2626":"#2563eb","📊")}${kp(`Best ${n}d`,best?best.a.s:"—",best?`${best.ch>=0?"+":""}${best.ch.toFixed(1)}%`:"","#dcfce7","#16a34a","🚀")}${kp(`Worst ${n}d`,worst?worst.a.s:"—",worst?`${worst.ch.toFixed(1)}%`:"","#fee2e2","#dc2626","📉")}</div>
-  <div class="mkd-rg" role="group" aria-label="Trend period">${[7,14,21,28,45,60].map(d=>`<button data-md="rng" data-k="${d}" aria-pressed="${n===d}">${d} days</button>`).join("")}</div>
-  ${det}<div class="mkd-tools"><input id="mkd-q" type="search" placeholder="Search name or symbol" value="${dxE(MKD.q||"")}" autocomplete="off"><div class="mkd-rg" role="group" aria-label="Sort">${[["name","A–Z"],["gain","Top gainers"],["loss","Top losers"],["price","Price"]].map(([k,t])=>`<button data-md="sort" data-k="${k}" aria-pressed="${srt===k}">${t}</button>`).join("")}<button data-md="own" aria-pressed="${!!MKD.own}">Owned only</button></div></div>
-  <div class="mkd-cols">${tbl("s","📈 Stocks")}${tbl("c","🪙 Crypto")}</div></div></div>`;
+  <div class="mkd-rg" role="tablist" style="margin:0 0 12px">${[["mk","📈 Markets"],["ex","🏛 Exchange stock"]].map(([k,t])=>`<button role="tab" data-md="tab" data-k="${k}" aria-pressed="${(MKD.tab||"mk")===k}">${t}</button>`).join("")}</div><div class="mdx-kpis">${kp("Portfolio",fmt(v),`cost ${fmt(cost)}`,"#dcfce7","#16a34a","💼")}${kp("Open gain",fmt(pl),`${fmt(m.realized)} realized`,pl<0?"#fee2e2":"#e0ecff",pl<0?"#dc2626":"#2563eb","📊")}${kp(`Best ${n}d`,best?best.a.s:"—",best?`${best.ch>=0?"+":""}${best.ch.toFixed(1)}%`:"","#dcfce7","#16a34a","🚀")}${kp(`Worst ${n}d`,worst?worst.a.s:"—",worst?`${worst.ch.toFixed(1)}%`:"","#fee2e2","#dc2626","📉")}</div>
+  <div class="mkd-rg" role="group" aria-label="Trend period"${MKD.tab==="ex"?' style="display:none"':""}>${[7,14,21,28,45,60].map(d=>`<button data-md="rng" data-k="${d}" aria-pressed="${n===d}">${d} days</button>`).join("")}</div>
+  ${MKD.tab==="ex"?exiHtml():`${det}<div class="mkd-tools"><input id="mkd-q" type="search" placeholder="Search name or symbol" value="${dxE(MKD.q||"")}" autocomplete="off"><div class="mkd-rg" role="group" aria-label="Sort">${[["name","A–Z"],["gain","Top gainers"],["loss","Top losers"],["price","Price"]].map(([k,t])=>`<button data-md="sort" data-k="${k}" aria-pressed="${srt===k}">${t}</button>`).join("")}<button data-md="own" aria-pressed="${!!MKD.own}">Owned only</button></div></div>
+  <div class="mkd-cols">${tbl("s","📈 Stocks")}${tbl("c","🪙 Crypto")}</div>`}</div></div>`;
   const nb=MKD.el.querySelector(".mdx-body");if(nb)nb.scrollTop=sy;if(MKD.cd)mkdOhlc(MKD.hi)}
+/* ---------- Exchange stock (Mark, 2026-10-30): the exchange owner buys shares into the exchange (world/exinv {uid,inv:{SYM:qty},at});
+   other players buy from that stock or sell into it at the market price. Each fill writes exfill/{id} {amt}: + the owner is paid (a player bought),
+   − the owner pays (a player sold). The owner's save collects fills by deleting them, like excom commissions. ---------- */
+const EXI={inv:{},uid:null,ok:0,fills:[],busy:{},sel:"AAPL",amt:"",err:""};
+const exiK=s=>s.replace(".","_");
+const exiOwner=()=>!!(exOk()&&EX.ny&&EX.ny.uid===ON.user.uid&&exOwn());
+const exiQty=s=>EXI.uid&&EX.ny&&EXI.uid===EX.ny.uid?Math.max(0,+EXI.inv[exiK(s)]||0):0;
+function exiRound(a,q){return a.t==="c"?Math.floor(q*1e6+1e-9)/1e6:Math.floor(q)}
+function exiListen(uid){const db=ON.db;
+  EX.sub.x=db.collection("world").doc("exinv").onSnapshot(d=>{const v=d.exists?d.data()||{}:{};EXI.inv=v.inv&&typeof v.inv==="object"?v.inv:{};EXI.uid=v.uid||null;EXI.ok=1;if(exiOwner()&&EXI.uid!==ON.user.uid&&!EXI.reset){EXI.reset=1;db.collection("world").doc("exinv").set({uid:ON.user.uid,inv:{},at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{EXI.reset=0})}if(MKD.open&&MKD.tab==="ex")mkdRender()},e=>{EXI.err="Couldn't load the exchange stock: "+(e&&e.code||e)});
+  EX.sub.f=db.collection("exfill").where("to","==",uid).onSnapshot(q=>{const a=[];q.forEach(d=>a.push(Object.assign({id:d.id},d.data()||{})));EXI.fills=a;exiCollect()},()=>{})}
+/* owner: apply each fill to cash (buys pay the owner, sells cost the owner) */
+function exiCollect(){if(!exiOwner())return;for(const o of EXI.fills){if(EXI.busy[o.id])continue;EXI.busy[o.id]=1;const ref=ON.db.collection("exfill").doc(o.id);
+  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)throw new Error("gone");t.delete(ref);return Math.max(-1e15,Math.min(1e15,Math.round(+d.data().amt||0)))})
+    .then(v=>{delete EXI.busy[o.id];S.cash+=v;if(v>0)S.earned=(S.earned||0)+v;const x=exFix();if(x){x.sold=(x.sold||0)+(v>0?v:0);x.bought=(x.bought||0)+(v<0?-v:0)}
+      toast(v>=0?`🏛 ${o.byName||"A player"} bought ${fq(+o.q||0)} ${o.s} from your exchange: +${fmt(v)}`:`🏛 ${o.byName||"A player"} sold ${fq(+o.q||0)} ${o.s} to your exchange: −${fmt(-v)}`);save();hud();if(MKD.open)mkdRender()},()=>{delete EXI.busy[o.id]})}}
+/* change one stock's quantity in world/exinv inside a transaction; f(cur) returns the new quantity or throws */
+function exiTx(s,f,fill){const ref=ON.db.collection("world").doc("exinv"),k=exiK(s);
+  return ON.db.runTransaction(async t=>{const d=await t.get(ref),v=d.exists?d.data():null,own=EX.ny&&EX.ny.uid;
+    if(!own)throw new Error("No one owns the exchange");const inv=v&&v.uid===own?Object.assign({},v.inv||{}):{};const nq=f(Math.max(0,+inv[k]||0));inv[k]=nq;
+    if(!v||v.uid!==own)t.set(ref,{uid:own,inv,at:window.firebase.firestore.FieldValue.serverTimestamp()});else t.update(ref,{["inv."+k]:nq,at:window.firebase.firestore.FieldValue.serverTimestamp()});
+    if(fill)t.set(ON.db.collection("exfill").doc(),Object.assign({by:ON.user.uid,byName:String(onProf().name||"Tycoon").slice(0,20),to:own,at:window.firebase.firestore.FieldValue.serverTimestamp()},fill));return nq})}
+function exiHold(s,q,p){const m=MK(),h=m.hold[s]=m.hold[s]||{q:0,avg:0};if(q>0){h.avg=(h.avg*h.q+p*q)/(h.q+q);h.q+=q}else{q=-q;m.realized+=(p-h.avg)*q;h.q-=q;if(h.q<1e-9)delete m.hold[s]}}
+/* players: buy from / sell to the exchange's stock; owner: stock up (pay the market) or unstock (sell back to the market) */
+function exiDo(kind){if(!exOk())return toast("Sign in to trade with the exchange");if(!EX.ny||!EX.ny.uid)return toast("No one owns the exchange yet");if(EXI.busy.t)return;
+  const s=EXI.sel,a=AK[s];if(!a)return toast("Pick a stock");let q=exiRound(a,Number(String(EXI.amt).replace(/,/g,"").trim()));if(!(q>0)||!isFinite(q))return toast(a.t==="c"?"Enter an amount above 0":"Enter a whole number of shares");
+  const m=MK(),p=m.px[s],f=fee(a),own=exiOwner(),hd=m.hold[s],k=exiK(s);
+  if(!own&&EX.ny.uid===ON.user.uid)return toast("Open your exchange to stock it");
+  let run,ok;
+  if(kind==="buy"){if(own)return;const cost=p*q*(1+f);if(S.cash<cost)return toast(`Need ${fmt(cost)}`);if(exiQty(s)<q-1e-9)return toast(`The exchange only has ${fq(exiQty(s))} ${s}`);
+    run=()=>exiTx(s,c=>{if(c<q-1e-9)throw new Error(`The exchange only has ${fq(c)} ${s}`);return exiRound(a,c-q)},{s,q,amt:Math.min(1e15,Math.round(p*q))});ok=()=>{S.cash-=cost;exiHold(s,q,p);toast(`Bought ${fq(q)} ${s} from the exchange`)}}
+  else if(kind==="sell"){if(own)return;if(!hd||hd.q<q-1e-9)return toast(`You own ${hd?fq(hd.q):0} ${s}`);const v=p*q*(1-f);
+    run=()=>exiTx(s,c=>exiRound(a,c+q),{s,q,amt:-Math.min(1e15,Math.round(p*q))});ok=()=>{S.cash+=v;exiHold(s,-q,p);toast(`Sold ${fq(q)} ${s} to the exchange for ${fmt(v)}`)}}
+  else if(kind==="stock"){if(!own)return;const cost=p*q*(1+f);if(S.cash<cost)return toast(`Need ${fmt(cost)}`);
+    run=()=>exiTx(s,c=>exiRound(a,c+q));ok=()=>{S.cash-=cost;toast(`Stocked ${fq(q)} ${s} on the exchange for ${fmt(cost)}`)}}
+  else if(kind==="unstock"){if(!own)return;if(exiQty(s)<q-1e-9)return toast(`The exchange only has ${fq(exiQty(s))} ${s}`);const v=p*q*(1-f);
+    run=()=>exiTx(s,c=>{if(c<q-1e-9)throw new Error(`The exchange only has ${fq(c)} ${s}`);return exiRound(a,c-q)});ok=()=>{S.cash+=v;toast(`Sold ${fq(q)} ${s} from the exchange stock for ${fmt(v)}`)}}
+  else return;
+  EXI.busy.t=1;run().then(()=>{EXI.busy.t=0;ok();EXI.amt="";save();hud();if(MKD.open)mkdRender()},e=>{EXI.busy.t=0;toast(e&&e.message&&!/permission/i.test(e.message)?e.message:"The exchange trade didn't go through: "+(e&&e.code||e));if(MKD.open)mkdRender()})}
+function exiHtml(){const m=MK(),own=exiOwner(),ny=EX.ny;
+  if(!exOk())return `<div class="mdx-card" style="margin-top:12px"><p class="ph-sub">Sign in to see the exchange's stock.</p></div>`;
+  if(!ny||!ny.uid)return `<div class="mdx-card" style="margin-top:12px"><p class="ph-sub">No one owns the New York Stock Exchange yet. Open it in ${EXC.city} to stock it.</p></div>`;
+  const rows=ASSETS.map(a=>({a,q:exiQty(a.s)})),tot=rows.reduce((t,r)=>t+r.q*m.px[r.a.s],0),held=rows.filter(r=>r.q>0),sa=AK[EXI.sel]||AK.AAPL,sq=exiQty(sa.s),p=m.px[sa.s],f=fee(sa),hd=m.hold[sa.s];
+  const q=exiRound(sa,Number(String(EXI.amt).replace(/,/g,""))),qv=q>0&&isFinite(q)?q:0;
+  const btn=(k,t,b,dis)=>`<button data-md="exi" data-k="${k}"${b?' class="b"':""} ${dis||EXI.busy.t?"disabled":""}>${t}</button>`;
+  return `<div class="mdx-card" style="margin-top:12px"><h3 style="margin:0">🏛 ${devEsc(ny.name||"Stock exchange")}</h3><div class="ph-sub" style="margin:4px 0 10px">Owned by ${devEsc(own?"you":ny.own||"a player")} · holding ${held.length} assets worth ${fmt(tot)} at market prices${own?" · players buy from this stock and pay you; when they sell to the exchange, you pay them":" · buy from what the exchange holds, or sell your shares to it, at the market price"}</div>
+  ${EXI.err?`<p class="ph-sub" style="color:#dc2626">${devEsc(EXI.err)}</p>`:""}
+  <table class="mkd-t"><tr><th>Asset</th><th>Price</th><th>In stock</th><th>Stock value</th><th>You own</th></tr>${rows.filter(r=>own||r.q>0||m.hold[r.a.s]).map(({a,q})=>`<tr data-md="exsel" data-k="${a.s}"${EXI.sel===a.s?' style="background:#16a34a22"':""}><td><b>${a.s}</b><small>${a.n}</small></td><td style="font-family:var(--mono)">${fp(m.px[a.s])}</td><td style="font-family:var(--mono);font-weight:700;color:${q>0?"inherit":"#dc2626"}">${q>0?fq(q):"none"}</td><td style="font-family:var(--mono)">${q>0?fmt(q*m.px[a.s]):"—"}</td><td style="font-family:var(--mono)">${m.hold[a.s]?fq(m.hold[a.s].q):"—"}</td></tr>`).join("")||`<tr><td colspan="5" class="ph-sub">The exchange has nothing in stock yet.</td></tr>`}</table></div>
+  <div class="mdx-card" style="margin-top:12px"><h3 style="margin:0 0 6px">${own?"Stock your exchange":"Trade with the exchange"} · ${sa.s}</h3><div class="ph-rows" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));column-gap:24px"><div><span>Price</span><b>${fp(p)}</b></div><div><span>Exchange has</span><b>${fq(sq)}</b></div><div><span>You own</span><b>${hd?fq(hd.q):0}</b></div><div><span>Cash</span><b>${fmt(S.cash)}</b></div></div>
+  <div class="mkd-tr" style="grid-template-columns:1fr auto auto;margin-top:8px"><input id="exi-amt" type="text" inputmode="decimal" autocomplete="off" placeholder="${sa.t==="c"?"Amount of "+sa.s:"Number of shares"}" value="${devEsc(EXI.amt)}">${own?btn("stock","Stock up",1,!qv||S.cash<p*qv*(1+f))+btn("unstock","Unstock",0,!qv||sq<qv-1e-9):btn("buy","Buy",1,!qv||sq<qv-1e-9||S.cash<p*qv*(1+f))+btn("sell","Sell",0,!qv||!hd||hd.q<qv-1e-9)}</div>
+  <div id="exi-amtt" class="ph-sub" style="margin-top:4px">${exiAmtTxt()}</div>${own&&EXI.fills.length?`<p class="ph-sub">Collecting ${EXI.fills.length} trade${EXI.fills.length>1?"s":""}…</p>`:""}</div>`}
+function exiAmtTxt(){const a=AK[EXI.sel];if(!a)return"";const q=exiRound(a,Number(String(EXI.amt).replace(/,/g,"")));if(!(q>0)||!isFinite(q))return exiOwner()?"Stock up buys shares at the market price into the exchange. Unstock sells them back to the market.":"Pick an asset, type an amount, then buy or sell.";
+  const p=MK().px[a.s],f=fee(a);return exiOwner()?`Stock up costs ${fmt(p*q*(1+f))} · unstock pays ${fmt(p*q*(1-f))}`:`Buy costs ${fmt(p*q*(1+f))} · sell pays ${fmt(p*q*(1-f))} (fee ${f*100}%)`}
 /* ---------- playtest progress reports: opt-in, sent to a Google Form (config: PLAYTEST near the state section) ---------- */
 const ptOK=()=>!!PLAYTEST.form;
 const ptEsc=t=>String(t).replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
@@ -12032,6 +12085,7 @@ function exEnsure(){if(!exOk()){if(EX.on){for(const k in EX.sub)try{EX.sub[k]()}
       if(EX.ny&&EX.ny.to===uid&&EX.offerSeen!==EX.ny.price){EX.offerSeen=EX.ny.price;toast(`🏛 ${EX.ny.own||"A player"} offers you ${EX.ny.name} for ${fmt(EX.ny.price)}. Open the Exchange app to buy it`)}
       exRefresh()},er("exchange owner"));
     EX.sub.p=ON.db.collection("exsale").doc(uid).onSnapshot(d=>{if(d.exists)exPaid()},()=>{});
+    try{exiListen(uid)}catch(e){}
     EX.sub.i=ON.db.collection("excom").where("to","==",uid).onSnapshot(q=>{EX.inb=arr(q);if(exFix())exCollect(1);exRefresh()},er("commissions"))}
   if(exOwn()&&now-EX.last>EXC.pub){EX.last=now;const x=exDay(now);
     ON.db.collection("exch").doc(uid).set({name:x.name,own:String(onProf().name||"Tycoon").slice(0,20),fee:EXC.com,vol:Math.min(1e15,Math.round(x.d.vol+x.d.fee/EXC.take)),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{EX.err="Couldn't list your exchange: "+(e&&e.code||e)})}}
@@ -13827,7 +13881,7 @@ const PATCH_NOTES=[
   "Airline city cards now include income from route flights.",
   "Owned countries are separate from your sphere, show on the leaderboard, and cost at least $1T to buy.",
   "Player market: no more price limits or listing caps, buy other players' listings from the phone Market app, and a free vehicle must go and fetch what you buy.",
-  "Stocks app: a new Market dashboard shows every stock and coin on one big page, with 7 to 60-day trend filters."]}
+  "Stocks app: a new Market dashboard shows every stock and coin on one big page, with 7 to 60-day trend filters, and an Exchange stock tab: the exchange owner stocks shares that other players buy and sell."]}
 ];
 (function(){const K="meridian-patch-seen",n=PATCH_NOTES[0];if(!n)return;let seen=null;try{seen=localStorage.getItem(K)}catch(e){}
 if(seen===n.v&&!/[?&]patchnotes/.test(location.search))return;
