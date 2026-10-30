@@ -377,6 +377,16 @@ service cloud.firestore {
         && request.resource.data.xb == request.time
         && (resource.data.xb == null || resource.data.xb < request.time - duration.value(5, 'm'));
     }
+    // Shared market history (index.html mkhPublish): the developer's save writes daily candles world/mkh, everyone reads it.
+    match /world/mkh {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1'
+        && request.resource.data.keys().hasOnly(['k', 'day', 'updated'])
+        && request.resource.data.k is map && request.resource.data.k.size() <= 40
+        && request.resource.data.day is int
+        && request.resource.data.updated == request.time;
+    }
     // Weekly world events (index.html wev*): one event per UTC week w (week 0 = Mon 5 Jan 1970), scored Mon 00:00 to Sat 23:59 UTC.
     // world/evt: the master world (developer's save) publishes the current event, the server-wide total and the top 10; everyone reads it.
     function validEvt(d) {
@@ -509,8 +519,8 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.by == request.auth.uid && resource.data.st in ['done', 'cancel'];
     }
     // ---------- Stock exchanges (index.html ex*): one exchange server-wide (world/nyse), other players route trades through it ----------
-    // exch/{uid}: the owner's public listing. excom/{id}: a 0.1% commission written by a trader for exchange owner `to`; the owner claims it by deleting it
-    // (cash moves only inside the owner's own save). amt is capped and tied to the reported trade volume (amt <= vol / 1000).
+    // exch/{uid}: the owner's public listing. excom/{id}: the 0.4% exchange fee written by a trader for exchange owner `to`; the owner claims it by deleting it
+    // (cash moves only inside the owner's own save). amt is capped and tied to the reported trade volume (amt <= vol / 250).
     // world/nyse: the one New York Stock Exchange on the server. The first player to claim it owns it; nobody else can take it over.
     // The owner can rename it, release it (delete) or offer it to one player (to, toName, price). That player buys it by writing
     // exsale/{sellerUid} (the payment, collected by the seller) and taking over world/nyse in the same transaction.
@@ -562,6 +572,50 @@ service cloud.firestore {
         && request.resource.data.at == request.time;
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
+    // Exchange stock (index.html exi*): world/exinv {uid, inv: {SYM: qty}, at}. The exchange owner (world/nyse uid) stocks it freely.
+    // Any other signed-in player may change one asset's quantity per write (buy: down, sell: up, never below 0) and writes exfill/{id} for the owner.
+    function exiOwnerUid() {
+      return get(/databases/$(database)/documents/world/nyse).data.uid;
+    }
+    function exiQtyOk(k) {
+      return request.resource.data.inv[k] is number && request.resource.data.inv[k] >= 0;
+    }
+    match /world/exinv {
+      allow read: if true;
+      allow create, update: if request.auth != null && exiOwnerUid() == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'inv', 'k', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.inv is map && request.resource.data.inv.size() <= 40
+        && request.resource.data.at == request.time;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['uid', 'inv', 'k', 'at'])
+        && request.resource.data.uid == exiOwnerUid() && request.resource.data.uid != request.auth.uid
+        && request.resource.data.inv is map && request.resource.data.inv.size() == 1
+        && request.resource.data.k is string && request.resource.data.inv.keys().hasOnly([request.resource.data.k])
+        && exiQtyOk(request.resource.data.k)
+        && request.resource.data.at == request.time;
+      allow update: if request.auth != null
+        && resource.data.uid == exiOwnerUid() && resource.data.uid != request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inv', 'k', 'at'])
+        && request.resource.data.inv is map && request.resource.data.inv.size() <= 40
+        && request.resource.data.k is string
+        && request.resource.data.inv.diff(resource.data.inv).affectedKeys().hasOnly([request.resource.data.k])
+        && exiQtyOk(request.resource.data.k)
+        && request.resource.data.at == request.time;
+    }
+    match /exfill/{id} {
+      allow read: if request.auth != null && (resource.data.by == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['by', 'byName', 'to', 's', 'q', 'amt', 'at'])
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.to == exiOwnerUid() && request.resource.data.to != request.auth.uid
+        && request.resource.data.byName is string && request.resource.data.byName.size() <= 20
+        && request.resource.data.s is string && request.resource.data.s.size() <= 8
+        && request.resource.data.q is number && request.resource.data.q > 0
+        && request.resource.data.amt is int && request.resource.data.amt >= -1000000000000000 && request.resource.data.amt <= 1000000000000000
+        && request.resource.data.at == request.time;
+      allow delete: if request.auth != null && resource.data.to == request.auth.uid;
+    }
     match /excom/{id} {
       allow read: if request.auth != null && (resource.data.by == request.auth.uid || resource.data.to == request.auth.uid);
       allow create: if request.auth != null
@@ -571,7 +625,7 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/exch/$(request.resource.data.to))
         && request.resource.data.byName is string && request.resource.data.byName.size() <= 20
         && request.resource.data.amt is int && request.resource.data.amt >= 1 && request.resource.data.amt <= 50000000
-        && request.resource.data.vol is int && request.resource.data.vol <= 1000000000000000 && (request.resource.data.amt * 1000 <= request.resource.data.vol
+        && request.resource.data.vol is int && request.resource.data.vol <= 1000000000000000 && (request.resource.data.amt * 250 <= request.resource.data.vol
           || (request.resource.data.get('k', '') == 'ipo' && request.resource.data.tk is string && request.resource.data.tk.size() <= 5 && request.resource.data.amt * 100 <= request.resource.data.vol))
         && request.resource.data.at == request.time;
       allow delete: if request.auth != null && resource.data.to == request.auth.uid;
@@ -832,12 +886,13 @@ service cloud.firestore {
     match /govann/{id} {
       allow read: if request.auth != null;
       allow create: if request.auth != null
-        && request.resource.data.keys().hasOnly(['uid', 'name', 'c', 'how', 'at'])
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'c', 'how', 'role', 'at'])
         && request.resource.data.keys().hasAll(['uid', 'name', 'c', 'how', 'at'])
+        && (!('role' in request.resource.data) || (request.resource.data.role is string && request.resource.data.role.size() <= 30))
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.name is string && request.resource.data.name.size() <= 20
         && request.resource.data.c is string && request.resource.data.c.size() <= 40
-        && request.resource.data.how in ['elect', 'buy', 'transfer']
+        && request.resource.data.how in ['elect', 'buy', 'transfer', 'office']
         && request.resource.data.at == request.time;
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
       allow update: if false;
