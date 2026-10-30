@@ -6083,8 +6083,11 @@ function scSign(id){const f=scS(),o=f.so.find(x=>x.id===id);if(!o)return;if(f.sc
   const used=f.sc.filter(c=>c.left>0).reduce((a,c)=>a+c.q,0);const now=Date.now(),bonus=o.d>=30?Math.round(o.q*o.px):0;if(bonus){S.cash+=bonus;S.earned=(S.earned||0)+bonus}
   f.sc.push({id:o.id,co:o.co,q:o.q,px:o.px,d:o.d,left:o.d,next:now+DAYMS,paid:bonus,pen:0,miss:0});f.so=f.so.filter(x=>x!==o);
   toast(`✍️ Signed: ${fmtN(o.q)} fuel a day to ${o.co} for ${o.d} days${bonus?" · signing bonus "+fmt(bonus):""}${used+o.q>rigFuelDay()?" · careful: your rigs make less than you've promised":""}`)}
+/* developer account only: finish every signed supply contract now, paying the remaining days at the contract price (no fuel needed, no penalties) */
+function scDevDone(){if(!scDev())return;const f=scS(),now=Date.now();let n=0,t=0;for(const c of f.sc){if(!(c.left>0)||c.broken)continue;const pay=Math.round(c.q*c.px*c.left);S.cash+=pay;S.earned=(S.earned||0)+pay;c.paid+=pay;t+=pay;c.left=0;c.next=now;c.ok=1;n++}
+  toast(n?`✅ Dev: ${n} supply contract${n>1?"s":""} completed · ${fmt(t)} paid`:"No signed supply contracts to complete")}
 function scHtml(btn){const f=scS(),now=Date.now(),day=rigFuelDay(),act=f.sc.filter(c=>c.left>0),used=act.reduce((a,c)=>a+c.q,0);
-  let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Supply contracts</h3><small style="margin-left:auto;opacity:.6">promised ${fmtN(used)}/day of ${fmtN(day)}/day made</small></div>`;
+  let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Supply contracts</h3><small style="margin-left:auto;opacity:.6">promised ${fmtN(used)}/day of ${fmtN(day)}/day made</small></div>`+(scDev()&&act.length?`<div style="text-align:right;margin:4px 0">${btn("scdev",0,"⚡ Dev: complete signed contracts",0,"#b45309")}</div>`:"");
   if(!rigs().length)return h+`<div class="mdx-empty">Build a rig to get supply contracts.</div></div>`;
   h+=act.length?`<div class="mdx-rows">${act.map(c=>`<div><span>📜 <b>${dxE(c.co)}</b> · ${fmtN(c.q)} fuel/day at ${fmt(c.px)}<br><small>${c.left} of ${c.d} days left · next delivery in ${fmtDur(c.next-now)} · earned ${fmt(c.paid)}${c.miss?` · <b style="color:#ef4444">${c.miss}/${SCCFG.strikes} short days</b>`:""}</small></span></div>`).join("")}</div>`:"";
   h+=f.so.length?`<div class="mdx-rows">${f.so.map(o=>{const pr=Math.round((o.px/rigPx("fuel")-1)*100);return `<div><span>🏢 <b>${dxE(o.co)}</b> offers ${o.d===3?"a short-term":o.d===7?"a weekly":"a monthly"} deal: ${fmtN(o.q)} fuel/day for ${o.d} days<br><small>${fmt(o.px)}/unit (+${pr}%) · ${fmt(o.q*o.px*o.d)} total${o.d>=30?" + signing bonus "+fmt(o.q*o.px):""} · offer ends in ${fmtDur(o.exp-now)}</small></span>${btn("scsign",o.id,"Sign",act.length>=SCCFG.act,"#1d4ed8")}</div>`}).join("")}</div>`:`<div class="mdx-empty">No supply offers right now. Companies send new ones every few hours.</div>`;
@@ -6113,7 +6116,7 @@ function rxOpen(){if(!document.getElementById("mdx-css")){const st=document.crea
       if(a==="pmt"){rigPermit();save();hud();rxRender();return}if(a==="build"){rxClose();rigStart();return}
       if(a==="up"){rigUp(k);save();hud();rxRender();return}
       if(a==="sell"){rigSell(k);save();hud();rxRender();return}
-      {const v=b.dataset.v;if(a==="fxdel"){fxDeliver(+v);save();hud();rxRender();return}if(a==="scsign"){scSign(+v);save();hud();rxRender();return}if(a==="foord"){foOrder();return}if(a==="fofill"){foFill(v,1);return}if(a==="fodec"){foFill(v,0);return}if(a==="focan"){foCancel(v);return}}
+      {const v=b.dataset.v;if(a==="fxdel"){fxDeliver(+v);save();hud();rxRender();return}if(a==="scsign"){scSign(+v);save();hud();rxRender();return}if(a==="scdev"){if(scDev()){scDevDone();save();hud()}rxRender();return}if(a==="foord"){foOrder();return}if(a==="fofill"){foFill(v,1);return}if(a==="fodec"){foFill(v,0);return}if(a==="focan"){foCancel(v);return}}
       if(a==="tkbuy"){const s=el.querySelector(`[data-rxtk="${k}"]`);if(s){rigTkBuy(+s.value,b.dataset.v);save();hud()}rxRender();return}
       if(a==="tksell"){rigTkSell(k,+b.dataset.v);save();hud();rxRender();return}
       if(a==="ship"){const s=el.querySelector(`[data-rxto="${k}"]`);if(s){rigShip(k,+s.value);save();hud()}rxRender();return}
