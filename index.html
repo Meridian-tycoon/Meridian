@@ -3442,6 +3442,7 @@ const WFCFG={min:100000,        // smallest donation, players and AI
   stages:[[0,"Calm","#3a9"],[25,"Tense","#b9961c"],[50,"Hostile","#e07a2a"],[80,"Brink of War","#d84a4a"]],
   headFp:6,                     // front points the funded side starts ahead when its war breaks out
   ai:{p:.3,min:.00005,max:.0004,war:.55}, // AI: chance per hour to donate, share of its net worth, chance it funds a war (else a tension)
+  esc:.85,                      // escalation rate: every tension increase (donations, provocations, intel) is multiplied by this (-15%, 2026-10-30)
   feed:40,mine:60,pairs:24};
 const WF={f:{k:"w",w:"",s:"a",to:"",vs:"",amt:""}};let WFW=null;
 function wf(){const d=S.wf=S.wf&&typeof S.wf==="object"?S.wf:{};for(const k of ["tot","q","g","tens"])if(!d[k]||typeof d[k]!=="object"||Array.isArray(d[k]))d[k]={};for(const k of ["feed","mine"])if(!Array.isArray(d[k]))d[k]=[];return d}
@@ -3464,7 +3465,7 @@ function wfApply(o,quiet,ai){const d=wf(),C=WFCFG,amt=Math.round(+o.amt||0);if(!
     wfSay(`Peace talks funded between ${o.to} and ${o.vs}: tension down ${Math.round(cut)}`);if(T.v<=0)delete d.tens[k];return true}
   if(o.k==="e"){const a=o.to,b=o.vs;if(!COUNTRIES.includes(a)||!COUNTRIES.includes(b)||a===b||wfAtWar(a,b))return false;
     const k=wfPair(a,b),T=d.tens[k]=d.tens[k]||{v:0,f:{}},hr=S.hour||0;if(T.hr!==hr){T.hr=hr;T.hv=0}
-    const was=wfStage(T.v)[1],add=ai?Math.max(0,Math.min(C.step,amt/wfPt(a,b),C.hrCap-(T.hv||0))):amt/wfPt(a,b);
+    const was=wfStage(T.v)[1],add=ai?Math.max(0,Math.min(C.step,amt*C.esc/wfPt(a,b),C.hrCap-(T.hv||0))):amt*C.esc/wfPt(a,b);
     T.v=Math.min(100,T.v+add);T.hv=(T.hv||0)+add;T.f[a]=(T.f[a]||0)+amt;T.t=Date.now();
     wfSay(`Anonymous donor sent ${fmt(amt)} to ${a} against ${b}`);const now=wfStage(T.v)[1];if(now!==was)wfSay(`Tensions rising between ${a} and ${b}: ${now}`);
     if(T.v>=100)wfBreak(a,b,quiet);return true}
@@ -6783,7 +6784,7 @@ const intAtWar=n=>!!((S.pol&&S.pol.mil&&S.pol.mil.wars&&S.pol.mil.wars[n])||(S.w
 // online, a non-authority world can't write the shared meters: a rise goes out as anonymous wfund docs (same path as a donation;
 // the master's wfApply adds at most WFCFG.step per doc and hrCap per pair per hour), sized so the shared meter lands at ≤ INTCFG.cap
 const intRemote=()=>wfRemote()&&wwShared();
-function intAddTens(a,b,dv){if(intRemote()){const v0=intTens(a,b);if(!(dv>0))return v0;dv=Math.min(dv,intCap()-v0);if(!(dv>0))return v0;
+function intAddTens(a,b,dv){if(dv>0)dv*=WFCFG.esc;if(intRemote()){const v0=intTens(a,b);if(!(dv>0))return v0;dv=Math.min(dv,intCap()-v0);if(!(dv>0))return v0;
     try{let left=dv;while(left>=.1){const s=Math.min(WFCFG.step,left);left-=s;ON.db.collection("wfund").add({k:"e",to:String(a).slice(0,40),vs:String(b).slice(0,40),amt:Math.max(WFCFG.min,Math.min(1e13,Math.round(s*wfPt(a,b)))),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("int",e))}}catch(e){console.warn("int",e)}
     return v0+dv}
   const d=wf(),k=wfPair(a,b);let T=d.tens[k];if(dv<0&&!T)return 0;T=d.tens[k]=T||{v:0,f:{}};if(!T.f||typeof T.f!=="object")T.f={};const v0=+T.v||0,was=wfStage(v0)[1];
@@ -6794,7 +6795,7 @@ function intCheck(k,n,b){const pc=pol().c;
   if(k==="calm"){if(!b||b===n||!COUNTRIES.includes(b))return "Pick a second country";const w=(S.wars||[]).find(w=>w&&!w.gid&&w.l>=1&&w.l<=2&&wfPair(w.a,w.b)===wfPair(n,b));if(intTens(n,b)<=0&&!w)return `No tension between ${n} and ${b} to defuse`;if(intRemote()&&!w)return "Online, the world server runs tension meters: talks can only cool your own rivalries"}
   if(k==="sab"&&!intAtWar(n))return `${n} isn't at war: sabotage needs a country at war`;return ""}
 function intExpose(n,T){const x=intSt(),p=pol(),pc=p.c,C=INTCFG.expose,out=[];const lv=intNet(n);if(lv>0){x.net[n]=lv-1;if(!x.net[n]){delete x.net[n];delete x.nu[n]}out.push("asset lost")}
-  if(pc&&pc!==n&&!wfAtWar(pc,n)){intAddTens(n,pc,C.tens);out.push(`tension with ${n} +${C.tens}`)}
+  if(pc&&pc!==n&&!wfAtWar(pc,n)){intAddTens(n,pc,C.tens);out.push(`tension with ${n} +${Math.round(C.tens*WFCFG.esc)}`)}
   p.appr=Math.max(0,(+p.appr||0)-C.appr);out.push(`approval −${C.appr}`);
   stNews(`🕵️ ${n} exposes a ${pc||"foreign"} ${T.s} operation and expels diplomats`);try{crtExpose(n,T);out.push(`${n} sues at the International Court`)}catch(e){}return "EXPOSED: "+out.join(", ")}
 function intEffect(k,n,b,x,now){const d=dip(),K=v=>{const o=x.intel[n]=x.intel[n]&&typeof x.intel[n]==="object"?x.intel[n]:{};o[v]=now+INTCFG.dur*DAYMS},pc=pol().c;
@@ -10635,7 +10636,7 @@ function aimHit(att,c,quiet){const a=aim(),C=AIMCFG,now=Date.now(),o=S.own&&S.ow
 function aimFire(att,def,w,quiet,prov){const cs=ctyCities(def);if(!cs.length)return;if(prov&&def===dipPlayerC()&&crtInj("gov:"+att))return;const C=AIMCFG,o=cap(att);
   let c;if(prov){const s=cs.slice().sort((x,y)=>kmBetween(o,x)-kmBetween(o,y));c=s[0]}else c=cs[Math.floor(Math.random()*cs.length)];if(!c)return;
   const sea=prov?Math.random()<.5:0;
-  if(prov){const d=wf(),k=wfPair(att,def),T=d.tens[k]=d.tens[k]||{v:0,f:{}},was=wfStage(T.v)[1];T.v=Math.min(95,(+T.v||0)+C.tens);T.t=Date.now();d.dirty=1;
+  if(prov){const d=wf(),k=wfPair(att,def),T=d.tens[k]=d.tens[k]||{v:0,f:{}},was=wfStage(T.v)[1];T.v=Math.min(95,(+T.v||0)+C.tens*WFCFG.esc);T.t=Date.now();d.dirty=1;
     const t=sea?`${att} test-fires a missile into waters off ${def}; tensions rise`:`${att} fires a missile at ${c.name} near the ${def} border; tensions rise`;
     if(quiet)aim().q.p++;else{stNews(t);const now=wfStage(T.v)[1];if(now!==was)wfSay(`Tensions rising between ${att} and ${def}: ${now}`)}}
   else if(quiet)aim().q.s++;
