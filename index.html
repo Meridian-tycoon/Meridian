@@ -687,7 +687,7 @@ function totals(){let inc=0,assets=0;
       let v=isLeased(c,b.k)?cost(b,c)*FIT:cost(b,c);for(let l=1;l<lv;l++)v+=upCost(b,c,l);assets+=v*0.75;for(const l of XU(c.id,b.k))assets+=uVal(b,c,l,0)}}
   const interest=typeof bankPayHr==="function"?Math.round(bankPayHr()):Math.round(S.debt*0.003);
   const upk=typeof indUpkeep==="function"?indUpkeep():0;assets+=typeof indAssets==="function"?indAssets():0;
-  const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof exIncome==="function"){assets+=exAssets()+exCap()}if(typeof flipUpk==="function"){inc-=flipUpk();assets+=flipAssets()}if(typeof polIncome==="function")inc+=polIncome();if(typeof luxIncome==="function"){inc+=luxIncome();assets+=luxAssets()}if(typeof gxUpk==="function")inc-=gxUpk();if(typeof ofUpk==="function")inc-=ofUpk();if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
+  const rent=rentTotal();if(typeof lifeIncome==="function"){inc+=lifeIncome();assets+=lifeAssets()}if(typeof propIncome==="function"){inc+=propIncome();assets+=propAssets()}if(typeof skyIncome==="function"){inc+=skyIncome();assets+=skyAssets()}if(typeof exIncome==="function"){assets+=exAssets()+exCap()}if(typeof flipUpk==="function"){inc-=flipUpk();assets+=flipAssets()}if(typeof polIncome==="function")inc+=polIncome();if(typeof luxIncome==="function"){inc+=luxIncome();assets+=luxAssets()}if(typeof gxUpk==="function")inc-=gxUpk();if(typeof ofUpk==="function")inc-=ofUpk();if(typeof hqTotalUpkeep==="function"){inc-=hqTotalUpkeep();for(const id in S.hq)if(S.hq[id])assets+=hqCost(CITIES[id])*.6}
   if(typeof airFleetVal==="function")assets+=airFleetVal();if(typeof holdVal==="function")assets+=holdVal();if(typeof obEquity==="function")assets+=obEquity()+(S.ob&&S.ob.pacct>0?S.ob.pacct:0);if(typeof gearAssets==="function")assets+=gearAssets();if(typeof ishIncome==="function"){inc+=ishIncome();assets+=ishAssets()}if(typeof rigIncome==="function"){inc+=rigIncome();assets+=rigAssets()}if(typeof aucIncome==="function"){inc+=aucIncome();assets+=aucAssets()+aucEscrow()}if(typeof franIncome==="function")inc+=franIncome();
   if(typeof futEquity==="function")assets+=futEquity(); // margin held in open futures + unrealized P/L (never below 0 per position)
   let owed=0;try{assets+=ipoHoldVal();owed=ipoOwed()}catch(e){}
@@ -963,7 +963,7 @@ function renderSheet(){sheet.classList.remove("bzv");if(mode==="sv")return;if(mo
     <div class="d">${b.d} ${lock?"":`<b style="color:${p<0?"var(--bad)":"var(--ink)"}">${fmt(p)}</b>/hr${pay?` · pays back in ${pay<48?pay+" h":(pay/24).toFixed(1)+" days"}`:p>0?" · never pays back after stock costs":" · loses money here"}`}${blk?`<br><b style="color:var(--bad)">${lock?"Locked: ":""}${blk}.</b>`:""}${!lock&&!blk&&bizRent(b,c)>pn?`<br><small style="color:var(--bad)">⚠ Renting: rent exceeds profit after stock costs</small>`:""}</div>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-buy="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k||blk?"disabled":""}>${lock?"Locked":"Buy "+fmt(k)}</button>${lock?"":`<button class="buy up" data-rent="${b.k}" ${blk?'data-fixed="1" ':""}${S.cash<k*FIT||blk?"disabled":""} ${!blk&&bizRent(b,c)>pn?'title="Rent exceeds profit after stock costs" style="border-color:var(--bust,#c0392b)"':""}>Rent · ${fmt(k*FIT)} + ${fmt(bizRent(b,c))}/hr${!blk&&bizRent(b,c)>pn?" ⚠":""}</button>`}</span></div>`}
   if(!avail.length)h+=`<p class="d" style="color:var(--muted);padding:10px 0">${avail0.length?"Nothing matches these filters.":`You own every business type in ${c.name}.`}</p>`;
-  h+=`</div>`}h+=cbHtml(c)+propsHtml(c)+popHtml(c)+onPlayersHere(c)+`<div class="foot">${mine.length?`<button id="sellall">Sell everything here (75%)</button>`:""}</div>`;
+  h+=`</div>`}h+=cbHtml(c)+propsHtml(c)+skyHtml(c)+popHtml(c)+onPlayersHere(c)+`<div class="foot">${mine.length?`<button id="sellall">Sell everything here (75%)</button>`:""}</div>`;
   sheet.innerHTML=h;sheet.classList.add("bzv");exBind(c);
   $("#cls").onclick=closeSheet;
   sheet.querySelectorAll("[data-buy]").forEach(btn=>btn.onclick=()=>buy(c,btn.dataset.buy));
@@ -1764,6 +1764,73 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-prop]");if(!b
   else if(a==="pct"){pr.pct=+b.dataset.v;if(pr.occ&&pr.pct>100&&Math.random()<.5){pr.occ=0;toast("The tenant refused the rent rise and left")}else toast(`Rent set to ${pr.pct}% of market`)}
   else if(a==="furn"){const P=PK[pr.k],k=P.furn*PRICE[c.size];if(S.cash<k)return;S.cash-=k;pr.furn=1;toast("Furnished: market rent +25%")}
   else if(a==="sell"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}{const v=propSell(PK[pr.k],c);S.cash+=v;S.props=S.props.filter(x=>x!==pr);toast(`Property sold for ${fmt(v)}`)}}
+  else return;e.stopPropagation();commit()});
+/* ---------- skyscraper projects: multi-stage towers that take game days to build ----------
+   Each tower goes through SKY.st stages (days scaled per tier). A stage's cost is paid when it starts; with too little cash the site waits for funds.
+   Progress runs in game-hour steps from accrue (skyTick, works offline up to OFFCAP). Delays: a storm over the city stops outdoor stages (weather),
+   a construction-crew strike (rolled daily in skyDay, 1-3 days, can be settled for a fee) stops all work, lasting war damage (dmgLvl) slows work,
+   a fresh missile hit on the city (skyHit from dmgStrike) knocks back the current stage, and an uninhabitable city (unhOn) halts the site.
+   Finished towers earn rent like rental property (rentLaw, dmgMult, office "re" bonus) and count toward net worth.
+   Save field S.sky = {t: last tick time, l:[{id,city,k,s:stage index,p:0..1 in stage,f:stage funded,paid,sk:strike end ms,dh:{w,s,x} hours lost,done}]}; missing = none. */
+const SKY={occ:.9,set:.03,skP:.05,
+  T:{res:{n:"Residential tower",i:"🏢",fl:30,cost:2500000,rent:9000,d:[2,3,2,2],min:1},
+     off:{n:"Office tower",i:"🏙️",fl:55,cost:6000000,rent:21000,d:[2,4,3,3],min:3},
+     sup:{n:"Supertall",i:"🗼",fl:100,cost:18000000,rent:60000,d:[3,5,4,4],min:4}},
+  st:[{n:"Foundations",out:1,c:.2},{n:"Steel frame",out:1,c:.35},{n:"Facade",out:1,c:.25},{n:"Fit-out",out:0,c:.2}]};
+function skyS(){if(!S.sky||typeof S.sky!=="object"||!Array.isArray(S.sky.l))S.sky={t:0,l:[]};return S.sky}
+const skyCost=(T,c)=>Math.round(T.cost*Math.pow(PRICE[c.size],1.3));
+const skyStageCost=(pj)=>{const c=CITIES[pj.city];return Math.round(skyCost(SKY.T[pj.k],c)*SKY.st[pj.s].c)};
+const skyRent0=(pj)=>{const T=SKY.T[pj.k],c=CITIES[pj.city];return Math.round(T.rent*PRICE[c.size]*DEMAND[c.size])};
+function skyRent(pj){const c=CITIES[pj.city];if(!pj.done||unhOn(c))return 0;return skyRent0(pj)*SKY.occ*(typeof rentLaw==="function"?rentLaw(c):1)*(typeof dmgMult==="function"?dmgMult(c):1)}
+function skyIncome(){const s=S.sky;if(!s||!Array.isArray(s.l)||!s.l.length)return 0;let m=1;try{m=1+.08*ofP("re")}catch(e){}return s.l.reduce((a,pj)=>a+skyRent(pj),0)*m}
+function skyVal(pj){const c=CITIES[pj.city];return Math.round(pj.done?skyCost(SKY.T[pj.k],c)*.9*(typeof flipMk==="function"?flipMk(c):1):pj.paid*.6)}
+function skyAssets(){const s=S.sky;if(!s||!Array.isArray(s.l))return 0;return s.l.reduce((a,pj)=>a+(CITIES[pj.city]?skyVal(pj):0),0)}
+function skyLog(t,quiet){try{if(!Array.isArray(S.news))S.news=[];S.news.unshift({t,at:Date.now()});S.news=S.news.slice(0,40);if(!quiet){S.log.unshift(t);S.log=S.log.slice(0,3)}}catch(e){}}
+/* why a site is not moving right now ("" = working) */
+function skyWhy(pj,t){const c=CITIES[pj.city];t=t||Date.now();if(pj.done)return "";if(unhOn(c))return "rad";if(!pj.f)return "funds";if(pj.sk>t)return "strike";if(SKY.st[pj.s].out&&stormAt(c,t))return "storm";return ""}
+function skyStep(pj,t){const c=CITIES[pj.city],T=SKY.T[pj.k];if(!c||!T||pj.done)return;
+  if(!pj.f){const k=skyStageCost(pj);if(S.cash>=k){S.cash-=k;pj.paid+=k;pj.f=1}else return}
+  const w=skyWhy(pj,t);if(w==="strike"){pj.dh.s++;return}if(w==="storm"){pj.dh.w++;return}if(w)return;
+  const war=typeof dmgLvl==="function"?dmgLvl(c):0,r=Math.max(.1,1-war);if(war>.005)pj.dh.x+=1-r;
+  pj.p+=r/(T.d[pj.s]*24);
+  if(pj.p>=1){pj.p=0;pj.s++;pj.f=0;
+    if(pj.s>=SKY.st.length){pj.done=1;pj.s=SKY.st.length-1;pj.p=1;pj.f=1;const dl=Math.round(pj.dh.w+pj.dh.s+pj.dh.x);
+      skyLog(`${T.i} Your ${T.n.toLowerCase()} in ${c.name} is finished${dl>=1?` after ${dl} hours of delays`:""}. Tenants are moving in.`);try{bigMove(`a ${T.fl}-floor ${T.n.toLowerCase()} opened in ${c.name}`,pj.paid,1)}catch(e){}}
+    else skyLog(`${T.i} ${c.name} tower: ${SKY.st[pj.s-1].n.toLowerCase()} done, ${SKY.st[pj.s].n.toLowerCase()} next.`,1)}}
+function skyTick(now){const s=S.sky;if(!s||!Array.isArray(s.l)||!s.l.some(p=>!p.done))return;now=now||Date.now();const step=DAYMS/24;
+  if(!s.t||s.t>now)s.t=now;s.t=Math.max(s.t,now-OFFCAP*DAYMS);
+  while(s.t+step<=now){s.t+=step;for(const pj of s.l)skyStep(pj,s.t)}}
+function skyDay(quiet){const s=S.sky;if(!s||!Array.isArray(s.l))return;const now=Date.now();
+  for(const pj of s.l){if(pj.done||!pj.f||pj.sk>now)continue;const c=CITIES[pj.city];if(!c||Math.random()>=SKY.skP)continue;
+    const d=1+Math.floor(Math.random()*3);pj.sk=now+d*DAYMS;skyLog(`🪧 Construction crews walked off your ${SKY.T[pj.k].n.toLowerCase()} site in ${c.name}. Work stops for about ${d} day${d>1?"s":""} unless you settle.`,quiet)}}
+/* a missile hit on the city: knock back the current stage by up to 60% of its progress, scaled by the damage dealt */
+function skyHit(c,l){const s=S.sky;if(!c||!s||!Array.isArray(s.l))return;try{if(typeof ON!=="undefined"&&ON.user&&GOV_IMMUNE.includes(ON.user.uid))return}catch(e){} // dev account: no losses (Mark, 2026-10-26)
+  for(const pj of s.l){if(pj.city!==c.id||pj.done)continue;
+  const lost=Math.min(pj.p,Math.max(.05,.6*Math.min(1,l||0)));if(lost<=0)continue;pj.p-=lost;pj.dh.x+=lost*SKY.T[pj.k].d[pj.s]*24;
+  skyLog(`💥 A strike on ${c.name} damaged your tower site: ${SKY.st[pj.s].n.toLowerCase()} set back ${Math.round(lost*100)}%.`)}}
+function skyLeft(pj){const T=SKY.T[pj.k];let d=(1-pj.p)*T.d[pj.s];for(let i=pj.s+1;i<SKY.st.length;i++)d+=T.d[i];return d}
+function skyHtml(c){const s=skyS(),mine=s.l.filter(p=>p.city===c.id),now=Date.now();
+  let h=`<div class="sec">Skyscraper projects</div><p class="d" style="color:var(--muted);font-size:12px;margin:0 0 4px">Build a tower in four stages over several game days. Each stage is paid when it starts. Storms stop outdoor work, crews can strike, and war damage slows or sets back the site. Finished towers rent out at about ${Math.round(SKY.occ*100)}% occupancy.</p><div class="list">`;
+  const WHY={rad:"☢ Halted: the city is uninhabitable",funds:"💰 Waiting for funds",strike:"🪧 Crews on strike",storm:"⛈ Storm: outdoor work stopped"};
+  for(const pj of mine){const T=SKY.T[pj.k],w=skyWhy(pj,now),war=dmgLvl(c);
+    if(pj.done){h+=`<div class="row own"><div class="n">${T.i} ${T.n} · ${T.fl} floors <span class="tag boom">Open</span></div><div class="d">Rent <b>${fmt(skyRent(pj))}</b>/hr${pj.dh.w+pj.dh.s+pj.dh.x>=1?` · built with ${Math.round(pj.dh.w+pj.dh.s+pj.dh.x)} h of delays`:""}</div>
+      <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy up" data-sky="sell" data-id="${pj.id}">Sell ${fmt(skyVal(pj))}</button></span></div>`;continue}
+    const tot=SKY.T[pj.k].d.reduce((a,b)=>a+b,0),doneD=tot-skyLeft(pj),pc=Math.max(1,Math.round(doneD/tot*100));
+    const dl=[pj.dh.w>=1?`weather ${Math.round(pj.dh.w)} h`:"",pj.dh.s>=1?`strikes ${Math.round(pj.dh.s)} h`:"",pj.dh.x>=1?`war ${Math.round(pj.dh.x)} h`:""].filter(Boolean).join(", ");
+    h+=`<div class="row own" data-skyrow="${pj.id}"><div class="n">${T.i} ${T.n} <span class="tag ${w?"bust":"boom"}">${w?"Delayed":"Building"}</span></div>
+    <div class="d">Stage ${pj.s+1}/${SKY.st.length}: <b>${SKY.st[pj.s].n}</b> ${Math.round(pj.p*100)}% · about ${skyLeft(pj).toFixed(1)} game days left${war>.005?` (war damage slows work ${Math.round(Math.min(.9,war)*100)}%)`:""}
+      <div class="wz-bar" style="margin:6px 0"><i style="width:${pc}%"></i></div>${w?`<span style="color:var(--bad)">${WHY[w]}${w==="funds"?` (${fmt(skyStageCost(pj))})`:w==="strike"?`, back in ${Math.max(1,Math.round((pj.sk-now)/DAYMS*24))} h`:""}</span><br>`:""}${dl?`<span style="color:var(--muted)">Delays so far: ${dl}</span>`:""}</div>
+    <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${w==="strike"?`<button class="buy" data-sky="settle" data-id="${pj.id}" ${S.cash<skySettle(pj)?"disabled":""}>Settle ${fmt(skySettle(pj))}</button>`:""}<button class="buy up" data-sky="sell" data-id="${pj.id}" title="Sell the unfinished site for 60% of what you paid">Sell site ${fmt(skyVal(pj))}</button></span></div>`}
+  for(const k in SKY.T){const T=SKY.T[k],ok=c.size>=T.min,cost=skyCost(T,c),first=Math.round(cost*SKY.st[0].c),days=T.d.reduce((a,b)=>a+b,0);
+    h+=`<div class="row"${ok?"":' style="opacity:.6"'}><div class="n">${T.i} ${T.n} · ${T.fl} floors</div><div class="d">${ok?`Total ${fmt(cost)} over ${days} game days, rent about <b>${fmt(Math.round(T.rent*PRICE[c.size]*DEMAND[c.size]*SKY.occ))}</b>/hr when open.`:`Needs a bigger city.`}</div>
+    <button class="buy" data-sky="start" data-k="${k}" ${!ok||S.cash<first||unhOn(c)?"disabled":""}>${ok?"Break ground "+fmt(first):"Too small"}</button></div>`}
+  return h+`</div>`}
+const skySettle=pj=>Math.round(skyCost(SKY.T[pj.k],CITIES[pj.city])*SKY.set);
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-sky]");if(!b||!sel)return;const c=sel,a=b.dataset.sky,s=skyS(),pj=s.l.find(x=>x.id===+b.dataset.id);
+  if(a==="start"){const T=SKY.T[b.dataset.k];if(!T||c.size<T.min||unhOn(c))return;const k=Math.round(skyCost(T,c)*SKY.st[0].c);if(S.cash<k)return;S.cash-=k;
+    if(!s.l.some(p=>!p.done))s.t=Date.now();s.l.push({id:S.nid++,city:c.id,k:b.dataset.k,s:0,p:0,f:1,paid:k,sk:0,dh:{w:0,s:0,x:0},done:0});toast(`Broke ground on a ${T.fl}-floor ${T.n.toLowerCase()} in ${c.name}`);bigMove(`work started on a ${T.fl}-floor ${T.n.toLowerCase()} in ${c.name}`,skyCost(T,c))}
+  else if(a==="settle"&&pj){const k=skySettle(pj);if(S.cash<k)return;S.cash-=k;pj.sk=0;toast("Strike settled: crews are back on site")}
+  else if(a==="sell"&&pj){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}const v=skyVal(pj);S.cash+=v;s.l=s.l.filter(x=>x!==pj);toast(`${pj.done?"Tower":"Site"} sold for ${fmt(v)}`)}
   else return;e.stopPropagation();commit()});
 /* ---------- property flipping: buy listed homes and commercial units, renovate them, resell into a hot market ----------
    Each city has 3–5 listings (more in big cities) that rotate daily. Prices = type base × PRICE[size]^1.3 × condition × the city's market index flipMk(c).
@@ -2571,7 +2638,7 @@ setInterval(worldNews,4*60000);setTimeout(worldNews,20000);
 /* ---------- economy tick ---------- */
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
 let pops=[]; // floating income labels
-function simDay(quiet){const{nw}=totals();try{wrDay(nw,quiet)}catch(e){console.warn("wrDay",e)}S.day++;try{gldDay()}catch(e){}if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}try{gxDay(quiet)}catch(e){console.warn("gxDay",e)}try{flipDay(quiet)}catch(e){console.warn("flipDay",e)}try{wevDay()}catch(e){console.warn("wevDay",e)}try{ipoDay(quiet)}catch(e){console.warn("ipoDay",e)}
+function simDay(quiet){const{nw}=totals();try{wrDay(nw,quiet)}catch(e){console.warn("wrDay",e)}S.day++;try{gldDay()}catch(e){}if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}try{gxDay(quiet)}catch(e){console.warn("gxDay",e)}try{flipDay(quiet)}catch(e){console.warn("flipDay",e)}try{skyDay(quiet)}catch(e){console.warn("skyDay",e)}try{wevDay()}catch(e){console.warn("wevDay",e)}try{ipoDay(quiet)}catch(e){console.warn("ipoDay",e)}
   try{mktDay()}catch(e){console.warn("mktDay",e)}audits(quiet);simProps(quiet);
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||Math.random()>.004)continue;
     const kinds=[["Break-in at your",.04],["Equipment breakdown at your",.03],["Health inspection fine at your",.02],["Customer lawsuit against your",.06]],[t,f]=kinds[Math.floor(Math.random()*kinds.length)];
@@ -2782,7 +2849,7 @@ function saleTick(now,from){if(!S.saleT)S.saleT=from||now;const d=Math.max(0,Mat
 const OFFCAP=720;
 function accrue(){if(S.dead)return 0;const now=Date.now();if(!S.acc)S.acc=now;
   const dt=Math.min(now-S.acc,OFFCAP*DAYMS);S.acc=now;if(S.job&&wageMult()>0)S.exp=(S.exp||0)+dt/DAYMS;runNeeds(dt/DAYMS);if(typeof popTick==="function")popTick(dt/DAYMS);if(typeof careerTick==="function")careerTick(dt/DAYMS);
-  if(typeof runTrip==="function")runTrip(now);const{g,sold}=alRun(now,dt,Math.min(now-(S.shopT||now-dt),OFFCAP*DAYMS)/DAYMS);runTax(dt/DAYMS,now);try{const mh=S.mnyH;if(!mh||!mh.length||now-mh[mh.length-1][0]>=6e4)mnyHist(moneyRows())}catch(e){}runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}try{lxTick(now)}catch(e){console.warn("lxTick",e)}try{if(typeof ofTick==="function")ofTick(now)}catch(e){console.warn("ofTick",e)}try{spAcc(dt)}catch(e){console.warn("spAcc",e)}try{colAcc(dt);colTick(now)}catch(e){console.warn("col",e)}try{flipTick(now)}catch(e){console.warn("flipTick",e)}try{crtTick(now)}catch(e){console.warn("crtTick",e)}try{ipoAcc(dt)}catch(e){console.warn("ipoAcc",e)}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
+  if(typeof runTrip==="function")runTrip(now);const{g,sold}=alRun(now,dt,Math.min(now-(S.shopT||now-dt),OFFCAP*DAYMS)/DAYMS);runTax(dt/DAYMS,now);try{const mh=S.mnyH;if(!mh||!mh.length||now-mh[mh.length-1][0]>=6e4)mnyHist(moneyRows())}catch(e){}runMarket(now);if(typeof runLogi==="function"){runLogi();runHired(now);ugTick()}try{lxTick(now)}catch(e){console.warn("lxTick",e)}try{if(typeof ofTick==="function")ofTick(now)}catch(e){console.warn("ofTick",e)}try{spAcc(dt)}catch(e){console.warn("spAcc",e)}try{colAcc(dt);colTick(now)}catch(e){console.warn("col",e)}try{flipTick(now)}catch(e){console.warn("flipTick",e)}try{skyTick(now)}catch(e){console.warn("skyTick",e)}try{crtTick(now)}catch(e){console.warn("crtTick",e)}try{ipoAcc(dt)}catch(e){console.warn("ipoAcc",e)}if(S.gig&&S.gig.ride)gigState();if(typeof obTick==="function")obTick(now);if(typeof cardCover==="function"){cardCover();S.debt=bankDebt()}
   // run hourly world updates for every real hour boundary crossed
   if(S.hour==null)S.hour=hourOf(now);
   const h=hourOf(now),n=Math.min(h-S.hour,OFFCAP);
@@ -3999,7 +4066,7 @@ const cardRate=s=>s>=740?.003:s>=670?.004:s>=580?.005:.007;
 function moneyRows(){const R=[],f=(n,fn)=>{let v=0;try{v=+fn()||0}catch(e){}if(Number.isFinite(v)&&Math.abs(v)>=.5)R.push([n,v])};let gain=0,loss=0,nl=0;
   for(const id in S.own){const c=CITIES[id];if(!c)continue;for(const b of BIZ){if(!S.own[id][b.k])continue;uSum(id,b.k,l=>{const v=profit(b,c,l);if(v>=0)gain+=v;else{loss+=v;nl++}return 0})}}
   if(Math.abs(gain)>=.5)R.push(["Businesses (profitable ones)",gain]);if(loss)R.push([`Businesses losing money (${nl})`,loss]);
-  f("Job and home rent",()=>lifeIncome());f("Rental properties",()=>propIncome());f("Franchise royalties",()=>franIncome());f("Auction businesses",()=>aucIncome());f("Office / military pay",()=>polIncome()+(typeof milUpkeep==="function"?milUpkeep():0));
+  f("Job and home rent",()=>lifeIncome());f("Rental properties",()=>propIncome());f("Skyscrapers",()=>skyIncome());f("Franchise royalties",()=>franIncome());f("Auction businesses",()=>aucIncome());f("Office / military pay",()=>polIncome()+(typeof milUpkeep==="function"?milUpkeep():0));
   f("Military upkeep",()=>-milUpkeep());f("Land & factory upkeep",()=>-indUpkeep());f("Leases and land rent",()=>-rentTotal());f("HQ upkeep and links",()=>-hqTotalUpkeep());f("Office heads' salaries",()=>-ofUpk());
   f("Loan payments",()=>-(typeof bankPayHr==="function"?bankPayHr():S.debt*.003));f("Credit card interest",()=>{const c=B().card;return c&&!c.paidStmt?-Math.min(c.bal,c.stmt)*c.rate:0});f("War reparations",()=>{const m=S.pol&&S.pol.mil;return m&&Array.isArray(m.rep)?-m.rep.reduce((a,r)=>a+Math.min(r.left,r.per),0):0});f("Luxury items",()=>luxIncome());f("Flip homes (property tax)",()=>-flipUpk());f("Insurance & colonies",()=>-gxUpk());f("Ships",()=>ishIncome());f("Oil rigs (stored on board until sold)",()=>{let v=0;for(const r of (typeof rigs==="function"?rigs():[])){const d=rigDay(r),cp=rigCapU(r),st=r.st||{};if((st.fuel||0)>=cp.fuel-1e-6&&(st.oil||0)>=cp.oil-1e-6)continue;v+=d.oil*rigPx("oil")+d.fuel*rigPx("fuel")*RIGCFG.sell}return v});
   f("Tax building up (paid at year end)",()=>{const r=taxableRates(),h=EVADE.lv[evLevel()]||0;return-(r.reg*TAX_REG+r.un*TAX_UNREG)*(1-h)});
@@ -9023,7 +9090,7 @@ function dmgLeft(c){const e=(S.dmg||{})[c.id],l=dmgLvl(c);if(!e||!l)return 0;con
 // a strike lands: add its damage (stacking 1−(1−a)(1−b)), restart repairs, kill people; mine = fired by the player. Returns deaths.
 function dmgStrike(k,c,mine){const W=WPNCFG.w[k];if(!W||!c)return 0;S.dmg=S.dmg&&typeof S.dmg==="object"?S.dmg:{};const cur=dmgLvl(c),o=S.dmg[c.id],add=dmgHit(W,c)*W.struct,
   l=k==="icbm"?1:Math.min(1,1-(1-cur)*(1-add)),R=["msl","gas","nuke","icbm"],pk=o&&cur>0&&R.indexOf(o.k)>R.indexOf(k)?o.k:k;
-  S.dmg[c.id]={l0:Math.round(l*1e4)/1e4,t:Date.now(),own:mine&&(!o||cur<=0||o.own)?1:0,k:pk};wlStrike(k,c);return popStrike(k,c,mine?((S.pol&&S.pol.c)||"you"):"")}
+  S.dmg[c.id]={l0:Math.round(l*1e4)/1e4,t:Date.now(),own:mine&&(!o||cur<=0||o.own)?1:0,k:pk};try{skyHit(c,add)}catch(e){}wlStrike(k,c);return popStrike(k,c,mine?((S.pol&&S.pol.c)||"you"):"")}
 function dmgLine(c){if(typeof wzBanner==="function")return wzBanner(c);const l=dmgLvl(c);if(l<.005)return "";const e=S.dmg[c.id];
   return `<div class="welcome" style="background:var(--bad)">${l>=DMG.dead?"☠":"💥"} ${c.name} is ${dmgWord(l)}: ${dmgPct(l)} damage · demand, output and rents −${Math.round((1-dmgMult(c))*100)}%${e.own?" for you":""} · rebuilt in ${fmtDur(dmgLeft(c))}</div>`}
 // map: rubble/ash patch scaled to damage, green haze for gas, ruin ring + label for destroyed cities; persists until rebuilt
@@ -9864,7 +9931,7 @@ const ofP=k=>{const h=ofHas(k)&&ofS().d[k];return h?1+.25*(ofLv(h)-1)+(h.deal>Da
 /* weekly empire report: every 7 game days, profit by business type, what each manager earned, and the best and worst moves */
 function wrS(){let w=S.wr;if(!w||typeof w!=="object")w=S.wr={};if(!w.c||typeof w.c!=="object")w.c=null;if(!Array.isArray(w.h))w.h=[];return w}
 function wrSeg(){const g={};for(const c of CITIES){const o=S.own[c.id];if(!o)continue;for(const b of BIZ){if(!o[b.k])continue;g[b.n]=(g[b.n]||0)+uSum(c.id,b.k,l=>profit(b,c,l))}}
-  try{if(exOwn())g["Stock exchange"]=exIncome()}catch(e){}try{if(typeof lifeIncome==="function"){const v=lifeIncome();if(v)g["Lifestyle"]=v}if(typeof propIncome==="function"){const v=propIncome();if(v)g["Property"]=v}}catch(e){}return g}
+  try{if(exOwn())g["Stock exchange"]=exIncome()}catch(e){}try{if(typeof lifeIncome==="function"){const v=lifeIncome();if(v)g["Lifestyle"]=v}if(typeof propIncome==="function"){const v=propIncome();if(v)g["Property"]=v}if(typeof skyIncome==="function"){const v=skyIncome();if(v)g["Skyscrapers"]=v}}catch(e){}return g}
 function wrDay(nw,quiet){const w=wrS(),m=MK(),now=Date.now();
   if(!w.c){const px={};for(const s in m.hold)if(m.hold[s]&&m.hold[s].q>0)px[s]=m.px[s];w.c={d0:S.day||1,nw0:nw,days:0,seg:{},mgr:{},px,bank:S.ob?(S.ob.ptot||0):0}}
   const c=w.c;c.days++;const g=wrSeg();for(const k in g)c.seg[k]=(c.seg[k]||0)+g[k];
