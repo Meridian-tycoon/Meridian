@@ -7,7 +7,8 @@
 <script>try{var _ui=localStorage.getItem("meridian-uitheme");if(/^(glass|ledger|command)$/.test(_ui))document.documentElement.classList.add("th-"+_ui)}catch(e){}</script>
 <script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("meridian-theme")==="light"?"light":"dark")}catch(e){document.documentElement.setAttribute("data-theme","dark")}</script>
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}.pf-fold{cursor:pointer;user-select:none}.pf-fold::after{content:"▾";float:right;color:var(--muted);transition:transform .15s}.pf-fold.shut::after{transform:rotate(-90deg)}
+</style>
 <title>Meridian Tycoon</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2651,7 +2652,18 @@ function renderPortfolio(){const{inc,nw}=totals();
   sheet.querySelectorAll("[data-go]").forEach(r=>r.onclick=()=>flyTo(CITIES[r.dataset.go]));
   const q=$("#q");q.oninput=()=>{query=q.value;searchRes()};searchRes();
   const rs=$("#reset");rs.onclick=()=>{if(rs.dataset.arm){startNewGame()}else{rs.dataset.arm=1;rs.textContent="Tap again to erase everything"}};
+  pfCollapse();
 }
+/* Empire screen: every section header folds its section; each player's open/closed choice is kept per section in localStorage */
+const PFCKEY="meridian-pf-fold";let PFC={};try{PFC=JSON.parse(localStorage.getItem(PFCKEY)||"{}")||{}}catch(e){}
+function pfCollapse(){sheet.querySelectorAll(".sec").forEach(sec=>{const t=sec.firstChild;const k=String(t&&t.textContent||sec.textContent).split("·")[0].replace(/[\d\/]+/g,"").trim().toLowerCase();if(!k)return;
+  const body=[];for(let n=sec.nextElementSibling;n&&!n.classList.contains("sec")&&!n.classList.contains("foot");n=n.nextElementSibling)body.push(n);
+  if(!body.length)return;
+  sec.classList.add("pf-fold");sec.setAttribute("role","button");sec.tabIndex=0;
+  const set=c=>{sec.classList.toggle("shut",c);sec.setAttribute("aria-expanded",c?"false":"true");body.forEach(b=>b.hidden=c)};
+  set(!!PFC[k]);
+  const tog=()=>{const c=!sec.classList.contains("shut");if(c)PFC[k]=1;else delete PFC[k];try{localStorage.setItem(PFCKEY,JSON.stringify(PFC))}catch(e){}set(c)};
+  sec.onclick=tog;sec.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();tog()}}})}
 function searchRes(){const box=$("#qres");if(!box)return;const s=query.trim().toLowerCase();
   if(!s){box.innerHTML="";return}
   const r=CITIES.filter(c=>(c.name+" "+c.country+" "+deps(c).map(g=>g+" "+G[g][0]).join(" ")).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").includes(s.normalize("NFD").replace(/[̀-ͯ]/g,""))).map(c=>[c,(c.name+" "+c.country).toLowerCase().includes(s)?0:c.dep?1:2]).sort((x,y)=>x[1]-y[1]).map(x=>x[0]).slice(0,8);
