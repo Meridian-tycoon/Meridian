@@ -2398,7 +2398,10 @@ function clearPins(){for(const m of mkPins)m.remove();mkPins=[];for(const m of m
    The label pins stay on top so taps still work; models are built from simple solids so no model files are needed. */
 const MODEL_KIND={biz:"shop",hq:"hq",wh:"wh","site-ind":"factory","site-mine":"rig","site-farm":"farm"};
 let modelList=[],modelLayer=null;
-function setModels(list){modelList=list;if(modelLayer)modelLayer.sync();try{MM.triggerRepaint()}catch(e){}}
+let lotSig="";
+function setModels(list){modelList=list;if(modelLayer)modelLayer.sync();try{MM.triggerRepaint()}catch(e){}
+  /* the real buildings under your sites are left out of the generated city; rebuild it when your set of sites changes */
+  if(list.length){const sg=list.map(m=>m.cls+m.lat.toFixed(5)+m.lon.toFixed(5)).sort().join("|");if(lotSig&&sg!==lotSig){try{detReset();refreshDetail(1)}catch(e){}}lotSig=sg}}
 function ensureModelLayer(){try{if(!MM||MM.getLayer("meridian-models"))return;
   const lab=MM.getStyle().layers.find(l=>l.type==="symbol");
   detLast=null;origFilter={};detKeys=new Set();detChunks=[];detOrg=null;detQ=null;detDirty=true;detLm=false;detHidden=false;origVis={};MM.addLayer(modelLayer=makeModelLayer());if(typeof refreshDetail==="function")refreshDetail(true)}catch(e){console.warn("model layer",e)}}
@@ -2460,6 +2463,8 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
   const ready=()=>!!(T&&scene),count=()=>det?det.children.length:0;
   function buildChunk(detFeats,detRoads,withLm){
     if(!detO||!detFeats||(!detFeats.length&&!withLm))return null;const night=dark3d(),mc0=detO.mc,k=1/detO.sc,acc={},R={P:[],N:[],C:[]};let bad=0;
+    const lots=modelList.map(m=>{const c=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),r0={biz:9,wh:21,"site-ind":19,"site-farm":13,"site-mine":15,hq:15}[m.cls]||12;return{x:(c.x-mc0.x)*k,z:(c.y-mc0.y)*k,R:r0*(m.k||1)}}),
+      onLot=ring=>{if(!lots.length)return false;let sx=0,sy=0;for(const q of ring){sx+=q[0];sy+=q[1]}const c=maplibregl.MercatorCoordinate.fromLngLat([sx/ring.length,sy/ring.length],0),x=(c.x-mc0.x)*k,z=(c.y-mc0.y)*k;for(const l of lots)if(Math.hypot(x-l.x,z-l.z)<l.R)return true;return false};
     const A=kd=>acc[kd]||(acc[kd]={P:[],U:[],N:[],C:[]}),col=h=>{const c=new T.Color(h);return[c.r,c.g,c.b]};
     const cen=r=>{let x=0,z=0;for(const q of r){x+=q[0];z+=q[1]}return[x/r.length,z/r.length]},scl=(r,f)=>{const [cx,cz]=cen(r);return r.map(([x,z])=>[cx+(x-cx)*f,cz+(z-cz)*f])};
     const wall=(kd,r,y0,y1,tint,sg)=>{const o=A(kd);for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len<.3)continue;
@@ -2503,7 +2508,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
         cylv(R,x,z,156,14,10,.8,wc,12);cylv(R,x,z,170,14,.8,.4,wc,6);if(night)cylv(Em,x,z,147.5,2,21.7,21.7,C(0xffd98a),16)}
       else if(n==="burj"){const gc=C(night?0x56606b:0x9fb4c7);let y=0;for(const [h,a,b] of [[190,19,15],[200,15,11],[170,11,7],[120,7,4]]){cylv(R,x,z,y,h,a,b,gc,6);y+=h}cylv(R,x,z,y,150,1.8,.3,gc,6);bx(Em,x,z,.8,.8,y+120,4,C(0xff4a3a))}};
     const tA=performance.now(),okey=detO.mc.x+","+detO.mc.y+","+night;if(!dcache||dcKey!==okey){dcache=new Map();dcKey=okey}let hits=0;
-    for(const f of detFeats)try{const ck=f.ring[0][0].toFixed(7)+","+f.ring[0][1].toFixed(7)+","+f.ring.length+","+f.h+","+(f.base||0),cc=dcache.get(ck);
+    for(const f of detFeats)try{if(onLot(f.ring))continue;const ck=f.ring[0][0].toFixed(7)+","+f.ring[0][1].toFixed(7)+","+f.ring.length+","+f.h+","+(f.base||0),cc=dcache.get(ck);
       if(cc){hits++;for(const kd in cc.acc){const o=A(kd),q=cc.acc[kd];o.P.push(...q.P);o.U.push(...q.U);o.N.push(...q.N);o.C.push(...q.C)}R.P.push(...cc.R.P);R.N.push(...cc.R.N);R.C.push(...cc.R.C);L.push(cc.L);continue}
       const snap={};for(const kd in acc)snap[kd]=[acc[kd].P.length,acc[kd].U.length,acc[kd].N.length,acc[kd].C.length];const sR=[R.P.length,R.N.length,R.C.length];
       let r=f.ring.map(([lo,la])=>{const m=maplibregl.MercatorCoordinate.fromLngLat([lo,la],0);return[(m.x-mc0.x)*k,(m.y-mc0.y)*k]});
@@ -2620,6 +2625,8 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       c.m.position.set(p0[0]+dx*f,c.y!=null?c.y:.9,p0[1]+dz*f);c.m.rotation.y=-Math.atan2(dz,dx)+(c.v<0?Math.PI:0)}}
   function sync(){if(!T||!group)return;while(group.children.length)group.remove(group.children[0]);
     for(const m of modelList){const k=MODEL_KIND[m.cls];if(!k||!build[k])continue;const o=build[k](m),mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),sc=mc.meterInMercatorCoordinateUnits();
+      {const dm={biz:[17,13],wh:[40,28],"site-ind":[36,26],"site-farm":[24,18],"site-mine":[30,30],hq:[28,28]}[m.cls];if(dm){const [pw,pd]=dm,pm=M(0x6b7280),fm=M(0x374151);o.add(box(pw,.25,pd,0,0,0,pm));
+        for(const [fw,fd,fx,fz] of [[pw,.3,0,pd/2],[pw,.3,0,-pd/2],[.3,pd,pw/2,0],[.3,pd,-pw/2,0]])o.add(box(fw,1.4,fd,fx,.25,fz,fm))}}
       if(m.k&&m.k!==1)o.scale.setScalar(m.k);o.userData={mc,sc};group.add(o)}}
   let fogR=2500;const setFogR=r=>{fogR=r};
   return{id:"meridian-models",type:"custom",renderingMode:"3d",setFogR,sync,setOrigin,addChunk,removeChunk,resetDetail,ready,count,stats,
