@@ -3031,7 +3031,7 @@ function govHtml(c){const n=c.country,g=gov(n);if(!PARTIES[g.party])g.party="lib
   h+=`<div class="sec">Government of ${n}</div><div class="list"><div class="row"><div class="n"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${P.col};margin-right:6px"></span>${P.n}</div>
     <div class="d">${P.d} Approval ${Math.round(g.appr)}% · next election in ${fmtDur(g.next-Date.now()).replace(/^(\d+)h/,(m,x)=>x>=48?Math.floor(x/24)+"d "+(x%24)+"h":m)}${g.favor?` · you have their ear (+${Math.round(g.favor*100)}% lobbying)`:""}</div></div></div>`;{const p=S.pol,gn=p&&p.c===n?govNotesHtml():"";if(gn)h+=`<div class="sec">Government notices</div><div class="list"><div class="row"><div class="d">${gn}</div></div></div>`}
   if(g.strike>Date.now())h+=`<p class="d" style="color:#c33;font-size:13px;margin:6px 0">⚠ General strike: businesses earn 30% less for ${fmtDur(g.strike-Date.now())}.</p>`;
-  h+=govSafe(()=>conflictHtml(n),"war")+govSafe(()=>tensHtml(n),"tensions")+govSafe(()=>dipHtml(n),"diplomacy");
+  h+=govSafe(()=>conflictHtml(n),"war")+govSafe(()=>tensHtml(n),"tensions")+govSafe(()=>dipHtml(n),"diplomacy")+govSafe(()=>rcnHtml(n),"reconstruction");
   if(g.ctrl){h+=`<div class="sec">You control this government</div><div class="list"><div class="row"><div class="n">Puppet government</div><div class="d">Set any law for ${fmt(donUnit(n))} with no vote. Control lasts until the next election; fund the party again to keep it. Each hour there's a small chance a journalist exposes you.</div></div>
     <div class="row"><div class="n">State contract ${g.contract?"<b>ACTIVE</b>":""}</div><div class="d">Pays you ${fmt(contractPay(n))} an hour from public money, but more than doubles the exposure risk.</div><button class="buy" data-gov="contract" data-fixed="1">${g.contract?"Cancel":"Award to yourself"}</button></div></div>`}
   {const has=uranPermit(n),fee=uranFee(),q=g.uReq,o=uranGov(n),mine=uranIGov(n),cd=urqCdOn()&&g.uDen>Date.now();
@@ -3068,6 +3068,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)
   else if(a==="set"){const u=donUnit(c.country);if(S.cash<u||!g.ctrl)return;S.cash-=u;g.laws[b.dataset.k]+=+b.dataset.dir;logGov(`${c.country} decrees ${LAWS[b.dataset.k].n.toLowerCase()}: ${LAWS[b.dataset.k].v[g.laws[b.dataset.k]]}`);toast("Law changed")}
   else if(a==="wlic"){if(g.wLic||g.laws.weed||S.cash<WLIC_FEE)return;S.cash-=WLIC_FEE;g.wLic=1;toast(`Cannabis licence granted in ${c.country}`)}
   else if(a==="nlca"){nlcApply()}
+  else if(a==="rcn")rcnAward(+b.dataset.c,+b.dataset.i);
   else if(a==="upermit"){const n=c.country;if(uranPermit(n)){g.uPermit=0;toast("Permit given up")}else if(g.uReq)uranCancel(n);else uranApply(n)}
   else if(a==="uok"||a==="uno")uranRule(b.dataset.id,a==="uok")
   else if(a==="rpermit"){const n=c.country;if(rsPermit(n)&&!devGod()){g.rPermit=0;toast("Research licence given up")}else if(g.rReq)rsCancel(n);else rsApply(n)}
@@ -9395,11 +9396,32 @@ const DMG={core:[0,10,25,60,120,250], // dense economic core in km² by market s
 function dmgHit(W,c){return 1-Math.exp(-DMG.k*W.A/DMG.core[c.size||1])}
 const dmgRepDays=l=>Math.round(DMG.rep[0]+DMG.rep[1]*Math.min(1,l));
 function dmgLvl(c){const D=S.dmg,e=c&&D&&typeof D==="object"?D[c.id]:null;if(!e||!(e.l0>0))return 0;const l0=Math.min(1,+e.l0),st=Math.max(+e.t||0,+(S.unh||{})[c.id]||0),now=Date.now();if(now<=st)return l0;
-  return Math.max(0,l0*(1-(now-st)/(dmgRepDays(l0)*DAYMS)))}
+  return Math.max(0,l0*(1-(now-st)/(dmgRepDays(l0)/rcnSp(e)*DAYMS)))}
 function dmgMult(c){const l=dmgLvl(c);if(!l)return 1;const e=S.dmg[c.id];let sc=1;try{sc=Math.max(.1,1-.3*ofP("sec"))}catch(_){}return Math.max(.05,1-DMG.out*l*sc*(e.own?WPNCFG.ownHit:1))}
 const dmgPct=l=>l<.01?(l*100).toFixed(2)+"%":Math.round(l*100)+"%";
 const dmgWord=l=>l>=DMG.dead?"destroyed":l>=.4?"devastated":l>=.1?"heavily damaged":l>=.02?"damaged":"lightly damaged";
-function dmgLeft(c){const e=(S.dmg||{})[c.id],l=dmgLvl(c);if(!e||!l)return 0;const st=Math.max(+e.t||0,+(S.unh||{})[c.id]||0);return Math.max(0,st+dmgRepDays(e.l0)*DAYMS-Date.now())}
+function dmgLeft(c){const e=(S.dmg||{})[c.id],l=dmgLvl(c);if(!e||!l)return 0;const st=Math.max(+e.t||0,+(S.unh||{})[c.id]||0);return Math.max(0,st+dmgRepDays(e.l0)/rcnSp(e)*DAYMS-Date.now())}
+/* ---------- reconstruction contracts (player governments only): the player governing a country hires a contractor to rebuild a damaged city there.
+   Awarding restarts repairs from today's damage with the contractor's speed: S.dmg[id].sp (missing = 1, normal speed) and .rc (contractor name). A new strike replaces the entry, ending the contract. */
+const RCN={cost:1e9, // price per city size per 100% damage (a destroyed size-5 city ≈ $4.5B with the standard bid)
+  appr:20,          // approval gained = appr × damage, at most 8 points
+  bids:[["Budget",.6,1.6],["Standard",1,2.5],["Rapid",1.7,4]], // [label, price ×, repair speed ×]
+  firms:["Ironbridge Construction","Halvorsen & Pike","Sunrise Rebuild Co.","Atlas Civil Works","Meridian Builders","Kestrel Engineering","Northgate Infrastructure","Orchid Pacific Works"]};
+function rcnSp(e){const v=e&&+e.sp;return v>1?Math.min(10,v):1}
+function rcnGov(n){const p=S.pol;return !!(p&&p.r>=0&&p.c===n)}
+function rcnBids(c){const l=dmgLvl(c);return RCN.bids.map((b,i)=>({i,lbl:b[0],firm:RCN.firms[(c.id*3+i)%RCN.firms.length],price:Math.round(RCN.cost*(c.size||1)*l*b[1]/1e5)*1e5,sp:b[2]}))}
+function rcnFree(){try{return typeof devGod==="function"&&devGod()}catch(e){return false}}
+function rcnHtml(n){if(!rcnGov(n))return "";const now=Date.now(),cs=ctyCities(n).filter(c=>dmgLvl(c)>=.005);if(!cs.length)return "";
+  return `<div class="sec">Reconstruction contracts</div><div class="list">`+cs.map(c=>{const e=S.dmg[c.id],l=dmgLvl(c),dead=(+(S.unh||{})[c.id]||0)>now;
+    const hd=`<div class="n">${c.name} · ${dmgWord(l)} ${dmgPct(l)}${e.rc?` <span class="tag" style="border:1px solid var(--line)">${onEsc(e.rc)} ×${rcnSp(e)}</span>`:""}</div>`;
+    if(dead)return `<div class="row">${hd}<div class="d">Uninhabitable for ${fmtDur(S.unh[c.id]-now)}. Contractors can start once the radiation clears.</div></div>`;
+    if(e.rc)return `<div class="row">${hd}<div class="d">${onEsc(e.rc)} is rebuilding at ${rcnSp(e)}× normal speed. Done in ${fmtDur(dmgLeft(c))}.</div></div>`;
+    return `<div class="row">${hd}<div class="d">Normal rebuild takes ${fmtDur(dmgLeft(c))}. Hire a contractor to rebuild faster and win approval${rcnFree()?" (free on the dev account)":""}.</div><div style="display:flex;gap:6px;flex-wrap:wrap">`+rcnBids(c).map(b=>`<button class="buy" data-gov="rcn" data-c="${c.id}" data-i="${b.i}" data-fixed="1" ${!rcnFree()&&S.cash<b.price?"disabled":""} title="${onEsc(b.firm)}">${b.lbl} ${b.sp}× · ${fmt(b.price)}</button>`).join("")+`</div></div>`}).join("")+`</div>`}
+function rcnAward(id,i){const c=CITIES[id];if(!c||!rcnGov(c.country))return;const e=(S.dmg||{})[id],l=dmgLvl(c),now=Date.now();if(!e||l<.005||e.rc||(+(S.unh||{})[id]||0)>now)return;
+  const b=rcnBids(c)[i];if(!b)return;const free=rcnFree();if(!free&&S.cash<b.price){toast("Not enough cash");return}
+  if(!free)S.cash-=b.price;S.dmg[id]={l0:Math.round(l*1e4)/1e4,t:now,own:e.own,k:e.k,sp:b.sp,rc:b.firm};
+  const g=gov(c.country),up=Math.min(8,RCN.appr*l);g.appr=Math.min(100,(+g.appr||0)+up);
+  logGov(`${c.country} hires ${b.firm} to rebuild ${c.name}`);save();toast(`${b.firm} is rebuilding ${c.name} at ${b.sp}× speed · approval +${up.toFixed(1)}`)}
 // a strike lands: add its damage (stacking 1−(1−a)(1−b)), restart repairs, kill people; mine = fired by the player. Returns deaths.
 function dmgStrike(k,c,mine){const W=WPNCFG.w[k];if(!W||!c)return 0;S.dmg=S.dmg&&typeof S.dmg==="object"?S.dmg:{};const cur=dmgLvl(c),o=S.dmg[c.id],add=dmgHit(W,c)*W.struct,
   l=k==="icbm"?1:Math.min(1,1-(1-cur)*(1-add)),R=["msl","gas","nuke","icbm"],pk=o&&cur>0&&R.indexOf(o.k)>R.indexOf(k)?o.k:k;
