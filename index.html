@@ -819,10 +819,15 @@ function vdQ(){let v=0;try{v=+(S&&S.set&&S.set.vd)||0}catch(e){}if(VDQ[v])return
 function bldZ(){return vdQ().z}
 function bldOp(){const q=vdQ();return["interpolate",["linear"],["zoom"],q.z+q.f[0],0,q.z+q.f[1],1]}
 function bldZoomApply(){try{const st=MM.getStyle();if(!st)return;const z=bldZ();for(const l of st.layers)if(l.type==="fill-extrusion"&&(l.id==="meridian-roofs"||l.id==="meridian-3d-buildings"||/building/i.test(l.id))){MM.setLayerZoomRange(l.id,z,l.maxzoom||24);MM.setPaintProperty(l.id,"fill-extrusion-opacity",bldOp())}}catch(e){}}
+/* sky and distance haze at street level: a gradient sky with a glowing horizon, and fog that melts far blocks into it. Off again on the planet view */
+function streetSky(){try{if(!MM||!MM.setSky)return;if(!inStreet){MM.setSky({"atmosphere-blend":0});return}
+  const dk=dark3d();MM.setSky(dk?{"sky-color":"#070c1c","horizon-color":"#3a3358","fog-color":"#1a2038","fog-ground-blend":.55,"horizon-fog-blend":.7,"sky-horizon-blend":.65,"atmosphere-blend":1}
+    :{"sky-color":"#6f9fd6","horizon-color":"#dbe7f2","fog-color":"#d3dde8","fog-ground-blend":.5,"horizon-fog-blend":.6,"sky-horizon-blend":.55,"atmosphere-blend":1})}catch(e){}}
 function ensure3dBuildings(){const st=MM.getStyle();if(!st)return;const op=bldOp(),dk=dark3d();
   for(const l of st.layers)if(l.type==="fill"&&/building/i.test(l.id))try{MM.setPaintProperty(l.id,"fill-color",dk?"#141a21":"#6b7480")}catch(e){}
   try{bldImages()}catch(e){console.warn("bld img",e)}
   try{MM.setLight({anchor:"map",position:[1.4,210,40],color:"#ffffff",intensity:dk?.25:.45})}catch(e){}
+  streetSky();
   const ex=st.layers.filter(l=>l.type==="fill-extrusion"&&l.id!=="meridian-roofs");let base=ex[0];
   if(!ex.length){const src=Object.keys(st.sources).find(k=>st.sources[k].type==="vector");if(!src)return;const lab=st.layers.find(l=>l.type==="symbol");
     MM.addLayer({id:"meridian-3d-buildings",type:"fill-extrusion",source:src,"source-layer":"building",minzoom:bldZ(),
@@ -2345,8 +2350,8 @@ const stBar=$("#stbar"),placeBar=$("#placebar");
 const nearCity=(lon,lat,maxDeg)=>{let best=null,bd=1e9;for(const c of CITIES){const d=Math.hypot(c.lat-lat,(c.lon-lon)*Math.cos(c.lat*Math.PI/180));if(d<bd){bd=d;best=c}}return bd<maxDeg?best:null};
 function streetSync(){const z=MM.getZoom(),on=z>=ZST||!!placing;
   if(on&&!inStreet){inStreet=true;const ce=MM.getCenter();stCity=stCity&&Math.hypot(stCity.lat-ce.lat,(stCity.lon-ce.lng)*Math.cos(ce.lat*Math.PI/180))<1.5?stCity:nearCity(ce.lng,ce.lat,2);
-    stBar.hidden=false;$("#hint").hidden=true;$("#mapwrap").classList.add("st");stLabel();renderPins();if(typeof navSync==="function")navSync()}
-  else if(!on&&inStreet){inStreet=false;stBar.hidden=true;$("#mapwrap").classList.remove("st");if(offer)closeOffer();clearPins();if(typeof navSync==="function")navSync()}}
+    stBar.hidden=false;$("#hint").hidden=true;$("#mapwrap").classList.add("st");streetSky();stLabel();renderPins();if(typeof navSync==="function")navSync()}
+  else if(!on&&inStreet){inStreet=false;streetSky();stBar.hidden=true;$("#mapwrap").classList.remove("st");if(offer)closeOffer();clearPins();if(typeof navSync==="function")navSync()}}
 function stLabel(){$("#stcity").textContent=stCity?stCity.name:"";$("#stcityb").hidden=!stCity;const ob=$("#stob");if(ob){const on=lyOn("ob");ob.setAttribute("aria-pressed",on);ob.textContent=on?"👥 Others' shops":"👥 Others' shops (hidden)"}}
 $("#stob").addEventListener("click",()=>{S.set=S.set||{};S.set.ob=S.set.ob===0?1:0;stLabel();if(typeof satChip==="function")satChip();renderPins();save()});
 MM.on("move",streetSync);
