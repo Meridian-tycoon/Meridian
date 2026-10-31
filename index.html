@@ -2390,7 +2390,7 @@ function mkPin(lat,lon,txt,col,title,onClick,cls){const el=document.createElemen
 function clearPins(){for(const m of mkPins)m.remove();mkPins=[];for(const m of mkList)m.remove();mkList=[]}
 /* 3D models for the player's own buildings: a MapLibre custom layer drawn with three.js (loaded on first use) at street zoom.
    The label pins stay on top so taps still work; models are built from simple solids so no model files are needed. */
-const MODEL_KIND={hq:"hq",wh:"wh","site-ind":"factory","site-mine":"rig","site-farm":"farm"};
+const MODEL_KIND={biz:"shop",hq:"hq",wh:"wh","site-ind":"factory","site-mine":"rig","site-farm":"farm"};
 let modelList=[],modelLayer=null;
 function setModels(list){modelList=list;if(modelLayer)modelLayer.sync();try{MM.triggerRepaint()}catch(e){}}
 function ensureModelLayer(){try{if(!MM||MM.getLayer("meridian-models"))return;
@@ -2411,6 +2411,13 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     rig(){const g=new T.Group(),st=M(0x555d66),yel=M(0xe3b21c);g.add(box(24,2,24,0,0,0,M(0x77808a)));
       for(const [x,z] of [[-6,-6],[6,-6],[-6,6],[6,6]]){const l=cyl(.5,.5,38,x*.5,2,z*.5,st,6);l.rotation.set(z*-.012,0,x*.012);g.add(l)}
       const top=new T.Mesh(new T.ConeGeometry(2.8,8,4),yel);top.position.y=44;g.add(top);g.add(cyl(4,4,7,8,2,8,yel,16));return g},
+    /* one of your shops: a small branded store, taller with its level, coloured by shop, with an awning and a sign band that light up at night */
+    shop(m){const g=new T.Group(),lv=m.lv||1,fl=Math.min(3,1+Math.floor(lv/4)),pal=[0xc2410c,0x2563eb,0x16a34a,0x9333ea,0xd97706,0xdb2777,0x0891b2],c=pal[(m.h||0)%pal.length],nt=dark3d(),h=4.4*fl+.6,W=nt?0xffd98a:0;
+      g.add(box(14,h,10,0,0,0,M(nt?0x3a3f48:0xd9cfc0)));g.add(box(14.8,.7,10.8,0,h,0,M(c)));
+      for(let i=0;i<7;i++){const a=box(2,.25,2.6,-6+i*2,3,5.9,M(i%2?(nt?0xbbbbbb:0xffffff):c));a.rotation.x=.25;g.add(a)}
+      g.add(box(10.4,1.5,.5,0,3.7,5.2,M(c,{emissive:nt?c:0})));
+      for(let f=0;f<fl;f++)for(let j=0;j<3;j++){const y=f*4.4+(f?1.3:.9);g.add(box(2.6,1.7,.2,-4.4+j*4.4,y+(f?.4:0),5.05,M(nt?0xffe7a8:0x5d7a96,{emissive:nt?W:0})))}
+      g.add(box(2,2.6,.2,0,0,5.05,M(nt?0xffe7a8:0x3b2a1e,{emissive:nt?W:0})));return g},
     farm(){const g=new T.Group();g.add(box(18,7,12,0,0,0,M(0xa8483a)));const r=box(19,1,13,0,7,0,M(0x6d4a3a));g.add(r);
       g.add(cyl(3,3,16,13,0,0,M(0xc9ced4),16));const d=new T.Mesh(new T.SphereGeometry(3,16,8,0,Math.PI*2,0,Math.PI/2),M(0x8a9199));d.position.set(13,16,0);g.add(d);return g}};
 
@@ -2590,7 +2597,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     for(const c of cars){c.s+=c.v*dt;const L=c.r.len;if(c.s>L)c.s-=L;else if(c.s<0)c.s+=L;let a=c.s,i=0;while(i<c.r.seg.length-1&&a>c.r.seg[i]){a-=c.r.seg[i];i++}const p0=c.r.pts[i],p1=c.r.pts[i+1],l=c.r.seg[i]||1,f=Math.min(1,a/l),dx=p1[0]-p0[0],dz=p1[1]-p0[1];
       c.m.position.set(p0[0]+dx*f,.9,p0[1]+dz*f);c.m.rotation.y=-Math.atan2(dz,dx)}}
   function sync(){if(!T||!group)return;while(group.children.length)group.remove(group.children[0]);
-    for(const m of modelList){const k=MODEL_KIND[m.cls];if(!k||!build[k])continue;const o=build[k](),mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),sc=mc.meterInMercatorCoordinateUnits();
+    for(const m of modelList){const k=MODEL_KIND[m.cls];if(!k||!build[k])continue;const o=build[k](m),mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),sc=mc.meterInMercatorCoordinateUnits();
       if(m.k&&m.k!==1)o.scale.setScalar(m.k);o.userData={mc,sc};group.add(o)}}
   return{id:"meridian-models",type:"custom",renderingMode:"3d",sync,setOrigin,addChunk,removeChunk,resetDetail,ready,count,stats,
     onAdd(mp,gl){map=mp;loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;
@@ -2662,7 +2669,7 @@ function renderPins(){clearPins();setModels([]);if(!inStreet)return;ensurePositi
   if(S.loc&&stCity&&S.loc.city===stCity.id){const tp=tripPos(Date.now()),pl=tp&&S.trip.local?tp:S.loc;const m=mkPin(pl.lat,pl.lon,"You","#be185d","You are here");m.getElement().style.zIndex=5;mkPins.push(m)}
   if(stCity&&hasAirport(stCity)){const a=airportPos(stCity);mkPins.push(mkPin(a.lat,a.lon,"Airport","#64748b",stCity.name+" airport"))}
   if(stCity){const a=stationPos(stCity);mkPins.push(mkPin(a.lat,a.lon,"Station","#64748b",stCity.name+" station"))}
-  for(const e of entities()){const p=S.pos[e.key];if(!p)continue;let [col,txt]=PIN[e.cls]||["#333","•"];if(MODEL_KIND[e.cls])modelList.push({cls:e.cls,lat:p.lat,lon:p.lon,k:e.mscale||1});if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
+  for(const e of entities()){const p=S.pos[e.key];if(!p)continue;let [col,txt]=PIN[e.cls]||["#333","•"];if(MODEL_KIND[e.cls]&&(e.cls!=="biz"||lyOn("mb"))){let hh=0;for(const ch of e.key)hh=(hh*31+ch.charCodeAt(0))>>>0;modelList.push({cls:e.cls,lat:p.lat,lon:p.lon,k:e.mscale||1,lv:+String(e.sub||"").replace(/\D/g,"")||1,h:hh})}if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
     {const ly={biz:"mb","site-ind":"mf","site-farm":"mfa","site-mine":"mm",wh:"mw"}[e.cls];if(ly&&!lyOn(ly))continue}
     mkPins.push(mkPin(p.lat,p.lon,txt,col,`${e.label}${e.sub?" · "+e.sub:""}\n${p.addr||e.c.name}`,()=>{tab=e.tab;openCity(e.c)}))}
   setModels(modelList);
