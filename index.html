@@ -6756,8 +6756,11 @@ function bunkHud(){let el=document.getElementById("bunkhud");if(!el){el=document
   if(b.in&&b.lv)h+=`<button class="bk-in">🛡 In bunker · L${b.lv}${b.ad?" · air defense on":""}</button>`;
   if(el.innerHTML!==h)el.innerHTML=h}
 /* bunker vault: cash stored in the bunker. It is hidden from net worth and never lost to strikes (only S.cash is). Deposit/withdraw at the bunker's city. */
+/* VAULT CAP: most cash a player's bunker vault can hold. Mark's dev account (DEV_UIDS) has no cap. Set VAULT_CAP to the amount; Infinity = no cap. */
+const VAULT_CAP=Infinity;
+function vaultRoom(b){let dev=false;try{dev=!!(ON.user&&devUid(ON.user.uid))}catch(e){}return dev?Infinity:Math.max(0,VAULT_CAP-Math.max(0,+b.vault||0))}
 function vaultMv(dir,f){const b=bunk(),bc=b.city!=null?CITIES[b.city]:null;if(!b.lv||!bc)return toast("Build a bunker first");if(!present(bc))return toast(`Your vault is in ${bc.name}: travel there first`);
-  b.vault=Math.max(0,+b.vault||0);const src=dir==="in"?Math.max(0,S.cash):b.vault,amt=Math.floor(f<=1?src*f:Math.min(src,f));if(amt<1)return toast(dir==="in"?"No cash to deposit":"The vault is empty");
+  b.vault=Math.max(0,+b.vault||0);const src=dir==="in"?Math.max(0,S.cash):b.vault;let amt=Math.floor(f<=1?src*f:Math.min(src,f));if(dir==="in"){const rm=vaultRoom(b);if(rm<1&&amt>=1)return toast(`The vault is full (cap ${fmt(VAULT_CAP)})`);amt=Math.min(amt,Math.floor(rm))}if(amt<1)return toast(dir==="in"?"No cash to deposit":"The vault is empty");
   if(dir==="in"){S.cash-=amt;b.vault+=amt;toast(`🔐 Deposited ${fmt(amt)} in the vault`)}else{b.vault-=amt;S.cash+=amt;toast(`🔐 Withdrew ${fmt(amt)} from the vault`)}}
 function vaultHtml(){const b=bunk();if(!b.lv)return "";const v=Math.max(0,+b.vault||0),bc=CITIES[b.city],here=bc&&present(bc),ch=(d,f,t)=>`<button class="buy" data-ph="vault" data-d="${d}" data-f="${f}" style="flex:1;min-width:0;padding:6px 4px;font-size:12px" ${here?"":"disabled"}>${t}</button>`;
   return `<div class="ph-card" style="margin-top:10px"><b>🔐 Vault</b><div class="ph-big" style="font-size:20px">${fmt(v)}</div><span>Cash in the vault is hidden: it's safe from strikes and doesn't show in your net worth.${here?"":` Go to ${bc.name} to use it.`}</span>
@@ -10628,7 +10631,7 @@ function cfoTaxK(){try{return Math.max(.5,1-.1*ofP("cfo"))}catch(e){return 1}}
 function cfoCredK(){try{return ofHas("cfo")?1+ofP("cfo"):1}catch(e){return 1}}
 const CFOSW=[0,1e6,1e7,1e8,1e9];
 function cfoSweep(now){const o=ofS();if(!ofHas("cfo")||!(o.sw>0))return;const b=bunk();if(!b||!b.lv)return;const h=Math.floor(now/DAYMS);if(o.swH===h)return;o.swH=h;
-  const x=Math.floor(S.cash-o.sw);if(x<1)return;S.cash-=x;b.vault=Math.max(0,+b.vault||0)+x;o.swT=(o.swT||0)+x;try{ofSav("cfo",0)}catch(e){}}
+  const x=Math.floor(Math.min(S.cash-o.sw,vaultRoom(b)));if(x<1)return;S.cash-=x;b.vault=Math.max(0,+b.vault||0)+x;o.swT=(o.swT||0)+x;try{ofSav("cfo",0)}catch(e){}}
 function cfoTip(now){const o=ofS(),d=Math.floor(now/DAYMS);if(o.tip&&o.tip.d===d)return o.tip;const m=MK();let best=null;
   for(const a of ASSETS){if(a.t!=="s")continue;const hs=m.h[a.s],px=m.px[a.s];if(!Array.isArray(hs)||hs.length<5||!(px>0))continue;const avg=hs.reduce((x,y)=>x+y,0)/hs.length,r=px/avg;if(!best||r<best.r)best={s:a.s,n:a.n,r}}
   o.tip=best?{d,s:best.s,n:best.n,off:Math.round((1-best.r)*1000)/10}:{d,s:null};return o.tip}
