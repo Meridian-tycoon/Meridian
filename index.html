@@ -813,10 +813,10 @@ function bldImages(){const dk=dark3d();for(const k in BLD_KINDS){const id="mer-w
   MM.addImage(id,g.getImageData(0,0,32,32))}}
 function bldPattern(){const h=["coalesce",["get","render_height"],8];return["case",[">=",h,40],"mer-win-tower",[">=",h,14],"mer-win-mid","mer-win-home"]}
 /* building view distance: zoom where 3D buildings start. 13 shows them about twice as far out as the old 14; Low graphics keeps 14 for weak phones */
-/* view distance slider (S.set.vd): 0 = Auto (follows graphics), 1 Short … 5 Max. z = zoom where buildings start, f = fade length, R = generated-building radius in metres, n = generated-building cap.
+/* view distance slider (S.set.vd): 0 = Auto (follows graphics), 1 Short … 5 Max. z = zoom where buildings start, f = fade length, R = how far out buildings are built, in metres (nearest first, in chunks), n = half the number of built buildings kept in memory; far chunks are dropped.
    Max is the real limit: the map's building data only exists from zoom 13, so buildings cannot load further out than that. */
-const VDQ=[null,{z:15,f:[.2,.6],R:180,n:600},{z:14,f:[.4,.9],R:280,n:900},{z:13,f:[.3,.8],R:450,n:900},{z:13,f:[.1,.4],R:700,n:1300},{z:13,f:[0,.15],R:2600,n:8000}];
-function vdQ(){let v=0;try{v=+(S&&S.set&&S.set.vd)||0}catch(e){}if(VDQ[v])return VDQ[v];let q;try{q=gfx()}catch(e){}return q===GFXQ.low?{z:14,f:[.4,.9],R:280,n:900}:q===GFXQ.med?{z:13,f:[.3,.8],R:350,n:900}:VDQ[3]}
+const VDQ=[null,{z:15,f:[.2,.6],R:300,n:600},{z:14,f:[.4,.9],R:500,n:900},{z:13,f:[.3,.8],R:900,n:1500},{z:13,f:[.1,.4],R:1800,n:3000},{z:13,f:[0,.15],R:4000,n:10000}];
+function vdQ(){let v=0;try{v=+(S&&S.set&&S.set.vd)||0}catch(e){}if(VDQ[v])return VDQ[v];let q;try{q=gfx()}catch(e){}return q===GFXQ.low?{z:14,f:[.4,.9],R:500,n:900}:q===GFXQ.med?{z:13,f:[.3,.8],R:700,n:1200}:VDQ[3]}
 function bldZ(){return vdQ().z}
 function bldOp(){const q=vdQ();return["interpolate",["linear"],["zoom"],q.z+q.f[0],0,q.z+q.f[1],1]}
 function bldZoomApply(){try{const st=MM.getStyle();if(!st)return;const z=bldZ();for(const l of st.layers)if(l.type==="fill-extrusion"&&(l.id==="meridian-roofs"||l.id==="meridian-3d-buildings"||/building/i.test(l.id))){MM.setLayerZoomRange(l.id,z,l.maxzoom||24);MM.setPaintProperty(l.id,"fill-extrusion-opacity",bldOp())}}catch(e){}}
@@ -2390,7 +2390,7 @@ let modelList=[],modelLayer=null;
 function setModels(list){modelList=list;if(modelLayer)modelLayer.sync();try{MM.triggerRepaint()}catch(e){}}
 function ensureModelLayer(){try{if(!MM||MM.getLayer("meridian-models"))return;
   const lab=MM.getStyle().layers.find(l=>l.type==="symbol");
-  detLast=null;origFilter={};MM.addLayer(modelLayer=makeModelLayer());if(typeof refreshDetail==="function")refreshDetail(true)}catch(e){console.warn("model layer",e)}}
+  detLast=null;origFilter={};detKeys=new Set();detChunks=[];detOrg=null;detQ=null;detDirty=true;detLm=false;detHidden=false;origVis={};MM.addLayer(modelLayer=makeModelLayer());if(typeof refreshDetail==="function")refreshDetail(true)}catch(e){console.warn("model layer",e)}}
 function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=false,mats={},det=null,detO=null,detFeats=null,detRoads=null,dcache=null,dcKey="",dT={},lastTris=0;
   const M=(c,o)=>new T.MeshLambertMaterial(Object.assign({color:c},o||{}));
   const box=(w,h,d,x,y,z,mat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y+h/2,z);return m};
@@ -2428,10 +2428,15 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       else{win(x+14,y+10,36,34,"#4f6479");g.fillStyle=night?"#12171d":"rgba(0,0,0,.18)";g.fillRect(x,y+60,64,4)}}
     const t=new T.CanvasTexture(c);t.wrapS=t.wrapT=T.RepeatWrapping;t.anisotropy=4;return WIN[key]=t}
   function stats(){return Object.assign({},dT,{drawn:lastTris})}
-  function setDetail(feats,org,roads){detFeats=feats;detO=org;detRoads=roads||null;if(T)buildDetail()}
+  /* generated buildings are kept as chunks (groups of about 250 buildings) under one parent, all drawn relative to one origin; chunks are added nearest-first and dropped when far */
+  function setOrigin(org){detO=org}
+  function addChunk(feats,roads,withLm){if(!T||!scene||!detO)return null;if(!det){det=new T.Group();det.visible=false;scene.add(det)}if(dcache&&dcache.size>30000)dcache=null;const g=buildChunk(feats,roads,withLm);if(g)det.add(g);return g}
+  const disp=g=>g.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose()});
+  function removeChunk(g){if(det&&g){det.remove(g);disp(g)}}
+  function resetDetail(){if(det){scene.remove(det);disp(det);det=null}detO=null;dcache=null}
   const ready=()=>!!(T&&scene),count=()=>det?det.children.length:0;
-  function buildDetail(){if(det){scene.remove(det);det.traverse(o=>{if(o.geometry)o.geometry.dispose()});det=null}
-    if(!detFeats||!detFeats.length||!detO)return;const night=dark3d(),mc0=detO.mc,k=1/detO.sc,acc={},R={P:[],N:[],C:[]};let bad=0;
+  function buildChunk(detFeats,detRoads,withLm){
+    if(!detO||!detFeats||(!detFeats.length&&!withLm))return null;const night=dark3d(),mc0=detO.mc,k=1/detO.sc,acc={},R={P:[],N:[],C:[]};let bad=0;
     const A=kd=>acc[kd]||(acc[kd]={P:[],U:[],N:[],C:[]}),col=h=>{const c=new T.Color(h);return[c.r,c.g,c.b]};
     const cen=r=>{let x=0,z=0;for(const q of r){x+=q[0];z+=q[1]}return[x/r.length,z/r.length]},scl=(r,f)=>{const [cx,cz]=cen(r);return r.map(([x,z])=>[cx+(x-cx)*f,cz+(z-cz)*f])};
     const wall=(kd,r,y0,y1,tint,sg)=>{const o=A(kd);for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len<.3)continue;
@@ -2541,26 +2546,25 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
           for(const a of nd.arms){if(RK[a.c]<2&&nd.arms.length<4)continue;const green=Math.abs(a.ux*a0.ux+a.uz*a0.uz)>.7,hw=HW[a.c],rx=-a.uz,rz=a.ux,d=tm+1.8,px=nd.x+a.ux*d+rx*(hw+1.3)*-1,pz=nd.z+a.uz*d+rz*(hw+1.3)*-1;if(blocked(px,pz))continue;
             bx(R,px,pz,.22,.22,0,5,dark);obox(R,px,pz,a.ux,a.uz,.4,.5,4.5,1.25,dark);
             for(const [yy,on,cc] of [[5.45,!green,0xff2a2a],[5.1,false,0xffb000],[4.75,green,0x2aff5a]])obox(Em,px+a.ux*.22,pz+a.uz*.22,a.ux,a.uz,.06,.26,yy-.12,.24,col(on?cc:0x1a1a1a))}}}
-      for(const lm of LANDMARKS){const m=maplibregl.MercatorCoordinate.fromLngLat([lm.lon,lm.lat],0),x=(m.x-mc0.x)*k,z=(m.y-mc0.y)*k;if(Math.hypot(x,z)<1500)landmark(lm.n,x,z,night)}}catch(e){console.warn("detail extras",e)}
+      if(withLm)for(const lm of LANDMARKS){const m=maplibregl.MercatorCoordinate.fromLngLat([lm.lon,lm.lat],0),x=(m.x-mc0.x)*k,z=(m.y-mc0.y)*k;if(Math.hypot(x,z)<1500)landmark(lm.n,x,z,night)}}catch(e){console.warn("detail extras",e)}
     const tC=performance.now();
     if(bad)console.warn("detail: skipped",bad,"odd footprints");
-    det=new T.Group();
+    const out=new T.Group();
     for(const kd in acc){const o=acc[kd],g=new T.BufferGeometry(),tx=winTex(kd,night);g.setAttribute("position",new T.Float32BufferAttribute(o.P,3));g.setAttribute("uv",new T.Float32BufferAttribute(o.U,2));g.setAttribute("normal",new T.Float32BufferAttribute(o.N,3));g.setAttribute("color",new T.Float32BufferAttribute(o.C,3));
-      det.add(new T.Mesh(g,new T.MeshLambertMaterial({map:tx,vertexColors:true,side:T.DoubleSide,emissive:night?0xffffff:0,emissiveMap:night?tx:null,emissiveIntensity:night?.8:0})))}
-    if(R.P.length){const g=new T.BufferGeometry();g.setAttribute("position",new T.Float32BufferAttribute(R.P,3));g.setAttribute("normal",new T.Float32BufferAttribute(R.N,3));g.setAttribute("color",new T.Float32BufferAttribute(R.C,3));det.add(new T.Mesh(g,new T.MeshLambertMaterial({vertexColors:true,side:T.DoubleSide})))}
-    const mk=(tg,mat)=>{if(!tg.P.length)return;const g=new T.BufferGeometry();g.setAttribute("position",new T.Float32BufferAttribute(tg.P,3));g.setAttribute("normal",new T.Float32BufferAttribute(tg.N,3));g.setAttribute("color",new T.Float32BufferAttribute(tg.C,3));const m=new T.Mesh(g,mat);det.add(m);return m};
+      out.add(new T.Mesh(g,new T.MeshLambertMaterial({map:tx,vertexColors:true,side:T.DoubleSide,emissive:night?0xffffff:0,emissiveMap:night?tx:null,emissiveIntensity:night?.8:0})))}
+    if(R.P.length){const g=new T.BufferGeometry();g.setAttribute("position",new T.Float32BufferAttribute(R.P,3));g.setAttribute("normal",new T.Float32BufferAttribute(R.N,3));g.setAttribute("color",new T.Float32BufferAttribute(R.C,3));out.add(new T.Mesh(g,new T.MeshLambertMaterial({vertexColors:true,side:T.DoubleSide})))}
+    const mk=(tg,mat)=>{if(!tg.P.length)return;const g=new T.BufferGeometry();g.setAttribute("position",new T.Float32BufferAttribute(tg.P,3));g.setAttribute("normal",new T.Float32BufferAttribute(tg.N,3));g.setAttribute("color",new T.Float32BufferAttribute(tg.C,3));const m=new T.Mesh(g,mat);out.add(m);return m};
     mk(Em,new T.MeshBasicMaterial({vertexColors:true,side:T.DoubleSide}));
     const sm=mk(Sh,new T.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:.3,depthWrite:false,side:T.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));if(sm)sm.renderOrder=2;
     const gm=mk(Gl,new T.MeshBasicMaterial({vertexColors:true,transparent:true,blending:T.AdditiveBlending,depthWrite:false,side:T.DoubleSide}));if(gm)gm.renderOrder=3;
-    det.visible=false;scene.add(det);
-    let tris=0;det.traverse(o=>{if(o.geometry&&o.geometry.attributes.position)tris+=o.geometry.attributes.position.count/3});
-    dT={feat:Math.round(tB-tA),extras:Math.round(tC-tB),upload:Math.round(performance.now()-tC),tris:Math.round(tris),hits,total:detFeats.length}}
+    let tris=0;out.traverse(o=>{if(o.geometry&&o.geometry.attributes.position)tris+=o.geometry.attributes.position.count/3});
+    dT={feat:Math.round(tB-tA),extras:Math.round(tC-tB),upload:Math.round(performance.now()-tC),tris:Math.round(tris),hits,total:detFeats.length};return out}
   function sync(){if(!T||!group)return;while(group.children.length)group.remove(group.children[0]);
     for(const m of modelList){const k=MODEL_KIND[m.cls];if(!k||!build[k])continue;const o=build[k](),mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),sc=mc.meterInMercatorCoordinateUnits();
       o.userData={mc,sc};group.add(o)}}
-  return{id:"meridian-models",type:"custom",renderingMode:"3d",sync,setDetail,ready,count,stats,
+  return{id:"meridian-models",type:"custom",renderingMode:"3d",sync,setOrigin,addChunk,removeChunk,resetDetail,ready,count,stats,
     onAdd(mp,gl){map=mp;loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;
-      scene=new T.Scene();cam=new T.Camera();group=new T.Group();scene.add(group);hemi=new T.HemisphereLight(0xffffff,0x667788,.85);sun=new T.DirectionalLight(0xffffff,.8);sun.position.set(.4,1,.6);scene.add(hemi,sun);sync();buildDetail();mp.triggerRepaint()}).catch(e=>console.warn("3d models off",e))},
+      scene=new T.Scene();cam=new T.Camera();group=new T.Group();scene.add(group);hemi=new T.HemisphereLight(0xffffff,0x667788,.85);sun=new T.DirectionalLight(0xffffff,.8);sun.position.set(.4,1,.6);scene.add(hemi,sun);sync();mp.triggerRepaint()}).catch(e=>console.warn("3d models off",e))},
     render(gl,args){if(!T||!group)return;const z=map.getZoom();if(z<15)return;
       const dk=dark3d();hemi.intensity=dk?.35:.85;sun.intensity=dk?.3:.8;
       const pm=new T.Matrix4().fromArray(args.defaultProjectionData?args.defaultProjectionData.mainMatrix:args.projectionMatrix||args);
@@ -2575,60 +2579,52 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
 let detHud=0,detInfo={n:0,R:0},detTimer=0,detVerify=0,detWait=0,detLast=null,origFilter={};
 /* near the camera the plain blocks are swapped for generated buildings: the blocks within a radius of the view centre are hidden with a "distance" filter and redrawn by the model layer */
 function detLayers(){const st=MM.getStyle();return st?st.layers.filter(l=>l.type==="fill-extrusion").map(l=>l.id):[]}
-/* largest radius (m) around ce that is fully covered by loaded tiles of the building source; sampled on rings, falls back to rmax if the tile list is not readable */
-function detCover(ce,rmax,src){try{const sc=MM.style.sourceCaches[src],ts=Object.values(sc._tiles).filter(t=>t.state==="loaded").map(t=>t.tileID.canonical);if(!ts.length)return rmax;
-  const mLat=111320,mLng=111320*Math.cos(ce.lat*Math.PI/180),has=(lng,lat)=>{for(const c of ts){const n=Math.pow(2,c.z),x=Math.floor((lng+180)/360*n),la=lat*Math.PI/180,y=Math.floor((1-Math.log(Math.tan(la)+1/Math.cos(la))/Math.PI)/2*n);if(x===c.x&&y===c.y)return true}return false};
-  const steps=10;for(let i=1;i<=steps;i++){const r=rmax*i/steps;for(let k=0;k<12;k++){const a=k*Math.PI/6;if(!has(ce.lng+Math.cos(a)*r/mLng,ce.lat+Math.sin(a)*r/mLat))return Math.max(120,rmax*(i-1)/steps)}}return rmax}catch(e){return rmax}}
-function detRestore(){for(const id in origFilter){try{MM.setFilter(id,origFilter[id])}catch(e){}}origFilter={};detLast=null;if(modelLayer)modelLayer.setDetail(null,null);try{MM.triggerRepaint()}catch(e){}}
+/* the plain blocks are switched off at street zoom (layer visibility) and every building is drawn from generated chunks, nearest first; no circle, no hide filter */
+let detKeys=new Set(),detChunks=[],detOrg=null,detNight=null,detQ=null,detQc=null,detDirty=true,detHidden=false,detLm=false,origVis={},detRds=[];
+function detHidePlain(on){try{const ids=detLayers();if(on){for(const id of ids){if(!(id in origVis))origVis[id]=MM.getLayoutProperty(id,"visibility")||"visible";if(MM.getLayoutProperty(id,"visibility")!=="none")MM.setLayoutProperty(id,"visibility","none")}detHidden=true}
+  else{for(const id in origVis){try{MM.setLayoutProperty(id,"visibility",origVis[id])}catch(e){}}origVis={};detHidden=false}}catch(e){}}
+function detReset(){clearTimeout(detTimer);detTimer=0;detKeys=new Set();detChunks=[];detOrg=null;detQ=null;detDirty=true;detLm=false;try{if(modelLayer&&modelLayer.ready())modelLayer.resetDetail()}catch(e){}}
+function detRestore(){detReset();detHidePlain(false);detLast=null;try{MM.triggerRepaint()}catch(e){}}
 /* ?dev=1 readout: what the swap last did, for screenshots */
 function detDbg(n,built,R){try{if(localStorage.getItem("meridian-dev")!=="1")return;detInfo={n,built,R};if(detHud)return;
   const d=document.createElement("div");d.id="detDbg";d.style.cssText="position:fixed;left:6px;bottom:64px;z-index:9;font:11px monospace;color:#9f9;background:#000a;padding:2px 6px;border-radius:4px;pointer-events:none;white-space:pre";document.body.appendChild(d);
   let fr=0,fps=0;MM.on("render",()=>fr++);detHud=setInterval(()=>{fps=fr;fr=0;const st=modelLayer&&modelLayer.stats?modelLayer.stats():{};
     d.textContent="picked "+detInfo.n+" R"+Math.round(detInfo.R)+"m z"+MM.getZoom().toFixed(1)+"\nbuild "+((st.feat||0)+(st.extras||0)+(st.upload||0))+"ms (bld "+(st.feat||0)+" extras "+(st.extras||0)+" up "+(st.upload||0)+") cached "+(st.hits||0)+"/"+(st.total||0)+"\ntris "+(st.tris||0)+" drawn "+(st.drawn||0)+"  "+fps+" fps"},1000)}catch(e){}}
-let detMovT=0;
-function refreshDetail(force){/* while the map is moving, look again at most about once a second (the pending check is left alone so tile events do not keep pushing it back) */
-  if(MM.isMoving()||MM.isZooming()){const t=Date.now();if(t-detMovT<1200)return;detMovT=t}
-  clearTimeout(detTimer);detTimer=setTimeout(()=>{try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom(),ce0=MM.getCenter();
-  /* while moving, only add buildings inside the current build (filter untouched), or re-centre once the view is near its edge; otherwise wait for the gesture to settle (changing the hide filter mid-gesture made buildings flicker) */
-  if(MM.isMoving()||MM.isZooming()){if(!detLast)return;const dd=Math.hypot((ce0.lng-detLast.lng)*111320*Math.cos(ce0.lat*Math.PI/180),(ce0.lat-detLast.lat)*111320);if(dd>=detLast.R*.5&&dd<detLast.R*.8)return}
-  if(z<15.4){if(detLast&&z<15)detRestore();return}/* once built, keep the swap down to zoom 15 so zooming near 15.4 does not toggle the buildings */
-  const ids=detLayers();if(!ids.length)return;const base=MM.getLayer(ids.find(i=>i!=="meridian-roofs")||ids[0]);if(!base)return;
-  const mLat=111320,mLng=111320*Math.cos(ce0.lat*Math.PI/180);
-  /* while the view stays near the last build, keep its centre and radius so new tiles only rebuild the buildings and the hide filter is left alone (changing it reloads tiles and makes buildings flicker) */
-  const reuse=!force&&detLast&&Math.hypot((ce0.lng-detLast.lng)*mLng,(ce0.lat-detLast.lat)*mLat)<detLast.R*.5,ce=reuse?{lng:detLast.lng,lat:detLast.lat}:ce0;
-  const src=base.source,sl=base.sourceLayer||base["source-layer"],fs=MM.querySourceFeatures(src,sl?{sourceLayer:sl}:{});/* generated radius by graphics: High 450 m, Medium 350 m, Low 280 m (old value); the 900-building cap below still shrinks it in dense cities */
-  const VQ=vdQ();let R=reuse?detLast.R:VQ.R,use=[];
-  /* only hide and build as far as map tiles are loaded: the map loads tiles in chunks, and hiding plain blocks beyond them leaves bare patches */
-  const Rc=detCover(ce,VQ.R,src);if(reuse){if(Rc>=R*1.25)R=Math.min(VQ.R,Rc)}else R=Math.min(R,Rc);
-  const dseg=(px,py,ax,ay,bx,by)=>{const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy,t=l?Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l)):0;return Math.hypot(px-(ax+t*dx),py-(ay+t*dy))};
-  const dpoly=ring=>{let inside=false,best=1e9;const px=0,py=0;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const ax=(ring[i][0]-ce.lng)*mLng,ay=(ring[i][1]-ce.lat)*mLat,bx=(ring[j][0]-ce.lng)*mLng,by=(ring[j][1]-ce.lat)*mLat;
-      if((ay>0)!==(by>0)&&0<(bx-ax)*(0-ay)/(by-ay)+ax)inside=!inside;best=Math.min(best,dseg(0,0,ax,ay,bx,by))}return inside?0:best};
-  const pick=()=>{const seen=new Set(),out=[];
-    for(const f of fs){const g=f.geometry;if(!g)continue;const parts=g.type==="Polygon"?[g.coordinates[0]]:g.type==="MultiPolygon"?g.coordinates.map(q=>q[0]):[];
-      const h=+f.properties.render_height||8,mh=+f.properties.render_min_height||0;if(h-mh<1)continue;/* every part of a multi-part building is built: the hide filter covers all of them */
-      for(const ring of parts){if(!ring||ring.length<4||dpoly(ring)>R)continue;
-        const key=ring[0][0].toFixed(6)+","+ring[0][1].toFixed(6)+","+ring.length;if(seen.has(key))continue;seen.add(key);out.push({ring,h,base:mh})}}
-    return{out}};
-  let res=pick();while(res.out.length>VQ.n&&R>60){R*=.8;res=pick()}use=res.out;
-  if(!use.length){if(detLast)detRestore();return}
+function detSchedule(ms){if(detTimer)return;detTimer=setTimeout(()=>{detTimer=0;detStep()},ms)}
+function refreshDetail(force){detDirty=true;detSchedule(MM.isMoving()||MM.isZooming()?400:120)}
+/* every building in the loaded tiles that is not built yet, nearest to the view centre first, within the view distance */
+function detQueue(base,ce,mLng,mLat,R){const sl=base.sourceLayer||base["source-layer"],fs=MM.querySourceFeatures(base.source,sl?{sourceLayer:sl}:{}),seen=new Set(),out=[];
+  for(const f of fs){const g=f.geometry;if(!g)continue;const parts=g.type==="Polygon"?[g.coordinates[0]]:g.type==="MultiPolygon"?g.coordinates.map(q=>q[0]):[];
+    const h=+f.properties.render_height||8,mh=+f.properties.render_min_height||0;if(h-mh<1)continue;
+    for(const ring of parts){if(!ring||ring.length<4)continue;const key=ring[0][0].toFixed(6)+","+ring[0][1].toFixed(6)+","+ring.length;if(seen.has(key)||detKeys.has(key))continue;seen.add(key);
+      const d=Math.hypot((ring[0][0]-ce.lng)*mLng,(ring[0][1]-ce.lat)*mLat);if(d>R)continue;out.push({ring,h,base:mh,key,d})}}
+  out.sort((a,b)=>a.d-b.d);
   const RK2={primary:1,secondary:1,tertiary:1,minor:1},rds=[],rseen=new Set();
-  try{const rl=MM.getStyle().layers.find(l=>l["source-layer"]==="transportation");if(rl){const rfs=MM.querySourceFeatures(rl.source,{sourceLayer:"transportation"});
-    for(const f of rfs){const pr=f.properties||{};if(!RK2[pr.class]||pr.brunnel==="bridge"||pr.brunnel==="tunnel"||pr.ramp)continue;const g=f.geometry;if(!g)continue;
-      const lns=g.type==="LineString"?[g.coordinates]:g.type==="MultiLineString"?g.coordinates:[];
-      for(const pts of lns){if(pts.length<2)continue;let near=false;for(const q of pts){if(Math.hypot((q[0]-ce.lng)*mLng,(q[1]-ce.lat)*mLat)<=R+40){near=true;break}}if(!near)continue;
-        const key=pr.class+pts[0][0].toFixed(5)+","+pts[0][1].toFixed(5)+pts.length;if(rseen.has(key))continue;rseen.add(key);rds.push({c:pr.class,pts})}}}}catch(e){}
-  let hx=0;for(const u of use)hx=(hx+u.ring[0][0]*1e5+u.ring[0][1]*1e5)%1e9;const sig=use.length+":"+R+":"+Math.round(hx)+":"+rds.length;if(!force&&detLast&&detLast.sig===sig&&Math.hypot((ce.lng-detLast.lng)*mLng,(ce.lat-detLast.lat)*mLat)<R*.35)return;
-  if(!modelLayer.ready()){detTimer=setTimeout(()=>refreshDetail(true),700);return}
-  if(!reuse&&!MM.areTilesLoaded()&&detWait++<10){detTimer=setTimeout(()=>refreshDetail(force),600);return}detWait=0;
-  const mc=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0);
-  modelLayer.setDetail(use,{mc,sc:mc.meterInMercatorCoordinateUnits()},rds);
-  if(modelLayer.count()<1){console.warn("detail: nothing built, keeping the plain blocks");if(detLast)detRestore();return}
-  /* only now hide the plain blocks the new buildings replace */
-  if(reuse&&R===detLast.R){detLast.sig=sig;MM.triggerRepaint();return}
-  const hide=[">",["distance",{type:"Point",coordinates:[ce.lng,ce.lat]}],R];
-  for(const id of ids){if(!(id in origFilter))origFilter[id]=MM.getFilter(id)||null;const o=origFilter[id];MM.setFilter(id,o?["all",o,hide]:hide)}
-  detLast={lng:ce.lng,lat:ce.lat,R,sig};MM.triggerRepaint();detDbg(use.length,modelLayer.count(),R);/* tiles reload after the hide filter is set: look again so anything that arrived late is built, not just hidden */clearTimeout(detVerify);detVerify=setTimeout(()=>refreshDetail(),1500)}catch(e){console.warn("detail",e);try{if(detLast)detRestore()}catch(e2){}}},350)}
-/* re-check whenever the view settles or more map tiles arrive, so buildings in newly loaded tiles are drawn instead of just hidden */
+  try{const rl=MM.getStyle().layers.find(l=>l["source-layer"]==="transportation");if(rl){for(const f of MM.querySourceFeatures(rl.source,{sourceLayer:"transportation"})){const pr=f.properties||{};if(!RK2[pr.class]||pr.brunnel==="bridge"||pr.brunnel==="tunnel"||pr.ramp)continue;const g=f.geometry;if(!g)continue;
+    const lns=g.type==="LineString"?[g.coordinates]:g.type==="MultiLineString"?g.coordinates:[];
+    for(const pts of lns){if(pts.length<2)continue;const key=pr.class+pts[0][0].toFixed(5)+","+pts[0][1].toFixed(5)+pts.length;if(rseen.has(key))continue;rseen.add(key);rds.push({c:pr.class,pts})}}}}catch(e){}
+  detRds=rds;return out}
+function detStep(){try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom();
+  if(z<15.4){if((detHidden||detChunks.length)&&z<15)detRestore();return}/* once built, keep it down to zoom 15 so zooming near 15.4 does not toggle the buildings */
+  if(!modelLayer.ready()){detSchedule(700);return}
+  const night=dark3d();if(detNight!==null&&night!==detNight)detReset();detNight=night;
+  const ce=MM.getCenter(),mLat=111320,mLng=111320*Math.cos(ce.lat*Math.PI/180),ids=detLayers();if(!ids.length)return;const base=MM.getLayer(ids.find(i=>i!=="meridian-roofs")||ids[0]);if(!base)return;
+  const VQ=vdQ();
+  if(detOrg&&Math.hypot((ce.lng-detOrg.lng)*mLng,(ce.lat-detOrg.lat)*mLat)>8000)detReset();
+  if(!detOrg){const mc=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0);detOrg={lng:ce.lng,lat:ce.lat};modelLayer.setOrigin({mc,sc:mc.meterInMercatorCoordinateUnits()})}
+  if(detDirty||!detQ||Math.hypot((ce.lng-detQc.lng)*mLng,(ce.lat-detQc.lat)*mLat)>150){detQ=detQueue(base,ce,mLng,mLat,VQ.R);detQc={lng:ce.lng,lat:ce.lat};detDirty=false}
+  const take=[];while(take.length<250&&detQ.length){const f=detQ.shift();if(!detKeys.has(f.key))take.push(f)}
+  if(take.length){
+    if(!detLm){detLm=true;modelLayer.addChunk([],null,true)}
+    let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;for(const f of take)for(const q of f.ring){x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1])}
+    const mg=.0012,roads=detRds.filter(rd=>rd.pts.some(q=>q[0]>=x0-mg&&q[0]<=x1+mg&&q[1]>=y0-mg&&q[1]<=y1+mg)),g=modelLayer.addChunk(take.map(f=>({ring:f.ring,h:f.h,base:f.base})),roads,false);
+    if(g){for(const f of take)detKeys.add(f.key);detChunks.push({g,keys:take.map(f=>f.key),lng:(x0+x1)/2,lat:(y0+y1)/2});detHidePlain(true)}
+    /* far chunks are dropped (and rebuilt from the cache if you come back) to keep memory in check */
+    const lim=VQ.n*2;if(detKeys.size>lim){detChunks.sort((a,b)=>Math.hypot((b.lng-ce.lng)*mLng,(b.lat-ce.lat)*mLat)-Math.hypot((a.lng-ce.lng)*mLng,(a.lat-ce.lat)*mLat));
+      while(detKeys.size>lim*.8&&detChunks.length>1){const c=detChunks.shift();modelLayer.removeChunk(c.g);for(const k of c.keys)detKeys.delete(k);detDirty=true}}
+    MM.triggerRepaint();detDbg(detKeys.size,detChunks.length,VQ.R)}
+  if(detQ.length)detSchedule(MM.isMoving()||MM.isZooming()?120:50)}catch(e){console.warn("detail",e);try{detRestore()}catch(e2){}}}
+/* re-check whenever the view settles or more map tiles arrive */
 MM.on("moveend",()=>refreshDetail());MM.on("idle",()=>refreshDetail());MM.on("sourcedata",e=>{if(e.sourceDataType!=="metadata"&&(e.tile||e.isSourceLoaded))refreshDetail()});
 function renderPins(){clearPins();setModels([]);if(!inStreet)return;ensurePositions();
   if(S.loc&&stCity&&S.loc.city===stCity.id){const tp=tripPos(Date.now()),pl=tp&&S.trip.local?tp:S.loc;const m=mkPin(pl.lat,pl.lon,"You","#be185d","You are here");m.getElement().style.zIndex=5;mkPins.push(m)}
