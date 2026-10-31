@@ -67,6 +67,7 @@ service cloud.firestore {
         && request.resource.data.fc is string && request.resource.data.fc.size() <= 40
         && request.resource.data.tc is string && request.resource.data.tc.size() <= 40
         && request.resource.data.city is int && request.resource.data.k in ['msl', 'gas', 'nuke', 'icbm']
+        && (!(request.resource.data.k in ['nuke', 'icbm']) || nukeOk())
         && request.resource.data.n is int && request.resource.data.n >= 1 && request.resource.data.n <= 99
         && request.resource.data.at is int;
       allow delete: if request.auth != null && resource.data.from == request.auth.uid;
@@ -170,6 +171,32 @@ service cloud.firestore {
         && request.resource.data.ot == request.time
         && (resource == null || request.time > resource.data.ot + duration.value(1, 'm'))
         && request.resource.data.by is string && request.resource.data.by.size() <= 40;
+    }
+    // Nuclear licence: a player in government may only mine/use uranium and build/launch nukes, ICBMs and hydrogen bombs
+    // after the World Council Leader approves. nukeapp/{uid}: the player applies (st 'p'; 'ok' at once only when no leader is seated);
+    // only the leader (or Mark) approves (st -> 'ok') or refuses (delete). Nuclear launch warnings above need an approved licence.
+    function nukeOk() {
+      return isDev() || (exists(/databases/$(database)/documents/nukeapp/$(request.auth.uid))
+        && get(/databases/$(database)/documents/nukeapp/$(request.auth.uid)).data.st == 'ok');
+    }
+    function isWcl() {
+      return request.auth != null && exists(/databases/$(database)/documents/world/wcleader)
+        && get(/databases/$(database)/documents/world/wcleader).data.uid == request.auth.uid;
+    }
+    match /nukeapp/{uid} {
+      allow read: if true;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'c', 'st', 'at']) && request.resource.data.keys().hasAll(['uid', 'name', 'c', 'st', 'at'])
+        && request.resource.data.uid == uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 40
+        && request.resource.data.c is string && request.resource.data.c.size() > 0 && request.resource.data.c.size() <= 40
+        && request.resource.data.at == request.time
+        && (request.resource.data.st == 'p'
+          || (request.resource.data.st == 'ok' && (isDev() || !exists(/databases/$(database)/documents/world/wcleader))));
+      allow update: if (isWcl() || isDev())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st', 'at'])
+        && request.resource.data.st == 'ok' && request.resource.data.at == request.time;
+      allow delete: if request.auth != null && (request.auth.uid == uid || isWcl() || isDev());
     }
     match /world/wcleader {
       allow read: if true;
