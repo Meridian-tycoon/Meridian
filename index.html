@@ -2575,6 +2575,10 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
 let detHud=0,detInfo={n:0,R:0},detTimer=0,detVerify=0,detWait=0,detLast=null,origFilter={};
 /* near the camera the plain blocks are swapped for generated buildings: the blocks within a radius of the view centre are hidden with a "distance" filter and redrawn by the model layer */
 function detLayers(){const st=MM.getStyle();return st?st.layers.filter(l=>l.type==="fill-extrusion").map(l=>l.id):[]}
+/* largest radius (m) around ce that is fully covered by loaded tiles of the building source; sampled on rings, falls back to rmax if the tile list is not readable */
+function detCover(ce,rmax,src){try{const sc=MM.style.sourceCaches[src],ts=Object.values(sc._tiles).filter(t=>t.state==="loaded").map(t=>t.tileID.canonical);if(!ts.length)return rmax;
+  const mLat=111320,mLng=111320*Math.cos(ce.lat*Math.PI/180),has=(lng,lat)=>{for(const c of ts){const n=Math.pow(2,c.z),x=Math.floor((lng+180)/360*n),la=lat*Math.PI/180,y=Math.floor((1-Math.log(Math.tan(la)+1/Math.cos(la))/Math.PI)/2*n);if(x===c.x&&y===c.y)return true}return false};
+  const steps=10;for(let i=1;i<=steps;i++){const r=rmax*i/steps;for(let k=0;k<12;k++){const a=k*Math.PI/6;if(!has(ce.lng+Math.cos(a)*r/mLng,ce.lat+Math.sin(a)*r/mLat))return Math.max(120,rmax*(i-1)/steps)}}return rmax}catch(e){return rmax}}
 function detRestore(){for(const id in origFilter){try{MM.setFilter(id,origFilter[id])}catch(e){}}origFilter={};detLast=null;if(modelLayer)modelLayer.setDetail(null,null);try{MM.triggerRepaint()}catch(e){}}
 /* ?dev=1 readout: what the swap last did, for screenshots */
 function detDbg(n,built,R){try{if(localStorage.getItem("meridian-dev")!=="1")return;detInfo={n,built,R};if(detHud)return;
@@ -2589,6 +2593,8 @@ function refreshDetail(force){clearTimeout(detTimer);detTimer=setTimeout(()=>{tr
   const reuse=!force&&detLast&&Math.hypot((ce0.lng-detLast.lng)*mLng,(ce0.lat-detLast.lat)*mLat)<detLast.R*.5,ce=reuse?{lng:detLast.lng,lat:detLast.lat}:ce0;
   const src=base.source,sl=base.sourceLayer||base["source-layer"],fs=MM.querySourceFeatures(src,sl?{sourceLayer:sl}:{});/* generated radius by graphics: High 450 m, Medium 350 m, Low 280 m (old value); the 900-building cap below still shrinks it in dense cities */
   const VQ=vdQ();let R=reuse?detLast.R:VQ.R,use=[];
+  /* only hide and build as far as map tiles are loaded: the map loads tiles in chunks, and hiding plain blocks beyond them leaves bare patches */
+  const Rc=detCover(ce,VQ.R,src);if(reuse){if(Rc>=R*1.25)R=Math.min(VQ.R,Rc)}else R=Math.min(R,Rc);
   const dseg=(px,py,ax,ay,bx,by)=>{const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy,t=l?Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l)):0;return Math.hypot(px-(ax+t*dx),py-(ay+t*dy))};
   const dpoly=ring=>{let inside=false,best=1e9;const px=0,py=0;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const ax=(ring[i][0]-ce.lng)*mLng,ay=(ring[i][1]-ce.lat)*mLat,bx=(ring[j][0]-ce.lng)*mLng,by=(ring[j][1]-ce.lat)*mLat;
       if((ay>0)!==(by>0)&&0<(bx-ax)*(0-ay)/(by-ay)+ax)inside=!inside;best=Math.min(best,dseg(0,0,ax,ay,bx,by))}return inside?0:best};
