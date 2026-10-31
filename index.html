@@ -2527,16 +2527,18 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
         cam.projectionMatrix=pm.clone().multiply(dm);ren.render(scene,cam);det.visible=false}}}}
 
 /* big cities (size 4-5) get roof and crown detail on the buildings in view, rebuilt when the map settles */
-let detTimer=0,detLast=null,origFilter={};
+let detTimer=0,detVerify=0,detLast=null,origFilter={};
 /* near the camera the plain blocks are swapped for generated buildings: the blocks within a radius of the view centre are hidden with a "distance" filter and redrawn by the model layer */
 function detLayers(){const st=MM.getStyle();return st?st.layers.filter(l=>l.type==="fill-extrusion").map(l=>l.id):[]}
 function detRestore(){for(const id in origFilter){try{MM.setFilter(id,origFilter[id])}catch(e){}}origFilter={};detLast=null;if(modelLayer)modelLayer.setDetail(null,null);try{MM.triggerRepaint()}catch(e){}}
-function refreshDetail(force){clearTimeout(detTimer);detTimer=setTimeout(()=>{try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom(),ce=MM.getCenter();
+function refreshDetail(force){clearTimeout(detTimer);detTimer=setTimeout(()=>{try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom(),ce0=MM.getCenter();
   if(z<15.4){if(detLast)detRestore();return}
   const ids=detLayers();if(!ids.length)return;const base=MM.getLayer(ids.find(i=>i!=="meridian-roofs")||ids[0]);if(!base)return;
-  const mLat=111320,mLng=111320*Math.cos(ce.lat*Math.PI/180);
+  const mLat=111320,mLng=111320*Math.cos(ce0.lat*Math.PI/180);
+  /* while the view stays near the last build, keep its centre and radius so new tiles only rebuild the buildings and the hide filter is left alone (changing it reloads tiles and makes buildings flicker) */
+  const reuse=!force&&detLast&&Math.hypot((ce0.lng-detLast.lng)*mLng,(ce0.lat-detLast.lat)*mLat)<detLast.R*.35,ce=reuse?{lng:detLast.lng,lat:detLast.lat}:ce0;
   const src=base.source,sl=base.sourceLayer||base["source-layer"],fs=MM.querySourceFeatures(src,sl?{sourceLayer:sl}:{});/* generated radius by graphics: High 450 m, Medium 350 m, Low 280 m (old value); the 900-building cap below still shrinks it in dense cities */
-  const VQ=vdQ();let R=VQ.R,use=[];
+  const VQ=vdQ();let R=reuse?detLast.R:VQ.R,use=[];
   const dseg=(px,py,ax,ay,bx,by)=>{const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy,t=l?Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l)):0;return Math.hypot(px-(ax+t*dx),py-(ay+t*dy))};
   const dpoly=ring=>{let inside=false,best=1e9;const px=0,py=0;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const ax=(ring[i][0]-ce.lng)*mLng,ay=(ring[i][1]-ce.lat)*mLat,bx=(ring[j][0]-ce.lng)*mLng,by=(ring[j][1]-ce.lat)*mLat;
       if((ay>0)!==(by>0)&&0<(bx-ax)*(0-ay)/(by-ay)+ax)inside=!inside;best=Math.min(best,dseg(0,0,ax,ay,bx,by))}return inside?0:best};
@@ -2548,15 +2550,16 @@ function refreshDetail(force){clearTimeout(detTimer);detTimer=setTimeout(()=>{tr
     return{out}};
   let res=pick();while(res.out.length>VQ.n&&R>60){R*=.8;res=pick()}use=res.out;
   if(!use.length){if(detLast)detRestore();return}
-  const sig=use.length+":"+R;if(!force&&detLast&&detLast.sig===sig&&Math.hypot((ce.lng-detLast.lng)*mLng,(ce.lat-detLast.lat)*mLat)<R*.35)return;
+  let hx=0;for(const u of use)hx=(hx+u.ring[0][0]*1e5+u.ring[0][1]*1e5)%1e9;const sig=use.length+":"+R+":"+Math.round(hx);if(!force&&detLast&&detLast.sig===sig&&Math.hypot((ce.lng-detLast.lng)*mLng,(ce.lat-detLast.lat)*mLat)<R*.35)return;
   if(!modelLayer.ready()){detTimer=setTimeout(()=>refreshDetail(true),700);return}
   const mc=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0);
   modelLayer.setDetail(use,{mc,sc:mc.meterInMercatorCoordinateUnits()});
   if(modelLayer.count()<1){console.warn("detail: nothing built, keeping the plain blocks");if(detLast)detRestore();return}
   /* only now hide the plain blocks the new buildings replace */
+  if(reuse&&R===detLast.R){detLast.sig=sig;MM.triggerRepaint();return}
   const hide=[">",["distance",{type:"Point",coordinates:[ce.lng,ce.lat]}],R];
   for(const id of ids){if(!(id in origFilter))origFilter[id]=MM.getFilter(id)||null;const o=origFilter[id];MM.setFilter(id,o?["all",o,hide]:hide)}
-  detLast={lng:ce.lng,lat:ce.lat,R,sig};MM.triggerRepaint()}catch(e){console.warn("detail",e)}},350)}
+  detLast={lng:ce.lng,lat:ce.lat,R,sig};MM.triggerRepaint();/* tiles reload after the hide filter is set: look again so anything that arrived late is built, not just hidden */clearTimeout(detVerify);detVerify=setTimeout(()=>refreshDetail(),1500)}catch(e){console.warn("detail",e)}},350)}
 /* re-check whenever the view settles or more map tiles arrive, so buildings in newly loaded tiles are drawn instead of just hidden */
 MM.on("moveend",()=>refreshDetail());MM.on("idle",()=>refreshDetail());MM.on("sourcedata",e=>{if(e.sourceDataType!=="metadata"&&(e.tile||e.isSourceLoaded))refreshDetail()});
 function renderPins(){clearPins();setModels([]);if(!inStreet)return;ensurePositions();
