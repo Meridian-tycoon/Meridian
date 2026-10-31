@@ -61,7 +61,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 @keyframes gltw{to{opacity:.6}}
 #gl .glcomet{position:absolute;height:2px;width:140px;pointer-events:none;border-radius:2px;background:linear-gradient(90deg,transparent,rgba(160,200,255,.5) 70%,#fff);box-shadow:0 0 6px 1px rgba(200,225,255,.6);opacity:0;animation:glcm var(--d,2.6s) linear forwards}
 @keyframes glcm{0%{opacity:0;transform:rotate(var(--a)) translateX(0)}12%{opacity:1}85%{opacity:.9}100%{opacity:0;transform:rotate(var(--a)) translateX(var(--l,900px))}}
-html.set-rm #gl::before{animation:none}
+html.set-rm #gl::before{animation:none}html.gfx-low *{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 #glmoon{position:absolute;left:0;top:0;will-change:transform;width:46px;height:46px;border-radius:50%;pointer-events:none;opacity:0;transition:opacity 3s;
   background:radial-gradient(circle at 34% 38%,rgba(120,120,130,.55) 0 5px,transparent 6px),radial-gradient(circle at 62% 64%,rgba(120,120,130,.45) 0 7px,transparent 8px),radial-gradient(circle at 66% 30%,rgba(120,120,130,.4) 0 3px,transparent 4px),radial-gradient(circle at 38% 40%,#f4f1e6,#c9c4b4 62%,#8d897d);
   box-shadow:0 0 18px 4px rgba(230,230,210,.18),inset -9px -6px 14px rgba(0,0,0,.45)}
@@ -713,6 +713,9 @@ function totals(){let inc=0,assets=0;
 
 /* ---------- map: one MapLibre camera from orbit down to the street (like Capital Rift). The game's own layers are drawn on a canvas locked to that camera. ---------- */
 const cv=$("#map"),ctx=cv.getContext("2d"),glEl=$("#gl");
+/* graphics quality (S.set.gfx: "high" default = original behaviour, "med", "low"): frame gaps in ms for the always-on loops, 0 = loop off; pr = max pixel ratio */
+const GFXQ={high:{amb:100,wx:50,cf:80,moon:33,idle:33,pr:9},med:{amb:400,wx:150,cf:250,moon:100,idle:0,pr:1.5},low:{amb:0,wx:0,cf:0,moon:0,idle:0,pr:1}};
+function gfx(){const q=typeof S!=="undefined"&&S&&S.set&&S.set.gfx;return GFXQ[q]||GFXQ.high}
 let W=0,H=0,dpr=1,base=200;
 const V={lam:75,phi:-30,k:1};                     // read-only mirror of the camera: centre (negated, deg) and globe size relative to the old k=1 globe
 let T={k:1},sel=null;
@@ -782,7 +785,7 @@ MM.on("error",e=>console.warn("map",e&&e.error&&e.error.message));
 /* a rare comet streaks across the space behind the planet (every 40-120 s; off with reduce motion or a hidden tab) */
 /* the moon drifts slowly across the sky for about 9 minutes of every 20, behind the planet */
 (function glMoon(){const P=1200000,V=.45;let m=null,last=0;
-  function step(ts){requestAnimationFrame(step);if(ts-last<33||document.hidden)return;last=ts;try{const g=document.getElementById("gl");if(!g)return;
+  function step(ts){requestAnimationFrame(step);const G=gfx();if(ts-last<(G.moon||33)||document.hidden)return;last=ts;try{const g=document.getElementById("gl");if(!g)return;if(!G.moon){if(m)m.style.opacity="0";return}
     if(!m){m=document.createElement("div");m.id="glmoon";g.insertBefore(m,g.firstChild)}
     const f=(Date.now()%P)/P,on=f<V,t=f/V,W=g.clientWidth,H=g.clientHeight,op=on&&t>.02&&t<.98?".95":"0";
     if(m.style.opacity!==op)m.style.opacity=op;
@@ -841,7 +844,7 @@ function padNow(){const wide=matchMedia("(min-width:820px)").matches&&sheet.clas
 /* the open city sheet covers part of the map: slide the camera's centre into the free part, like the old globe did */
 function applyView(){const pad=padNow(),key=pad.right+","+pad.bottom;
   if(key!==_pad&&!MM.isMoving()){_pad=key;try{MM.easeTo({padding:pad,duration:reduce?0:350})}catch(e){}}}
-function resize(){const r=cv.getBoundingClientRect();W=r.width;H=r.height;dpr=Math.min(2,window.devicePixelRatio||1);
+function resize(){const r=cv.getBoundingClientRect();W=r.width;H=r.height;dpr=Math.min(2,gfx().pr,window.devicePixelRatio||1);
   cv.width=W*dpr;cv.height=H*dpr;base=Math.min(W,H)/2-16;try{MM.resize();const z0=Math.log2(Math.max(60,base)*2*Math.PI/512);MM.setMinZoom(Math.max(0,z0-1));if(!resize.done&&W>0){resize.done=1;MM.jumpTo({zoom:z0})}}catch(e){}draw()}
 let _cssC={};const css=v=>_cssC[v]??=getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const _pickedMap=()=>{try{return localStorage.getItem("meridian-3d-dark")!=null}catch(e){return false}};
@@ -917,8 +920,8 @@ MM.on("mousemove",e=>{const bc=S.ob&&CITIES[S.ob.hq];let t="";if(bc&&bc.sx>-1e3&
 /* idle spin: after 15 s without input, a zoomed-out globe slowly turns on its own */
 let lastInput=Date.now(),idleRaf=0,idleT=0;
 ["pointerdown","wheel","keydown","touchstart"].forEach(t=>window.addEventListener(t,()=>{lastInput=Date.now()},{passive:true,capture:true}));
-function idleSpin(t){const ok=Date.now()-lastInput>15000&&V.k<=1.6&&!MM.isMoving()&&!inStreet&&document.visibilityState==="visible";
-  if(ok&&t-idleT<33){idleRaf=requestAnimationFrame(idleSpin);return}
+function idleSpin(t){const G=gfx(),ok=G.idle>0&&Date.now()-lastInput>15000&&V.k<=1.6&&!MM.isMoving()&&!inStreet&&document.visibilityState==="visible";
+  if(ok&&t-idleT<G.idle){idleRaf=requestAnimationFrame(idleSpin);return}
   if(ok&&idleT){const dt=Math.min(.1,(t-idleT)/1000),c=MM.getCenter();MM.jumpTo({center:[c.lng-dt*4,c.lat+(25-c.lat)*Math.min(1,dt*.3)]})}
   idleT=t;idleRaf=requestAnimationFrame(idleSpin)}
 if(!matchMedia("(prefers-reduced-motion: reduce)").matches)idleRaf=requestAnimationFrame(idleSpin);
@@ -2449,7 +2452,7 @@ function drawStorms(ctx,C){const now=Date.now(),t=performance.now()/1000;
     for(let k=0;k<4;k++){px+=(Math.random()-.5)*f.s*.5;py+=f.s*.5;ctx.lineTo(px,py)}ctx.stroke();ctx.restore()}}
 /* keep storms animated while one is on screen */
 let wxRaf=0,wxLast=0;
-function wxLoop(t){if(activeStorms().length&&!inStreet&&document.visibilityState==="visible"&&t-wxLast>50){wxLast=t;draw()}
+function wxLoop(t){const G=gfx();if(G.wx&&activeStorms().length&&!inStreet&&document.visibilityState==="visible"&&t-wxLast>G.wx){wxLast=t;draw()}
   if(inStreet)drawRain(t);else if(rainOn){wctx.setTransform(1,0,0,1,0,0);wctx.clearRect(0,0,wxCv.width,wxCv.height);rainOn=false;wxCv.hidden=true}wxRaf=requestAnimationFrame(wxLoop)}
 wxRaf=requestAnimationFrame(wxLoop);
 /* rain over the street map when the city is under a storm */
@@ -2639,7 +2642,7 @@ function drawTraffic(ctx,C){const t=Date.now()/1000;ctx.save();
   ctx.restore()}
 /* keep the globe moving gently while it's on screen */
 let ambLast=0;
-function ambLoop(t){if(!inStreet&&document.visibilityState==="visible"&&t-ambLast>100&&!MM.isMoving()&&!sheet.classList.contains("full")){ambLast=t;draw()}
+function ambLoop(t){const G=gfx();if(G.amb&&!inStreet&&document.visibilityState==="visible"&&t-ambLast>G.amb&&!MM.isMoving()&&!sheet.classList.contains("full")){ambLast=t;draw()}
   if(inStreet)drawStreetLife(t);else if(walkers.length||pops2.length){walkers=[];pops2=[];actx.setTransform(1,0,0,1,0,0);actx.clearRect(0,0,amb.width,amb.height)}requestAnimationFrame(ambLoop)}
 requestAnimationFrame(ambLoop);
 /* street view: customers walking into your open businesses, coins when they buy */
@@ -3304,7 +3307,7 @@ document.getElementById("cfpop").addEventListener("click",e=>{const b=e.target.c
 /* gentle pulse for clashes/wars (about 12 fps, only while one is drawn on the globe view); also keeps the chip in sync */
 let cfLast=0,cfChipT=0;function cfLoop(t){const st=typeof inStreet!=="undefined"&&inStreet;
   if(t-cfChipT>500){cfChipT=t;cfChip();if(_cfPop&&!(S.wars||[]).some(w=>w.id===_cfPop.id)&&!bgPseudoOpen())cfClose()}
-  if(!st&&cfOn()&&document.visibilityState==="visible"&&!(typeof reduce!=="undefined"&&reduce)&&t-cfLast>80&&((S.wars||[]).some(w=>w.l>=3)||bgMilKeys().length)){cfLast=t;draw()}requestAnimationFrame(cfLoop)}
+  if(!st&&cfOn()&&document.visibilityState==="visible"&&!(typeof reduce!=="undefined"&&reduce)&&gfx().cf&&t-cfLast>gfx().cf&&((S.wars||[]).some(w=>w.l>=3)||bgMilKeys().length)){cfLast=t;draw()}requestAnimationFrame(cfLoop)}
 requestAnimationFrame(cfLoop);
 /* ---------- NPC governments: economy, diplomacy, conquest ("Diplomacy & power") ----------
    MODEL (all state in S.dip, created lazily by dip(); every field has a safe default, so old saves load):
@@ -10628,28 +10631,30 @@ setInterval(()=>{try{if(_cfPop){const el=document.getElementById("cfpop");if(el&
     if((card?card.dataset.bgsig:"")!==sig){if(Date.now()-(PH.touched||0)>=3000&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)))phRender()}
     else bgFill(PH.el)}}catch(e){console.warn("bgfill",e)}},2000);
 /* ---------- Settings app (device prefs in S.set; UI theme mirrored to localStorage for first paint) ---------- */
-var SET_DEF={ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,sat:1,pfx:1,colov:1,alarm:1};
+var SET_DEF={gfx:"high",ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,sat:1,pfx:1,colov:1,alarm:1};
 var SET_UI=[["classic","Classic","The original look"],["glass","Glass","Frosted dark panels, violet glow"],["ledger","Ledger","Cream paper, ink and serif type"],["command","Command","Neon HUD, cyan and magenta"]];
 var SET_FONT="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@500;700&family=Playfair+Display:wght@700;900&family=Source+Serif+4:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Chakra+Petch:wght@500;700&display=swap";
 var _setSig="";
-function setG(){const s=(S.set&&typeof S.set==="object")?S.set:(S.set={});for(const k in SET_DEF)if(s[k]==null)s[k]=SET_DEF[k];if(!SET_UI.some(u=>u[0]===s.ui))s.ui="classic";if(![.9,1,1.15].includes(+s.fs))s.fs=1;if(![.2,.5,.8,1].includes(+s.vol))s.vol=.5;return s}
+function setG(){const s=(S.set&&typeof S.set==="object")?S.set:(S.set={});for(const k in SET_DEF)if(s[k]==null)s[k]=SET_DEF[k];if(!SET_UI.some(u=>u[0]===s.ui))s.ui="classic";if(![.9,1,1.15].includes(+s.fs))s.fs=1;if(![.2,.5,.8,1].includes(+s.vol))s.vol=.5;if(!GFXQ[s.gfx])s.gfx="high";return s}
 function setApply(force){const s=setG(),sig=JSON.stringify(s);if(!force&&sig===_setSig)return;_setSig=sig;const H=document.documentElement;
   for(const [k] of SET_UI)H.classList.toggle("th-"+k,k!=="classic"&&s.ui===k);
   if(s.ui!=="classic"&&!document.getElementById("th-font")){const l=document.createElement("link");l.id="th-font";l.rel="stylesheet";l.href=SET_FONT;document.head.appendChild(l)}
-  H.classList.toggle("set-rm",!!s.rm);H.classList.toggle("set-notick",!s.tick);H.style.setProperty("--setfs",s.fs);H.classList.toggle("set-fs",+s.fs!==1);
-  try{reduce=REDUCE_OS||!!s.rm}catch(e){}
+  H.classList.toggle("set-rm",!!s.rm||s.gfx==="low");H.classList.toggle("gfx-low",s.gfx==="low");H.classList.toggle("set-notick",!s.tick);H.style.setProperty("--setfs",s.fs);H.classList.toggle("set-fs",+s.fs!==1);
+  try{reduce=REDUCE_OS||!!s.rm||s.gfx==="low"}catch(e){}
+  try{const pr=Math.min(gfx().pr,devicePixelRatio||1);if(MM.getPixelRatio()!==pr){MM.setPixelRatio(pr);resize()}}catch(e){}
   try{localStorage.setItem("meridian-uitheme",s.ui)}catch(e){}
   const m=document.querySelector('meta[name="theme-color"]');if(m&&s.ui!=="classic")m.content={glass:"#0b1020",ledger:"#fbf5e6",command:"#000000"}[s.ui];else if(m)m.content=themeGet()==="light"?"#fbfaf5":"#141f21";
   try{if(typeof satChip==="function")satChip()}catch(e){}try{if(typeof plChip==="function")plChip()}catch(e){}
   try{if(typeof draw==="function")draw()}catch(e){}}
 function setPut(k,v){const s=setG();if(k==="mode"){themeSet(v);setApply(1);return}
-  s[k]=k==="ui"?v:+v;setApply();save();if(k==="snd"||k==="vol"){try{sndApply();if(k==="snd"&&s.snd)sfx("click")}catch(e){}}if(k==="ui")toast(`Settings: ${SET_UI.find(u=>u[0]===v)[1]} theme`)}
+  s[k]=k==="ui"||k==="gfx"?v:+v;setApply();save();if(k==="snd"||k==="vol"){try{sndApply();if(k==="snd"&&s.snd)sfx("click")}catch(e){}}if(k==="ui")toast(`Settings: ${SET_UI.find(u=>u[0]===v)[1]} theme`)}
 function setReset(){S.set={};setG();themeSet("dark");setApply(1);save();toast("Settings reset to defaults")}
 function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="group">${opts.map(([v,n])=>`<button data-ph="setv" data-k="${k}" data-v="${v}" aria-pressed="${String(cur)===String(v)}">${n}</button>`).join("")}</div>`,
   tog=(k,n,d)=>`<div class="set-row"><span>${n}<small>${d}</small></span>${seg(k,[[1,"On"],[0,"Off"]],s[k])}</div>`;
   return `<div class="ph-sub">Display</div>
   <div class="set-themes">${SET_UI.map(([k,n,d])=>`<button class="set-th set-th-${k}" data-ph="setv" data-k="ui" data-v="${k}" aria-pressed="${s.ui===k}"><i></i><span><b>${n}</b><small>${d}</small></span></button>`).join("")}</div>
   ${s.ui==="classic"?`<div class="set-row"><span>Light or dark<small>Classic theme only</small></span>${seg("mode",[["light","Light"],["dark","Dark"]],themeGet())}</div>`:""}
+  <div class="set-row"><span>Graphics<small>Lower uses less CPU, GPU and battery</small></span>${seg("gfx",[["low","Low"],["med","Medium"],["high","High"]],s.gfx)}</div>
   <div class="set-row"><span>Text size<small>Panels, ticker and pop-ups</small></span>${seg("fs",[[.9,"Small"],[1,"Normal"],[1.15,"Large"]],s.fs)}</div>
   ${tog("sat","Satellites","Your launched satellites orbiting the globe")}
   ${tog("pfx","Planet effects","Wealth glow, election flashes, rocket launches and seasons")}
@@ -13720,7 +13725,7 @@ function uiSync(){mqPump();const B=document.body.classList,so=sheet.classList.co
     if(el.classList.contains("dragging"))dx=dy=0;
     if(dx!==cx||dy!==cy){el.dataset.dx=dx;el.dataset.dy=dy;el.style.translate=dx||dy?dx/sc+"px "+dy/sc+"px":""}};
   try{dock($("#statsw"),1,0);if(PH&&PH.el)dock(PH.el,phScale()||1,PH.open)}catch(e){}}
-setInterval(uiSync,250);
+setInterval(()=>{if(!document.hidden)uiSync()},250);
 /* new-version banner: GitHub Pages sends Last-Modified; if the live page is newer than the copy running here, show a slim Reload banner at the top (game saved first).
    Checks every minute and when the tab comes back. "Later" hides it for 10 minutes. */
 (()=>{let shown=0,nextAt=0;const base=Date.parse(document.lastModified);
