@@ -603,6 +603,11 @@ service cloud.firestore {
         && exiQtyOk(request.resource.data.k)
         && request.resource.data.at == request.time;
     }
+    // a fill only carries the owner's 0.4% fee (the owner never pays a seller): at most 0.4% of q x the shared market price (world/mkt px), 25% slack for price moves
+    function exfillAmtOk(s, q, amt) {
+      let px = get(/databases/$(database)/documents/world/mkt).data.px;
+      return s in px && px[s] is number && amt >= 0 && amt * 250 <= q * px[s] * 1.25 + 250;
+    }
     match /exfill/{id} {
       allow read: if request.auth != null && (resource.data.by == request.auth.uid || resource.data.to == request.auth.uid);
       allow create: if request.auth != null
@@ -613,6 +618,7 @@ service cloud.firestore {
         && request.resource.data.s is string && request.resource.data.s.size() <= 8
         && request.resource.data.q is number && request.resource.data.q > 0
         && request.resource.data.amt is int && request.resource.data.amt >= -1000000000000000 && request.resource.data.amt <= 1000000000000000
+        && exfillAmtOk(request.resource.data.s, request.resource.data.q, request.resource.data.amt)
         && request.resource.data.at == request.time;
       allow delete: if request.auth != null && resource.data.to == request.auth.uid;
     }
