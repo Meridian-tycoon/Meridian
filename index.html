@@ -811,13 +811,17 @@ function bldImages(){const dk=dark3d();for(const k in BLD_KINDS){const id="mer-w
   for(let y=3;y<32;y+=8)for(let x=2;x<32;x+=step/2){n++;g.fillStyle=dk?((n*7)%5<2?"#ffd98a":"#222b36"):"#5d7186";g.fillRect(x,y,ww/2,4)}
   MM.addImage(id,g.getImageData(0,0,32,32))}}
 function bldPattern(){const h=["coalesce",["get","render_height"],8];return["case",[">=",h,40],"mer-win-tower",[">=",h,14],"mer-win-mid","mer-win-home"]}
-function ensure3dBuildings(){const st=MM.getStyle();if(!st)return;const op=["interpolate",["linear"],["zoom"],14.4,0,14.9,1],dk=dark3d();
+/* building view distance: zoom where 3D buildings start. 13 shows them about twice as far out as the old 14; Low graphics keeps 14 for weak phones */
+function bldZ(){try{return gfx()===GFXQ.low?14:13}catch(e){return 14}}
+function bldOp(){const z=bldZ();return["interpolate",["linear"],["zoom"],z+.3,0,z+.8,1]}
+function bldZoomApply(){try{const st=MM.getStyle();if(!st)return;const z=bldZ();for(const l of st.layers)if(l.type==="fill-extrusion"&&(l.id==="meridian-roofs"||l.id==="meridian-3d-buildings"||/building/i.test(l.id))){MM.setLayerZoomRange(l.id,z,l.maxzoom||24);MM.setPaintProperty(l.id,"fill-extrusion-opacity",bldOp())}}catch(e){}}
+function ensure3dBuildings(){const st=MM.getStyle();if(!st)return;const op=bldOp(),dk=dark3d();
   for(const l of st.layers)if(l.type==="fill"&&/building/i.test(l.id))try{MM.setPaintProperty(l.id,"fill-color",dk?"#141a21":"#6b7480")}catch(e){}
   try{bldImages()}catch(e){console.warn("bld img",e)}
   try{MM.setLight({anchor:"map",position:[1.4,210,40],color:"#ffffff",intensity:dk?.25:.45})}catch(e){}
   const ex=st.layers.filter(l=>l.type==="fill-extrusion"&&l.id!=="meridian-roofs");let base=ex[0];
   if(!ex.length){const src=Object.keys(st.sources).find(k=>st.sources[k].type==="vector");if(!src)return;const lab=st.layers.find(l=>l.type==="symbol");
-    MM.addLayer({id:"meridian-3d-buildings",type:"fill-extrusion",source:src,"source-layer":"building",minzoom:14,
+    MM.addLayer({id:"meridian-3d-buildings",type:"fill-extrusion",source:src,"source-layer":"building",minzoom:bldZ(),
       paint:{"fill-extrusion-height":["coalesce",["get","render_height"],8],"fill-extrusion-base":["coalesce",["get","render_min_height"],0]}});
     base=MM.getLayer("meridian-3d-buildings");ex.push(base)}
   for(const l of ex)try{MM.setPaintProperty(l.id,"fill-extrusion-opacity",op);MM.setPaintProperty(l.id,"fill-extrusion-color",bldCol());MM.setPaintProperty(l.id,"fill-extrusion-pattern",bldPattern())}catch(e){console.warn("bld",e)}
@@ -825,8 +829,9 @@ function ensure3dBuildings(){const st=MM.getStyle();if(!st)return;const op=["int
   for(const l of ex)try{MM.moveLayer(l.id)}catch(e){}
   /* plain roof cap on every building (the window pattern would otherwise paint the roofs); lighter and thicker on towers */
   if(!MM.getLayer("meridian-roofs")&&base)try{const h=["coalesce",["get","render_height"],8];
-    MM.addLayer({id:"meridian-roofs",type:"fill-extrusion",source:base.source,"source-layer":base.sourceLayer||base["source-layer"]||"building",minzoom:14,
-      paint:{"fill-extrusion-color":["case",[">=",h,40],dk?"#2a323c":"#e4e7eb",dk?"#232a33":"#aab1ba"],"fill-extrusion-base":h,"fill-extrusion-height":["+",h,["case",[">=",h,40],1.5,.4]],"fill-extrusion-opacity":op}})}catch(e){console.warn("roofs",e)}}
+    MM.addLayer({id:"meridian-roofs",type:"fill-extrusion",source:base.source,"source-layer":base.sourceLayer||base["source-layer"]||"building",minzoom:bldZ(),
+      paint:{"fill-extrusion-color":["case",[">=",h,40],dk?"#2a323c":"#e4e7eb",dk?"#232a33":"#aab1ba"],"fill-extrusion-base":h,"fill-extrusion-height":["+",h,["case",[">=",h,40],1.5,.4]],"fill-extrusion-opacity":op}})}catch(e){console.warn("roofs",e)}
+  bldZoomApply()}
 const st3t=$("#st3dt");
 function theme3dBtn(){st3t.textContent=dark3d()?"☀ Light":"☾ Dark"}
 st3t.onclick=()=>{try{localStorage.setItem("meridian-3d-dark",dark3d()?"0":"1")}catch(e){}theme3dBtn();loadMapStyle()};
@@ -10787,17 +10792,18 @@ setInterval(()=>{try{if(_cfPop){const el=document.getElementById("cfpop");if(el&
     if((card?card.dataset.bgsig:"")!==sig){if(Date.now()-(PH.touched||0)>=3000&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)))phRender()}
     else bgFill(PH.el)}}catch(e){console.warn("bgfill",e)}},2000);
 /* ---------- Settings app (device prefs in S.set; UI theme mirrored to localStorage for first paint) ---------- */
-var SET_DEF={gfx:"high",ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,sat:1,pfx:1,colov:1,gov:1,alarm:1};
+var SET_DEF={gfx:"high",ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,fov:37,sat:1,pfx:1,colov:1,gov:1,alarm:1};
 var SET_UI=[["classic","Classic","The original look"],["glass","Glass","Frosted dark panels, violet glow"],["ledger","Ledger","Cream paper, ink and serif type"],["command","Command","Neon HUD, cyan and magenta"]];
 var SET_FONT="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@500;700&family=Playfair+Display:wght@700;900&family=Source+Serif+4:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Chakra+Petch:wght@500;700&display=swap";
 var _setSig="";
-function setG(){const s=(S.set&&typeof S.set==="object")?S.set:(S.set={});for(const k in SET_DEF)if(s[k]==null)s[k]=SET_DEF[k];if(!SET_UI.some(u=>u[0]===s.ui))s.ui="classic";if(![.9,1,1.15].includes(+s.fs))s.fs=1;if(![.2,.5,.8,1].includes(+s.vol))s.vol=.5;if(!GFXQ[s.gfx])s.gfx="high";return s}
+function setG(){const s=(S.set&&typeof S.set==="object")?S.set:(S.set={});for(const k in SET_DEF)if(s[k]==null)s[k]=SET_DEF[k];if(!SET_UI.some(u=>u[0]===s.ui))s.ui="classic";if(![.9,1,1.15].includes(+s.fs))s.fs=1;if(![.2,.5,.8,1].includes(+s.vol))s.vol=.5;if(!GFXQ[s.gfx])s.gfx="high";if(![30,37,50,60].includes(+s.fov))s.fov=37;return s}
 function setApply(force){const s=setG(),sig=JSON.stringify(s);if(!force&&sig===_setSig)return;_setSig=sig;const H=document.documentElement;
   for(const [k] of SET_UI)H.classList.toggle("th-"+k,k!=="classic"&&s.ui===k);
   if(s.ui!=="classic"&&!document.getElementById("th-font")){const l=document.createElement("link");l.id="th-font";l.rel="stylesheet";l.href=SET_FONT;document.head.appendChild(l)}
   H.classList.toggle("set-rm",!!s.rm||s.gfx==="low");H.classList.toggle("gfx-low",s.gfx==="low");H.classList.toggle("set-notick",!s.tick);H.style.setProperty("--setfs",s.fs);H.classList.toggle("set-fs",+s.fs!==1);
   try{reduce=REDUCE_OS||!!s.rm||s.gfx==="low"}catch(e){}
   try{const pr=Math.min(gfx().pr,devicePixelRatio||1);if(MM.getPixelRatio()!==pr){MM.setPixelRatio(pr);resize()}}catch(e){}
+  try{if(MM.getVerticalFieldOfView&&Math.abs(MM.getVerticalFieldOfView()-s.fov)>.5)MM.setVerticalFieldOfView(s.fov)}catch(e){}try{bldZoomApply()}catch(e){}
   try{localStorage.setItem("meridian-uitheme",s.ui)}catch(e){}
   const m=document.querySelector('meta[name="theme-color"]');if(m&&s.ui!=="classic")m.content={glass:"#0b1020",ledger:"#fbf5e6",command:"#000000"}[s.ui];else if(m)m.content=themeGet()==="light"?"#fbfaf5":"#141f21";
   try{if(typeof satChip==="function")satChip()}catch(e){}try{if(typeof plChip==="function")plChip()}catch(e){}
@@ -10811,6 +10817,7 @@ function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="g
   <div class="set-themes">${SET_UI.map(([k,n,d])=>`<button class="set-th set-th-${k}" data-ph="setv" data-k="ui" data-v="${k}" aria-pressed="${s.ui===k}"><i></i><span><b>${n}</b><small>${d}</small></span></button>`).join("")}</div>
   ${s.ui==="classic"?`<div class="set-row"><span>Light or dark<small>Classic theme only</small></span>${seg("mode",[["light","Light"],["dark","Dark"]],themeGet())}</div>`:""}
   <div class="set-row"><span>Graphics<small>Lower uses less CPU, GPU and battery</small></span>${seg("gfx",[["low","Low"],["med","Medium"],["high","High"]],s.gfx)}</div>
+  <div class="set-row"><span>Field of view<small>How wide the 3D map camera sees when tilted</small></span>${seg("fov",[[30,"Narrow"],[37,"Normal"],[50,"Wide"],[60,"Ultra"]],s.fov)}</div>
   <div class="set-row"><span>Text size<small>Panels, ticker and pop-ups</small></span>${seg("fs",[[.9,"Small"],[1,"Normal"],[1.15,"Large"]],s.fs)}</div>
   ${tog("sat","Satellites","Your launched satellites orbiting the globe")}
   ${tog("pfx","Planet effects","Wealth glow, election flashes, rocket launches and seasons")}
