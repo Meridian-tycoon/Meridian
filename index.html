@@ -13163,6 +13163,7 @@ function tfPct(){return Math.min(100,tfTot()/TFCFG.goal*100)}
 function tfMs(){const p=tfPct();return TFCFG.ms.filter(m=>p>=m).length}
 function tfOpen(p,s){const need=p==="mars"&&TFCFG.site[+s];return !need||tfPct()>=need||!!(S.col&&Array.isArray(S.col.list)&&S.col.list.some(x=>x&&x.p===p&&x.s===+s))}
 function tfM(n){return "$"+Math.round(n).toLocaleString("en-US")}
+function mbB(n){return "$"+(+(n/1e9).toFixed(3))+"B"}
 function tfApply(c,amt){const t=TF();amt=Math.max(0,Math.min(1e13,Math.floor(+amt||0)));if(!amt)return;c=String(c||"?").slice(0,40);t.loc=Math.min(1e15,t.loc+amt);t.top[c]=(+t.top[c]||0)+amt;
   t.feed.unshift({t:Date.now(),x:`${c} funded ${tfM(amt)}`});t.feed.length=Math.min(t.feed.length,TFCFG.feed);t.dirty=1}
 function tfFund(amt){const g=colGov()||("🏢 "+String(S.name||"A company")).slice(0,40);amt=Math.floor(+amt||0);   // governments fund as their country, companies as 🏢 name
@@ -13654,7 +13655,7 @@ function mbShip(){const why=mbShipWhy();if(why)return toast(why);const C=MBCFG.s
   toast(`👩‍🚀 Crew ship launched to Mars from ${P.c.name}: lands in ${colIn(m.ship.eta)}`);save();hud();spRefresh()}
 function mbTick(now){const m=S.mb;if(!m||!m.ship||m.ship.eta>now)return;m.crew={at:now,c:m.ship.c};m.ship=null;const t="👩‍🚀 Your crew has landed on Mars. Your government can now build on the planet";toast(t);try{stNews(t)}catch(e){}save();spRefresh()}
 function mbWhy(k){if(!hasTech("marsciv")&&!spDev())return "Research Mars Civilization first";if(!MB().crew)return "Mars is locked until your crew ship lands there";if(!colGov()&&!spDev())return "Only a player government can build on Mars. Companies get in later through a grant, a large holding or a license";
-  const m=MB();if(m.b.length>=MBCFG.max)return `Mars base is full (${MBCFG.max} buildings)`;if(!(S.cash>=MBK[k][2]))return `Needs ${tfM(MBK[k][2])} in cash`;
+  const m=MB();if(m.b.length>=MBCFG.max)return `Mars base is full (${MBCFG.max} buildings)`;if(!(S.cash>=MBK[k][2]))return `Needs ${mbB(MBK[k][2])} in cash`;
   if(k==="hab"){const L=mbLife();if(L.short.length)return `Not enough life support for another habitat: build ${L.short.map(x=>({air:"an Oxygen factory",food:"a Food factory or Greenhouse",water:"an Ice drill"})[x]).join(", ")} first`}return ""}
 function mbDemolish(id){const m=MB(),old=m.b.find(b=>b.id===id);if(!old)return;if(!colGov()&&!spDev())return toast("Only a player government can change Mars buildings");
   if(!confirm(`Demolish this ${MBK[old.k][0]}? You get ${Math.round(MBCFG.refund*100)}% back.`))return;
@@ -13711,7 +13712,7 @@ function mgOpen(){if(typeof maplibregl==="undefined")return toast("Map engine di
   else MG.map.resize();mgBar();mgSync()}
 function mgClose(){if(MG.el)MG.el.style.display="none"}
 function mgBar(){if(!MG.el)return;const m=MB(),why=mbWhy(m.sel);MG.el.querySelector("#mgbar").innerHTML=Object.keys(MBK).map(k=>{const v=MBK[k],on=m.sel===k;
-    return `<button data-mg="${k}" title="${dxE(v[3])}" style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:86px;padding:6px 8px;border-radius:10px;cursor:pointer;border:2px solid ${on?"#f97316":"transparent"};background:${on?"rgba(249,115,22,.18)":"rgba(255,255,255,.05)"};color:#fff;font:600 11px Figtree,system-ui,sans-serif"><img src="${mgIcon(k)}" style="width:36px;height:36px" alt="">${dxE(v[0])}<small style="color:#fdba74">${tfM(v[2])}</small></button>`}).join("");
+    return `<button data-mg="${k}" title="${dxE(v[3])}" style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:86px;padding:6px 8px;border-radius:10px;cursor:pointer;border:2px solid ${on?"#f97316":"transparent"};background:${on?"rgba(249,115,22,.18)":"rgba(255,255,255,.05)"};color:#fff;font:600 11px Figtree,system-ui,sans-serif"><img src="${mgIcon(k)}" style="width:36px;height:36px" alt="">${dxE(v[0])}<small style="color:#fdba74">${mbB(v[2])}</small></button>`}).join("");
   MG.el.querySelector("#mginfo").textContent=`${m.b.length}/${MBCFG.max} buildings · terraformed ${Math.floor(tfPct())}% · ${why||"tap the planet to build, tap a building to demolish"}`}
 function mgSync(){if(!MG.map||!MG.el||MG.el.style.display==="none")return;MG.mk.forEach(k=>k.remove());MG.mk=MB().b.map(b=>{const d=document.createElement("img");d.className="mgb";d.src=mgIcon(b.k);d.title=MBK[b.k][0]+" · "+b.c;d.style.cssText="width:40px;height:40px;cursor:pointer";
   d.addEventListener("click",e=>{e.stopPropagation();mbDemolish(b.id)});return new maplibregl.Marker({element:d,anchor:"bottom"}).setLngLat([b.lng,b.lat]).addTo(MG.map)});mgBar()}
@@ -13744,7 +13745,7 @@ function mbStore(){const st=MB().store;if(!st)return "";const ore=Object.keys(st
 function mbTab(){const E=dxE,m=MB(),g=colGov(),dev=spDev(),card=(t,b)=>`<div class="mdx-card" style="margin-bottom:16px"><div class="mdx-ch"><h3>${t}</h3></div>${b}</div>`;
   if(!hasTech("marsciv")&&!dev)return card("🔒 Mars base",`<div class="mdx-rows"><div><span>Research <b>Mars Civilization</b> to start building on the Martian surface.</span><b></b></div></div>`);
   const pick=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">${Object.keys(MBK).map(k=>{const v=MBK[k],on=m.sel===k;
-    return `<button data-sp="mbsel" data-k="${k}" aria-pressed="${on}" title="${E(v[3])}" style="text-align:left;cursor:pointer;padding:8px 10px;border-radius:12px;border:2px solid ${on?"#c2410c":"var(--dxline)"};background:${on?"var(--dxtint)":"transparent"};color:inherit"><b>${v[1]} ${E(v[0])}</b><br><small style="color:var(--dxmut)">${tfM(v[2])}</small></button>`}).join("")}</div>`;
+    return `<button data-sp="mbsel" data-k="${k}" aria-pressed="${on}" title="${E(v[3])}" style="text-align:left;cursor:pointer;padding:8px 10px;border-radius:12px;border:2px solid ${on?"#c2410c":"var(--dxline)"};background:${on?"var(--dxtint)":"transparent"};color:inherit"><b>${v[1]} ${E(v[0])}</b><br><small style="color:var(--dxmut)">${mbB(v[2])}</small></button>`}).join("")}</div>`;
   const W=tfRemote()&&TFW?TFW:{feed:S.tf?TF().feed:[],top:S.tf?TF().top:{}},feed=(W.feed||[]).slice(0,12);
   const log=feed.length?`<table class="mdx-tbl"><tr><th>When</th><th>Funder</th><th>Type</th></tr>${feed.map(f=>{const co=/^🏢/.test(f.x);return `<tr><td>${f.t?new Date(f.t).toLocaleDateString():""}</td><td>${E(f.x)}</td><td>${co?"Company":"Government"}</td></tr>`}).join("")}</table>`:`<div class="mdx-rows"><div><span>No contributions yet.</span><b></b></div></div>`;
   const tfC=card("🌱 Mars terraforming",tfCard(g,(a,k,t,dis,bg,tip)=>`<button class="mdx-pill" data-sp="mbfund" data-k="${k}" ${dis?"disabled":""} ${tip?`title="${E(tip)}"`:""} style="border:0;cursor:pointer;color:#fff;background:${bg||"#15803d"};opacity:${dis?.5:1}">${t}</button>`)+`<div class="mdx-rows"><div><span>You fund as</span><b>${g?E(g)+" (government)":"🏢 "+E(S.name||"your company")+" (company)"}</b></div></div>
