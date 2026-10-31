@@ -3135,7 +3135,7 @@ function warAct(id,a){const w=(S.wars||[]).find(x=>x.id===id);if(!w)return;if(ww
   S.wars=S.wars.filter(x=>x.l>0)}
 function tensHtml(n){try{if(!COUNTRIES.some(ownsIn)&&!spDev())return "";const T=wfView().tens||{},ks=Object.keys(T).filter(k=>{const [a,b]=k.split("|");return (+T[k].v||0)>0&&(!n||a===n||b===n)&&!wfAtWar(a,b)}).sort((x,y)=>T[y].v-T[x].v);if(!ks.length)return "";
   return `<div class="sec">Rising tensions</div>${tensXHtml('data-gov="tensx" data-k')}<div class="list">`+ks.map(k=>{const [a,b]=k.split("|"),v=+T[k].v||0,st=wfStage(v),c=tensAmt(a,b);
-    return `<div class="row cfrow"><div class="n">${wfE(a)} – ${wfE(b)} <span class="tag" style="background:${st[2]};color:#fff">${st[1].toUpperCase()} ${Math.round(v)}/100</span></div><div class="d">Shared with every player. At 100 it turns into a war. Talks lower it; selling arms raises it and pays 60% profit.</div>
+    return `<div class="row cfrow"><div class="n">${wfE(a)} – ${wfE(b)} <span class="tag" style="background:${st[2]};color:#fff">${st[1].toUpperCase()} ${Math.round(v)}/100</span></div><div class="d">${wfAllied(a,b)?"🛡 Allies: stays at 0 unless players fund it. ":""}Shared with every player. At 100 it turns into a war. Talks lower it; selling arms raises it and pays 60% profit.</div>
     <div class="cfbt"><button class="buy" data-gov="tpeace" data-k="${wfE(k)}" data-fixed="1" ${S.cash<c?"disabled":""}>Fund talks ${fmt(c)}</button><button class="buy" data-gov="tarms" data-k="${wfE(k)}" data-fixed="1" ${S.cash<c?"disabled":""}>Sell arms ${fmt(c)}</button></div></div>`}).join("")+`</div>`}catch(e){return ""}}
 const tensCost=(a,b)=>Math.max(WFCFG.min,Math.round(wfPt(a,b)*6));
 const TENSX=[1,5,25,100],tensX=()=>TENSX.includes(S.tensX)?S.tensX:1,tensAmt=(a,b)=>tensCost(a,b)*tensX();
@@ -3583,10 +3583,10 @@ function wfApply(o,quiet,ai){const d=wf(),C=WFCFG,amt=Math.round(+o.amt||0);if(!
     wfSay(`Anonymous donor sent ${fmt(amt)} to ${w[o.s]}`);return true}
   if(o.k==="p"){const k=wfPair(o.to,o.vs),T=d.tens[k];if(!T)return false;const cut=ai?Math.min(C.step,amt/wfPt(o.to,o.vs)):amt/wfPt(o.to,o.vs);/* players: no cap */T.v=Math.max(0,(+T.v||0)-cut);T.t=Date.now();
     wfSay(`Peace talks funded between ${o.to} and ${o.vs}: tension down ${Math.round(cut)}`);if(T.v<=0)delete d.tens[k];return true}
-  if(o.k==="e"){const a=o.to,b=o.vs;if(!COUNTRIES.includes(a)||!COUNTRIES.includes(b)||a===b||wfAtWar(a,b))return false;
+  if(o.k==="e"){const a=o.to,b=o.vs;if(!COUNTRIES.includes(a)||!COUNTRIES.includes(b)||a===b||wfAtWar(a,b)||(ai&&wfAllied(a,b)))return false;
     const k=wfPair(a,b),T=d.tens[k]=d.tens[k]||{v:0,f:{}},hr=S.hour||0;if(T.hr!==hr){T.hr=hr;T.hv=0}
     const was=wfStage(T.v)[1],add=ai?Math.max(0,Math.min(C.step,amt*C.esc/wfPt(a,b),C.hrCap-(T.hv||0))):amt*C.esc/wfPt(a,b);
-    T.v=Math.min(100,T.v+add);T.hv=(T.hv||0)+add;T.f[a]=(T.f[a]||0)+amt;T.t=Date.now();
+    T.v=Math.min(100,T.v+add);T.hv=(T.hv||0)+add;T.f[a]=(T.f[a]||0)+amt;T.t=Date.now();if(!ai)T.pf=1;
     wfSay(`Anonymous donor sent ${fmt(amt)} to ${a} against ${b}`);const now=wfStage(T.v)[1];if(now!==was)wfSay(`Tensions rising between ${a} and ${b}: ${now}`);
     if(T.v>=100)wfBreak(a,b,quiet);return true}
   return false}
@@ -3604,12 +3604,12 @@ function wfHour(quiet){if(!wfAuth())return;const d=wf(),C=WFCFG,act=wfActive();t
   for(const w of act){const id=wlGid(w),q=d.q[id];if(!q||!w.tr||!w.t0)continue;const g=d.g[id]=d.g[id]||{a:0,b:0};
     for(const s of ["a","b"]){const p=w.t0[s]||0,n=Math.floor(Math.min((q[s]||0)/C.troop,p*C.relDay/24,Math.max(0,p*C.maxBoost-g[s])));if(n<1)continue;w.tr[s]+=n;g[s]+=n;q[s]-=n*C.troop}}
   const live=new Set((S.wars||[]).filter(w=>w.l>0).map(wlGid));for(const k of ["tot","q","g"])for(const id in d[k])if(!live.has(+id))delete d[k][id];
-  for(const k in d.tens){const T=d.tens[k];T.v=Math.max(0,(+T.v||0)-C.cool);if(T.v<=0)delete d.tens[k]}
+  for(const k in d.tens){const T=d.tens[k];T.v=Math.max(0,(+T.v||0)-C.cool);if(T.v<=0||(!T.pf&&wfAllied(...k.split("|"))))delete d.tens[k]}
   for(const k of Object.keys(d.tens).sort((x,y)=>d.tens[y].v-d.tens[x].v).slice(C.pairs))delete d.tens[k];
   wfHot(d);wfAI(quiet);try{allyPeace(1)}catch(e){}d.dirty=1}
 /* real-world hotspots: the authority world keeps these meters at least at their floor, so the map, the funding page and the Gov tab show today's real tensions */
 const WFHOT=[["USA","China",45],["Russia","Poland",42],["USA","Russia",40],["China","Philippines",38],["China","Japan",34],["China","India",32],["USA","Colombia",30],["Russia","UK",28],["USA","Mexico",24],["China","Australia",22],["Saudi Arabia","Iraq",20],["Egypt","Saudi Arabia",15]];
-function wfHot(d){d=d||wf();const pc=dipPlayerC(),al=allySet();for(const [a,b,f] of WFHOT){if((a===pc&&al.has(b)||b===pc&&al.has(a))||!COUNTRIES.includes(a)||!COUNTRIES.includes(b)||wfAtWar(a,b))continue;const k=wfPair(a,b),T=d.tens[k]=d.tens[k]||{v:0,f:{}};if(!T.f||typeof T.f!=="object")T.f={};if((+T.v||0)<f){T.v=f;T.t=Date.now();d.dirty=1}}}
+function wfHot(d){d=d||wf();const pc=dipPlayerC(),al=allySet();for(const [a,b,f] of WFHOT){if((a===pc&&al.has(b)||b===pc&&al.has(a))||wfAllied(a,b)||!COUNTRIES.includes(a)||!COUNTRIES.includes(b)||wfAtWar(a,b))continue;const k=wfPair(a,b),T=d.tens[k]=d.tens[k]||{v:0,f:{}};if(!T.f||typeof T.f!=="object")T.f={};if((+T.v||0)<f){T.v=f;T.t=Date.now();d.dirty=1}}}
 function wfAI(quiet){const A=WFCFG.ai;if(Math.random()>A.p||!Array.isArray(S.rivals)||!S.rivals.length)return null;const i=Math.floor(Math.random()*S.rivals.length),r=S.rivals[i];if(!r||!(r.nw>0))return null;
   const amt=Math.round(r.nw*(A.min+Math.random()*(A.max-A.min))/1e5)*1e5;if(amt<WFCFG.min)return null;const act=wfActive(),d=wf(),pick=x=>x[Math.floor(Math.random()*x.length)];let o;
   if(act.length&&Math.random()<A.war){const w=pick(act);o={k:"w",w:wlGid(w),s:Math.random()<.5?"a":"b",amt}}
@@ -3640,10 +3640,10 @@ function wfFeudPair(i){const x=wfCR().find(y=>y.a===i||y.b===i);if(!x)return nul
 function wfBack(quiet){const p=pol(),off=wfOff(),B=WFCFG.back;if(!(p.r>=0&&p.c)||off.length>=B.max||Math.random()>B.p)return null;
   const c=p.c,pick=x=>x[Math.floor(Math.random()*x.length)],co=Math.random()<.6;let fr,ty,amt,vs=null;
   const war=wfActive().filter(w=>w.a===c||w.b===c);
-  if(co){const i=Math.floor(Math.random()*RIVALS.length),r=S.rivals[i];if(!r||!(r.nw>0))return null;fr=RIVALS[i].n;ty="co";const fp=wfFeudPair(i);if(fp&&fp[0]!==c&&fp[1]!==c&&!wfAtWar(c,fp[1]))vs=fp[1]}
+  if(co){const i=Math.floor(Math.random()*RIVALS.length),r=S.rivals[i];if(!r||!(r.nw>0))return null;fr=RIVALS[i].n;ty="co";const fp=wfFeudPair(i);if(fp&&fp[0]!==c&&fp[1]!==c&&!wfAtWar(c,fp[1])&&!wfAllied(c,fp[1]))vs=fp[1]}
   else{const g=pick(COUNTRIES.filter(x=>x!==c));fr="Government of "+g;ty="gov"}
   let o;if(war.length&&Math.random()<.5){const w=pick(war),s=w.a===c?"a":"b";o={k:"w",w:wlGid(w),s,to:c,vs:w[s==="a"?"b":"a"]}}
-  else{if(!vs){const near=COUNTRIES.filter(x=>x!==c&&("Government of "+x)!==fr&&kmBetween(cap(c),cap(x))<5000&&!wfAtWar(c,x));if(!near.length)return null;vs=pick(near)}o={k:"e",to:c,vs}}
+  else{if(!vs){const near=COUNTRIES.filter(x=>x!==c&&("Government of "+x)!==fr&&kmBetween(cap(c),cap(x))<5000&&!wfAtWar(c,x)&&!wfAllied(c,x));if(!near.length)return null;vs=pick(near)}o={k:"e",to:c,vs}}
   amt=Math.min(B.hi,Math.round(B.lo*Math.pow(B.hi/B.lo,Math.pow(Math.random(),2))/1e6)*1e6);
   const x=Object.assign(o,{id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),fr,ty,amt,exp:Date.now()+B.exp*DAYMS});off.push(x);
   if(!quiet)stOffer(x);return x}
@@ -3858,6 +3858,12 @@ const paMe=()=>typeof ON!=="undefined"&&ON.user?ON.user.uid:null;
 const paSide=d=>d.a===paMe()?"a":"b",paOther=d=>paSide(d)==="a"?"b":"a";
 const paOn=()=>PA.docs.filter(d=>d&&d.st==="on");
 const paAllyC=()=>paOn().map(d=>d["c"+paOther(d)]).filter(n=>COUNTRIES.includes(n));
+/* allied pairs of player governments (Mark, 2026-10-31): their shared tension stays at 0 unless players fund it.
+   The master world reads every active palliance doc (rules let the dev account read them); everyone else only knows their own. */
+const PAG={keys:new Set(),un:null};
+function pagListen(){try{if(PAG.un||typeof ON==="undefined"||!ON.db||!ON.user||!devUid(ON.user.uid))return;
+  PAG.un=ON.db.collection("palliance").where("st","==","on").onSnapshot(q=>{const s=new Set();q.forEach(x=>{const d=x.data()||{};if(COUNTRIES.includes(d.ca)&&COUNTRIES.includes(d.cb)&&d.ca!==d.cb)s.add(wfPair(d.ca,d.cb))});PAG.keys=s},e=>{PAG.un=null;console.warn("pag",e)})}catch(e){}}
+function wfAllied(a,b){if(!a||!b||a===b)return false;if(PAG.keys.has(wfPair(a,b)))return true;try{const pc=dipPlayerC();if(pc&&(a===pc||b===pc)){const al=allySet();return al.has(a===pc?b:a)}}catch(e){}return false}
 function paStop(){for(const f of PA.un)try{f()}catch(e){}PA.un=[];PA.docs=[];PA.uid=null}
 function paListen(){try{if(typeof ON==="undefined"||!ON.db||!ON.user){if(PA.uid)paStop();return}if(PA.uid===ON.user.uid)return;paStop();PA.uid=ON.user.uid;const u=PA.uid,got={a:[],b:[]};
   for(const f of ["a","b"])PA.un.push(ON.db.collection("palliance").where(f,"==",u).onSnapshot(q=>{got[f]=q.docs.map(d=>({id:d.id,...d.data()}));PA.docs=[...got.a,...got.b];paPaint()},e=>{ON.err="Couldn't load alliances: "+(e&&e.code||e)}))}catch(e){}}
@@ -3875,7 +3881,7 @@ function paAccept(id){const d=PA.docs.find(x=>x.id===id),pc=dipPlayerC();if(!d||
   ON.db.collection("palliance").doc(id).update({st:"on",["c"+s]:pc,["n"+s]:paName(),["i"+s]:paNet(),at:firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{toast(`🛡 Allied with ${d["n"+o]}`);logGov(`${pc} is now allied with ${d["c"+o]} (${d["n"+o]})`)}).catch(e=>toast("Couldn't accept: "+(e&&e.code||e)))}
 function paEnd(id){const d=PA.docs.find(x=>x.id===id);if(!d)return;const o=paOther(d);ON.db.collection("palliance").doc(id).delete().then(()=>{toast(d.st==="on"?`Alliance with ${d["n"+o]} ended`:"Offer withdrawn");if(d.st==="on")logGov(`Alliance with ${d["c"+o]} ended`)}).catch(e=>toast("Couldn't end it: "+(e&&e.code||e)))}
 /* every minute: keep my side of each alliance fresh (country, name, spy networks) */
-function paTick(){try{paListen();const now=Date.now();if(!PA.uid||now-PA.pub<PACFG.pubMs)return;PA.pub=now;const pc=dipPlayerC();if(!pc)return;const net=paNet(),key=JSON.stringify([pc,net]);if(key===PA.last)return;PA.last=key;
+function paTick(){try{paListen();pagListen();const now=Date.now();if(!PA.uid||now-PA.pub<PACFG.pubMs)return;PA.pub=now;const pc=dipPlayerC();if(!pc)return;const net=paNet(),key=JSON.stringify([pc,net]);if(key===PA.last)return;PA.last=key;
   for(const d of paOn()){const s=paSide(d);ON.db.collection("palliance").doc(d.id).update({["c"+s]:pc,["i"+s]:net,at:firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{})}}catch(e){}}
 /* allied players' spy networks: [{c,l,by}] */
 function paIntel(){const out=[];for(const d of paOn()){const o=paOther(d),m=d["i"+o]||{};for(const c in m){const l=Math.round(+m[c]||0);if(COUNTRIES.includes(c)&&l>0)out.push({c,l:Math.min(10,l),by:String(d["n"+o]||"Ally")})}}return out}
@@ -3984,7 +3990,7 @@ function allySet(){const pc=dipPlayerC(),o=new Set();if(!pc)return o;try{for(con
 function allyPeace(quiet){const pc=dipPlayerC(),al=allySet();if(!pc||!al.size)return;
   const ws=S.wars||[];for(let i=ws.length-1;i>=0;i--){const w=ws[i];if(w&&(w.a===pc&&al.has(w.b)||w.b===pc&&al.has(w.a))){ws.splice(i,1);if(!quiet)logGov(`🛡 ${w.a===pc?w.b:w.a} is your ally: the dispute is dropped`)}}
   for(const w of ws)if(w&&w.al&&w.al[pc]){for(const n in w.al)if(al.has(n)&&w.al[n]!==w.al[pc])delete w.al[n];const en=w.al[pc]==="a"?w.b:w.a;if(al.has(en))delete w.al[pc]}
-  try{const T=wf().tens;for(const n of al){const k=wfPair(pc,n);if(T[k]&&T[k].v>0){T[k].v=0;wf().dirty=1}}}catch(e){}}
+  try{const T=wf().tens;for(const n of al){const k=wfPair(pc,n);if(T[k]&&T[k].v>0&&!T[k].pf){delete T[k];wf().dirty=1}}}catch(e){}}
 function dipDay(quiet){const C=S.wwar?Object.assign({},DIPCFG,{startP:DIPCFG.startP*2,maxWars:Math.max(DIPCFG.maxWars,WWCFG.maxWars)}):DIPCFG,d=dip();d.day++;S.wars=S.wars||[];const ws=S.wars,p=S.pol;
   for(const n of COUNTRIES)dipGrow(n,d,C);
   // liberation, and countries you took back from a ruler are free again
@@ -7097,7 +7103,7 @@ function intAddTens(a,b,dv){if(dv>0)dv*=WFCFG.esc;if(intRemote()){const v0=intTe
     try{let left=dv;while(left>=.1){const s=Math.min(WFCFG.step,left);left-=s;ON.db.collection("wfund").add({k:"e",to:String(a).slice(0,40),vs:String(b).slice(0,40),amt:Math.max(WFCFG.min,Math.min(1e13,Math.round(s*wfPt(a,b)))),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("int",e))}}catch(e){console.warn("int",e)}
     return v0+dv}
   const d=wf(),k=wfPair(a,b);let T=d.tens[k];if(dv<0&&!T)return 0;T=d.tens[k]=T||{v:0,f:{}};if(!T.f||typeof T.f!=="object")T.f={};const v0=+T.v||0,was=wfStage(v0)[1];
-  T.v=dv>0?Math.max(v0,Math.min(intCap(),v0+dv)):Math.max(0,v0+dv);T.t=Date.now();d.dirty=1;const v=T.v;if(v<=0)delete d.tens[k];
+  T.v=dv>0?Math.max(v0,Math.min(intCap(),v0+dv)):Math.max(0,v0+dv);T.t=Date.now();if(dv>0)T.pf=1;d.dirty=1;const v=T.v;if(v<=0)delete d.tens[k];
   const now=wfStage(v)[1];if(now!==was)wfSay(`Tensions ${dv>0?"rising":"easing"} between ${a} and ${b}: ${now}`);return v}
 function intCheck(k,n,b){const pc=pol().c;
   if(k==="stir"){if(!b||b===n||b===pc||!COUNTRIES.includes(b))return "Pick a second country (not yours) for the false flag";if(wfAtWar(n,b))return `${n} and ${b} are already at war`;if(intTens(n,b)>=intCap())return `${n} and ${b} are already at the brink`}
@@ -10945,7 +10951,7 @@ function aimHit(att,c,quiet){const a=aim(),C=AIMCFG,now=Date.now(),o=S.own&&S.ow
 function aimFire(att,def,w,quiet,prov){const cs=ctyCities(def);if(!cs.length)return;if(prov&&def===dipPlayerC()&&crtInj("gov:"+att))return;const C=AIMCFG,o=cap(att);
   let c;if(prov){const s=cs.slice().sort((x,y)=>kmBetween(o,x)-kmBetween(o,y));c=s[0]}else c=cs[Math.floor(Math.random()*cs.length)];if(!c)return;
   const sea=prov?Math.random()<.5:0;
-  if(prov){const d=wf(),k=wfPair(att,def),T=d.tens[k]=d.tens[k]||{v:0,f:{}},was=wfStage(T.v)[1];T.v=Math.min(95,(+T.v||0)+C.tens*WFCFG.esc);T.t=Date.now();d.dirty=1;
+  if(prov&&wfAllied(att,def))return;if(prov){const d=wf(),k=wfPair(att,def),T=d.tens[k]=d.tens[k]||{v:0,f:{}},was=wfStage(T.v)[1];T.v=Math.min(95,(+T.v||0)+C.tens*WFCFG.esc);T.t=Date.now();d.dirty=1;
     const t=sea?`${att} test-fires a missile into waters off ${def}; tensions rise`:`${att} fires a missile at ${c.name} near the ${def} border; tensions rise`;
     if(quiet)aim().q.p++;else{stNews(t);const now=wfStage(T.v)[1];if(now!==was)wfSay(`Tensions rising between ${att} and ${def}: ${now}`)}}
   else if(quiet)aim().q.s++;
