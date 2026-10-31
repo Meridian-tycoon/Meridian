@@ -2387,7 +2387,12 @@ const BIZTAG={cart:"Cart",coffeecart:"Coffee",icecream:"Ice",taco:"Taco",pretzel
 function mkPin(lat,lon,txt,col,title,onClick,cls){const el=document.createElement("div");el.className="mpin"+(cls?" "+cls:"");if(title)el.title=title;
   const sp=document.createElement("span");if(col)sp.style.background=col;sp.textContent=txt;el.appendChild(sp);
   if(onClick){el.style.cursor="pointer";el.addEventListener("click",ev=>{ev.stopPropagation();onClick()})}
-  return new maplibregl.Marker({element:el,anchor:"top-left",offset:[-18,-30]}).setLngLat([lon,lat]).addTo(MM)}
+  const mk=new maplibregl.Marker({element:el,anchor:"top-left",offset:[-18,-30]}).setLngLat([lon,lat]).addTo(MM);if(txt==="You")mk._you=1;else mk._far=1;pinFadeOne(mk);return mk}
+/* pins far from the view centre fade and shrink so the horizon is not a row of labels; "You" always stays */
+function pinFadeOne(m,c,kx){try{if(!m._far||!inStreet)return;c=c||MM.getCenter();kx=kx||111320*Math.cos(c.lat*Math.PI/180);const ll=m.getLngLat(),d=Math.hypot((ll.lng-c.lng)*kx,(ll.lat-c.lat)*111320),f=d<700?1:Math.max(0,1-(d-700)/1500),o=f<.05?0:Math.round(f*20)/20,el=m.getElement();
+  if(el._pf===o)return;el._pf=o;const sp=el.firstChild;el.style.display=o?"":"none";if(sp){sp.style.opacity=o;sp.style.scale=String(.6+.4*o)}}catch(e){}}
+function pinFadeAll(){if(!inStreet)return;const c=MM.getCenter(),kx=111320*Math.cos(c.lat*Math.PI/180);for(const m of mkPins)pinFadeOne(m,c,kx);for(const m of mkList)pinFadeOne(m,c,kx)}
+let pinRaf=0;try{MM.on("move",()=>{if(pinRaf||!inStreet)return;pinRaf=requestAnimationFrame(()=>{pinRaf=0;pinFadeAll()})})}catch(e){}
 function clearPins(){for(const m of mkPins)m.remove();mkPins=[];for(const m of mkList)m.remove();mkList=[]}
 /* 3D models for the player's own buildings: a MapLibre custom layer drawn with three.js (loaded on first use) at street zoom.
    The label pins stay on top so taps still work; models are built from simple solids so no model files are needed. */
@@ -2399,6 +2404,11 @@ function ensureModelLayer(){try{if(!MM||MM.getLayer("meridian-models"))return;
   detLast=null;origFilter={};detKeys=new Set();detChunks=[];detOrg=null;detQ=null;detDirty=true;detLm=false;detHidden=false;origVis={};MM.addLayer(modelLayer=makeModelLayer());if(typeof refreshDetail==="function")refreshDetail(true)}catch(e){console.warn("model layer",e)}}
 function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=false,mats={},det=null,detO=null,detFeats=null,detRoads=null,dcache=null,dcKey="",dT={},lastTris=0;
   const M=(c,o)=>new T.MeshLambertMaterial(Object.assign({color:c},o||{}));
+  /* distance haze for the generated city: walls, roofs and roads fade into the sky colour with their distance from the camera (three's own fog would measure from the model origin, so this adds the camera position as a uniform) */
+  let FOG=null;const fogU=()=>FOG||(FOG={cam:{value:new T.Vector3()},col:{value:new T.Color(0xd3dde8)},rng:{value:new T.Vector2(900,3800)}});
+  const fogify=m=>{const u=fogU();m.onBeforeCompile=sh=>{sh.uniforms.uCam=u.cam;sh.uniforms.uFogC=u.col;sh.uniforms.uFogR=u.rng;
+    sh.vertexShader=sh.vertexShader.replace("#include <common>","#include <common>\nvarying vec3 vFW;").replace("#include <begin_vertex>","#include <begin_vertex>\nvFW=position;");
+    sh.fragmentShader=sh.fragmentShader.replace("#include <common>","#include <common>\nvarying vec3 vFW;uniform vec3 uCam;uniform vec3 uFogC;uniform vec2 uFogR;").replace("#include <dithering_fragment>","gl_FragColor.rgb=mix(gl_FragColor.rgb,uFogC,smoothstep(uFogR.x,uFogR.y,distance(vFW,uCam)));\n#include <dithering_fragment>")};m.customProgramCacheKey=()=>"mfog";return m};
   const box=(w,h,d,x,y,z,mat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y+h/2,z);return m};
   const cyl=(rt,rb,h,x,y,z,mat,seg)=>{const m=new T.Mesh(new T.CylinderGeometry(rt,rb,h,seg||12),mat);m.position.set(x,y+h/2,z);return m};
   const build={
@@ -2564,10 +2574,10 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     if(bad)console.warn("detail: skipped",bad,"odd footprints");
     const out=new T.Group();
     for(const kd in acc){const o=acc[kd],g=new T.BufferGeometry(),tx=winTex(kd,night);g.setAttribute("position",new T.Float32BufferAttribute(o.P,3));g.setAttribute("uv",new T.Float32BufferAttribute(o.U,2));g.setAttribute("normal",new T.Float32BufferAttribute(o.N,3));g.setAttribute("color",new T.Float32BufferAttribute(o.C,3));
-      out.add(new T.Mesh(g,new T.MeshLambertMaterial({map:tx,vertexColors:true,side:T.DoubleSide,emissive:night?0xffffff:0,emissiveMap:night?tx:null,emissiveIntensity:night?.8:0})))}
-    if(R.P.length){const g=new T.BufferGeometry();g.setAttribute("position",new T.Float32BufferAttribute(R.P,3));g.setAttribute("normal",new T.Float32BufferAttribute(R.N,3));g.setAttribute("color",new T.Float32BufferAttribute(R.C,3));out.add(new T.Mesh(g,new T.MeshLambertMaterial({vertexColors:true,side:T.DoubleSide})))}
+      out.add(new T.Mesh(g,fogify(new T.MeshLambertMaterial({map:tx,vertexColors:true,side:T.DoubleSide,emissive:night?0xffffff:0,emissiveMap:night?tx:null,emissiveIntensity:night?.8:0}))))}
+    if(R.P.length){const g=new T.BufferGeometry();g.setAttribute("position",new T.Float32BufferAttribute(R.P,3));g.setAttribute("normal",new T.Float32BufferAttribute(R.N,3));g.setAttribute("color",new T.Float32BufferAttribute(R.C,3));out.add(new T.Mesh(g,fogify(new T.MeshLambertMaterial({vertexColors:true,side:T.DoubleSide}))))}
     const mk=(tg,mat)=>{if(!tg.P.length)return;const g=new T.BufferGeometry();g.setAttribute("position",new T.Float32BufferAttribute(tg.P,3));g.setAttribute("normal",new T.Float32BufferAttribute(tg.N,3));g.setAttribute("color",new T.Float32BufferAttribute(tg.C,3));const m=new T.Mesh(g,mat);out.add(m);return m};
-    mk(Em,new T.MeshBasicMaterial({vertexColors:true,side:T.DoubleSide}));
+    mk(Em,fogify(new T.MeshBasicMaterial({vertexColors:true,side:T.DoubleSide})));
     const sm=mk(Sh,new T.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:.3,depthWrite:false,side:T.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));if(sm)sm.renderOrder=2;
     const gm=mk(Gl,new T.MeshBasicMaterial({vertexColors:true,transparent:true,blending:T.AdditiveBlending,depthWrite:false,side:T.DoubleSide}));if(gm)gm.renderOrder=3;
     let tris=0;out.traverse(o=>{if(o.geometry&&o.geometry.attributes.position)tris+=o.geometry.attributes.position.count/3});
@@ -2577,8 +2587,8 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
   function atmoDrop(){if(atmo){scene.remove(atmo);disp(atmo)}atmo=null;atmoO=null;clouds=[];puffs=[];cars=[];cloudM=null;carMats=[]}
   function atmoBuild(){atmoDrop();atmo=new T.Group();atmo.visible=false;scene.add(atmo);atmoO=detO;const k=1/detO.sc,mc0=detO.mc;
     cloudM=new T.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.5,depthWrite:false});const sg=new T.IcosahedronGeometry(1,1);
-    for(let i=0;i<16;i++){const g=new T.Group(),n=3+Math.floor(Math.random()*3);for(let j=0;j<n;j++){const m=new T.Mesh(sg,cloudM);m.scale.set(70+Math.random()*90,22+Math.random()*18,60+Math.random()*70);m.position.set((j-n/2)*85+Math.random()*30,Math.random()*18,Math.random()*60);g.add(m)}
-      g.position.set(Math.random()*7000-3500,420+Math.random()*320,Math.random()*7000-3500);clouds.push(g);atmo.add(g)}
+    for(let i=0;i<36;i++){const g=new T.Group(),n=3+Math.floor(Math.random()*4),big=.8+Math.random()*1.1;for(let j=0;j<n;j++){const m=new T.Mesh(sg,cloudM);m.scale.set((90+Math.random()*130)*big,(26+Math.random()*24)*big,(80+Math.random()*100)*big);m.position.set((j-n/2)*110*big+Math.random()*40,Math.random()*22,Math.random()*80);g.add(m)}
+      g.position.set(Math.random()*10000-5000,300+Math.random()*600,Math.random()*10000-5000);clouds.push(g);atmo.add(g)}
     const pg=new T.IcosahedronGeometry(1,2);
     for(const m of modelList){if(m.cls!=="site-ind")continue;const mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),x=(mc.x-mc0.x)*k,z=(mc.y-mc0.y)*k;
       {const kk=m.k||1;for(const cx of [10,15])for(let i=0;i<7;i++){const mt=new T.MeshBasicMaterial({color:0x9ca3af,transparent:true,opacity:0,depthWrite:false}),pm=new T.Mesh(pg,mt);atmo.add(pm);puffs.push({m:pm,mt,x:x+cx*kk,z:z-6*kk,y0:26*kk,ph:i/7+(cx>10?.07:0)})}}}
@@ -2604,14 +2614,15 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
   function atmoUpdate(dk){const now=performance.now(),dt=Math.min(.1,Math.max(0,(now-(atmoT||now))/1000));atmoT=now;
     if(!atmo||atmoO!==detO){atmoBuild();atmoCarsBuild()}else if(now-atmoCars>5000){const k=1/detO.sc,ce=map.getCenter(),cm=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0);if(!atmoC||cars.length<30||Math.hypot((cm.x-detO.mc.x)*k-atmoC[0],(cm.y-detO.mc.y)*k-atmoC[1])>220)atmoCarsBuild();else atmoCars=now}
     cloudM.color.set(dk?0x2a3350:0xffffff);cloudM.opacity=dk?.4:.5;
-    for(const c of clouds){c.position.x+=6*dt;if(c.position.x>3500)c.position.x-=7000}
+    for(const c of clouds){c.position.x+=7*dt;if(c.position.x>5000)c.position.x-=10000}
     const t=now/1000;for(const p of puffs){const f=(t/9+p.ph)%1;p.m.position.set(p.x+f*14,(p.y0||26)+1+f*60,p.z);p.m.scale.setScalar(2.2+f*9);p.mt.opacity=Math.sin(f*Math.PI)*.32;p.mt.color.set(dk?0x4b5563:0xb6bcc6)}
     for(const c of cars){c.s+=c.v*dt;const L=c.r.len;if(c.pp){if(c.s>L){c.s=L;c.v=-Math.abs(c.v)}else if(c.s<0){c.s=0;c.v=Math.abs(c.v)}}else if(c.s>L)c.s-=L;else if(c.s<0)c.s+=L;let a=c.s,i=0;while(i<c.r.seg.length-1&&a>c.r.seg[i]){a-=c.r.seg[i];i++}const p0=c.r.pts[i],p1=c.r.pts[i+1],l=c.r.seg[i]||1,f=Math.min(1,a/l),dx=p1[0]-p0[0],dz=p1[1]-p0[1];
       c.m.position.set(p0[0]+dx*f,c.y!=null?c.y:.9,p0[1]+dz*f);c.m.rotation.y=-Math.atan2(dz,dx)+(c.v<0?Math.PI:0)}}
   function sync(){if(!T||!group)return;while(group.children.length)group.remove(group.children[0]);
     for(const m of modelList){const k=MODEL_KIND[m.cls];if(!k||!build[k])continue;const o=build[k](m),mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),sc=mc.meterInMercatorCoordinateUnits();
       if(m.k&&m.k!==1)o.scale.setScalar(m.k);o.userData={mc,sc};group.add(o)}}
-  return{id:"meridian-models",type:"custom",renderingMode:"3d",sync,setOrigin,addChunk,removeChunk,resetDetail,ready,count,stats,
+  let fogR=2500;const setFogR=r=>{fogR=r};
+  return{id:"meridian-models",type:"custom",renderingMode:"3d",setFogR,sync,setOrigin,addChunk,removeChunk,resetDetail,ready,count,stats,
     onAdd(mp,gl){map=mp;loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;
       scene=new T.Scene();cam=new T.Camera();group=new T.Group();scene.add(group);hemi=new T.HemisphereLight(0xffffff,0x667788,.85);sun=new T.DirectionalLight(0xffffff,.8);sun.position.set(.4,1,.6);scene.add(hemi,sun);sync();mp.triggerRepaint()}).catch(e=>console.warn("3d models off",e))},
     render(gl,args){if(!T||!group)return;const z=map.getZoom();if(z<15)return;
@@ -2622,7 +2633,10 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
         const m=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(sc,-sc,sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
         cam.projectionMatrix=pm.clone().multiply(m);for(const q of group.children)q.visible=q===o;ren.render(scene,cam)}
       if(det&&detO&&z>=15){for(const q of group.children)q.visible=false;det.visible=true;const mc=detO.mc,dm=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(detO.sc,-detO.sc,detO.sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
-        const al=lyOn("al");if(al){try{atmoUpdate(dk)}catch(e){atmoDrop();console.warn("atmo off",e)}}if(atmo)atmo.visible=al;cam.projectionMatrix=pm.clone().multiply(dm);ren.render(scene,cam);lastTris=ren.info.render.triangles;det.visible=false;if(atmo)atmo.visible=false;if(al)map.triggerRepaint()}}}}
+        {const f=fogU(),tr=map.transform,cp=tr&&tr.cameraPosition;if(cp&&detO){const kk=1/detO.sc;f.cam.value.set((cp[0]-detO.mc.x)*kk,cp[2]*kk,(cp[1]-detO.mc.y)*kk)}
+          const hr=new Date().getHours()+new Date().getMinutes()/60,auto=(()=>{try{return localStorage.getItem("meridian-3d-dark")==="a"}catch(e){return false}})(),warm=auto&&((hr>=17&&hr<19)||(hr>=6&&hr<8));
+          f.col.value.set(dk?0x1a2038:warm?0xe6b894:0xd3dde8);const R=Math.max(600,Math.min(5000,fogR||2500));f.rng.value.set(R*.22,R*.95)}
+          const al=lyOn("al");if(al){try{atmoUpdate(dk)}catch(e){atmoDrop();console.warn("atmo off",e)}}if(atmo)atmo.visible=al;cam.projectionMatrix=pm.clone().multiply(dm);ren.render(scene,cam);lastTris=ren.info.render.triangles;det.visible=false;if(atmo)atmo.visible=false;if(al)map.triggerRepaint()}}}}
 
 /* big cities (size 4-5) get roof and crown detail on the buildings in view, rebuilt when the map settles */
 let detHud=0,detInfo={n:0,R:0},detTimer=0,detVerify=0,detWait=0,detLast=null,origFilter={};
@@ -2660,7 +2674,7 @@ function detStep(){try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom(
   if(!modelLayer.ready()){detSchedule(700);return}
   const night=dark3d();if(detNight!==null&&night!==detNight)detReset();detNight=night;
   const ce=MM.getCenter(),mLat=111320,mLng=111320*Math.cos(ce.lat*Math.PI/180),ids=detLayers();if(!ids.length)return;const base=MM.getLayer(ids.find(i=>i!=="meridian-roofs")||ids[0]);if(!base)return;
-  const VQ=vdQ();
+  const VQ=vdQ();try{modelLayer.setFogR(VQ.R)}catch(e){}
   if(detOrg&&Math.hypot((ce.lng-detOrg.lng)*mLng,(ce.lat-detOrg.lat)*mLat)>8000)detReset();
   if(!detOrg){const mc=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0);detOrg={lng:ce.lng,lat:ce.lat};modelLayer.setOrigin({mc,sc:mc.meterInMercatorCoordinateUnits()})}
   if(detDirty||!detQ||Math.hypot((ce.lng-detQc.lng)*mLng,(ce.lat-detQc.lat)*mLat)>150){detQ=detQueue(base,ce,mLng,mLat,VQ.R);detQc={lng:ce.lng,lat:ce.lat};detDirty=false}
