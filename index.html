@@ -4628,10 +4628,16 @@ function devOn(){try{return localStorage.getItem("meridian-dev")==="1"}catch(e){
 function devHtml(){if(!devOn())return"";const dp=S.pol&&S.pol.r>=0&&S.pol.c;return `<div class="sec">Dev</div><div class="list">${devGod()?`<div class="row"><div class="n">🛡 Iron Dome</div><div class="d">${S.dome!==0?`On · intercepts 100% of missiles and WMDs aimed at ${dp?dp:"the country you govern (none right now)"}`:"Off"}</div><button class="buy" data-dev="dome">${S.dome!==0?"Turn off":"Turn on"}</button></div>`:""}<div class="row"><div class="n">Reset loans</div><div class="d">${B().loans.length} loans · ${fmt(B().loans.reduce((a,l)=>a+l.bal,0))} owed</div><button class="buy" data-dev="loans">Reset loans</button></div>
   <div class="row"><div class="n">Bail out of jail</div><div class="d">${jailed()?"In prison · "+fmtDur(S.jail.until-Date.now())+" left":"Not in prison"}</div><button class="buy" data-dev="bail" ${S.jail?"":"disabled"}>Bail out</button></div>
   <div class="row"><div class="n">Finish deliveries</div><div class="d">${S.fleet.filter(v=>v.arr).length} vehicles on the road · ${(S.hired||[]).length} hired</div><button class="buy" data-dev="fleet" ${S.fleet.some(v=>v.arr)||(S.hired||[]).length?"":"disabled"}>Finish now</button></div>
-  ${(()=>{const o=S.ipo||{},left=(+o.ban||0)+IPOC.ban-Date.now();return `<div class="row"><div class="n">Reset delisting cooldown</div><div class="d">${left>0?"Next IPO allowed in "+wevLeft(left):"No cooldown: you can start a new IPO"}</div><button class="buy" data-dev="ipoban" ${left>0?"":"disabled"}>Reset</button></div>`})()}</div>`}
+  ${(()=>{const o=S.ipo||{},left=(+o.ban||0)+IPOC.ban-Date.now();return `<div class="row"><div class="n">Reset delisting cooldown</div><div class="d">${left>0?"Next IPO allowed in "+wevLeft(left):"No cooldown: you can start a new IPO"}</div><button class="buy" data-dev="ipoban" ${left>0?"":"disabled"}>Reset</button></div>`})()}${dvmHtml()}</div>`}
 function devAct(b){const k=b.dataset.dev;
   if(k==="loans"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to clear";return}const bk=B();bk.loans=[];bk.lates=[];S.debt=bankDebt();toast("Dev: all loans cleared")}
   else if(k==="dome"){if(!devGod())return;S.dome=S.dome!==0?0:1;toast(S.dome?"🛡 Iron Dome on":"Iron Dome off")}
+  else if(k==="dvgo"||k==="dvstop"){if(!dvmOk())return toast("Sign in with the developer account to move the market");const m=MK(),now=Date.now();
+    if(k==="dvstop"){dvmStop(m,now);toast("Dev: market event stopped, prices back where they were")}
+    else{const g=id=>{const e=document.getElementById(id);return e?e.value:""},d=g("dvd")==="b"?1:-1,sym=g("dvs")||"*",z=Math.max(1,+g("dvz")||50),u=Math.min(60,Math.max(1,+g("dvu")||5));
+      if(sym!=="*"&&!AK[sym])return toast("Unknown ticker");const zz=d<0?Math.min(95,z)/100:Math.min(10000,z)/100;dvmStop(m,now);m.dv={t0:now,dur:u*60000,d,s:sym,z:zz,lf:1};if(typeof ON!=="undefined")ON.mkPub=0;
+      const who=sym==="*"?"every stock and crypto":AK[sym].n+" ("+sym+")";S.log.unshift(`Markets: ${d>0?"boom! "+who+" soars":"crash! "+who+" collapses"} as ${d>0?"buyers pile in":"panic selling hits"}`);S.log=S.log.slice(0,3);
+      toast(`Dev: ${d>0?"boom +":"crash -"}${Math.round(zz*100)}% on ${sym==="*"?"the whole market":sym} for ${u} min`)}}
   else if(k==="bail"){if(!S.jail)return;S.jail=null;toast("Dev: released from prison")}
   else if(k==="ipoban"){if(S.ipo&&typeof S.ipo==="object")S.ipo.ban=0;toast("Dev: delisting cooldown cleared. You can start a new IPO.")}
   else if(k==="fleet"){const now=Date.now();let n=0;for(const v of S.fleet)if(v.arr&&v.arr>now){v.dep=Math.min(v.dep||now,now-1);v.arr=now;n++}for(const x of S.hired||[])if(x.arr>now)x.arr=now;runFleet(now);toast(`Dev: ${n} deliveries finished`)}
@@ -4913,7 +4919,7 @@ function mktStep(){const m=MK(),now=Date.now();const war=typeof tension==="funct
     if(shock&&Math.abs(shock)>0)mktNews(a,shock)}
   if(m.xb){const b=m.xb;if(b.lf&&b.lf!==1&&!(now-m.live<5*60000&&m.liveSet&&m.liveSet.XRP))m.px.XRP=Math.max(AK.XRP.p0*.05,m.px.XRP/b.lf);delete m.xb}   // XRP boom was removed: undo any boom price saved in old saves
   if(sh&&m.xb2&&!(now-m.live<5*60000&&m.liveSet&&m.liveSet.XRP))m.xb2.lf=xrpBoomF(m,now);   // the master's XRP price already carries the boom
-  try{mktNormal(m,now)}catch(e){}wevMk(m,now,sh);xrpBoomStep(m,now);try{btcBoomStep(m,now,sh)}catch(e){}try{btcCrashStep(m,now,sh)}catch(e){}try{ethBoomStep(m,now,sh)}catch(e){}try{lmtBoomStep(m,now,sh)}catch(e){}try{mktCrashStep(m,now,sh)}catch(e){}try{mkwPublish(m,now)}catch(e){}try{mkhPublish(m)}catch(e){}try{ipoTick(now)}catch(e){console.warn("ipoTick",e)}
+  try{mktNormal(m,now)}catch(e){}wevMk(m,now,sh);xrpBoomStep(m,now);try{btcBoomStep(m,now,sh)}catch(e){}try{btcCrashStep(m,now,sh)}catch(e){}try{ethBoomStep(m,now,sh)}catch(e){}try{lmtBoomStep(m,now,sh)}catch(e){}try{mktCrashStep(m,now,sh)}catch(e){}try{dvmStep(m,now,sh)}catch(e){}try{mkwPublish(m,now)}catch(e){}try{mkhPublish(m)}catch(e){}try{ipoTick(now)}catch(e){console.warn("ipoTick",e)}
   for(const a of ASSETS){const h=m.h[a.s];h.push(m.px[a.s]);if(h.length>90)h.shift()}try{mkdTick(m)}catch(e){}
   const d=Math.floor(now/(24*DAYMS));if(m.day!==d){if(m.day!=null)mkdClose(m);m.day=d;try{mkhPublish(m,1)}catch(e){}for(const a of ASSETS)m.open[a.s]=m.px[a.s]}}
 /* XRP boom: a 5-min rally (up to 1000x: ~100 s up, ~55 s hold, ~140 s back down) that starts whenever a government uses a WMD (xrpBoomGo, called from wmdStrike and wpnFire). A running boom is not restarted. Saves from the old always-on boom are eased back to the normal price by xrpBoomStep. */
@@ -4963,6 +4969,21 @@ function mktCrashStep(m,now,sh){const dev=typeof ON!=="undefined"&&ON.user&&devU
   if(dev&&!m.mcDone1){m.mcDone1=1;mktCrashCancel(m,now);m.mc={t0:now,lf:1};S.log.unshift("Markets: global crash! Stocks and crypto collapse as panic selling sweeps every exchange");S.log=S.log.slice(0,3)}
   const t0=mktCrashT0(m);if(!t0)return;if(!m.mc||m.mc.t0!==t0)m.mc={t0,lf:1};const b=m.mc,f=mktCrashF(t0,now);
   if(!sh)for(const a of ASSETS)if(m.px[a.s])m.px[a.s]=Math.max(.01,m.px[a.s]*f/(b.lf||1));b.lf=f}
+/* dev market tool (Mark, 2026-10-31, Saves › Dev): the developer account starts a crash or boom on demand. m.dv={t0,dur,d:+1 boom|-1 crash,s:"*" all or one ticker,z,lf}.
+   Shape like the one-off events: ~20% of the time moving, hold until 55%, then ease back to normal by the end. Crash z = fraction lost (max .95),
+   boom z = fraction gained (1 = +100%). Runs on the master (dev) save and reaches other players through the prices it publishes in world/mkt. */
+function dvmOk(){return devOn()&&typeof ON!=="undefined"&&!!ON.user&&devUid(ON.user.uid)}
+function dvmF(v,now){if(!v||!v.t0)return 1;const t=(now-v.t0)/v.dur;if(t<=0||t>=1)return 1;const ease=x=>x*x*(3-2*x),sh=t<.2?ease(t*5):t<.55?1:ease((1-t)/.45);return v.d>0?1+v.z*sh:1-v.z*sh}
+const dvmSyms=v=>v.s==="*"?ASSETS.map(a=>a.s):[v.s];
+function dvmStep(m,now,sh){const v=m.dv;if(!v||sh)return;const f=dvmF(v,now);for(const x of dvmSyms(v))if(m.px[x])m.px[x]=Math.max(.01,m.px[x]*f/(v.lf||1));v.lf=f;
+  if(now-v.t0>=v.dur){delete m.dv;S.log.unshift("Markets: the dev market event is over, prices back to normal");S.log=S.log.slice(0,3)}}
+function dvmStop(m,now){const v=m.dv;if(!v)return;if(v.lf&&v.lf!==1)for(const x of dvmSyms(v))if(m.px[x])m.px[x]=Math.max(.01,m.px[x]/v.lf);delete m.dv;if(typeof ON!=="undefined")ON.mkPub=0}
+function dvmHtml(){if(!dvmOk())return `<div class="row"><div class="n">📉📈 Crash or boom the market</div><div class="d">Sign in with the developer account (Saves › Online) to use this.</div></div>`;
+  const v=MK().dv,now=Date.now(),opt=ASSETS.map(a=>`<option value="${a.s}">${a.s} · ${devEsc(a.n)}${a.t==="c"?" (crypto)":""}</option>`).join(""),sel="font:inherit;padding:6px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink);min-width:0";
+  return `<div class="row"><div class="n">📉📈 Crash or boom the market</div><div class="d">${v?`Running: ${v.d>0?"boom +":"crash -"}${Math.round(v.z*100)}% on ${v.s==="*"?"all stocks and crypto":v.s} · ${fmtDur(Math.max(0,v.t0+v.dur-now))} left. Every player sees it.`:"Prices move to the target, hold, then return to normal by the end. Every player sees it."}</div>
+  <span style="display:flex;flex-wrap:wrap;gap:6px;grid-column:1/3;padding-top:6px"><select id="dvd" style="${sel}"><option value="c">Crash</option><option value="b">Boom</option></select><select id="dvs" style="${sel};max-width:100%"><option value="*">All stocks and crypto</option>${opt}</select>
+  <label class="d">Size % <input id="dvz" type="number" min="1" max="10000" value="50" style="${sel};width:80px"></label><label class="d">Minutes <input id="dvu" type="number" min="1" max="60" value="5" style="${sel};width:64px"></label>
+  <button class="buy" data-dev="dvgo">Start</button>${v?`<button class="buy up" data-dev="dvstop">Stop now</button>`:""}</span><p class="d" style="grid-column:1/3;font-size:12px;color:var(--muted)">Crash size is the % lost (max 95). Boom size is the % gained (100 = double, max 10000).</p></div>`}
 function xrpBoomF(m,now){const b=m.xb2;if(!b||!b.t0)return 1;const t=(now-b.t0)/XRPB.dur;if(t<=0||t>=1)return 1;
   const ease=x=>x*x*(3-2*x);return 1+XRPB.peak*(t<1/3?ease(t*3):t<.53?1:ease((1-t)/.47))}
 function xrpBoomGo(by){const m=MK(),now=Date.now(),b=m.xb2;if(b&&!b.end&&now-b.t0<XRPB.dur)return;m.xb2={t0:now,lf:1};try{mkwBoom(now)}catch(e){}S.log.unshift(`Markets: XRP spikes as ${by||"a government"} uses weapons of mass destruction`);S.log=S.log.slice(0,3)}
@@ -4993,7 +5014,7 @@ function mkwListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubMK)return;O
 /* real crypto prices from CoinGecko when the network allows it */
 async function mktLive(){try{const ids=ASSETS.filter(a=>a.t==="c").map(a=>a.sec).join(",");
   const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);if(!r.ok)return;const j=await r.json(),m=MK();m.liveSet={};
-  for(const a of ASSETS)if(a.t==="c"&&j[a.sec]&&j[a.sec].usd){m.px[a.s]=j[a.sec].usd*(a.s==="XRP"?xrpBoomF(m,Date.now()):1);if(a.s==="BTC"&&m.bb)m.bb.lf=btcBoomF(m.bb.t0,Date.now()),m.px.BTC*=m.bb.lf;if(a.s==="ETH"&&m.eb)m.eb.lf=ethBoomF(m.eb.t0,Date.now()),m.px.ETH*=m.eb.lf;if(m.mc&&m.mc.lf)m.px[a.s]*=m.mc.lf;m.liveSet[a.s]=1}
+  for(const a of ASSETS)if(a.t==="c"&&j[a.sec]&&j[a.sec].usd){m.px[a.s]=j[a.sec].usd*(a.s==="XRP"?xrpBoomF(m,Date.now()):1);if(a.s==="BTC"&&m.bb)m.bb.lf=btcBoomF(m.bb.t0,Date.now()),m.px.BTC*=m.bb.lf;if(a.s==="ETH"&&m.eb)m.eb.lf=ethBoomF(m.eb.t0,Date.now()),m.px.ETH*=m.eb.lf;if(m.mc&&m.mc.lf)m.px[a.s]*=m.mc.lf;if(m.dv&&m.dv.lf&&dvmSyms(m.dv).includes(a.s))m.px[a.s]*=m.dv.lf;m.liveSet[a.s]=1}
   m.live=Date.now()}catch(e){}}
 /* one-off Bitcoin crash (Mark, 2026-10-31): a single 5-min plunge to ~$14k, fired once by the master (dev) save on first load of this build.
    Shared via world/mkt px._btcc. After 5 min BTC returns to normal. Never repeats. */
