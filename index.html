@@ -2391,7 +2391,7 @@ function setModels(list){modelList=list;if(modelLayer)modelLayer.sync();try{MM.t
 function ensureModelLayer(){try{if(!MM||MM.getLayer("meridian-models"))return;
   const lab=MM.getStyle().layers.find(l=>l.type==="symbol");
   detLast=null;origFilter={};MM.addLayer(modelLayer=makeModelLayer());if(typeof refreshDetail==="function")refreshDetail(true)}catch(e){console.warn("model layer",e)}}
-function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=false,mats={},det=null,detO=null,detFeats=null,detRoads=null;
+function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=false,mats={},det=null,detO=null,detFeats=null,detRoads=null,dcache=null,dcKey="",dT={},lastTris=0;
   const M=(c,o)=>new T.MeshLambertMaterial(Object.assign({color:c},o||{}));
   const box=(w,h,d,x,y,z,mat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y+h/2,z);return m};
   const cyl=(rt,rb,h,x,y,z,mat,seg)=>{const m=new T.Mesh(new T.CylinderGeometry(rt,rb,h,seg||12),mat);m.position.set(x,y+h/2,z);return m};
@@ -2427,6 +2427,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       else if(kind==="tower"){win(x+6,y+8,52,36,"#4f6479");g.fillStyle=night?"#12171d":"rgba(0,0,0,.18)";g.fillRect(x,y+60,64,4)}
       else{win(x+14,y+10,36,34,"#4f6479");g.fillStyle=night?"#12171d":"rgba(0,0,0,.18)";g.fillRect(x,y+60,64,4)}}
     const t=new T.CanvasTexture(c);t.wrapS=t.wrapT=T.RepeatWrapping;t.anisotropy=4;return WIN[key]=t}
+  function stats(){return Object.assign({},dT,{drawn:lastTris})}
   function setDetail(feats,org,roads){detFeats=feats;detO=org;detRoads=roads||null;if(T)buildDetail()}
   const ready=()=>!!(T&&scene),count=()=>det?det.children.length:0;
   function buildDetail(){if(det){scene.remove(det);det.traverse(o=>{if(o.geometry)o.geometry.dispose()});det=null}
@@ -2473,7 +2474,11 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       else if(n==="needle"){const wc=C(night?0x8a8e92:0xeef0f2);cylv(R,x,z,0,92,13,2.4,wc,8);cylv(R,x,z,92,56,2.4,6.5,wc,8);cylv(R,x,z,146,5,14,21.5,C(night?0x6a6350:0xcdb677),16);cylv(R,x,z,151,5,21.5,13,wc,16);
         cylv(R,x,z,156,14,10,.8,wc,12);cylv(R,x,z,170,14,.8,.4,wc,6);if(night)cylv(Em,x,z,147.5,2,21.7,21.7,C(0xffd98a),16)}
       else if(n==="burj"){const gc=C(night?0x56606b:0x9fb4c7);let y=0;for(const [h,a,b] of [[190,19,15],[200,15,11],[170,11,7],[120,7,4]]){cylv(R,x,z,y,h,a,b,gc,6);y+=h}cylv(R,x,z,y,150,1.8,.3,gc,6);bx(Em,x,z,.8,.8,y+120,4,C(0xff4a3a))}};
-    for(const f of detFeats)try{let r=f.ring.map(([lo,la])=>{const m=maplibregl.MercatorCoordinate.fromLngLat([lo,la],0);return[(m.x-mc0.x)*k,(m.y-mc0.y)*k]});
+    const tA=performance.now(),okey=detO.mc.x+","+detO.mc.y+","+night;if(!dcache||dcKey!==okey){dcache=new Map();dcKey=okey}let hits=0;
+    for(const f of detFeats)try{const ck=f.ring[0][0].toFixed(7)+","+f.ring[0][1].toFixed(7)+","+f.ring.length+","+f.h+","+(f.base||0),cc=dcache.get(ck);
+      if(cc){hits++;for(const kd in cc.acc){const o=A(kd),q=cc.acc[kd];o.P.push(...q.P);o.U.push(...q.U);o.N.push(...q.N);o.C.push(...q.C)}R.P.push(...cc.R.P);R.N.push(...cc.R.N);R.C.push(...cc.R.C);L.push(cc.L);continue}
+      const snap={};for(const kd in acc)snap[kd]=[acc[kd].P.length,acc[kd].U.length,acc[kd].N.length,acc[kd].C.length];const sR=[R.P.length,R.N.length,R.C.length];
+      let r=f.ring.map(([lo,la])=>{const m=maplibregl.MercatorCoordinate.fromLngLat([lo,la],0);return[(m.x-mc0.x)*k,(m.y-mc0.y)*k]});
       r=r.filter((q,i)=>isFinite(q[0])&&isFinite(q[1])&&(i===0||Math.hypot(q[0]-r[i-1][0],q[1]-r[i-1][1])>.05));
       while(r.length>1&&Math.hypot(r[0][0]-r[r.length-1][0],r[0][1]-r[r.length-1][1])<.05)r.pop();if(r.length<3)continue;
       let ar=0;for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length];ar+=a[0]*b[1]-b[0]*a[1]}const sg=ar<0?-1:1;ar=Math.abs(ar)/2;if(ar<.5)continue;
@@ -2499,7 +2504,9 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
           const cu=(u0+u1)/2,cv=(v0+v1)/2,nu=Math.min(5,Math.floor(ar/90)+1);for(let q=0;q<nu;q++){const a=(rn(hs*91+q,hs*13)-.5)*.6*W,b=(rn(hs*57,q+hs*7)-.5)*.6*D,px=(cu+a)*u[0]+(cv+b)*v[0],pz=(cu+a)*u[1]+(cv+b)*v[1];if(!inPoly(px,pz,rr))continue;
             const sz=1.6+rn(q,hs)*1.8;obox(R,px,pz,u[0],u[1],sz,sz*.8,yT,1.1+rn(hs,q)*.9,col(q%2?0xaab0b6:0x8b939b));if(q===0)cylv(R,px,pz,yT+1.1,.4,.6,.6,col(0x555d66),8)}
           if(kd!=="home"&&hs>.55&&ar>110){const wx=cx+u[0]*W*.18,wz=cz+u[1]*W*.18;if(inPoly(wx,wz,rr)){for(const [dx,dz] of [[-1,-1],[1,-1],[1,1],[-1,1]])bx(R,wx+dx*1.1,wz+dz*1.1,.25,.25,yT,2.6,col(0x4a3a30));cylv(R,wx,wz,yT+2.6,3.2,1.9,1.9,col(night?0x4a3d32:0x8a6a4c),10);cylv(R,wx,wz,yT+5.8,1.4,1.9,.1,col(night?0x3a3a3a:0x5a5a5e),10)}}}}
-      L.push({r,sg,hs,h2,kd,shop:shop&&kd!=="home",by,h})}catch(e){bad++}
+      const lrec={r,sg,hs,h2,kd,shop:shop&&kd!=="home",by,h};L.push(lrec);
+      {const ent={acc:{},R:{P:R.P.slice(sR[0]),N:R.N.slice(sR[1]),C:R.C.slice(sR[2])},L:lrec};for(const kd in acc){const b0=snap[kd]||[0,0,0,0],o=acc[kd];ent.acc[kd]={P:o.P.slice(b0[0]),U:o.U.slice(b0[1]),N:o.N.slice(b0[2]),C:o.C.slice(b0[3])}}dcache.set(ck,ent)}}catch(e){bad++}
+    const tB=performance.now();
     /* shadows, street life and landmarks, from the stored footprints */
     try{const bb=L.map(o=>{let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const [x,z] of o.r){x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z)}return[x0,x1,z0,z1]});
       const blocked=(x,z)=>{for(let i=0;i<L.length;i++){const b=bb[i];if(x>=b[0]&&x<=b[1]&&z>=b[2]&&z<=b[3]&&inPoly(x,z,L[i].r))return true}return false};
@@ -2535,6 +2542,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
             bx(R,px,pz,.22,.22,0,5,dark);obox(R,px,pz,a.ux,a.uz,.4,.5,4.5,1.25,dark);
             for(const [yy,on,cc] of [[5.45,!green,0xff2a2a],[5.1,false,0xffb000],[4.75,green,0x2aff5a]])obox(Em,px+a.ux*.22,pz+a.uz*.22,a.ux,a.uz,.06,.26,yy-.12,.24,col(on?cc:0x1a1a1a))}}}
       for(const lm of LANDMARKS){const m=maplibregl.MercatorCoordinate.fromLngLat([lm.lon,lm.lat],0),x=(m.x-mc0.x)*k,z=(m.y-mc0.y)*k;if(Math.hypot(x,z)<1500)landmark(lm.n,x,z,night)}}catch(e){console.warn("detail extras",e)}
+    const tC=performance.now();
     if(bad)console.warn("detail: skipped",bad,"odd footprints");
     det=new T.Group();
     for(const kd in acc){const o=acc[kd],g=new T.BufferGeometry(),tx=winTex(kd,night);g.setAttribute("position",new T.Float32BufferAttribute(o.P,3));g.setAttribute("uv",new T.Float32BufferAttribute(o.U,2));g.setAttribute("normal",new T.Float32BufferAttribute(o.N,3));g.setAttribute("color",new T.Float32BufferAttribute(o.C,3));
@@ -2544,11 +2552,13 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     mk(Em,new T.MeshBasicMaterial({vertexColors:true,side:T.DoubleSide}));
     const sm=mk(Sh,new T.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:.3,depthWrite:false,side:T.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));if(sm)sm.renderOrder=2;
     const gm=mk(Gl,new T.MeshBasicMaterial({vertexColors:true,transparent:true,blending:T.AdditiveBlending,depthWrite:false,side:T.DoubleSide}));if(gm)gm.renderOrder=3;
-    det.visible=false;scene.add(det)}
+    det.visible=false;scene.add(det);
+    let tris=0;det.traverse(o=>{if(o.geometry&&o.geometry.attributes.position)tris+=o.geometry.attributes.position.count/3});
+    dT={feat:Math.round(tB-tA),extras:Math.round(tC-tB),upload:Math.round(performance.now()-tC),tris:Math.round(tris),hits,total:detFeats.length}}
   function sync(){if(!T||!group)return;while(group.children.length)group.remove(group.children[0]);
     for(const m of modelList){const k=MODEL_KIND[m.cls];if(!k||!build[k])continue;const o=build[k](),mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),sc=mc.meterInMercatorCoordinateUnits();
       o.userData={mc,sc};group.add(o)}}
-  return{id:"meridian-models",type:"custom",renderingMode:"3d",sync,setDetail,ready,count,
+  return{id:"meridian-models",type:"custom",renderingMode:"3d",sync,setDetail,ready,count,stats,
     onAdd(mp,gl){map=mp;loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;
       scene=new T.Scene();cam=new T.Camera();group=new T.Group();scene.add(group);hemi=new T.HemisphereLight(0xffffff,0x667788,.85);sun=new T.DirectionalLight(0xffffff,.8);sun.position.set(.4,1,.6);scene.add(hemi,sun);sync();buildDetail();mp.triggerRepaint()}).catch(e=>console.warn("3d models off",e))},
     render(gl,args){if(!T||!group)return;const z=map.getZoom();if(z<15)return;
@@ -2559,16 +2569,18 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
         const m=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(sc,-sc,sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
         cam.projectionMatrix=pm.clone().multiply(m);for(const q of group.children)q.visible=q===o;ren.render(scene,cam)}
       if(det&&detO&&z>=15){for(const q of group.children)q.visible=false;det.visible=true;const mc=detO.mc,dm=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(detO.sc,-detO.sc,detO.sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
-        cam.projectionMatrix=pm.clone().multiply(dm);ren.render(scene,cam);det.visible=false}}}}
+        cam.projectionMatrix=pm.clone().multiply(dm);ren.render(scene,cam);lastTris=ren.info.render.triangles;det.visible=false}}}}
 
 /* big cities (size 4-5) get roof and crown detail on the buildings in view, rebuilt when the map settles */
-let detTimer=0,detVerify=0,detWait=0,detLast=null,origFilter={};
+let detHud=0,detInfo={n:0,R:0},detTimer=0,detVerify=0,detWait=0,detLast=null,origFilter={};
 /* near the camera the plain blocks are swapped for generated buildings: the blocks within a radius of the view centre are hidden with a "distance" filter and redrawn by the model layer */
 function detLayers(){const st=MM.getStyle();return st?st.layers.filter(l=>l.type==="fill-extrusion").map(l=>l.id):[]}
 function detRestore(){for(const id in origFilter){try{MM.setFilter(id,origFilter[id])}catch(e){}}origFilter={};detLast=null;if(modelLayer)modelLayer.setDetail(null,null);try{MM.triggerRepaint()}catch(e){}}
 /* ?dev=1 readout: what the swap last did, for screenshots */
-function detDbg(n,built,R){try{if(localStorage.getItem("meridian-dev")!=="1")return;let d=document.getElementById("detDbg");if(!d){d=document.createElement("div");d.id="detDbg";d.style.cssText="position:fixed;left:6px;bottom:64px;z-index:9;font:11px monospace;color:#9f9;background:#000a;padding:2px 6px;border-radius:4px;pointer-events:none";document.body.appendChild(d)}
-  d.textContent="picked "+n+" meshes "+built+" R"+Math.round(R)+"m z"+MM.getZoom().toFixed(1)}catch(e){}}
+function detDbg(n,built,R){try{if(localStorage.getItem("meridian-dev")!=="1")return;detInfo={n,built,R};if(detHud)return;
+  const d=document.createElement("div");d.id="detDbg";d.style.cssText="position:fixed;left:6px;bottom:64px;z-index:9;font:11px monospace;color:#9f9;background:#000a;padding:2px 6px;border-radius:4px;pointer-events:none;white-space:pre";document.body.appendChild(d);
+  let fr=0,fps=0;MM.on("render",()=>fr++);detHud=setInterval(()=>{fps=fr;fr=0;const st=modelLayer&&modelLayer.stats?modelLayer.stats():{};
+    d.textContent="picked "+detInfo.n+" R"+Math.round(detInfo.R)+"m z"+MM.getZoom().toFixed(1)+"\nbuild "+((st.feat||0)+(st.extras||0)+(st.upload||0))+"ms (bld "+(st.feat||0)+" extras "+(st.extras||0)+" up "+(st.upload||0)+") cached "+(st.hits||0)+"/"+(st.total||0)+"\ntris "+(st.tris||0)+" drawn "+(st.drawn||0)+"  "+fps+" fps"},1000)}catch(e){}}
 function refreshDetail(force){clearTimeout(detTimer);detTimer=setTimeout(()=>{try{if(!modelLayer||!MM||!inStreet)return;if(MM.isMoving()||MM.isZooming())return;/* moveend calls again once the gesture settles */const z=MM.getZoom(),ce0=MM.getCenter();
   if(z<15.4){if(detLast&&z<15)detRestore();return}/* once built, keep the swap down to zoom 15 so zooming near 15.4 does not toggle the buildings */
   const ids=detLayers();if(!ids.length)return;const base=MM.getLayer(ids.find(i=>i!=="meridian-roofs")||ids[0]);if(!base)return;
