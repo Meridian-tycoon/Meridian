@@ -11053,6 +11053,7 @@ function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="g
   <div class="ph-sub">Sound</div>
   ${tog("snd","Sound and music","Clicks, blasts and mood music")}
   ${tog("alarm","Strike siren","Air-raid siren when an enemy fires at a city you hold")}
+  ${s.snd?tog("amb","Street ambience","Traffic, wind, birds and crickets in street view"):""}
   ${s.snd?`<div class="set-row"><span>Volume<small>Effects and music</small></span>${seg("vol",[[.2,"Low"],[.5,"Med"],[.8,"High"],[1,"Max"]],s.vol)}</div>`:""}
   <div class="ph-sub">Notifications</div>
   ${tog("toast","Pop-up messages","Off keeps only wins and warnings")}
@@ -11078,7 +11079,7 @@ function sndVol(){const v=S.set?+S.set.vol:.5;return isFinite(v)?Math.max(0,Math
 function sndInit(){if(SND.ac||!sndOn())return SND.ac;try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;const ac=new AC();SND.ac=ac;
   SND.mst=ac.createGain();SND.mst.gain.value=sndVol()*.6;SND.mst.connect(ac.destination);SND.mus=ac.createGain();SND.mus.gain.value=.0001;SND.mus.connect(SND.mst);
   const b=ac.createBuffer(1,ac.sampleRate,ac.sampleRate),ch=b.getChannelData(0);for(let i=0;i<ch.length;i++)ch[i]=Math.random()*2-1;SND.noise=b;
-  SND.mus.gain.setTargetAtTime(.35,ac.currentTime,3);SND.tmr=setInterval(sndMusic,1000)}catch(e){console.warn("snd",e);SND.ac=null}return SND.ac}
+  SND.mus.gain.setTargetAtTime(.35,ac.currentTime,3);SND.tmr=setInterval(()=>{sndMusic();sndStreet()},1000)}catch(e){console.warn("snd",e);SND.ac=null}return SND.ac}
 function sndApply(){if(!SND.ac){if(sndOn())sndInit();return}const ac=SND.ac,t=ac.currentTime;SND.mst.gain.setTargetAtTime(sndOn()?sndVol()*.6:0,t,.15);
   try{if(!sndOn()||document.hidden)ac.suspend();else ac.resume()}catch(e){}}
 function sndMood(){if(Date.now()<SND.win)return "up";let war=0;try{war=(S.wars||[]).some(w=>w.l>=4)||(typeof bgMilKeys==="function"&&bgMilKeys().length)||Date.now()-SND.lastBoom<9e4}catch(e){}return war?"tense":"calm"}
@@ -11092,6 +11093,20 @@ function sndMusic(){const ac=SND.ac;if(!ac||!sndOn()||ac.state!=="running")retur
   if(m==="up")for(let i=0;i<4;i++)sndTone(root*2*Math.pow(2,ch[i%4]/12),st+i*len/4,.4,.025,"triangle",SND.mus);
   if(m==="tense")sndTone(root*2*Math.pow(2,ch[2]/12),st+len/2,len/3,.02,"sawtooth",SND.mus);
   SND.next=st+len}
+/* street ambience (street view only): a low traffic hum and wind that follow zoom and time of day, birds by day, crickets at night, a far siren now and then. Uses the same context and master volume as the other sounds. */
+var AMB={tr:null,wd:null,next:0,sir:0};
+function ambNodes(ac){if(AMB.tr)return;const mk=(type,f,q)=>{const src=ac.createBufferSource(),fl=ac.createBiquadFilter(),g=ac.createGain();src.buffer=SND.noise;src.loop=true;fl.type=type;fl.frequency.value=f;if(q)fl.Q.value=q;g.gain.value=.0001;src.connect(fl);fl.connect(g);g.connect(SND.mst);src.start();return g};
+  AMB.tr=mk("lowpass",260);AMB.wd=mk("bandpass",520,.6)}
+function sndStreet(){try{const ac=SND.ac;if(!ac||!sndOn()||ac.state!=="running")return;const on=typeof inStreet!=="undefined"&&inStreet&&!(S.set&&S.set.amb===0)&&!document.hidden;
+    if(!on){if(AMB.tr){const t=ac.currentTime;AMB.tr.gain.setTargetAtTime(.0001,t,.6);AMB.wd.gain.setTargetAtTime(.0001,t,.6)}return}
+    ambNodes(ac);const t=ac.currentTime,z=MM.getZoom(),near=Math.max(0,Math.min(1,(z-14)/4)),night=dark3d();
+    AMB.tr.gain.setTargetAtTime((night?.07:.12)*near+.01,t,.8);AMB.wd.gain.setTargetAtTime(.025+.05*(1-near),t,.8);
+    if(t>=AMB.next){AMB.next=t+(night?1.2:3)+Math.random()*(night?2:6);
+      if(night){const f=4200+Math.random()*500;for(let i=0;i<3;i++)sndTone(f,t+i*.09,.06,.012,"sine")}
+      else if(near>.3){const f=2200+Math.random()*1600;sndTone(f,t,.09,.02,"sine");sndTone(f*1.25,t+.11,.09,.02,"sine");if(Math.random()<.5)sndTone(f*.9,t+.22,.12,.018,"sine")}}
+    if(t>=AMB.sir){AMB.sir=t+150+Math.random()*180;const o=ac.createOscillator(),g=ac.createGain();o.type="sine";g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.02,t+1.5);g.gain.exponentialRampToValueAtTime(.0001,t+5);
+      for(let i=0;i<5;i++){o.frequency.setValueAtTime(640,t+i);o.frequency.linearRampToValueAtTime(880,t+i+.5)}o.connect(g);g.connect(SND.mst);o.start(t);o.stop(t+5.1)}
+  }catch(e){}}
 function sfx(kind,size){if(!sndOn())return;const ac=sndInit();if(!ac||ac.state!=="running")return;const t=ac.currentTime,now=Date.now();
   if(kind==="click"){if(now-SND.lastClick<60)return;SND.lastClick=now;sndTone(900+Math.random()*250,t,.05,.05,"triangle");return}
   if(kind==="win"){[0,4,7,12].forEach((s,i)=>sndTone(523*Math.pow(2,s/12),t+i*.08,.35,.07,"triangle"));return}
