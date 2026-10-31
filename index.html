@@ -4913,7 +4913,7 @@ function mktStep(){const m=MK(),now=Date.now();const war=typeof tension==="funct
     if(shock&&Math.abs(shock)>0)mktNews(a,shock)}
   if(m.xb){const b=m.xb;if(b.lf&&b.lf!==1&&!(now-m.live<5*60000&&m.liveSet&&m.liveSet.XRP))m.px.XRP=Math.max(AK.XRP.p0*.05,m.px.XRP/b.lf);delete m.xb}   // XRP boom was removed: undo any boom price saved in old saves
   if(sh&&m.xb2&&!(now-m.live<5*60000&&m.liveSet&&m.liveSet.XRP))m.xb2.lf=xrpBoomF(m,now);   // the master's XRP price already carries the boom
-  wevMk(m,now,sh);xrpBoomStep(m,now);try{btcBoomStep(m,now,sh)}catch(e){}try{btcCrashStep(m,now,sh)}catch(e){}try{ethBoomStep(m,now,sh)}catch(e){}try{lmtBoomStep(m,now,sh)}catch(e){}try{mkwPublish(m,now)}catch(e){}try{mkhPublish(m)}catch(e){}try{ipoTick(now)}catch(e){console.warn("ipoTick",e)}
+  wevMk(m,now,sh);xrpBoomStep(m,now);try{btcBoomStep(m,now,sh)}catch(e){}try{btcCrashStep(m,now,sh)}catch(e){}try{ethBoomStep(m,now,sh)}catch(e){}try{lmtBoomStep(m,now,sh)}catch(e){}try{mktCrashStep(m,now,sh)}catch(e){}try{mkwPublish(m,now)}catch(e){}try{mkhPublish(m)}catch(e){}try{ipoTick(now)}catch(e){console.warn("ipoTick",e)}
   for(const a of ASSETS){const h=m.h[a.s];h.push(m.px[a.s]);if(h.length>90)h.shift()}try{mkdTick(m)}catch(e){}
   const d=Math.floor(now/(24*DAYMS));if(m.day!==d){if(m.day!=null)mkdClose(m);m.day=d;try{mkhPublish(m,1)}catch(e){}for(const a of ASSETS)m.open[a.s]=m.px[a.s]}}
 /* XRP boom: a 5-min rally (up to 1000x: ~100 s up, ~55 s hold, ~140 s back down) that starts whenever a government uses a WMD (xrpBoomGo, called from wmdStrike and wpnFire). A running boom is not restarted. Saves from the old always-on boom are eased back to the normal price by xrpBoomStep. */
@@ -4945,6 +4945,19 @@ function lmtBoomStep(m,now,sh){const dev=typeof ON!=="undefined"&&ON.user&&devUi
   if(dev&&!m.lbDone1){m.lbDone1=1;m.lb={t0:now,lf:1};S.log.unshift("Markets: Lockheed Martin explodes 100x as defense traders pile in");S.log=S.log.slice(0,3)}
   const t0=lmtBoomT0(m);if(!t0||!m.px.LMT)return;if(!m.lb||m.lb.t0!==t0)m.lb={t0,lf:1};const b=m.lb,f=lmtBoomF(t0,now);
   if(!sh)m.px.LMT=Math.max(1,m.px.LMT*f/(b.lf||1));b.lf=f}
+/* one-off market-wide crash (Mark, 2026-10-31): every stock and crypto drops ~86% (like the BTC crash), holds, then recovers over 10 min in total
+   (~1 min down, ~4 min hold, ~5 min back up). Fired once by the master (dev) save the next time it loads this build (flag mcDone1), shared through
+   world/mkt px._mktc. Any running BTC/ETH/LMT/XRP boom or BTC crash is cancelled first so the crash starts clean. */
+const MKTC={dur:10*60000,floor:0.14};
+function mktCrashF(t0,now){if(!t0)return 1;const t=(now-t0)/MKTC.dur;if(t<=0||t>=1)return 1;const ease=x=>x*x*(3-2*x);return 1-((1-MKTC.floor)*(t<.1?ease(t*10):t<.5?1:ease((1-t)/.5)))}
+function mktCrashT0(m){if(!WRM&&MKW&&MKW.mktc)return MKW.mktc;return m.mc?m.mc.t0:0}
+function mktCrashCancel(m,now){const undo=(k,sym,dur)=>{const b=m[k];if(b&&b.t0&&now-b.t0<dur&&b.lf&&b.lf!==1&&m.px[sym])m.px[sym]=Math.max(1,m.px[sym]/b.lf);if(b)m[k]={t0:1,lf:1}};
+  undo("bb","BTC",BTCB.dur);undo("bc","BTC",BTCC.dur);undo("eb","ETH",ETHB.dur);undo("lb","LMT",LMTB.dur);m.bbDone3=m.bcDone2=m.ebDone1=m.lbDone1=1;
+  const x=m.xb2;if(x&&!x.end){if(x.lf&&x.lf!==1)m.px.XRP=Math.max(AK.XRP.p0*.05,m.px.XRP/x.lf);x.lf=1;x.end=1}}
+function mktCrashStep(m,now,sh){const dev=typeof ON!=="undefined"&&ON.user&&devUid(ON.user.uid);
+  if(dev&&!m.mcDone1){m.mcDone1=1;mktCrashCancel(m,now);m.mc={t0:now,lf:1};S.log.unshift("Markets: global crash! Stocks and crypto collapse as panic selling sweeps every exchange");S.log=S.log.slice(0,3)}
+  const t0=mktCrashT0(m);if(!t0)return;if(!m.mc||m.mc.t0!==t0)m.mc={t0,lf:1};const b=m.mc,f=mktCrashF(t0,now);
+  if(!sh)for(const a of ASSETS)if(m.px[a.s])m.px[a.s]=Math.max(.01,m.px[a.s]*f/(b.lf||1));b.lf=f}
 function xrpBoomF(m,now){const b=m.xb2;if(!b||!b.t0)return 1;const t=(now-b.t0)/XRPB.dur;if(t<=0||t>=1)return 1;
   const ease=x=>x*x*(3-2*x);return 1+XRPB.peak*(t<1/3?ease(t*3):t<.53?1:ease((1-t)/.47))}
 function xrpBoomGo(by){const m=MK(),now=Date.now(),b=m.xb2;if(b&&!b.end&&now-b.t0<XRPB.dur)return;m.xb2={t0:now,lf:1};try{mkwBoom(now)}catch(e){}S.log.unshift(`Markets: XRP spikes as ${by||"a government"} uses weapons of mass destruction`);S.log=S.log.slice(0,3)}
@@ -4959,7 +4972,7 @@ const mkwFresh=now=>!!MKW&&!WRM&&now-MKW.at<3*60000;
 function mkwAdopt(m,now){const t=MKW.xb;if(!t||now-t>=XRPB.dur||(m.xb2&&Math.abs(m.xb2.t0-t)<60000))return;m.xb2={t0:t,lf:xrpBoomF({xb2:{t0:t}},now)};S.log.unshift("Markets: XRP spikes as a government uses weapons of mass destruction");S.log=S.log.slice(0,3)}
 function mkwTs(t){return window.firebase.firestore.Timestamp.fromMillis(t)}
 function mkwPublish(m,now){if(typeof ON==="undefined"||!ON.ready||!ON.user||!devUid(ON.user.uid))return;const b=m.xb2,on=b&&!b.end&&now-b.t0<XRPB.dur;
-  if(now-(ON.mkPub||0)<(on?15000:30000))return;ON.mkPub=now;const px={};for(const a of ASSETS)px[a.s.replace(".","_")]=+m.px[a.s].toPrecision(8);const pc=S.pand&&S.pand.cur;if(pc&&pc.k)px._pand={k:String(pc.k),left:Math.max(0,pc.left|0)};if(m.bb&&now-m.bb.t0<BTCB.dur)px._btcb=m.bb.t0;if(m.bc&&now-m.bc.t0<BTCC.dur)px._btcc=m.bc.t0;if(m.eb&&now-m.eb.t0<ETHB.dur)px._ethb=m.eb.t0;if(m.lb&&now-m.lb.t0<LMTB.dur)px._lmtb=m.lb.t0;
+  if(now-(ON.mkPub||0)<(on?15000:30000))return;ON.mkPub=now;const px={};for(const a of ASSETS)px[a.s.replace(".","_")]=+m.px[a.s].toPrecision(8);const pc=S.pand&&S.pand.cur;if(pc&&pc.k)px._pand={k:String(pc.k),left:Math.max(0,pc.left|0)};if(m.bb&&now-m.bb.t0<BTCB.dur)px._btcb=m.bb.t0;if(m.bc&&now-m.bc.t0<BTCC.dur)px._btcc=m.bc.t0;if(m.eb&&now-m.eb.t0<ETHB.dur)px._ethb=m.eb.t0;if(m.lb&&now-m.lb.t0<LMTB.dur)px._lmtb=m.lb.t0;if(m.mc&&now-m.mc.t0<MKTC.dur)px._mktc=m.mc.t0;
   ON.db.collection("world").doc("mkt").set({px,xb:on?mkwTs(b.t0):null,updated:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't publish the market: "+(e&&e.code||e)})}
 /* shared daily candles: the master world publishes world/mkh {k:{SYM:[o,h,l,c,...]}, day, updated} once per session and at each new day; other saves use it so every player sees the same history */
 function mkhPublish(m,force){if(typeof ON==="undefined"||!ON.ready||!ON.user||!devUid(ON.user.uid))return;const day=m.day|0;if(!force&&ON.mkhDay===day)return;ON.mkhDay=day;const dk=mkdHist(m),k={};
@@ -4971,11 +4984,11 @@ function mkhListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubMH)return;O
 function mkwBoom(now){if(typeof ON==="undefined"||!ON.ready||!ON.user||devUid(ON.user.uid))return;ON.db.collection("world").doc("mkt").update({xb:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{})}
 function mkwListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubMK)return;ON.unsubMK=ON.db.collection("world").doc("mkt").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!v.px)return;
   const px={};for(const a of ASSETS){const x=+v.px[a.s.replace(".","_")];if(x>0&&isFinite(x))px[a.s]=x}const ms=x=>x&&x.toMillis?x.toMillis():0;
-  const pd=v.px._pand;MKW={px,btcb:+v.px._btcb||0,btcc:+v.px._btcc||0,ethb:+v.px._ethb||0,lmtb:+v.px._lmtb||0,xb:ms(v.xb),at:ms(v.updated)||Date.now(),pand:pd&&typeof pd==="object"&&pd.k?{k:String(pd.k),left:+pd.left||0}:null};if(!WRM)try{pandSync()}catch(e){}if(WRM){const m=MK(),now=Date.now();if(MKW.xb&&now-MKW.xb<XRPB.dur&&!(m.xb2&&!m.xb2.end&&now-m.xb2.t0<XRPB.dur)){m.xb2={t0:MKW.xb,lf:1};S.log.unshift("Markets: XRP spikes as a government uses weapons of mass destruction");S.log=S.log.slice(0,3)}}},()=>{})}catch(e){}}
+  const pd=v.px._pand;MKW={px,btcb:+v.px._btcb||0,btcc:+v.px._btcc||0,ethb:+v.px._ethb||0,lmtb:+v.px._lmtb||0,mktc:+v.px._mktc||0,xb:ms(v.xb),at:ms(v.updated)||Date.now(),pand:pd&&typeof pd==="object"&&pd.k?{k:String(pd.k),left:+pd.left||0}:null};if(!WRM)try{pandSync()}catch(e){}if(WRM){const m=MK(),now=Date.now();if(MKW.xb&&now-MKW.xb<XRPB.dur&&!(m.xb2&&!m.xb2.end&&now-m.xb2.t0<XRPB.dur)){m.xb2={t0:MKW.xb,lf:1};S.log.unshift("Markets: XRP spikes as a government uses weapons of mass destruction");S.log=S.log.slice(0,3)}}},()=>{})}catch(e){}}
 /* real crypto prices from CoinGecko when the network allows it */
 async function mktLive(){try{const ids=ASSETS.filter(a=>a.t==="c").map(a=>a.sec).join(",");
   const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);if(!r.ok)return;const j=await r.json(),m=MK();m.liveSet={};
-  for(const a of ASSETS)if(a.t==="c"&&j[a.sec]&&j[a.sec].usd){m.px[a.s]=j[a.sec].usd*(a.s==="XRP"?xrpBoomF(m,Date.now()):1);if(a.s==="BTC"&&m.bb)m.bb.lf=btcBoomF(m.bb.t0,Date.now()),m.px.BTC*=m.bb.lf;if(a.s==="ETH"&&m.eb)m.eb.lf=ethBoomF(m.eb.t0,Date.now()),m.px.ETH*=m.eb.lf;m.liveSet[a.s]=1}
+  for(const a of ASSETS)if(a.t==="c"&&j[a.sec]&&j[a.sec].usd){m.px[a.s]=j[a.sec].usd*(a.s==="XRP"?xrpBoomF(m,Date.now()):1);if(a.s==="BTC"&&m.bb)m.bb.lf=btcBoomF(m.bb.t0,Date.now()),m.px.BTC*=m.bb.lf;if(a.s==="ETH"&&m.eb)m.eb.lf=ethBoomF(m.eb.t0,Date.now()),m.px.ETH*=m.eb.lf;if(m.mc&&m.mc.lf)m.px[a.s]*=m.mc.lf;m.liveSet[a.s]=1}
   m.live=Date.now()}catch(e){}}
 /* one-off Bitcoin crash (Mark, 2026-10-31): a single 5-min plunge to ~$14k, fired once by the master (dev) save on first load of this build.
    Shared via world/mkt px._btcc. After 5 min BTC returns to normal. Never repeats. */
