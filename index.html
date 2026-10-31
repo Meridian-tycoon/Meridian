@@ -824,11 +824,22 @@ function bldZoomApply(){try{const st=MM.getStyle();if(!st)return;const z=bldZ();
 function streetSky(){try{if(!MM||!MM.setSky)return;if(!inStreet){MM.setSky({"atmosphere-blend":0});return}
   const dk=dark3d();MM.setSky(dk?{"sky-color":"#070c1c","horizon-color":"#3a3358","fog-color":"#1a2038","fog-ground-blend":.55,"horizon-fog-blend":.7,"sky-horizon-blend":.65,"atmosphere-blend":1}
     :{"sky-color":"#6f9fd6","horizon-color":"#dbe7f2","fog-color":"#d3dde8","fog-ground-blend":.5,"horizon-fog-blend":.6,"sky-horizon-blend":.55,"atmosphere-blend":1})}catch(e){}}
+/* night streets: a soft warm glow along the roads, drawn from the map's own road data just under the road lines so the lines stay crisp */
+function roadGlow(dk){try{const st=MM.getStyle();if(!st)return;const has=!!MM.getLayer("meridian-road-glow");
+  if(!dk){if(has)MM.removeLayer("meridian-road-glow");return}if(has)return;
+  const rd=st.layers.find(l=>l.type==="line"&&l.source&&(l["source-layer"]==="transportation")&&!/casing|outline|rail|path|pedestrian|aeroway|ferry/i.test(l.id));if(!rd)return;
+  const w=(a,b,c)=>["match",["get","class"],["motorway","trunk"],a,["primary","secondary"],b,c];
+  MM.addLayer({id:"meridian-road-glow",type:"line",source:rd.source,"source-layer":"transportation",minzoom:14,
+    filter:["match",["get","class"],["motorway","trunk","primary","secondary","tertiary","minor","service"],true,false],
+    layout:{"line-cap":"round","line-join":"round"},
+    paint:{"line-color":"#ffb347","line-blur":["interpolate",["linear"],["zoom"],14,3,19,14],
+      "line-width":["interpolate",["exponential",2],["zoom"],14,w(5,4,2.5),19,w(150,110,70)],
+      "line-opacity":["interpolate",["linear"],["zoom"],14,0,15.5,.4,19,.3]}},rd.id)}catch(e){console.warn("road glow",e)}}
 function ensure3dBuildings(){const st=MM.getStyle();if(!st)return;const op=bldOp(),dk=dark3d();
   for(const l of st.layers)if(l.type==="fill"&&/building/i.test(l.id))try{MM.setPaintProperty(l.id,"fill-color",dk?"#141a21":"#6b7480")}catch(e){}
   try{bldImages()}catch(e){console.warn("bld img",e)}
   try{MM.setLight({anchor:"map",position:[1.4,210,40],color:"#ffffff",intensity:dk?.25:.45})}catch(e){}
-  streetSky();
+  streetSky();roadGlow(dk);
   const ex=st.layers.filter(l=>l.type==="fill-extrusion"&&l.id!=="meridian-roofs");let base=ex[0];
   if(!ex.length){const src=Object.keys(st.sources).find(k=>st.sources[k].type==="vector");if(!src)return;const lab=st.layers.find(l=>l.type==="symbol");
     MM.addLayer({id:"meridian-3d-buildings",type:"fill-extrusion",source:src,"source-layer":"building",minzoom:bldZ(),
