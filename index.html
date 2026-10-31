@@ -725,6 +725,7 @@ const ML_STYLES={light:window.MERIDIAN_3D_STYLE||"https://tiles.openfreemap.org/
 const dark3d=()=>{try{const v=localStorage.getItem("meridian-3d-dark");if(v!=null)return v==="1"}catch(e){}const t=document.documentElement.dataset.theme;return t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches)};
 const ML_STYLE=()=>ML_STYLES[dark3d()?"dark":"light"];
 /* camera feel, measured from Capital Rift: each wheel notch scales the distance by 1.6, straight down above ~3.5 km, easing to 45° near the street */
+const ZROT=10;                                     // turning the camera (and the compass) unlock from here, higher up than street level
 const ZST=12;                                      // street level: property pins, customers, rain
 const MAXPITCH=45,PITCH0=14.6,PITCH1=17.2;          // zoom 14.6 ≈ 3.5 km up, 17.2 ≈ 600 m
 const pitchFor=z=>{const u=Math.max(0,Math.min(1,(z-PITCH0)/(PITCH1-PITCH0)));return MAXPITCH*u*u*(3-2*u)};
@@ -749,7 +750,7 @@ const compass=new maplibregl.NavigationControl({showZoom:false,visualizePitch:tr
 /* turning is unlocked on touch screens and a compass appears once you are in a city; tap the compass to face north again */
 function freeCam(on){if(on===_free)return;_free=on;if(on){MM.touchZoomRotate.enableRotation();MM.dragRotate.enable();MM.keyboard.enableRotation();MM.addControl(compass,"bottom-right")}
   else{MM.touchZoomRotate.disableRotation();MM.dragRotate.disable();MM.keyboard.disableRotation();try{MM.removeControl(compass)}catch(e){}if(Math.abs(MM.getBearing())>.5&&!MM.isMoving())MM.easeTo({bearing:0,duration:reduce?0:600})}}
-MM.on("moveend",()=>freeCam(MM.getZoom()>=ZST-.5));
+MM.on("moveend",()=>freeCam(MM.getZoom()>=ZROT));
 window.__MM=MM;
 /* a built-in fallback style (land outlines bundled with the game) so the globe shows at once and still works if the tile server can't be reached */
 function localStyle(){const cs=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim()||"#888";
@@ -2470,7 +2471,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       for(const [x,z] of r){const pu=x*u[0]+z*u[1],pv=x*v[0]+z*v[1];u0=Math.min(u0,pu);u1=Math.max(u1,pu);v0=Math.min(v0,pv);v1=Math.max(v1,pv)}
       const W=u1-u0,D=v1-v0,rect=ar>.78*W*D,[cx,cz]=cen(r),hs=((f.ring[0][0]*7919+f.ring[0][1]*104729)%1+1)%1,
         tint=col(new T.Color().setHSL(.08+hs*.5,.12+hs*.15,.82+hs*.12)),by=f.base||0,h=f.h,tall=h-by,
-        kd=tall>55?"tower":tall>20?"mid":"home",roof=col(night?0x2a323c:0xc4cad2),roof2=col(night?0x39434f:0xa7afb8),
+        kd=tall>55?"tower":tall>20?"mid":"home",roof=col(night?0x3a4553:0xc4cad2),roof2=col(night?0x4f5b6a:0xa7afb8),
         h2=(hs*977)%1,st=kd==="tower"?(h2<.7?"glass":"concrete"):kd==="mid"?(h2<.3?"brick":h2<.55?"concrete":h2<.8?"stone":"apt"):(h2<.5?"brick":h2<.8?"home":"stone"),
         tn=st==="home"||st==="apt"?tint:col(new T.Color().setHSL(.03+hs*.06,.1,.88+hs*.1)),
         shop=(kd!=="home")&&tall>12&&hs>.35,band=(rr,y0)=>{if(shop){wall("shop",rr,y0,y0+4.2,col(0xffffff),sg);awning(rr,y0+3.6,sg,awnPal[Math.floor(h2*awnPal.length)]);return y0+4.2}return y0};
@@ -2483,7 +2484,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
         else{cap(r,h+.02,roof);box(cx,cz,Math.min(W*.18,4),Math.min(D*.18,4),h,2.4,roof2)}}
       /* rooftops: parapet rim, AC units, a water tank on some mid-rises, on flat roofs only */
       if(!(kd==="home"&&rect&&W>5&&D>5&&W<90&&D<90)&&ar>45){const rr=kd==="mid"&&Math.min(W,D)>9?scl(r,.8):r;
-        if(kd==="tower"&&Math.min(W,D)>9){}else{const yT=h+.02,pc=roof2;for(let i=0;i<rr.length;i++){const a=rr[i],b=rr[(i+1)%rr.length],ln=Math.hypot(b[0]-a[0],b[1]-a[1]);if(ln<.5)continue;const nx=sg*(b[1]-a[1])/ln,nz=-sg*(b[0]-a[0])/ln;quad(R,[a[0],yT,a[1]],[b[0],yT,b[1]],[b[0],yT+.9,b[1]],[a[0],yT+.9,a[1]],[nx,0,nz],pc)}
+        if(kd==="tower"&&Math.min(W,D)>9){}else{const yT=h+.02,pc=night?col(0x56616f):roof2;for(let i=0;i<rr.length;i++){const a=rr[i],b=rr[(i+1)%rr.length],ln=Math.hypot(b[0]-a[0],b[1]-a[1]);if(ln<.5)continue;const nx=sg*(b[1]-a[1])/ln,nz=-sg*(b[0]-a[0])/ln;quad(R,[a[0],yT,a[1]],[b[0],yT,b[1]],[b[0],yT+.9,b[1]],[a[0],yT+.9,a[1]],[nx,0,nz],pc)}
           const cu=(u0+u1)/2,cv=(v0+v1)/2,nu=Math.min(5,Math.floor(ar/90)+1);for(let q=0;q<nu;q++){const a=(rn(hs*91+q,hs*13)-.5)*.6*W,b=(rn(hs*57,q+hs*7)-.5)*.6*D,px=(cu+a)*u[0]+(cv+b)*v[0],pz=(cu+a)*u[1]+(cv+b)*v[1];if(!inPoly(px,pz,rr))continue;
             const sz=1.6+rn(q,hs)*1.8;obox(R,px,pz,u[0],u[1],sz,sz*.8,yT,1.1+rn(hs,q)*.9,col(q%2?0xaab0b6:0x8b939b));if(q===0)cylv(R,px,pz,yT+1.1,.4,.6,.6,col(0x555d66),8)}
           if(kd!=="home"&&hs>.55&&ar>110){const wx=cx+u[0]*W*.18,wz=cz+u[1]*W*.18;if(inPoly(wx,wz,rr)){for(const [dx,dz] of [[-1,-1],[1,-1],[1,1],[-1,1]])bx(R,wx+dx*1.1,wz+dz*1.1,.25,.25,yT,2.6,col(0x4a3a30));cylv(R,wx,wz,yT+2.6,3.2,1.9,1.9,col(night?0x4a3d32:0x8a6a4c),10);cylv(R,wx,wz,yT+5.8,1.4,1.9,.1,col(night?0x3a3a3a:0x5a5a5e),10)}}}}
@@ -2499,11 +2500,11 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
         for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],ln=Math.hypot(b[0]-a[0],b[1]-a[1]);if(ln<9)continue;const ux=(b[0]-a[0])/ln,uz=(b[1]-a[1])/ln,nx=sg*uz,nz=-sg*ux,at=t=>[a[0]+ux*t,a[1]+uz*t];
           if(shop&&i===0&&ln>8&&nt||shop&&i===0&&ln>8&&hs>.6){const t=Math.min(ln-2,3+hs*5),p=at(t),y0=by+2.6,c=col(sgn[Math.floor(hs*977%1*sgn.length)]);quad(Em,[p[0],y0,p[1]],[p[0]+nx*1.4,y0,p[1]+nz*1.4],[p[0]+nx*1.4,y0+1.2,p[1]+nz*1.4],[p[0],y0+1.2,p[1]],[ux,0,uz],c)}
           if(by<2)for(let t=4;t<ln-3;t+=11){const q=at(t),k=rn(q[0],q[1]);
-            const tp=[q[0]+nx*2.6,q[1]+nz*2.6];if(k<.38&&trees<520&&!blocked(tp[0],tp[1])){trees++;const gr=.28+k,tc=col(new T.Color().setHSL(.27+k*.1,.4,nt?.12:.22+k*.12));bx(R,tp[0],tp[1],.3,.3,0,2,col(0x4a3a2c));cylv(R,tp[0],tp[1],1.6,3.4,1.9+gr,.3,tc,7)}
+            const tp=[q[0]+nx*2.6,q[1]+nz*2.6];if(k<.38&&trees<520&&!blocked(tp[0],tp[1])){trees++;const gr=.28+k,tc=col(new T.Color().setHSL(.27+k*.1,.4,nt?.2+k*.06:.22+k*.12));bx(R,tp[0],tp[1],.3,.3,0,2,col(0x4a3a2c));cylv(R,tp[0],tp[1],1.6,3.4,1.9+gr,.3,tc,7)}
             else if(k>.72&&cars<260){const cp=[q[0]+nx*5.4,q[1]+nz*5.4];if(!blocked(cp[0],cp[1])){cars++;const cc=col(carC[Math.floor(k*977%1*carC.length)]);obox(R,cp[0],cp[1],ux,uz,4.3,1.8,.25,.75,cc);obox(R,cp[0]-ux*.2,cp[1]-uz*.2,ux,uz,2.3,1.6,1,.6,col(nt?0x1a2430:0x3a4b5c));if(nt){obox(Em,cp[0]+ux*2.1,cp[1]+uz*2.1,ux,uz,.2,1.3,.55,.25,col(0xfff2c0));obox(Em,cp[0]-ux*2.1,cp[1]-uz*2.1,ux,uz,.2,1.3,.55,.25,col(0xff3a2a))}}}
             else if(k>.45&&k<.52&&ppl<160&&!nt){const pp=[q[0]+nx*1.8,q[1]+nz*1.8];if(!blocked(pp[0],pp[1])){ppl++;const kk=rn(k,q[0]);cylv(R,pp[0],pp[1],0,1.1,.22,.2,col(shirt[Math.floor(kk*shirt.length)]),6);cylv(R,pp[0],pp[1],1.1,.6,.2,.16,col(0xe2b998),6)}}}
           if(ln>14&&lamps<420)for(let t=ln/2;t<ln-2&&t<ln/2+1;t+=22){const q=at(t),lp=[q[0]+nx*2.2,q[1]+nz*2.2];if(blocked(lp[0],lp[1]))continue;lamps++;bx(R,lp[0],lp[1],.18,.18,0,6,col(0x4a4f56));bx(Em,lp[0],lp[1],.7,.7,6,.35,col(nt?0xffe7a8:0x6a6f76));
-            if(nt)for(let g=0;g<10;g++){const a0=g/10*Math.PI*2,a1=(g+1)/10*Math.PI*2;for(const [x,z,f] of [[0,0,1],[Math.cos(a0)*8,Math.sin(a0)*8,0],[Math.cos(a1)*8,Math.sin(a1)*8,0]]){Gl.P.push(lp[0]+x,.2,lp[1]+z);Gl.N.push(0,1,0);Gl.C.push(.42*f,.32*f,.14*f)}}}}}
+            if(nt)for(let g=0;g<10;g++){const a0=g/10*Math.PI*2,a1=(g+1)/10*Math.PI*2;for(const [x,z,f] of [[0,0,1],[Math.cos(a0)*6.5,Math.sin(a0)*6.5,0],[Math.cos(a1)*6.5,Math.sin(a1)*6.5,0]]){Gl.P.push(lp[0]+x,.2,lp[1]+z);Gl.N.push(0,1,0);Gl.C.push(.26*f,.2*f,.09*f)}}}}}
       for(const lm of LANDMARKS){const m=maplibregl.MercatorCoordinate.fromLngLat([lm.lon,lm.lat],0),x=(m.x-mc0.x)*k,z=(m.y-mc0.y)*k;if(Math.hypot(x,z)<1500)landmark(lm.n,x,z,night)}}
     if(bad)console.warn("detail: skipped",bad,"odd footprints");
     det=new T.Group();
