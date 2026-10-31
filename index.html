@@ -1256,8 +1256,8 @@ const stored=c=>{const v=S.inv[c.id]||{};let t=0;for(const g in v)if(v[g]>0)t+=v
 const storedU=c=>{const v=S.inv[c.id]||{};let t=0;for(const g in v)t+=v[g];return t};
 const whRoom=c=>Math.max(0,whCap(c)-stored(c));                    // free tonnes, never negative
 const hasWh=c=>S.wh[c.id]!=null;
-const whSell=c=>{let v=whCost(c);for(let l=0;l<(S.wh[c.id]||0);l++)v+=Math.round(4000*PRICE[c.size]*Math.pow(2,l));return Math.round(v*.5)};
-function ensureWh(c){if(!hasWh(c)){S.wh[c.id]=0;S.inv[c.id]=S.inv[c.id]||{}}}
+const whSell=c=>{let v=S.whFree&&S.whFree[c.id]?0:whCost(c);for(let l=0;l<(S.wh[c.id]||0);l++)v+=Math.round(4000*PRICE[c.size]*Math.pow(2,l));return Math.round(v*.5)};
+function ensureWh(c,paid){if(!hasWh(c)){S.wh[c.id]=0;S.inv[c.id]=S.inv[c.id]||{};if(!paid)(S.whFree=S.whFree||{})[c.id]=1}} // whFree: opened for free (land, deliveries), so selling refunds no base price
 function cityF(c,g){if(G[g][2]==="gov")return cityF0(c,g);const f=cityF0(c,g)*wevGoodF(g);return f*pmF(c,g,f)} // world events (wevGoodF) and player sales (pmF) move goods prices
 /* Player sales set the price: when a player listing sells, the city's market price for that good matches the sale price
    and stays there until the next player listing sells. Capped at 0.5x-2x of the normal price. */
@@ -1344,9 +1344,9 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
     h+=`<div class="sec">Your land here</div><div class="list">`;
     if(!mySites.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">No land yet. ${c.size<=2?"Land is cheap here, good for farms and mines.":"Land is pricey in big cities. Factories fit here; farms pay better in small towns."}</p>`;
     for(const s of mySites){const o=siteOp(s),ha=LAND[s.size][1];
-      if(o){const est=siteEst(s),st=s.k==null?"Starting":s.why?s.why+(s.k>0?` · ${Math.round(s.k*100)}%`:""):"Running";
+      if(o){const est=siteEst(s),cfx=typeof crewF==="function"?crewF(s):1,st=s.k==null?"Starting":s.why?s.why+(s.k>0?` · ${Math.round(s.k*100)}%`:""):cfx>0&&cfx<1?`Running · ${Math.round(cfx*100)}% without a crew`:"Running";
         h+=`<div class="row own"><div class="n">${o.n} <span class="tag" style="border:1px solid var(--line)">${(ZONE[zoneOf(s)]||{n:"Land"}).n} · ${ha} ha${s.lease?" · rented":""}</span>${s.reg?"":`<span class="tag bust">Unregistered</span>`}</div>
-        <div class="d"><b>${(EQ[o.cat]||[])[slv(s)-1]||"Mk "+slv(s)}</b>${slv(s)>1?` (+${Math.round((1+.3*(slv(s)-1)-1)*100)}% output)`:''} · ${s.pw?'<span style="color:var(--good)">⚡ powered +25%</span> · ':(o.cat==="Factory"&&!o.rp&&!o.out.power?'<span style="color:var(--muted)">no power</span> · ':'')}${opLabel(o).replace(" per ha/hr","")} ×${effHa(s)}/hr · <b style="color:${s.why?"var(--bad)":"var(--good)"}">${st}</b> · ${o.rp&&!Object.keys(o.out||{}).length?`researches ≈<b>${(Math.round(RPX*o.rp*effHa(s)*thr(s)*ievM(s,o)*(typeof crewF==="function"?crewF(s):1)*(s.k==null?1:s.k)*10)/10).toLocaleString()} RP</b>/day for ≈<b>${fmt(indUpkeepOf(s))}</b>/day upkeep (research site: no cash income)`:`worth ≈<b>${fmt(est)}</b>/hr at local prices`}</div>
+        <div class="d"><b>${(EQ[o.cat]||[])[slv(s)-1]||"Mk "+slv(s)}</b>${slv(s)>1?` (+${Math.round((1+.3*(slv(s)-1)-1)*100)}% output)`:''} · ${s.pw?'<span style="color:var(--good)">⚡ powered +25%</span> · ':(o.cat==="Factory"&&!o.rp&&!o.out.power?'<span style="color:var(--muted)">no power</span> · ':'')}${opLabel(o)} × ${effHa(s)} ha · <b style="color:${s.why?"var(--bad)":"var(--good)"}">${st}</b> · ${o.rp&&!Object.keys(o.out||{}).length?`researches ≈<b>${(Math.round(RPX*o.rp*effHa(s)*thr(s)*ievM(s,o)*(typeof crewF==="function"?crewF(s):1)*(s.k==null?1:s.k)*10)/10).toLocaleString()} RP</b>/day for ≈<b>${fmt(indUpkeepOf(s))}</b>/day upkeep (research site: no cash income)`:`worth ≈<b>${fmt(est)}</b>/hr at local prices`}</div>
         <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy${s.crew?" up":""}" data-crew="${s.id}">${s.crew?"Let crew go":`Hire crew (${siteStaff(s)})`}</button><button class="buy up" data-pause="${s.id}">${s.paused?"Resume":"Pause"}</button>${!s.reg&&LAND[s.size][1]>2?`<span class="tag bust">Capped at 2 ha</span>`:""}${slv(s)<4&&s.reg?`<button class="buy" data-act="slv" data-id="${s.id}" ${S.cash<supCost(s)?"disabled":""}>${(EQ[o.cat]||[])[slv(s)]||"Mk "+(slv(s)+1)} ${fmt(supCost(s))}</button>`:''}${s.lease?`<button class="buy up" data-act="ownland" data-id="${s.id}">Buy land ${fmt(plotPrice(c,zoneOf(s)||"farm",s.size))}</button>`:""}<button class="buy up" data-act="clear" data-id="${s.id}">Demolish</button></span></div>`}
       else{const z=zoneOf(s),opts=OPS.filter(o=>!o.gone&&(!o.dep||d.includes(o.dep))&&(!z||ZONE[z].cats.includes(o.cat))&&(!o.req||hasTech(o.req)));
         h+=`<div class="row own"><div class="n">${z?ZONE[z].n:LAND[s.size][0]} · ${ha} ha <span class="tag" style="border:1px solid var(--line)">${s.lease?"Rented · ":""}Empty</span></div>
@@ -1424,12 +1424,12 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="leaseland"){const k=b.dataset.k,z=b.dataset.z;S.sites.push({id:S.nid++,city:c.id,size:k,type:z,op:null,lease:1});ensureWh(c);toast(`Renting ${LAND[k][1]} ha of ${ZONE[z].n.toLowerCase()} in ${c.name}`)}
   else if(a==="ownland"){const s=S.sites.find(x=>x.id===id),p=plotPrice(c,zoneOf(s)||"farm",s.size);if(S.cash<p){toast(`Need ${fmt(p)}`);return}S.cash-=p;delete s.lease;toast("Land bought. No more rent.")}
   else if(a==="sellland"){const s=S.sites.find(x=>x.id===id);if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}S.cash+=s.lease?0:plotPrice(c,zoneOf(s)||"farm",s.size)*.75;S.sites=S.sites.filter(x=>x!==s);toast("Land sold")}
-  else if(a==="wh"){const p=whCost(c);if(S.cash<p)return;S.cash-=p;ensureWh(c);toast(`Warehouse open in ${c.name}`)}
+  else if(a==="wh"){const p=whCost(c);if(S.cash<p)return;S.cash-=p;ensureWh(c,true);toast(`Warehouse open in ${c.name}`)}
   else if(a==="dvopen"){dvOpen();return}
   
   else if(a==="lmfold"){S.lmOpen=!S.lmOpen;renderSheet();return}
   else if(a==="whmove"){if(!pendingPos||pendingPos.city!==c.id){toast("Tap Move, then pick the spot on the map");return}S.pos["wh:"+c.id]={...pendingPos};pendingPos=null;toast("Warehouse moved")}
-  else if(a==="whsell"){if(!hasWh(c))return;if(stored(c)>=.05){toast("Sell or ship the goods first");return}if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}const v=whSell(c);S.cash+=v;delete S.wh[c.id];delete S.inv[c.id];delete S.auto[c.id];delete S.pos["wh:"+c.id];toast(`Warehouse sold for ${fmt(v)}`)}
+  else if(a==="whsell"){if(!hasWh(c))return;if(stored(c)>=.05){toast("Sell or ship the goods first");return}if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}const v=whSell(c);S.cash+=v;delete S.wh[c.id];if(S.whFree)delete S.whFree[c.id];delete S.inv[c.id];delete S.auto[c.id];delete S.pos["wh:"+c.id];toast(`Warehouse sold for ${fmt(v)}`)}
   else if(a==="whup"){const p=whUp(c);if(S.cash<p)return;S.cash-=p;S.wh[c.id]++;toast("Warehouse expanded")}
   else if(a==="sell"){if(noSell(b.dataset.g)){toast("Orbital launches can't be sold. Launch them from the Space app");return}if(G[b.dataset.g][2]==="gov"&&!govOK(c)){toast(hasTech("govlic")?"Government buyers are only in cities of size 4+":"Research the Defense contractor licence to sell this");return}if(G[b.dataset.g][2]==="gov"&&!hasHQ(c)){toast("Government contracts need a registered company: open an HQ here");return}const g=b.dataset.g,street=!hasHQ(c),q=street?Math.min(20,S.inv[c.id][g]||0):(S.inv[c.id][g]||0),v=sellGood(c,g,q)*(street?.7:1);S.cash+=v;S.earned=(S.earned||0)+v;S.inv[c.id][g]-=q;if(S.inv[c.id][g]<1e-6)delete S.inv[c.id][g];toast(`Sold ${gq(q)} ${G[g][0].toLowerCase()} for ${fmt(v)}`)}
   else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q;if(g==="uranium"&&nlcNeed()){toast(nlcNeed());return}if(g==="uranium"&&!uranAnyPermit()){toast(uranNeed());return}const B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q*tpu(g)>whCap(c)+1e-9){toast(`Not enough warehouse space: ${fmtT(whRoom(c))} free, ${q} ${G[g][0].toLowerCase()} weigh ${fmtT(q*tpu(g))}`);return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
@@ -1823,7 +1823,7 @@ const fillP=pct=>pct<=60?.9:pct<=75?.45:pct<=100?.15:.04;
 const leaveP=pct=>pct<=75?.005:pct<=100?.015:.06;
 function propIncome(){let m=1;try{m=1+.08*ofP("re")}catch(e){}return propIncome0()*m}
 function propIncome0(){return S.props.reduce((a,pr)=>a+(pr.occ&&!unhOn(CITIES[pr.city])?askRent(pr)*(typeof rentLaw==="function"?rentLaw(CITIES[pr.city]):1)*(typeof dmgMult==="function"?dmgMult(CITIES[pr.city]):1):0),0)}
-const propSell=(P,c)=>Math.round(propCost(P,c)*.8*(typeof flipMk==="function"?flipMk(c):1)); // resale follows the local property market (see flipping)
+const propSell=(P,c)=>Math.round(propCost(P,c)*Math.min(.95,.8*(typeof flipMk==="function"?flipMk(c):1))); // capped below the fixed buy price so buy-then-sell in a hot market can't loop money // resale follows the local property market (see flipping)
 function propAssets(){return S.props.reduce((a,pr)=>{const P=PK[pr.k],c=CITIES[pr.city];return a+propSell(P,c)+(pr.furn?P.furn*PRICE[c.size]*.5:0)},0)}
 function simProps(quiet){for(const pr of S.props){const c=CITIES[pr.city],P=PK[pr.k];
   if(!pr.occ){if(Math.random()<fillP(pr.pct)){pr.occ=1;if(!quiet){S.log.unshift(`New tenant: ${P.n} in ${c.name} at ${fmt(askRent(pr))}/hr`);S.log=S.log.slice(0,3)}}}
@@ -1834,7 +1834,7 @@ function propsHtml(c){const mine=S.props.filter(p=>p.city===c.id);
     h+=`<div class="row own"><div class="n">${P.n}${pr.furn?" · furnished":""} <span class="tag ${pr.occ?"boom":"bust"}">${pr.occ?"Rented":"Vacant"}</span></div>
     <div class="d">Asking <b>${fmt(askRent(pr))}</b>/hr (${pr.pct}% of ${fmt(mktRent(pr))} market)${pr.occ?"":` · ${Math.round(fillP(pr.pct)*100)}% chance of a tenant each hour`}
       <span style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">${PCTS.map(x=>`<button class="buy${x===pr.pct?"":" up"}" style="min-width:0;padding:4px 8px;font-size:11px" data-prop="pct" data-id="${pr.id}" data-v="${x}">${x}%</button>`).join("")}</span></div>
-    <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${!pr.furn&&P.furn?`<button class="buy up" data-prop="furn" data-id="${pr.id}" ${S.cash<P.furn*PRICE[c.size]?"disabled":""}>Furnish ${fmt(P.furn*PRICE[c.size])}</button>`:""}<button class="buy up" data-prop="sell" data-id="${pr.id}" title="80% of the purchase price × local market index">Sell ${fmt(propSell(P,c))}</button></span></div>`}
+    <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${!pr.furn&&P.furn?`<button class="buy up" data-prop="furn" data-id="${pr.id}" ${S.cash<P.furn*PRICE[c.size]?"disabled":""}>Furnish ${fmt(P.furn*PRICE[c.size])}</button>`:""}<button class="buy up" data-prop="sell" data-id="${pr.id}" title="80% of the purchase price × local market index, up to 95%">Sell ${fmt(propSell(P,c))}</button></span></div>`}
   for(const P of PROPS){const k=propCost(P,c),base=Math.round(P.rent*PRICE[c.size]*DEMAND[c.size]);
     h+=`<div class="row"><div class="n">${P.n}</div><div class="d">${P.d} Market rent <b>${fmt(base)}</b>/hr${P.furn?`, ${fmt(base*1.25)} furnished`:""}.</div>
     <button class="buy" data-prop="buy" data-k="${P.k}" ${S.cash<k?"disabled":""}>Buy ${fmt(k)}</button></div>`}
@@ -2050,7 +2050,7 @@ const mRefill=(c,g)=>.008+(((c.id*131+GK.indexOf(g)*17)%97)/97)*.02;         // 
 const mRef=(c,g)=>G[g][1]*cityF(c,g);
 function mLevel(c,g,now){const k=mkey(c,g),m=S.mkt[k]||(S.mkt[k]={L:.7,t:now||Date.now()});now=now||Date.now();
   const mins=Math.max(0,(now-m.t)/MIN),kk=mRefill(c,g),eq=1-mCons(c,g)/kk;m.L=Math.min(1,Math.max(0,eq+(m.L-eq)*Math.exp(-kk*mins)));m.t=now;return m.L}
-const maxPay=(c,g,stockLv)=>mRef(c,g)*(1+Math.max(0,LOW-stockLv)*1.5);                   // the emptier the shelves, the more buyers pay
+const maxPay=(c,g,stockLv)=>Math.min(px(c,g)*1.15,mRef(c,g)*(1+Math.max(0,LOW-stockLv)*1.5)); // never above the local shop price (+15%), so buying locally and relisting can't loop money                   // the emptier the shelves, the more buyers pay
 const mState=stockLv=>stockLv<.3?["Very low","bust"]:stockLv<LOW?["Low","bust"]:stockLv<.85?["Normal",""]:["Saturated","boom"];
 /* dumping on the spot market fills local shelves too */
 function mFill(c,g,q){if(G[g][2]==="gov")return;const stockLv=mLevel(c,g);S.mkt[mkey(c,g)].L=Math.min(1,stockLv+q/mT(c,g))}
@@ -3189,7 +3189,7 @@ function animatePops(){if(reduce){pops=[];draw();return}cancelAnimationFrame(raf
 
 /* ---------- speed ---------- */
 $("#pfbtn").onclick=()=>mode==="pf"&&sheet.classList.contains("open")?closeSheet():openPortfolio();
-$("#needs").onclick=()=>{tab="life";const c=CITIES[(S.home||S.job||{city:0}).city];flyTo(c);tab="life";renderSheet()};
+$("#needs").onclick=()=>{tab="life";const c=CITIES[(S.home||S.job||{city:S.loc&&S.loc.city!=null?S.loc.city:0}).city];flyTo(c);tab="life";renderSheet()};
 $("#svbtn").onclick=()=>mode==="sv"&&sheet.classList.contains("open")?closeSheet():openSaves();
 function openSaves(){mode="sv";sel=null;renderSaves();sheet.scrollTop=0;sheet.classList.add("open");draw()}
 function slotInfo(n){try{const raw=n===SLOT?JSON.stringify(S):localStorage.getItem(slotKey(n));if(!raw)return null;const d=JSON.parse(raw);
@@ -10026,7 +10026,7 @@ function lxExec(item,c,d,q,kind,P,ord){const X=LX(),now=Date.now();if(!P||!P.ok|
   const fromStock=item.t==="s",key=bkey(c,item.bk||""),inv=S.inv[c.id]||{};
   if(fromStock){if(lxStockAvail(c,item.bk)<q)return null}else if((inv[item.g]||0)<q-1e-9)return null;
   q=fromStock?q:Math.min(q,inv[item.g]);
-  if(kind==="new"){if(S.cash<whCost(d)||hasWh(d))return null;S.cash-=whCost(d);ensureWh(d)}
+  if(kind==="new"){if(S.cash<whCost(d)||hasWh(d))return null;S.cash-=whCost(d);ensureWh(d,true)}
   if(fromStock){S.stock[key]-=q;if(S.stock[key]<=1e-9){S.stock[key]=0;S.opf[key]=0}}else{inv[item.g]-=q;if(inv[item.g]<1e-6)delete inv[item.g]}
   const k2=kind==="mkt"?"mkt":"wh",g=fromStock?item.bk:item.g;
   if(P.mode==="own"){const j={id:X.nid++,g,q,left:q,got:0,ret:0,from:c.id,to:d.id,kind:k2,vs:P.vs.map(v=>v.id),cost:0,val:0,p0:px(c,g),t0:now,ord:ord||0,why:""};X.jobs.push(j);
@@ -13840,7 +13840,7 @@ function mbTab(){const E=dxE,m=MB(),g=colGov(),dev=spDev(),card=(t,b)=>`<div cla
   const map=`<button data-sp="mbglobe" style="display:block;width:100%;border:0;padding:0;cursor:pointer;border-radius:12px;overflow:hidden;background:radial-gradient(ellipse at 50% 50%,#2a1418,#05060d 70%)"><div style="width:180px;height:180px;margin:14px auto 6px;border-radius:50%;background:url(${mgTex().toDataURL("image/jpeg",.7)}) 0 0/360px 180px;box-shadow:inset -30px -20px 50px rgba(0,0,0,.65),0 0 30px rgba(249,115,22,.35);animation:mgspin 30s linear infinite"></div><b style="display:block;color:#fde68a;padding:0 0 14px">🔴 Open Mars globe</b></button><style>@keyframes mgspin{to{background-position:-360px 0}}</style>
     <div class="mdx-note" style="color:var(--dxmut)">${who} Spin Mars like the Earth map, pick a building in the bar and tap anywhere on the planet to build it. Tap a building to demolish it (${Math.round(MBCFG.refund*100)}% back). ${m.b.length}/${MBCFG.max} buildings.${why&&!(why.startsWith("Mars base is full"))?` <b style="color:#dc2626">${E(why)}</b>`:""}</div>`;
   const sum=m.b.length?`<div class="mdx-rows">${Object.keys(cnt).map(k=>`<div><span>${MBK[k][1]} ${E(MBK[k][0])}</span><b>${cnt[k]}</b></div>`).join("")}</div>`:`<div class="mdx-rows"><div><span>No buildings yet. Start with a Lander pad and a Habitat dome.</span><b></b></div></div>`;
-  return card("🔴 Mars surface",pick+map)+card("🏗️ Your Mars base",`<div class="mdx-rows"><div><span>Habitability</span><b style="color:${L.pct>=100?"#16a34a":"#dc2626"}">${L.pct}%</b></div><div><span>Habitats</span><b>${L.hab}</b></div><div><span>🫁 Air · 🥫 Food · 🧊 Water capacity</span><b>${L.cap.air} · ${L.cap.food} · ${L.cap.water} habitats</b></div></div>`+sum+mbStore())
+  return card("🔴 Mars surface",pick+map)+card("🏗️ Your Mars base",`<div class="mdx-rows"><div><span>Habitability</span><b style="color:${!L.hab?"inherit":L.pct>=100?"#16a34a":"#dc2626"}">${L.hab?L.pct+"%":"No habitats yet"}</b></div><div><span>Habitats</span><b>${L.hab}</b></div><div><span>🫁 Air · 🥫 Food · 🧊 Water capacity</span><b>${L.cap.air} · ${L.cap.food} · ${L.cap.water} habitats</b></div></div>`+sum+mbStore())
     +tfC}
 let saveT=0;
 setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();try{colTick(Date.now())}catch(e){console.warn("col",e)}try{airTick(Date.now())}catch(e){console.warn("air",e)}if(++saveT%5===0){save();checkGoals()}hud();
