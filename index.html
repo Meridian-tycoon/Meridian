@@ -196,7 +196,7 @@ input#q{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1p
 #sheet{z-index:4}
 .chip{font:600 12px var(--body);background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:7px 12px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.15)}
 #mapwrap.st #ticker,#mapwrap.tsb #ticker{top:52px}
-#stbar{position:absolute;z-index:3;top:10px;left:max(12px,env(safe-area-inset-left,0px));display:flex;gap:6px}
+#stbar{position:absolute;z-index:3;top:10px;left:max(12px,env(safe-area-inset-left,0px));right:12px;display:flex;flex-wrap:wrap;gap:6px}
 #tostreet{position:absolute;z-index:3;right:max(12px,env(safe-area-inset-right,0px));top:10px;background:var(--ink);color:var(--panel);border-color:var(--ink)}
 #placebar{position:absolute;z-index:3;left:12px;right:12px;bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;justify-content:space-between;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:13px}
 #placebar span{color:var(--muted)}
@@ -453,7 +453,7 @@ html.th-ledger #dcard>div{border-radius:2px;box-shadow:6px 6px 0 rgba(31,26,20,.
     <div id="ticker"></div>
     <canvas id="amb"></canvas>
     <canvas id="wx" hidden></canvas>
-    <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button><button id="st3dt" class="chip" title="Light or dark map">☾ Dark</button><button id="stob" class="chip" aria-pressed="true" title="Show or hide other players' businesses in this city">👥 Others' shops</button></div>
+    <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button><button id="st3dt" class="chip" title="Light or dark map">☾ Dark</button><button id="stob" class="chip" aria-pressed="true" title="Show or hide other players' businesses in this city">👥 Others' shops</button><button class="chip" data-stf="mb" aria-pressed="true" title="Show or hide your shops">🏬 Shops</button><button class="chip" data-stf="mw" aria-pressed="true" title="Show or hide your depots">📦 Depots</button><button class="chip" data-stf="mf" aria-pressed="true" title="Show or hide your factories">🏭 Factories</button></div>
     <div id="placebar" hidden></div>
     <button id="tostreet" class="chip" hidden>View streets</button>
     <div id="hint">Drag to spin · scroll or pinch to zoom from the planet down to the streets · tap a city</div>
@@ -2369,7 +2369,8 @@ function streetSync(){const z=MM.getZoom(),on=z>=ZST||!!placing;
   if(on&&!inStreet){inStreet=true;const ce=MM.getCenter();stCity=stCity&&Math.hypot(stCity.lat-ce.lat,(stCity.lon-ce.lng)*Math.cos(ce.lat*Math.PI/180))<1.5?stCity:nearCity(ce.lng,ce.lat,2);
     stBar.hidden=false;$("#hint").hidden=true;$("#mapwrap").classList.add("st");streetSky();stLabel();renderPins();if(typeof navSync==="function")navSync()}
   else if(!on&&inStreet){inStreet=false;streetSky();stBar.hidden=true;$("#mapwrap").classList.remove("st");if(offer)closeOffer();clearPins();if(typeof navSync==="function")navSync()}}
-function stLabel(){$("#stcity").textContent=stCity?stCity.name:"";$("#stcityb").hidden=!stCity;const ob=$("#stob");if(ob){const on=lyOn("ob");ob.setAttribute("aria-pressed",on);ob.textContent=on?"👥 Others' shops":"👥 Others' shops (hidden)"}}
+function stLabel(){$("#stcity").textContent=stCity?stCity.name:"";$("#stcityb").hidden=!stCity;const ob=$("#stob");if(ob){const on=lyOn("ob");ob.setAttribute("aria-pressed",on);ob.textContent=on?"👥 Others' shops":"👥 Others' shops (hidden)"}for(const q of document.querySelectorAll("#stbar [data-stf]")){const on=lyOn(q.dataset.stf),n={mb:"🏬 Shops",mw:"📦 Depots",mf:"🏭 Factories"}[q.dataset.stf];q.setAttribute("aria-pressed",on);q.textContent=on?n:n+" (hidden)"}}
+for(const q of document.querySelectorAll("#stbar [data-stf]"))q.addEventListener("click",()=>{const k=q.dataset.stf;S.set=S.set||{};S.set[k]=S.set[k]===0?1:0;stLabel();if(typeof satChip==="function")satChip();renderPins();save()});
 $("#stob").addEventListener("click",()=>{S.set=S.set||{};S.set.ob=S.set.ob===0?1:0;stLabel();if(typeof satChip==="function")satChip();renderPins();save()});
 MM.on("move",streetSync);
 MM.on("moveend",()=>{if(!inStreet)return;const ce=MM.getCenter(),best=nearCity(ce.lng,ce.lat,.6);if(best&&best!==stCity){stCity=best;stLabel();renderPins()}});
@@ -2680,7 +2681,7 @@ function renderPins(){clearPins();setModels([]);if(!inStreet)return;ensurePositi
   if(S.loc&&stCity&&S.loc.city===stCity.id){const tp=tripPos(Date.now()),pl=tp&&S.trip.local?tp:S.loc;const m=mkPin(pl.lat,pl.lon,"You","#be185d","You are here");m.getElement().style.zIndex=5;mkPins.push(m)}
   if(stCity&&hasAirport(stCity)){const a=airportPos(stCity);mkPins.push(mkPin(a.lat,a.lon,"Airport","#64748b",stCity.name+" airport"))}
   if(stCity){const a=stationPos(stCity);mkPins.push(mkPin(a.lat,a.lon,"Station","#64748b",stCity.name+" station"))}
-  for(const e of entities()){const p=S.pos[e.key];if(!p)continue;let [col,txt]=PIN[e.cls]||["#333","•"];if(MODEL_KIND[e.cls]&&(e.cls!=="biz"||lyOn("mb"))){let hh=0;for(const ch of e.key)hh=(hh*31+ch.charCodeAt(0))>>>0;modelList.push({cls:e.cls,lat:p.lat,lon:p.lon,k:e.mscale||1,lv:+String(e.sub||"").replace(/\D/g,"")||1,h:hh})}if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
+  for(const e of entities()){const p=S.pos[e.key];if(!p)continue;let [col,txt]=PIN[e.cls]||["#333","•"];if(MODEL_KIND[e.cls]&&lyOn({biz:"mb","site-ind":"mf","site-farm":"mfa","site-mine":"mm",wh:"mw"}[e.cls]||"_")){let hh=0;for(const ch of e.key)hh=(hh*31+ch.charCodeAt(0))>>>0;modelList.push({cls:e.cls,lat:p.lat,lon:p.lon,k:e.mscale||1,lv:+String(e.sub||"").replace(/\D/g,"")||1,h:hh})}if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
     {const ly={biz:"mb","site-ind":"mf","site-farm":"mfa","site-mine":"mm",wh:"mw"}[e.cls];if(ly&&!lyOn(ly))continue}
     mkPins.push(mkPin(p.lat,p.lon,txt,col,`${e.label}${e.sub?" · "+e.sub:""}\n${p.addr||e.c.name}`,()=>{tab=e.tab;openCity(e.c)}))}
   setModels(modelList);
@@ -3632,7 +3633,7 @@ function satChip(){const L=document.getElementById("lylist"),c=document.getEleme
   const off=LYR.filter(d=>!lyOn(d[0])).length;c.textContent="🗂️ Layers"+(off?" ("+off+" off)":"")}
 const plChip=satChip;
 document.getElementById("lychip").addEventListener("click",()=>{const L=document.getElementById("lylist"),c=document.getElementById("lychip");L.hidden=!L.hidden;c.setAttribute("aria-expanded",!L.hidden)});
-document.getElementById("lylist").addEventListener("click",e=>{const b=e.target.closest("[data-ly]");if(!b)return;const k=b.dataset.ly;S.set=S.set||{};S.set[k]=S.set[k]===0?1:0;satChip();draw();save()});
+document.getElementById("lylist").addEventListener("click",e=>{const b=e.target.closest("[data-ly]");if(!b)return;const k=b.dataset.ly;S.set=S.set||{};S.set[k]=S.set[k]===0?1:0;satChip();draw();try{if(inStreet){stLabel();renderPins()}}catch(e){}save()});
 document.getElementById("cfchip").addEventListener("click",()=>{S.cfOff=cfOn()?1:0;if(!S.cfOff)delete S.cfOff;_cfKey="";if(!cfOn())cfClose();cfChip();draw();save()});
 document.getElementById("cfpop").addEventListener("click",e=>{const b=e.target.closest("[data-cf]");if(!b||!_cfPop)return;const w=(S.wars||[]).find(x=>x.id===_cfPop.id);
   if(b.dataset.cf==="mil"){cfClose();PH.open=true;PH.app="govt";govTab="mil";phRender();return}
