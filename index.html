@@ -800,7 +800,7 @@ MM.on("error",e=>console.warn("map",e&&e.error&&e.error.message));
 function styleLod(){try{const st=MM.getStyle();if(!st)return;
   for(const l of st.layers){if(l.type!=="symbol")continue;const id=l.id;
     if(/city|capital|town/i.test(id))MM.setLayerZoomRange(id,Math.max(l.minzoom||0,8.6),l.maxzoom||24)}
-  ensure3dBuildings()}catch(e){console.warn("lod",e)}}
+  ensure3dBuildings();ensureModelLayer()}catch(e){console.warn("lod",e)}}
 /* the style ships building footprints; make them rise out of the ground near street level */
 /* buildings get window-strip walls (homes / mid-rise / glass towers, by height), a lighter roof slab on tall towers, and side lighting; windows glow on the dark map */
 function bldCol(){const h=["coalesce",["get","render_height"],8];return dark3d()?["interpolate",["linear"],h,0,"#141a21",60,"#0d1218",200,"#06090d"]:["interpolate",["linear"],h,0,"#6b7480",60,"#4b5563",200,"#2f3742"]}
@@ -2355,12 +2355,51 @@ function mkPin(lat,lon,txt,col,title,onClick,cls){const el=document.createElemen
   if(onClick){el.style.cursor="pointer";el.addEventListener("click",ev=>{ev.stopPropagation();onClick()})}
   return new maplibregl.Marker({element:el,anchor:"top-left",offset:[-18,-30]}).setLngLat([lon,lat]).addTo(MM)}
 function clearPins(){for(const m of mkPins)m.remove();mkPins=[];for(const m of mkList)m.remove();mkList=[]}
-function renderPins(){clearPins();if(!inStreet)return;ensurePositions();
+/* 3D models for the player's own buildings: a MapLibre custom layer drawn with three.js (loaded on first use) at street zoom.
+   The label pins stay on top so taps still work; models are built from simple solids so no model files are needed. */
+const MODEL_KIND={hq:"hq",wh:"wh","site-ind":"factory","site-mine":"rig","site-farm":"farm"};
+let modelList=[],modelLayer=null;
+function setModels(list){modelList=list;if(modelLayer)modelLayer.sync();try{MM.triggerRepaint()}catch(e){}}
+function ensureModelLayer(){try{if(!MM||MM.getLayer("meridian-models"))return;
+  const lab=MM.getStyle().layers.find(l=>l.type==="symbol");
+  MM.addLayer(modelLayer=makeModelLayer(),lab?lab.id:undefined)}catch(e){console.warn("model layer",e)}}
+function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=false,mats={};
+  const M=(c,o)=>new T.MeshLambertMaterial(Object.assign({color:c},o||{}));
+  const box=(w,h,d,x,y,z,mat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y+h/2,z);return m};
+  const cyl=(rt,rb,h,x,y,z,mat,seg)=>{const m=new T.Mesh(new T.CylinderGeometry(rt,rb,h,seg||12),mat);m.position.set(x,y+h/2,z);return m};
+  const build={
+    hq(){const g=new T.Group(),gl=M(0x3b6ea8),au=M(0xd4a531);let y=0;for(const [w,h] of [[22,34],[17,30],[12,26]]){g.add(cyl(w/2*.85,w/2,h,0,y,0,gl,8));g.add(cyl(w/2+.6,w/2+.6,1.2,0,y+h,0,au,8));y+=h}
+      g.add(new T.Mesh(new T.ConeGeometry(1.8,16,8),au));g.children[g.children.length-1].position.y=y+8;return g},
+    wh(){const g=new T.Group(),wall=M(0xb8a58c),roof=M(0x6d7a86);g.add(box(34,9,22,0,0,0,wall));g.add(box(35,1.2,23,0,9,0,roof));
+      for(let i=0;i<4;i++)g.add(box(5,5,.4,-12+i*8,0,11.1,M(0x59636e)));return g},
+    factory(){const g=new T.Group(),wall=M(0xb08a68),roof=M(0x6d7a86);g.add(box(30,10,20,0,0,0,wall));
+      for(let i=0;i<4;i++){const s=box(7.5,4,20,-11.25+i*7.5,10,0,roof);s.rotation.z=.5;g.add(s)}
+      for(let i=0;i<2;i++){g.add(cyl(1.5,2,26,10+i*5,0,-6,M(0x8a8f96)));g.add(cyl(1.6,1.6,1.5,10+i*5,24,-6,M(0xc0392b)))}return g},
+    rig(){const g=new T.Group(),st=M(0x555d66),yel=M(0xe3b21c);g.add(box(24,2,24,0,0,0,M(0x77808a)));
+      for(const [x,z] of [[-6,-6],[6,-6],[-6,6],[6,6]]){const l=cyl(.5,.5,38,x*.5,2,z*.5,st,6);l.rotation.set(z*-.012,0,x*.012);g.add(l)}
+      const top=new T.Mesh(new T.ConeGeometry(2.8,8,4),yel);top.position.y=44;g.add(top);g.add(cyl(4,4,7,8,2,8,yel,16));return g},
+    farm(){const g=new T.Group();g.add(box(18,7,12,0,0,0,M(0xa8483a)));const r=box(19,1,13,0,7,0,M(0x6d4a3a));g.add(r);
+      g.add(cyl(3,3,16,13,0,0,M(0xc9ced4),16));const d=new T.Mesh(new T.SphereGeometry(3,16,8,0,Math.PI*2,0,Math.PI/2),M(0x8a9199));d.position.set(13,16,0);g.add(d);return g}};
+  function sync(){if(!T||!group)return;while(group.children.length)group.remove(group.children[0]);
+    for(const m of modelList){const k=MODEL_KIND[m.cls];if(!k||!build[k])continue;const o=build[k](),mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),sc=mc.meterInMercatorCoordinateUnits();
+      o.userData={mc,sc};group.add(o)}}
+  return{id:"meridian-models",type:"custom",renderingMode:"3d",sync,
+    onAdd(mp,gl){map=mp;loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;
+      scene=new T.Scene();cam=new T.Camera();group=new T.Group();scene.add(group);hemi=new T.HemisphereLight(0xffffff,0x667788,.85);sun=new T.DirectionalLight(0xffffff,.8);sun.position.set(.4,1,.6);scene.add(hemi,sun);sync();mp.triggerRepaint()}).catch(e=>console.warn("3d models off",e))},
+    render(gl,args){if(!T||!group||!group.children.length)return;if(map.getZoom()<15.2)return;
+      const dk=dark3d();hemi.intensity=dk?.35:.85;sun.intensity=dk?.3:.8;
+      const pm=new T.Matrix4().fromArray(args.defaultProjectionData?args.defaultProjectionData.mainMatrix:args.projectionMatrix||args);
+      ren.resetState();
+      for(const o of group.children){const {mc,sc}=o.userData;
+        const m=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(sc,-sc,sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
+        cam.projectionMatrix=pm.clone().multiply(m);for(const q of group.children)q.visible=q===o;ren.render(scene,cam)}}}}
+function renderPins(){clearPins();setModels([]);if(!inStreet)return;ensurePositions();
   if(S.loc&&stCity&&S.loc.city===stCity.id){const tp=tripPos(Date.now()),pl=tp&&S.trip.local?tp:S.loc;const m=mkPin(pl.lat,pl.lon,"You","#be185d","You are here");m.getElement().style.zIndex=5;mkPins.push(m)}
   if(stCity&&hasAirport(stCity)){const a=airportPos(stCity);mkPins.push(mkPin(a.lat,a.lon,"Airport","#64748b",stCity.name+" airport"))}
   if(stCity){const a=stationPos(stCity);mkPins.push(mkPin(a.lat,a.lon,"Station","#64748b",stCity.name+" station"))}
-  for(const e of entities()){const p=S.pos[e.key];if(!p)continue;let [col,txt]=PIN[e.cls]||["#333","•"];if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
+  for(const e of entities()){const p=S.pos[e.key];if(!p)continue;let [col,txt]=PIN[e.cls]||["#333","•"];if(MODEL_KIND[e.cls])modelList.push({cls:e.cls,lat:p.lat,lon:p.lon});if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
     mkPins.push(mkPin(p.lat,p.lon,txt,col,`${e.label}${e.sub?" · "+e.sub:""}\n${p.addr||e.c.name}`,()=>{tab=e.tab;openCity(e.c)}))}
+  setModels(modelList);
   // rival branches in this city
   if(stCity)S.rivals.forEach((rv,i)=>{if(!rv.cities.includes(stCity.id))return;const p=autoPos("rival"+i+":"+stCity.id,stCity,.4,2.2);
     mkPins.push(mkPin(p.lat,p.lon,RIVALS[i].n.split(" ")[0],RIVALS[i].col,`${RIVALS[i].n} branch`))});
