@@ -815,7 +815,7 @@ function bldPattern(){const h=["coalesce",["get","render_height"],8];return["cas
 /* building view distance: zoom where 3D buildings start. 13 shows them about twice as far out as the old 14; Low graphics keeps 14 for weak phones */
 /* view distance slider (S.set.vd): 0 = Auto (follows graphics), 1 Short … 5 Max. z = zoom where buildings start, f = fade length, R = generated-building radius in metres, n = generated-building cap.
    Max is the real limit: the map's building data only exists from zoom 13, so buildings cannot load further out than that. */
-const VDQ=[null,{z:15,f:[.2,.6],R:180,n:600},{z:14,f:[.4,.9],R:280,n:900},{z:13,f:[.3,.8],R:450,n:900},{z:13,f:[.1,.4],R:700,n:1300},{z:13,f:[0,.15],R:1400,n:2600}];
+const VDQ=[null,{z:15,f:[.2,.6],R:180,n:600},{z:14,f:[.4,.9],R:280,n:900},{z:13,f:[.3,.8],R:450,n:900},{z:13,f:[.1,.4],R:700,n:1300},{z:13,f:[0,.15],R:2600,n:8000}];
 function vdQ(){let v=0;try{v=+(S&&S.set&&S.set.vd)||0}catch(e){}if(VDQ[v])return VDQ[v];let q;try{q=gfx()}catch(e){}return q===GFXQ.low?{z:14,f:[.4,.9],R:280,n:900}:q===GFXQ.med?{z:13,f:[.3,.8],R:350,n:900}:VDQ[3]}
 function bldZ(){return vdQ().z}
 function bldOp(){const q=vdQ();return["interpolate",["linear"],["zoom"],q.z+q.f[0],0,q.z+q.f[1],1]}
@@ -2585,7 +2585,12 @@ function detDbg(n,built,R){try{if(localStorage.getItem("meridian-dev")!=="1")ret
   const d=document.createElement("div");d.id="detDbg";d.style.cssText="position:fixed;left:6px;bottom:64px;z-index:9;font:11px monospace;color:#9f9;background:#000a;padding:2px 6px;border-radius:4px;pointer-events:none;white-space:pre";document.body.appendChild(d);
   let fr=0,fps=0;MM.on("render",()=>fr++);detHud=setInterval(()=>{fps=fr;fr=0;const st=modelLayer&&modelLayer.stats?modelLayer.stats():{};
     d.textContent="picked "+detInfo.n+" R"+Math.round(detInfo.R)+"m z"+MM.getZoom().toFixed(1)+"\nbuild "+((st.feat||0)+(st.extras||0)+(st.upload||0))+"ms (bld "+(st.feat||0)+" extras "+(st.extras||0)+" up "+(st.upload||0)+") cached "+(st.hits||0)+"/"+(st.total||0)+"\ntris "+(st.tris||0)+" drawn "+(st.drawn||0)+"  "+fps+" fps"},1000)}catch(e){}}
-function refreshDetail(force){clearTimeout(detTimer);detTimer=setTimeout(()=>{try{if(!modelLayer||!MM||!inStreet)return;if(MM.isMoving()||MM.isZooming())return;/* moveend calls again once the gesture settles */const z=MM.getZoom(),ce0=MM.getCenter();
+let detMovT=0;
+function refreshDetail(force){/* while the map is moving, look again at most about once a second (the pending check is left alone so tile events do not keep pushing it back) */
+  if(MM.isMoving()||MM.isZooming()){const t=Date.now();if(t-detMovT<1200)return;detMovT=t}
+  clearTimeout(detTimer);detTimer=setTimeout(()=>{try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom(),ce0=MM.getCenter();
+  /* while moving, only add buildings inside the current build (filter untouched), or re-centre once the view is near its edge; otherwise wait for the gesture to settle (changing the hide filter mid-gesture made buildings flicker) */
+  if(MM.isMoving()||MM.isZooming()){if(!detLast)return;const dd=Math.hypot((ce0.lng-detLast.lng)*111320*Math.cos(ce0.lat*Math.PI/180),(ce0.lat-detLast.lat)*111320);if(dd>=detLast.R*.5&&dd<detLast.R*.8)return}
   if(z<15.4){if(detLast&&z<15)detRestore();return}/* once built, keep the swap down to zoom 15 so zooming near 15.4 does not toggle the buildings */
   const ids=detLayers();if(!ids.length)return;const base=MM.getLayer(ids.find(i=>i!=="meridian-roofs")||ids[0]);if(!base)return;
   const mLat=111320,mLng=111320*Math.cos(ce0.lat*Math.PI/180);
