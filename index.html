@@ -2626,8 +2626,10 @@ function refreshDetail(force){detDirty=true;detSchedule(MM.isMoving()||MM.isZoom
 function detQueue(base,ce,mLng,mLat,R){const sl=base.sourceLayer||base["source-layer"],fs=MM.querySourceFeatures(base.source,sl?{sourceLayer:sl}:{}),seen=new Set(),out=[];
   for(const f of fs){const g=f.geometry;if(!g)continue;const parts=g.type==="Polygon"?[g.coordinates[0]]:g.type==="MultiPolygon"?g.coordinates.map(q=>q[0]):[];
     const h=+f.properties.render_height||8,mh=+f.properties.render_min_height||0;if(h-mh<1)continue;
-    for(const ring of parts){if(!ring||ring.length<4)continue;const key=ring[0][0].toFixed(6)+","+ring[0][1].toFixed(6)+","+ring.length;if(seen.has(key)||detKeys.has(key))continue;seen.add(key);
-      const d=Math.hypot((ring[0][0]-ce.lng)*mLng,(ring[0][1]-ce.lat)*mLat);if(d>R)continue;out.push({ring,h,base:mh,key,d})}}
+    for(const ring of parts){if(!ring||ring.length<4)continue;const key=ring[0][0].toFixed(6)+","+ring[0][1].toFixed(6)+","+ring.length;if(seen.has(key)||detKeys.has(key))continue;
+      /* the same building can arrive from two tiles with a different first point: also match on its centre and height */
+      let cx=0,cy=0;for(const q of ring){cx+=q[0];cy+=q[1]}const key2="c"+(cx/ring.length).toFixed(5)+","+(cy/ring.length).toFixed(5)+","+Math.round(h)+","+Math.round(mh);if(seen.has(key2)||detKeys.has(key2))continue;seen.add(key);seen.add(key2);
+      const d=Math.hypot((ring[0][0]-ce.lng)*mLng,(ring[0][1]-ce.lat)*mLat);if(d>R)continue;out.push({ring,h,base:mh,key,key2,d})}}
   out.sort((a,b)=>a.d-b.d);
   const RK2={primary:1,secondary:1,tertiary:1,minor:1},rds=[],rseen=new Set();
   try{const rl=MM.getStyle().layers.find(l=>l["source-layer"]==="transportation");if(rl){for(const f of MM.querySourceFeatures(rl.source,{sourceLayer:"transportation"})){const pr=f.properties||{};if(!RK2[pr.class]||pr.brunnel==="bridge"||pr.brunnel==="tunnel"||pr.ramp)continue;const g=f.geometry;if(!g)continue;
@@ -2648,11 +2650,11 @@ function detStep(){try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom(
     if(!detLm){detLm=true;modelLayer.addChunk([],null,true)}
     let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;for(const f of take)for(const q of f.ring){x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1])}
     const mg=.0012,roads=detRds.filter(rd=>rd.pts.some(q=>q[0]>=x0-mg&&q[0]<=x1+mg&&q[1]>=y0-mg&&q[1]<=y1+mg)),g=modelLayer.addChunk(take.map(f=>({ring:f.ring,h:f.h,base:f.base})),roads,false);
-    if(g){for(const f of take)detKeys.add(f.key);detChunks.push({g,keys:take.map(f=>f.key),lng:(x0+x1)/2,lat:(y0+y1)/2});detHidePlain(true)}
+    if(g){for(const f of take){detKeys.add(f.key);detKeys.add(f.key2)}detChunks.push({g,keys:take.flatMap(f=>[f.key,f.key2]),lng:(x0+x1)/2,lat:(y0+y1)/2});detHidePlain(true)}
     /* far chunks are dropped (and rebuilt from the cache if you come back) to keep memory in check */
-    const lim=VQ.n*2;if(detKeys.size>lim){detChunks.sort((a,b)=>Math.hypot((b.lng-ce.lng)*mLng,(b.lat-ce.lat)*mLat)-Math.hypot((a.lng-ce.lng)*mLng,(a.lat-ce.lat)*mLat));
-      while(detKeys.size>lim*.8&&detChunks.length>1){const c=detChunks.shift();modelLayer.removeChunk(c.g);for(const k of c.keys)detKeys.delete(k);detDirty=true}}
-    MM.triggerRepaint();detDbg(detKeys.size,detChunks.length,VQ.R)}
+    const lim=VQ.n*2;if((detKeys.size>>1)>lim){detChunks.sort((a,b)=>Math.hypot((b.lng-ce.lng)*mLng,(b.lat-ce.lat)*mLat)-Math.hypot((a.lng-ce.lng)*mLng,(a.lat-ce.lat)*mLat));
+      while((detKeys.size>>1)>lim*.8&&detChunks.length>1){const c=detChunks.shift();modelLayer.removeChunk(c.g);for(const k of c.keys)detKeys.delete(k);detDirty=true}}
+    MM.triggerRepaint();detDbg((detKeys.size>>1),detChunks.length,VQ.R)}
   if(detQ.length)detSchedule(MM.isMoving()||MM.isZooming()?120:50)}catch(e){console.warn("detail",e);try{detRestore()}catch(e2){}}}
 /* re-check whenever the view settles or more map tiles arrive */
 MM.on("moveend",()=>refreshDetail());MM.on("idle",()=>refreshDetail());MM.on("sourcedata",e=>{if(e.sourceDataType!=="metadata"&&(e.tile||e.isSourceLoaded))refreshDetail()});
