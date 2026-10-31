@@ -61,7 +61,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 @keyframes gltw{to{opacity:.6}}
 #gl .glcomet{position:absolute;height:2px;width:140px;pointer-events:none;border-radius:2px;background:linear-gradient(90deg,transparent,rgba(160,200,255,.5) 70%,#fff);box-shadow:0 0 6px 1px rgba(200,225,255,.6);opacity:0;animation:glcm var(--d,2.6s) linear forwards}
 @keyframes glcm{0%{opacity:0;transform:rotate(var(--a)) translateX(0)}12%{opacity:1}85%{opacity:.9}100%{opacity:0;transform:rotate(var(--a)) translateX(var(--l,900px))}}
-html.set-rm #gl::before{animation:none}
+html.set-rm #gl::before{animation:none}html.gfx-low *{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 #glmoon{position:absolute;left:0;top:0;will-change:transform;width:46px;height:46px;border-radius:50%;pointer-events:none;opacity:0;transition:opacity 3s;
   background:radial-gradient(circle at 34% 38%,rgba(120,120,130,.55) 0 5px,transparent 6px),radial-gradient(circle at 62% 64%,rgba(120,120,130,.45) 0 7px,transparent 8px),radial-gradient(circle at 66% 30%,rgba(120,120,130,.4) 0 3px,transparent 4px),radial-gradient(circle at 38% 40%,#f4f1e6,#c9c4b4 62%,#8d897d);
   box-shadow:0 0 18px 4px rgba(230,230,210,.18),inset -9px -6px 14px rgba(0,0,0,.45)}
@@ -713,6 +713,9 @@ function totals(){let inc=0,assets=0;
 
 /* ---------- map: one MapLibre camera from orbit down to the street (like Capital Rift). The game's own layers are drawn on a canvas locked to that camera. ---------- */
 const cv=$("#map"),ctx=cv.getContext("2d"),glEl=$("#gl");
+/* graphics quality (S.set.gfx: "high" default = original behaviour, "med", "low"): frame gaps in ms for the always-on loops, 0 = loop off; pr = max pixel ratio */
+const GFXQ={high:{amb:100,wx:50,cf:80,moon:33,idle:33,pr:9},med:{amb:400,wx:150,cf:250,moon:100,idle:0,pr:1.5},low:{amb:0,wx:0,cf:0,moon:0,idle:0,pr:1}};
+function gfx(){const q=typeof S!=="undefined"&&S&&S.set&&S.set.gfx;return GFXQ[q]||GFXQ.high}
 let W=0,H=0,dpr=1,base=200;
 const V={lam:75,phi:-30,k:1};                     // read-only mirror of the camera: centre (negated, deg) and globe size relative to the old k=1 globe
 let T={k:1},sel=null;
@@ -782,7 +785,7 @@ MM.on("error",e=>console.warn("map",e&&e.error&&e.error.message));
 /* a rare comet streaks across the space behind the planet (every 40-120 s; off with reduce motion or a hidden tab) */
 /* the moon drifts slowly across the sky for about 9 minutes of every 20, behind the planet */
 (function glMoon(){const P=1200000,V=.45;let m=null,last=0;
-  function step(ts){requestAnimationFrame(step);if(ts-last<33||document.hidden)return;last=ts;try{const g=document.getElementById("gl");if(!g)return;
+  function step(ts){requestAnimationFrame(step);const G=gfx();if(ts-last<(G.moon||33)||document.hidden)return;last=ts;try{const g=document.getElementById("gl");if(!g)return;if(!G.moon){if(m)m.style.opacity="0";return}
     if(!m){m=document.createElement("div");m.id="glmoon";g.insertBefore(m,g.firstChild)}
     const f=(Date.now()%P)/P,on=f<V,t=f/V,W=g.clientWidth,H=g.clientHeight,op=on&&t>.02&&t<.98?".95":"0";
     if(m.style.opacity!==op)m.style.opacity=op;
@@ -841,7 +844,7 @@ function padNow(){const wide=matchMedia("(min-width:820px)").matches&&sheet.clas
 /* the open city sheet covers part of the map: slide the camera's centre into the free part, like the old globe did */
 function applyView(){const pad=padNow(),key=pad.right+","+pad.bottom;
   if(key!==_pad&&!MM.isMoving()){_pad=key;try{MM.easeTo({padding:pad,duration:reduce?0:350})}catch(e){}}}
-function resize(){const r=cv.getBoundingClientRect();W=r.width;H=r.height;dpr=Math.min(2,window.devicePixelRatio||1);
+function resize(){const r=cv.getBoundingClientRect();W=r.width;H=r.height;dpr=Math.min(2,gfx().pr,window.devicePixelRatio||1);
   cv.width=W*dpr;cv.height=H*dpr;base=Math.min(W,H)/2-16;try{MM.resize();const z0=Math.log2(Math.max(60,base)*2*Math.PI/512);MM.setMinZoom(Math.max(0,z0-1));if(!resize.done&&W>0){resize.done=1;MM.jumpTo({zoom:z0})}}catch(e){}draw()}
 let _cssC={};const css=v=>_cssC[v]??=getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const _pickedMap=()=>{try{return localStorage.getItem("meridian-3d-dark")!=null}catch(e){return false}};
@@ -917,8 +920,8 @@ MM.on("mousemove",e=>{const bc=S.ob&&CITIES[S.ob.hq];let t="";if(bc&&bc.sx>-1e3&
 /* idle spin: after 15 s without input, a zoomed-out globe slowly turns on its own */
 let lastInput=Date.now(),idleRaf=0,idleT=0;
 ["pointerdown","wheel","keydown","touchstart"].forEach(t=>window.addEventListener(t,()=>{lastInput=Date.now()},{passive:true,capture:true}));
-function idleSpin(t){const ok=Date.now()-lastInput>15000&&V.k<=1.6&&!MM.isMoving()&&!inStreet&&document.visibilityState==="visible";
-  if(ok&&t-idleT<33){idleRaf=requestAnimationFrame(idleSpin);return}
+function idleSpin(t){const G=gfx(),ok=G.idle>0&&Date.now()-lastInput>15000&&V.k<=1.6&&!MM.isMoving()&&!inStreet&&document.visibilityState==="visible";
+  if(ok&&t-idleT<G.idle){idleRaf=requestAnimationFrame(idleSpin);return}
   if(ok&&idleT){const dt=Math.min(.1,(t-idleT)/1000),c=MM.getCenter();MM.jumpTo({center:[c.lng-dt*4,c.lat+(25-c.lat)*Math.min(1,dt*.3)]})}
   idleT=t;idleRaf=requestAnimationFrame(idleSpin)}
 if(!matchMedia("(prefers-reduced-motion: reduce)").matches)idleRaf=requestAnimationFrame(idleSpin);
@@ -2449,7 +2452,7 @@ function drawStorms(ctx,C){const now=Date.now(),t=performance.now()/1000;
     for(let k=0;k<4;k++){px+=(Math.random()-.5)*f.s*.5;py+=f.s*.5;ctx.lineTo(px,py)}ctx.stroke();ctx.restore()}}
 /* keep storms animated while one is on screen */
 let wxRaf=0,wxLast=0;
-function wxLoop(t){if(activeStorms().length&&!inStreet&&document.visibilityState==="visible"&&t-wxLast>50){wxLast=t;draw()}
+function wxLoop(t){const G=gfx();if(G.wx&&activeStorms().length&&!inStreet&&document.visibilityState==="visible"&&t-wxLast>G.wx){wxLast=t;draw()}
   if(inStreet)drawRain(t);else if(rainOn){wctx.setTransform(1,0,0,1,0,0);wctx.clearRect(0,0,wxCv.width,wxCv.height);rainOn=false;wxCv.hidden=true}wxRaf=requestAnimationFrame(wxLoop)}
 wxRaf=requestAnimationFrame(wxLoop);
 /* rain over the street map when the city is under a storm */
@@ -2639,7 +2642,7 @@ function drawTraffic(ctx,C){const t=Date.now()/1000;ctx.save();
   ctx.restore()}
 /* keep the globe moving gently while it's on screen */
 let ambLast=0;
-function ambLoop(t){if(!inStreet&&document.visibilityState==="visible"&&t-ambLast>100&&!MM.isMoving()&&!sheet.classList.contains("full")){ambLast=t;draw()}
+function ambLoop(t){const G=gfx();if(G.amb&&!inStreet&&document.visibilityState==="visible"&&t-ambLast>G.amb&&!MM.isMoving()&&!sheet.classList.contains("full")){ambLast=t;draw()}
   if(inStreet)drawStreetLife(t);else if(walkers.length||pops2.length){walkers=[];pops2=[];actx.setTransform(1,0,0,1,0,0);actx.clearRect(0,0,amb.width,amb.height)}requestAnimationFrame(ambLoop)}
 requestAnimationFrame(ambLoop);
 /* street view: customers walking into your open businesses, coins when they buy */
@@ -3304,7 +3307,7 @@ document.getElementById("cfpop").addEventListener("click",e=>{const b=e.target.c
 /* gentle pulse for clashes/wars (about 12 fps, only while one is drawn on the globe view); also keeps the chip in sync */
 let cfLast=0,cfChipT=0;function cfLoop(t){const st=typeof inStreet!=="undefined"&&inStreet;
   if(t-cfChipT>500){cfChipT=t;cfChip();if(_cfPop&&!(S.wars||[]).some(w=>w.id===_cfPop.id)&&!bgPseudoOpen())cfClose()}
-  if(!st&&cfOn()&&document.visibilityState==="visible"&&!(typeof reduce!=="undefined"&&reduce)&&t-cfLast>80&&((S.wars||[]).some(w=>w.l>=3)||bgMilKeys().length)){cfLast=t;draw()}requestAnimationFrame(cfLoop)}
+  if(!st&&cfOn()&&document.visibilityState==="visible"&&!(typeof reduce!=="undefined"&&reduce)&&gfx().cf&&t-cfLast>gfx().cf&&((S.wars||[]).some(w=>w.l>=3)||bgMilKeys().length)){cfLast=t;draw()}requestAnimationFrame(cfLoop)}
 requestAnimationFrame(cfLoop);
 /* ---------- NPC governments: economy, diplomacy, conquest ("Diplomacy & power") ----------
    MODEL (all state in S.dip, created lazily by dip(); every field has a safe default, so old saves load):
@@ -4628,10 +4631,16 @@ function devOn(){try{return localStorage.getItem("meridian-dev")==="1"}catch(e){
 function devHtml(){if(!devOn())return"";const dp=S.pol&&S.pol.r>=0&&S.pol.c;return `<div class="sec">Dev</div><div class="list">${devGod()?`<div class="row"><div class="n">🛡 Iron Dome</div><div class="d">${S.dome!==0?`On · intercepts 100% of missiles and WMDs aimed at ${dp?dp:"the country you govern (none right now)"}`:"Off"}</div><button class="buy" data-dev="dome">${S.dome!==0?"Turn off":"Turn on"}</button></div>`:""}<div class="row"><div class="n">Reset loans</div><div class="d">${B().loans.length} loans · ${fmt(B().loans.reduce((a,l)=>a+l.bal,0))} owed</div><button class="buy" data-dev="loans">Reset loans</button></div>
   <div class="row"><div class="n">Bail out of jail</div><div class="d">${jailed()?"In prison · "+fmtDur(S.jail.until-Date.now())+" left":"Not in prison"}</div><button class="buy" data-dev="bail" ${S.jail?"":"disabled"}>Bail out</button></div>
   <div class="row"><div class="n">Finish deliveries</div><div class="d">${S.fleet.filter(v=>v.arr).length} vehicles on the road · ${(S.hired||[]).length} hired</div><button class="buy" data-dev="fleet" ${S.fleet.some(v=>v.arr)||(S.hired||[]).length?"":"disabled"}>Finish now</button></div>
-  ${(()=>{const o=S.ipo||{},left=(+o.ban||0)+IPOC.ban-Date.now();return `<div class="row"><div class="n">Reset delisting cooldown</div><div class="d">${left>0?"Next IPO allowed in "+wevLeft(left):"No cooldown: you can start a new IPO"}</div><button class="buy" data-dev="ipoban" ${left>0?"":"disabled"}>Reset</button></div>`})()}</div>`}
+  ${(()=>{const o=S.ipo||{},left=(+o.ban||0)+IPOC.ban-Date.now();return `<div class="row"><div class="n">Reset delisting cooldown</div><div class="d">${left>0?"Next IPO allowed in "+wevLeft(left):"No cooldown: you can start a new IPO"}</div><button class="buy" data-dev="ipoban" ${left>0?"":"disabled"}>Reset</button></div>`})()}${dvmHtml()}</div>`}
 function devAct(b){const k=b.dataset.dev;
   if(k==="loans"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to clear";return}const bk=B();bk.loans=[];bk.lates=[];S.debt=bankDebt();toast("Dev: all loans cleared")}
   else if(k==="dome"){if(!devGod())return;S.dome=S.dome!==0?0:1;toast(S.dome?"🛡 Iron Dome on":"Iron Dome off")}
+  else if(k==="dvgo"||k==="dvstop"){if(!dvmOk())return toast("Sign in with the developer account to move the market");const m=MK(),now=Date.now();
+    if(k==="dvstop"){dvmStop(m,now);toast("Dev: market event stopped, prices back where they were")}
+    else{const g=id=>{const e=document.getElementById(id);return e?e.value:""},d=g("dvd")==="b"?1:-1,sym=g("dvs")||"*",z=Math.max(1,+g("dvz")||50),u=Math.min(60,Math.max(1,+g("dvu")||5));
+      if(sym!=="*"&&!AK[sym])return toast("Unknown ticker");const zz=d<0?Math.min(95,z)/100:Math.min(10000,z)/100;dvmStop(m,now);m.dv={t0:now,dur:u*60000,d,s:sym,z:zz,lf:1};if(typeof ON!=="undefined")ON.mkPub=0;
+      const who=sym==="*"?"every stock and crypto":AK[sym].n+" ("+sym+")";S.log.unshift(`Markets: ${d>0?"boom! "+who+" soars":"crash! "+who+" collapses"} as ${d>0?"buyers pile in":"panic selling hits"}`);S.log=S.log.slice(0,3);
+      toast(`Dev: ${d>0?"boom +":"crash -"}${Math.round(zz*100)}% on ${sym==="*"?"the whole market":sym} for ${u} min`)}}
   else if(k==="bail"){if(!S.jail)return;S.jail=null;toast("Dev: released from prison")}
   else if(k==="ipoban"){if(S.ipo&&typeof S.ipo==="object")S.ipo.ban=0;toast("Dev: delisting cooldown cleared. You can start a new IPO.")}
   else if(k==="fleet"){const now=Date.now();let n=0;for(const v of S.fleet)if(v.arr&&v.arr>now){v.dep=Math.min(v.dep||now,now-1);v.arr=now;n++}for(const x of S.hired||[])if(x.arr>now)x.arr=now;runFleet(now);toast(`Dev: ${n} deliveries finished`)}
@@ -4913,7 +4922,7 @@ function mktStep(){const m=MK(),now=Date.now();const war=typeof tension==="funct
     if(shock&&Math.abs(shock)>0)mktNews(a,shock)}
   if(m.xb){const b=m.xb;if(b.lf&&b.lf!==1&&!(now-m.live<5*60000&&m.liveSet&&m.liveSet.XRP))m.px.XRP=Math.max(AK.XRP.p0*.05,m.px.XRP/b.lf);delete m.xb}   // XRP boom was removed: undo any boom price saved in old saves
   if(sh&&m.xb2&&!(now-m.live<5*60000&&m.liveSet&&m.liveSet.XRP))m.xb2.lf=xrpBoomF(m,now);   // the master's XRP price already carries the boom
-  try{mktNormal(m,now)}catch(e){}wevMk(m,now,sh);xrpBoomStep(m,now);try{btcBoomStep(m,now,sh)}catch(e){}try{btcCrashStep(m,now,sh)}catch(e){}try{ethBoomStep(m,now,sh)}catch(e){}try{lmtBoomStep(m,now,sh)}catch(e){}try{mktCrashStep(m,now,sh)}catch(e){}try{mkwPublish(m,now)}catch(e){}try{mkhPublish(m)}catch(e){}try{ipoTick(now)}catch(e){console.warn("ipoTick",e)}
+  try{mktNormal(m,now)}catch(e){}wevMk(m,now,sh);xrpBoomStep(m,now);try{btcBoomStep(m,now,sh)}catch(e){}try{btcCrashStep(m,now,sh)}catch(e){}try{ethBoomStep(m,now,sh)}catch(e){}try{lmtBoomStep(m,now,sh)}catch(e){}try{mktCrashStep(m,now,sh)}catch(e){}try{dvmStep(m,now,sh)}catch(e){}try{mkwPublish(m,now)}catch(e){}try{mkhPublish(m)}catch(e){}try{ipoTick(now)}catch(e){console.warn("ipoTick",e)}
   for(const a of ASSETS){const h=m.h[a.s];h.push(m.px[a.s]);if(h.length>90)h.shift()}try{mkdTick(m)}catch(e){}
   const d=Math.floor(now/(24*DAYMS));if(m.day!==d){if(m.day!=null)mkdClose(m);m.day=d;try{mkhPublish(m,1)}catch(e){}for(const a of ASSETS)m.open[a.s]=m.px[a.s]}}
 /* XRP boom: a 5-min rally (up to 1000x: ~100 s up, ~55 s hold, ~140 s back down) that starts whenever a government uses a WMD (xrpBoomGo, called from wmdStrike and wpnFire). A running boom is not restarted. Saves from the old always-on boom are eased back to the normal price by xrpBoomStep. */
@@ -4963,6 +4972,21 @@ function mktCrashStep(m,now,sh){const dev=typeof ON!=="undefined"&&ON.user&&devU
   if(dev&&!m.mcDone1){m.mcDone1=1;mktCrashCancel(m,now);m.mc={t0:now,lf:1};S.log.unshift("Markets: global crash! Stocks and crypto collapse as panic selling sweeps every exchange");S.log=S.log.slice(0,3)}
   const t0=mktCrashT0(m);if(!t0)return;if(!m.mc||m.mc.t0!==t0)m.mc={t0,lf:1};const b=m.mc,f=mktCrashF(t0,now);
   if(!sh)for(const a of ASSETS)if(m.px[a.s])m.px[a.s]=Math.max(.01,m.px[a.s]*f/(b.lf||1));b.lf=f}
+/* dev market tool (Mark, 2026-10-31, Saves › Dev): the developer account starts a crash or boom on demand. m.dv={t0,dur,d:+1 boom|-1 crash,s:"*" all or one ticker,z,lf}.
+   Shape like the one-off events: ~20% of the time moving, hold until 55%, then ease back to normal by the end. Crash z = fraction lost (max .95),
+   boom z = fraction gained (1 = +100%). Runs on the master (dev) save and reaches other players through the prices it publishes in world/mkt. */
+function dvmOk(){return devOn()&&typeof ON!=="undefined"&&!!ON.user&&devUid(ON.user.uid)}
+function dvmF(v,now){if(!v||!v.t0)return 1;const t=(now-v.t0)/v.dur;if(t<=0||t>=1)return 1;const ease=x=>x*x*(3-2*x),sh=t<.2?ease(t*5):t<.55?1:ease((1-t)/.45);return v.d>0?1+v.z*sh:1-v.z*sh}
+const dvmSyms=v=>v.s==="*"?ASSETS.map(a=>a.s):[v.s];
+function dvmStep(m,now,sh){const v=m.dv;if(!v||sh)return;const f=dvmF(v,now);for(const x of dvmSyms(v))if(m.px[x])m.px[x]=Math.max(.01,m.px[x]*f/(v.lf||1));v.lf=f;
+  if(now-v.t0>=v.dur){delete m.dv;S.log.unshift("Markets: the dev market event is over, prices back to normal");S.log=S.log.slice(0,3)}}
+function dvmStop(m,now){const v=m.dv;if(!v)return;if(v.lf&&v.lf!==1)for(const x of dvmSyms(v))if(m.px[x])m.px[x]=Math.max(.01,m.px[x]/v.lf);delete m.dv;if(typeof ON!=="undefined")ON.mkPub=0}
+function dvmHtml(){if(!dvmOk())return `<div class="row"><div class="n">📉📈 Crash or boom the market</div><div class="d">Sign in with the developer account (Saves › Online) to use this.</div></div>`;
+  const v=MK().dv,now=Date.now(),opt=ASSETS.map(a=>`<option value="${a.s}">${a.s} · ${devEsc(a.n)}${a.t==="c"?" (crypto)":""}</option>`).join(""),sel="font:inherit;padding:6px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink);min-width:0";
+  return `<div class="row"><div class="n">📉📈 Crash or boom the market</div><div class="d">${v?`Running: ${v.d>0?"boom +":"crash -"}${Math.round(v.z*100)}% on ${v.s==="*"?"all stocks and crypto":v.s} · ${fmtDur(Math.max(0,v.t0+v.dur-now))} left. Every player sees it.`:"Prices move to the target, hold, then return to normal by the end. Every player sees it."}</div>
+  <span style="display:flex;flex-wrap:wrap;gap:6px;grid-column:1/3;padding-top:6px"><select id="dvd" style="${sel}"><option value="c">Crash</option><option value="b">Boom</option></select><select id="dvs" style="${sel};max-width:100%"><option value="*">All stocks and crypto</option>${opt}</select>
+  <label class="d">Size % <input id="dvz" type="number" min="1" max="10000" value="50" style="${sel};width:80px"></label><label class="d">Minutes <input id="dvu" type="number" min="1" max="60" value="5" style="${sel};width:64px"></label>
+  <button class="buy" data-dev="dvgo">Start</button>${v?`<button class="buy up" data-dev="dvstop">Stop now</button>`:""}</span><p class="d" style="grid-column:1/3;font-size:12px;color:var(--muted)">Crash size is the % lost (max 95). Boom size is the % gained (100 = double, max 10000).</p></div>`}
 function xrpBoomF(m,now){const b=m.xb2;if(!b||!b.t0)return 1;const t=(now-b.t0)/XRPB.dur;if(t<=0||t>=1)return 1;
   const ease=x=>x*x*(3-2*x);return 1+XRPB.peak*(t<1/3?ease(t*3):t<.53?1:ease((1-t)/.47))}
 function xrpBoomGo(by){const m=MK(),now=Date.now(),b=m.xb2;if(b&&!b.end&&now-b.t0<XRPB.dur)return;m.xb2={t0:now,lf:1};try{mkwBoom(now)}catch(e){}S.log.unshift(`Markets: XRP spikes as ${by||"a government"} uses weapons of mass destruction`);S.log=S.log.slice(0,3)}
@@ -4993,7 +5017,7 @@ function mkwListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubMK)return;O
 /* real crypto prices from CoinGecko when the network allows it */
 async function mktLive(){try{const ids=ASSETS.filter(a=>a.t==="c").map(a=>a.sec).join(",");
   const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);if(!r.ok)return;const j=await r.json(),m=MK();m.liveSet={};
-  for(const a of ASSETS)if(a.t==="c"&&j[a.sec]&&j[a.sec].usd){m.px[a.s]=j[a.sec].usd*(a.s==="XRP"?xrpBoomF(m,Date.now()):1);if(a.s==="BTC"&&m.bb)m.bb.lf=btcBoomF(m.bb.t0,Date.now()),m.px.BTC*=m.bb.lf;if(a.s==="ETH"&&m.eb)m.eb.lf=ethBoomF(m.eb.t0,Date.now()),m.px.ETH*=m.eb.lf;if(m.mc&&m.mc.lf)m.px[a.s]*=m.mc.lf;m.liveSet[a.s]=1}
+  for(const a of ASSETS)if(a.t==="c"&&j[a.sec]&&j[a.sec].usd){m.px[a.s]=j[a.sec].usd*(a.s==="XRP"?xrpBoomF(m,Date.now()):1);if(a.s==="BTC"&&m.bb)m.bb.lf=btcBoomF(m.bb.t0,Date.now()),m.px.BTC*=m.bb.lf;if(a.s==="ETH"&&m.eb)m.eb.lf=ethBoomF(m.eb.t0,Date.now()),m.px.ETH*=m.eb.lf;if(m.mc&&m.mc.lf)m.px[a.s]*=m.mc.lf;if(m.dv&&m.dv.lf&&dvmSyms(m.dv).includes(a.s))m.px[a.s]*=m.dv.lf;m.liveSet[a.s]=1}
   m.live=Date.now()}catch(e){}}
 /* one-off Bitcoin crash (Mark, 2026-10-31): a single 5-min plunge to ~$14k, fired once by the master (dev) save on first load of this build.
    Shared via world/mkt px._btcc. After 5 min BTC returns to normal. Never repeats. */
@@ -10607,28 +10631,30 @@ setInterval(()=>{try{if(_cfPop){const el=document.getElementById("cfpop");if(el&
     if((card?card.dataset.bgsig:"")!==sig){if(Date.now()-(PH.touched||0)>=3000&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)))phRender()}
     else bgFill(PH.el)}}catch(e){console.warn("bgfill",e)}},2000);
 /* ---------- Settings app (device prefs in S.set; UI theme mirrored to localStorage for first paint) ---------- */
-var SET_DEF={ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,sat:1,pfx:1,colov:1,alarm:1};
+var SET_DEF={gfx:"high",ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,sat:1,pfx:1,colov:1,alarm:1};
 var SET_UI=[["classic","Classic","The original look"],["glass","Glass","Frosted dark panels, violet glow"],["ledger","Ledger","Cream paper, ink and serif type"],["command","Command","Neon HUD, cyan and magenta"]];
 var SET_FONT="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@500;700&family=Playfair+Display:wght@700;900&family=Source+Serif+4:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Chakra+Petch:wght@500;700&display=swap";
 var _setSig="";
-function setG(){const s=(S.set&&typeof S.set==="object")?S.set:(S.set={});for(const k in SET_DEF)if(s[k]==null)s[k]=SET_DEF[k];if(!SET_UI.some(u=>u[0]===s.ui))s.ui="classic";if(![.9,1,1.15].includes(+s.fs))s.fs=1;if(![.2,.5,.8,1].includes(+s.vol))s.vol=.5;return s}
+function setG(){const s=(S.set&&typeof S.set==="object")?S.set:(S.set={});for(const k in SET_DEF)if(s[k]==null)s[k]=SET_DEF[k];if(!SET_UI.some(u=>u[0]===s.ui))s.ui="classic";if(![.9,1,1.15].includes(+s.fs))s.fs=1;if(![.2,.5,.8,1].includes(+s.vol))s.vol=.5;if(!GFXQ[s.gfx])s.gfx="high";return s}
 function setApply(force){const s=setG(),sig=JSON.stringify(s);if(!force&&sig===_setSig)return;_setSig=sig;const H=document.documentElement;
   for(const [k] of SET_UI)H.classList.toggle("th-"+k,k!=="classic"&&s.ui===k);
   if(s.ui!=="classic"&&!document.getElementById("th-font")){const l=document.createElement("link");l.id="th-font";l.rel="stylesheet";l.href=SET_FONT;document.head.appendChild(l)}
-  H.classList.toggle("set-rm",!!s.rm);H.classList.toggle("set-notick",!s.tick);H.style.setProperty("--setfs",s.fs);H.classList.toggle("set-fs",+s.fs!==1);
-  try{reduce=REDUCE_OS||!!s.rm}catch(e){}
+  H.classList.toggle("set-rm",!!s.rm||s.gfx==="low");H.classList.toggle("gfx-low",s.gfx==="low");H.classList.toggle("set-notick",!s.tick);H.style.setProperty("--setfs",s.fs);H.classList.toggle("set-fs",+s.fs!==1);
+  try{reduce=REDUCE_OS||!!s.rm||s.gfx==="low"}catch(e){}
+  try{const pr=Math.min(gfx().pr,devicePixelRatio||1);if(MM.getPixelRatio()!==pr){MM.setPixelRatio(pr);resize()}}catch(e){}
   try{localStorage.setItem("meridian-uitheme",s.ui)}catch(e){}
   const m=document.querySelector('meta[name="theme-color"]');if(m&&s.ui!=="classic")m.content={glass:"#0b1020",ledger:"#fbf5e6",command:"#000000"}[s.ui];else if(m)m.content=themeGet()==="light"?"#fbfaf5":"#141f21";
   try{if(typeof satChip==="function")satChip()}catch(e){}try{if(typeof plChip==="function")plChip()}catch(e){}
   try{if(typeof draw==="function")draw()}catch(e){}}
 function setPut(k,v){const s=setG();if(k==="mode"){themeSet(v);setApply(1);return}
-  s[k]=k==="ui"?v:+v;setApply();save();if(k==="snd"||k==="vol"){try{sndApply();if(k==="snd"&&s.snd)sfx("click")}catch(e){}}if(k==="ui")toast(`Settings: ${SET_UI.find(u=>u[0]===v)[1]} theme`)}
+  s[k]=k==="ui"||k==="gfx"?v:+v;setApply();save();if(k==="snd"||k==="vol"){try{sndApply();if(k==="snd"&&s.snd)sfx("click")}catch(e){}}if(k==="ui")toast(`Settings: ${SET_UI.find(u=>u[0]===v)[1]} theme`)}
 function setReset(){S.set={};setG();themeSet("dark");setApply(1);save();toast("Settings reset to defaults")}
 function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="group">${opts.map(([v,n])=>`<button data-ph="setv" data-k="${k}" data-v="${v}" aria-pressed="${String(cur)===String(v)}">${n}</button>`).join("")}</div>`,
   tog=(k,n,d)=>`<div class="set-row"><span>${n}<small>${d}</small></span>${seg(k,[[1,"On"],[0,"Off"]],s[k])}</div>`;
   return `<div class="ph-sub">Display</div>
   <div class="set-themes">${SET_UI.map(([k,n,d])=>`<button class="set-th set-th-${k}" data-ph="setv" data-k="ui" data-v="${k}" aria-pressed="${s.ui===k}"><i></i><span><b>${n}</b><small>${d}</small></span></button>`).join("")}</div>
   ${s.ui==="classic"?`<div class="set-row"><span>Light or dark<small>Classic theme only</small></span>${seg("mode",[["light","Light"],["dark","Dark"]],themeGet())}</div>`:""}
+  <div class="set-row"><span>Graphics<small>Lower uses less CPU, GPU and battery</small></span>${seg("gfx",[["low","Low"],["med","Medium"],["high","High"]],s.gfx)}</div>
   <div class="set-row"><span>Text size<small>Panels, ticker and pop-ups</small></span>${seg("fs",[[.9,"Small"],[1,"Normal"],[1.15,"Large"]],s.fs)}</div>
   ${tog("sat","Satellites","Your launched satellites orbiting the globe")}
   ${tog("pfx","Planet effects","Wealth glow, election flashes, rocket launches and seasons")}
@@ -13699,7 +13725,7 @@ function uiSync(){mqPump();const B=document.body.classList,so=sheet.classList.co
     if(el.classList.contains("dragging"))dx=dy=0;
     if(dx!==cx||dy!==cy){el.dataset.dx=dx;el.dataset.dy=dy;el.style.translate=dx||dy?dx/sc+"px "+dy/sc+"px":""}};
   try{dock($("#statsw"),1,0);if(PH&&PH.el)dock(PH.el,phScale()||1,PH.open)}catch(e){}}
-setInterval(uiSync,250);
+setInterval(()=>{if(!document.hidden)uiSync()},250);
 /* new-version banner: GitHub Pages sends Last-Modified; if the live page is newer than the copy running here, show a slim Reload banner at the top (game saved first).
    Checks every minute and when the tab comes back. "Later" hides it for 10 minutes. */
 (()=>{let shown=0,nextAt=0;const base=Date.parse(document.lastModified);
