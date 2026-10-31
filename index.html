@@ -2351,7 +2351,7 @@ function autoPos(key,c,rmin,rmax){const a=hash01(key+"a")*Math.PI*2,r=rmin+hash0
 function entities(){const out=[];
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ)if(S.own[id][b.k])out.push({key:`biz:${id}:${b.k}`,c,label:b.n,cls:"biz",tab:"biz",r:[.3,2.5],sub:"Lv "+S.own[id][b.k]})}
   for(const pr of S.props||[])out.push({key:`prop:${pr.id}`,c:CITIES[pr.city],label:PK[pr.k].n,cls:"prop",tab:"biz",r:[.4,3],sub:pr.occ?"Rented":"Vacant"});
-  for(const s of S.sites){const z=zoneOf(s)||"farm";out.push({key:`site:${s.id}`,c:CITIES[s.city],label:siteOp(s)?OP[s.op].n:(ZONE[z]||{n:"Land"}).n,cls:"site-"+z,tab:"ind",r:z==="farm"?[6,14]:z==="mine"?[5,12]:[2.5,6],sub:LAND[s.size][1]+" ha"})}
+  for(const s of S.sites){const z=zoneOf(s)||"farm";out.push({key:`site:${s.id}`,c:CITIES[s.city],label:siteOp(s)?OP[s.op].n:(ZONE[z]||{n:"Land"}).n,cls:"site-"+z,tab:"ind",r:z==="farm"?[6,14]:z==="mine"?[5,12]:[2.5,6],sub:LAND[s.size][1]+" ha",mscale:({s:.8,m:1,l:1.25}[s.size]||1)*(1+.14*(slv(s)-1))})}
   for(const id in S.hq)if(S.hq[id])out.push({key:`hq:${id}`,c:CITIES[id],label:"Headquarters",cls:"hq",tab:"hq",r:[0,.8]});
   for(const id in S.wh)if(S.wh[id]!=null)out.push({key:`wh:${id}`,c:CITIES[id],label:"Warehouse",cls:"wh",tab:"wh",r:[2,5]});
   if(S.home)out.push({key:"home",c:CITIES[S.home.city],label:HK[S.home.k].n,cls:"home",tab:"life",r:[1,4],sub:"Your home"});
@@ -2571,9 +2571,9 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     cloudM=new T.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.5,depthWrite:false});const sg=new T.IcosahedronGeometry(1,1);
     for(let i=0;i<16;i++){const g=new T.Group(),n=3+Math.floor(Math.random()*3);for(let j=0;j<n;j++){const m=new T.Mesh(sg,cloudM);m.scale.set(70+Math.random()*90,22+Math.random()*18,60+Math.random()*70);m.position.set((j-n/2)*85+Math.random()*30,Math.random()*18,Math.random()*60);g.add(m)}
       g.position.set(Math.random()*7000-3500,420+Math.random()*320,Math.random()*7000-3500);clouds.push(g);atmo.add(g)}
-    const pg=new T.IcosahedronGeometry(1,1);
+    const pg=new T.IcosahedronGeometry(1,2);
     for(const m of modelList){if(m.cls!=="site-ind")continue;const mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),x=(mc.x-mc0.x)*k,z=(mc.y-mc0.y)*k;
-      for(const cx of [10,15])for(let i=0;i<7;i++){const mt=new T.MeshBasicMaterial({color:0x9ca3af,transparent:true,opacity:0,depthWrite:false}),pm=new T.Mesh(pg,mt);atmo.add(pm);puffs.push({m:pm,mt,x:x+cx*1.0,z:z-6,ph:i/7+(cx>10?.07:0)})}}
+      {const kk=m.k||1;for(const cx of [10,15])for(let i=0;i<7;i++){const mt=new T.MeshBasicMaterial({color:0x9ca3af,transparent:true,opacity:0,depthWrite:false}),pm=new T.Mesh(pg,mt);atmo.add(pm);puffs.push({m:pm,mt,x:x+cx*kk,z:z-6*kk,y0:26*kk,ph:i/7+(cx>10?.07:0)})}}}
     for(const c of [0xc0392b,0x2563eb,0xe5e7eb,0x111827,0xf59e0b,0x16a34a])carMats.push(new T.MeshBasicMaterial({color:c}))}
   function atmoCarsBuild(){if(!atmo||!detO)return;for(const c of cars){atmo.remove(c.m)}cars=[];const k=1/detO.sc,mc0=detO.mc,ce=map.getCenter(),cm=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0),cx=(cm.x-mc0.x)*k,cz=(cm.y-mc0.y)*k,list=[];
     for(const rd of detRds){const pts=[];for(const [lo,la] of rd.pts){const m=maplibregl.MercatorCoordinate.fromLngLat([lo,la],0),x=(m.x-mc0.x)*k,z=(m.y-mc0.y)*k;if(isFinite(x)&&isFinite(z))pts.push([x,z])}
@@ -2586,12 +2586,12 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     if(!atmo||atmoO!==detO){atmoBuild();atmoCarsBuild()}else if(now-atmoCars>5000){const k=1/detO.sc,ce=map.getCenter(),cm=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0);if(!atmoC||cars.length<30||Math.hypot((cm.x-detO.mc.x)*k-atmoC[0],(cm.y-detO.mc.y)*k-atmoC[1])>220)atmoCarsBuild();else atmoCars=now}
     cloudM.color.set(dk?0x2a3350:0xffffff);cloudM.opacity=dk?.4:.5;
     for(const c of clouds){c.position.x+=6*dt;if(c.position.x>3500)c.position.x-=7000}
-    const t=now/1000;for(const p of puffs){const f=(t/9+p.ph)%1;p.m.position.set(p.x+f*14,27+f*85,p.z);p.m.scale.setScalar(2.2+f*9);p.mt.opacity=Math.sin(f*Math.PI)*.42;p.mt.color.set(dk?0x4b5563:0xb6bcc6)}
+    const t=now/1000;for(const p of puffs){const f=(t/9+p.ph)%1;p.m.position.set(p.x+f*14,(p.y0||26)+1+f*60,p.z);p.m.scale.setScalar(2.2+f*9);p.mt.opacity=Math.sin(f*Math.PI)*.32;p.mt.color.set(dk?0x4b5563:0xb6bcc6)}
     for(const c of cars){c.s+=c.v*dt;const L=c.r.len;if(c.s>L)c.s-=L;else if(c.s<0)c.s+=L;let a=c.s,i=0;while(i<c.r.seg.length-1&&a>c.r.seg[i]){a-=c.r.seg[i];i++}const p0=c.r.pts[i],p1=c.r.pts[i+1],l=c.r.seg[i]||1,f=Math.min(1,a/l),dx=p1[0]-p0[0],dz=p1[1]-p0[1];
       c.m.position.set(p0[0]+dx*f,.9,p0[1]+dz*f);c.m.rotation.y=-Math.atan2(dz,dx)}}
   function sync(){if(!T||!group)return;while(group.children.length)group.remove(group.children[0]);
     for(const m of modelList){const k=MODEL_KIND[m.cls];if(!k||!build[k])continue;const o=build[k](),mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),sc=mc.meterInMercatorCoordinateUnits();
-      o.userData={mc,sc};group.add(o)}}
+      if(m.k&&m.k!==1)o.scale.setScalar(m.k);o.userData={mc,sc};group.add(o)}}
   return{id:"meridian-models",type:"custom",renderingMode:"3d",sync,setOrigin,addChunk,removeChunk,resetDetail,ready,count,stats,
     onAdd(mp,gl){map=mp;loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;
       scene=new T.Scene();cam=new T.Camera();group=new T.Group();scene.add(group);hemi=new T.HemisphereLight(0xffffff,0x667788,.85);sun=new T.DirectionalLight(0xffffff,.8);sun.position.set(.4,1,.6);scene.add(hemi,sun);sync();mp.triggerRepaint()}).catch(e=>console.warn("3d models off",e))},
@@ -2662,7 +2662,7 @@ function renderPins(){clearPins();setModels([]);if(!inStreet)return;ensurePositi
   if(S.loc&&stCity&&S.loc.city===stCity.id){const tp=tripPos(Date.now()),pl=tp&&S.trip.local?tp:S.loc;const m=mkPin(pl.lat,pl.lon,"You","#be185d","You are here");m.getElement().style.zIndex=5;mkPins.push(m)}
   if(stCity&&hasAirport(stCity)){const a=airportPos(stCity);mkPins.push(mkPin(a.lat,a.lon,"Airport","#64748b",stCity.name+" airport"))}
   if(stCity){const a=stationPos(stCity);mkPins.push(mkPin(a.lat,a.lon,"Station","#64748b",stCity.name+" station"))}
-  for(const e of entities()){const p=S.pos[e.key];if(!p)continue;let [col,txt]=PIN[e.cls]||["#333","•"];if(MODEL_KIND[e.cls])modelList.push({cls:e.cls,lat:p.lat,lon:p.lon});if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
+  for(const e of entities()){const p=S.pos[e.key];if(!p)continue;let [col,txt]=PIN[e.cls]||["#333","•"];if(MODEL_KIND[e.cls])modelList.push({cls:e.cls,lat:p.lat,lon:p.lon,k:e.mscale||1});if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
     {const ly={biz:"mb","site-ind":"mf","site-farm":"mfa","site-mine":"mm",wh:"mw"}[e.cls];if(ly&&!lyOn(ly))continue}
     mkPins.push(mkPin(p.lat,p.lon,txt,col,`${e.label}${e.sub?" · "+e.sub:""}\n${p.addr||e.c.name}`,()=>{tab=e.tab;openCity(e.c)}))}
   setModels(modelList);
