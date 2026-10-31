@@ -3942,12 +3942,38 @@ function wfPush(o){const w=o.k==="w"?wfActive().find(x=>wlGid(x)===o.w):null,rem
   if(!remote){if(wfApply(o))wfPublish(true);return}
   const doc={k:o.k,amt:Math.min(1e13,Math.round(o.amt)),to:String(o.to).slice(0,40),vs:String(o.vs).slice(0,40),at:window.firebase.firestore.FieldValue.serverTimestamp()};if(o.k==="w"){doc.w=o.w;doc.s=o.s}
   ON.db.collection("wfund").add(doc).catch(e=>console.warn("wf",e))}
-function wfOffer(id,yes){const off=wfOff(),i=off.findIndex(x=>x.id===id);if(i<0)return toast("That offer has expired");const o=off.splice(i,1)[0];
+function wfOffer(id,yes){if(String(id).slice(0,3)==="pl_")return wpoAnswer(id,yes);const off=wfOff(),i=off.findIndex(x=>x.id===id);if(i<0)return toast("That offer has expired");const o=off.splice(i,1)[0];
   if(!yes){toast(`Declined ${o.fr}'s money`);stNews("A pity. The offer was sincere.","Mr Gray");stOfferDone(o,0);save();return}
   if(o.k==="w"&&!wfActive().some(w=>wlGid(w)===o.w))return toast("That war is over");if(o.k==="e"&&wfAtWar(o.to,o.vs))return toast(`${o.to} is already at war with ${o.vs}`);
   S.cash+=o.amt;S.earned=(S.earned||0)+o.amt;wfPush(o);stOfferDone(o,1);
   try{logGov(`Took ${fmt(o.amt)} from ${o.fr} against ${o.vs}`)}catch(e){}
   toast(`${fmt(o.amt)} received from ${o.fr}`);save();hud()}
+/* Player-to-player backer offers (wfoffer/{id}): a player government that sends anonymous funding to a country that also has a
+   player government doesn't fund it straight away; the money becomes an offer in that government's Backer offers card.
+   Doc {to,vs,k,w?,s?,amt,fr:"Government of X",st:"p"|"y"|"n",at}, no sender id. Taken = cash to the taker + the funding is applied
+   (same as an AI backer offer). Declined or unanswered for WPO.exp days = the sender's own save refunds itself and deletes the doc. */
+const WPO={c:null,un:null,docs:[],chk:0,exp:6};
+function wpoGovs(c){const me=ON.user&&ON.user.uid,old=Date.now()-3*864e5;return ((ON&&ON.players)||[]).filter(p=>p&&p.uid!==me&&p.govC===c&&Number.isInteger(p.govR)&&p.govR>=0&&onSeen(p)>=old)}
+function wpoTarget(o){try{const p=pol();return typeof ON!=="undefined"&&!!ON.db&&!!ON.user&&p.r>=0&&!!p.c&&o.to!==p.c&&wpoGovs(o.to).length>0}catch(e){return false}}
+function wpoSend(o,rec){const p=pol(),ref=ON.db.collection("wfoffer").doc(),doc={to:String(o.to).slice(0,40),vs:String(o.vs).slice(0,40),k:o.k,amt:Math.min(1e13,Math.round(o.amt)),fr:"Government of "+p.c,st:"p",at:window.firebase.firestore.FieldValue.serverTimestamp()};
+  if(o.k==="w"){doc.w=o.w;doc.s=o.s}rec.st="offered";rec.oid=ref.id;
+  ref.set(doc).then(()=>{save();if(MX.open&&MX.page==="wf")mxRender()},e=>{S.cash+=rec.amt;rec.st="refunded";delete rec.oid;toast("Couldn't send the offer, refunded: "+(e&&e.code||e));save();hud()})}
+function wpoListen(){try{const p=pol(),c=typeof ON!=="undefined"&&ON.db&&ON.user&&p.r>=0&&p.c?p.c:null;if(c===WPO.c)return;if(WPO.un){WPO.un();WPO.un=null}WPO.c=c;WPO.docs=[];if(!c)return;
+  WPO.un=ON.db.collection("wfoffer").where("to","==",c).onSnapshot(q=>{WPO.docs=q.docs.map(d=>({id:d.id,...d.data()}));if(MX.open&&MX.page==="wf")mxRender()},e=>console.warn("wpo",e))}catch(e){}}
+const wpoAt=d=>d.at&&d.at.toMillis?d.at.toMillis():Date.now();
+function wpoList(){const p=pol(),now=Date.now();if(!(p.r>=0&&p.c))return[];return WPO.docs.filter(d=>d.st==="p"&&d.to===p.c&&wpoAt(d)+WPO.exp*DAYMS>now)
+  .map(d=>({id:"pl_"+d.id,fr:String(d.fr||"A player government").slice(0,60),ty:"pl",k:d.k==="w"?"w":"e",w:d.w,s:d.s,to:d.to,vs:d.vs,amt:+d.amt||0,exp:wpoAt(d)+WPO.exp*DAYMS}))}
+function wpoAnswer(id,yes){const o=wpoList().find(x=>x.id===id);if(!o)return toast("That offer has expired");const ref=ON.db.collection("wfoffer").doc(id.slice(3));
+  ref.update({st:yes?"y":"n"}).then(()=>{if(!yes){toast(`Declined ${o.fr}'s money`);try{logGov(`Declined ${fmt(o.amt)} from ${o.fr}`)}catch(e){}save();return}
+    S.cash+=o.amt;S.earned=(S.earned||0)+o.amt;if(o.k==="w"?wfActive().some(w=>wlGid(w)===o.w):!wfAtWar(o.to,o.vs))wfPush(o);
+    try{logGov(`Took ${fmt(o.amt)} from ${o.fr} against ${o.vs}`)}catch(e){}toast(`${fmt(o.amt)} received from ${o.fr}`);save();hud();if(MX.open&&MX.page==="wf")mxRender()},
+    e=>toast("Couldn't answer the offer: "+(e&&e.code||e)))}
+/* sender side, once a minute: settle own offers (taken = delivered, declined/expired = refund) */
+function wpoCheck(){if(typeof ON==="undefined"||!ON.db||!ON.user||Date.now()-WPO.chk<60000)return;WPO.chk=Date.now();
+  for(const r of wf().mine.filter(x=>x&&x.st==="offered"&&x.oid).slice(0,10)){const ref=ON.db.collection("wfoffer").doc(r.oid);
+    ref.get().then(s=>{if(r.st!=="offered")return;const d=s.exists?s.data():null;if(!d){r.st="delivered";delete r.oid;save();return}
+      const old=wpoAt(d)+WPO.exp*DAYMS<Date.now();if(d.st==="y"){r.st="delivered";delete r.oid;ref.delete().catch(()=>{});save()}
+      else if(d.st==="n"||old){S.cash+=r.amt;r.st="refunded";delete r.oid;ref.delete().catch(()=>{});toast(`${d.st==="n"?"Your offer to "+r.to+" was declined":"Your offer to "+r.to+" expired"}: ${fmt(r.amt)} refunded`);save();hud()}}).catch(()=>{})}}
 /* every save, hourly: feuds and backer offers */
 function wfLocalHour(quiet){try{wfFeud(quiet)}catch(e){console.warn("wf",e)}try{wfBack(quiet)}catch(e){console.warn("wf",e)}try{stHour(quiet)}catch(e){console.warn("story",e)}}
 /* Story layer (S.story): fault-line flavour for tension and war news, the Yellow Sea arc, feud endings, backer-offer messages.
@@ -4111,6 +4137,8 @@ function wfSend(){const f=WF.f,C=WFCFG,amt=Math.floor(+String(f.amt||"").replace
   if(!(amt>=C.min))return toast(`Minimum donation is ${fmt(C.min)}`);if(S.cash<amt)return toast("Not enough cash");
   let o,w=null;if(f.k==="w"){w=wfActive().find(x=>String(wlGid(x))===String(f.w));if(!w)return toast("Pick an active war");const s=f.s==="b"?"b":"a";o={k:"w",w:wlGid(w),s,amt,to:w[s],vs:w[s==="a"?"b":"a"]}}
   else{const a=f.to,b=f.vs;if(!COUNTRIES.includes(a)||!COUNTRIES.includes(b)||a===b)return toast("Pick two different countries");if(wfAtWar(a,b))return toast(`${a} and ${b} are already at war: fund the war instead`);o={k:"e",to:a,vs:b,amt}}
+  if(wpoTarget(o)){const d=wf(),rec={t:Date.now(),k:o.k,to:o.to,vs:o.vs,amt,st:"offered"};S.cash-=amt;d.mine.unshift(rec);d.mine.length=Math.min(d.mine.length,C.mine);f.amt="";wpoSend(o,rec);
+    toast(`Offer of ${fmt(amt)} sent to the government of ${o.to}: they can take it in Backer offers`);save();hud();return}
   const d=wf(),rec={t:Date.now(),k:o.k,to:o.to,vs:o.vs,amt,st:"sent"},remote=wfRemote()&&(o.k==="e"||o.k==="p"?wwShared():!!(w&&w.gid));
   if(!remote&&!wfApply(o))return toast("That target is no longer available");
   S.cash-=amt;d.mine.unshift(rec);d.mine.length=Math.min(d.mine.length,C.mine);f.amt="";
@@ -4136,7 +4164,7 @@ function wfListen(){if(typeof ON==="undefined"||!ON.db)return;
   if(ON.user&&devUid(ON.user.uid)&&!ON.unsubWFQ)ON.unsubWFQ=ON.db.collection("wfund").onSnapshot(q=>{let n=0;ON.wfDone=ON.wfDone||{};q.forEach(x=>{if(ON.wfDone[x.id])return;ON.wfDone[x.id]=1;n++;const v=x.data()||{};
       try{const amt=Math.min(+v.amt||0,1e13);if(!wfApply({k:v.k,w:+v.w,s:v.s,to:v.to,vs:v.vs,amt})&&v.k==="w")wfApply({k:"e",to:v.to,vs:v.vs,amt})}catch(e){console.warn("wf",e)}x.ref.delete().catch(()=>{})});if(n){save();wfPublish(true)}},
     e=>{ON.err="Couldn't read war funding: "+(e&&e.code||e)})}
-function wfTick(){try{wfListen()}catch(e){}wfPublish(false);try{paTick()}catch(e){}}
+function wfTick(){try{wfListen()}catch(e){}try{wpoListen();wpoCheck()}catch(e){}wfPublish(false);try{paTick()}catch(e){}}
 /* ---------- Player alliances (Mark, 2026-10-28): two player governments ally, share spy intel and defend each other.
    Firestore palliance/{a_b} (a<b uids) {a,b,by,st:"p"|"on",ca,cb (countries),na,nb (names),ia,ib (each side's spy networks {country:level}),at}.
    Only the two players read or write it; the invited side accepts (st "on"); either side deletes it to end it.
@@ -4212,8 +4240,8 @@ function wfDash(){const v=wfView(),C=WFCFG,act=wfActive(),f=WF.f,now=Date.now(),
   return `<div class="mdx-hd"><h2>Anonymous War Funding <span>🕶</span></h2><div class="mdx-date"><span class="mdx-live"></span>Donors stay hidden</div></div>
   <div class="mdx-kpis">${kp("Active wars",act.length,"open to funding","#fee2e2","#dc2626","⚔️")}${kp("Funding in wars",fmt(tw),"anonymous, all sides","#ede9fe","#7c3aed","💰")}${kp("Rising tensions",tk.length,tk.length?wfStage(v.tens[tk[0]].v)[1]+" at most":"all calm","#fef3c7","#d97706","🔥")}${kp("You sent",fmt(sent),`${wf().mine.length} donation${wf().mine.length===1?"":"s"}`,"#e0ecff","#2563eb","🕶")}</div>
   <div class="mdx-grid"><div class="mdx-col mdx-c1">
-    ${(()=>{const p=pol(),off=wfOff(),cr=wfCR(),hl=t=>{const m=Math.max(0,Math.round((t-now)/60000));return m>=60?Math.floor(m/60)+" h "+(m%60)+" min":m+" min"};
-      const ob=p.r>=0&&p.c?(off.length?`<div class="mdx-rows">${off.map(o=>`<div style="display:block"><div style="display:flex;justify-content:space-between;gap:6px"><span>${o.ty==="co"?"🏢":"🏛"} <b style="color:inherit">${wfE(o.fr)}</b></span><b>${fmt(o.amt)}</b></div>
+    ${(()=>{const p=pol(),off=[...wpoList(),...wfOff()],cr=wfCR(),hl=t=>{const m=Math.max(0,Math.round((t-now)/60000));return m>=60?Math.floor(m/60)+" h "+(m%60)+" min":m+" min"};
+      const ob=p.r>=0&&p.c?(off.length?`<div class="mdx-rows">${off.map(o=>`<div style="display:block"><div style="display:flex;justify-content:space-between;gap:6px"><span>${o.ty==="co"?"🏢":o.ty==="pl"?"🤝":"🏛"} <b style="color:inherit">${wfE(o.fr)}</b></span><b>${fmt(o.amt)}</b></div>
         <small style="opacity:.75">${o.k==="w"?`to fight on in ${wfE(o.to)}'s war against ${wfE(o.vs)}`:`to raise tension between ${wfE(o.to)} and ${wfE(o.vs)}`} · expires in ${hl(o.exp)}</small>
         <div class="mdx-qa" style="margin-top:6px"><button data-mx="wfacc" data-v="${wfE(o.id)}"><i style="background:#dcfce7;color:#16a34a">✓</i>Take the money</button><button data-mx="wfdec" data-v="${wfE(o.id)}"><i style="background:#fee2e2;color:#dc2626">✕</i>Decline</button></div></div>`).join("")}</div>`
         :`<div class="mdx-empty">No offers right now. AI companies and foreign governments approach ${wfE(p.c)} now and then.</div>`)
@@ -4225,7 +4253,7 @@ function wfDash(){const v=wfView(),C=WFCFG,act=wfActive(),f=WF.f,now=Date.now(),
       ${form}<input id="wff_amt" type="text" inputmode="numeric" placeholder="Amount (min ${fmt(C.min)})" value="${wfE(f.amt)}" style="${inp}">
       <div class="mdx-qa" style="margin-top:10px"><button data-mx="wfsend"><i style="background:#ede9fe;color:#7c3aed">🕶</i>Send anonymously<small style="font-weight:500;opacity:.75">cash ${fmt(S.cash)}</small></button></div>
       <div class="mdx-note">The government sees the amount, never the sender. War budgets buy reinforcements (up to ${Math.round(C.relDay*100)}% of an army a day, ${Math.round(C.maxBoost*100)}% in total). At 100 on a meter war breaks out and the funded side starts ahead.</div></div>
-    <div class="mdx-card"><div class="mdx-ch"><h3>Your funding history</h3><small style="margin-left:auto;opacity:.6">only you see this</small></div>${mine.length?`<div class="mdx-tblw"><table class="mdx-tbl"><tr><th>When</th><th>To</th><th>Amount</th></tr>${mine.map(x=>`<tr><td>${ago(x.t)}</td><td style="white-space:normal">${wfE(x.to)}${x.vs?` <small style="opacity:.7">vs ${wfE(x.vs)}</small>`:""}${x.k==="e"?" <small>(escalation)</small>":""}${x.st==="refunded"?" <small style=\"color:#dc2626\">refunded</small>":""}</td><td>${fmt(x.amt)}</td></tr>`).join("")}</table></div>`:`<div class="mdx-empty">You haven't funded anyone yet.</div>`}</div></div>
+    <div class="mdx-card"><div class="mdx-ch"><h3>Your funding history</h3><small style="margin-left:auto;opacity:.6">only you see this</small></div>${mine.length?`<div class="mdx-tblw"><table class="mdx-tbl"><tr><th>When</th><th>To</th><th>Amount</th></tr>${mine.map(x=>`<tr><td>${ago(x.t)}</td><td style="white-space:normal">${wfE(x.to)}${x.vs?` <small style="opacity:.7">vs ${wfE(x.vs)}</small>`:""}${x.k==="e"?" <small>(escalation)</small>":""}${x.st==="refunded"?" <small style=\"color:#dc2626\">refunded</small>":""}${x.st==="offered"?" <small style=\"color:#d97706\">offer pending</small>":""}</td><td>${fmt(x.amt)}</td></tr>`).join("")}</table></div>`:`<div class="mdx-empty">You haven't funded anyone yet.</div>`}</div></div>
   <div class="mdx-col mdx-c2">
     <div class="mdx-card"><div class="mdx-ch"><h3>Active wars · anonymous funding</h3></div>${act.length?`<div class="mdx-tblw"><table class="mdx-tbl"><tr><th>War</th><th>Side A</th><th>Side B</th></tr>${act.map(w=>{const id=wlGid(w),t=(v.tot||{})[id]||{a:0,b:0},bt=(v.b||{})[id]||{a:0,b:0};
       return `<tr><td style="white-space:normal">⚔️ <b>${wfE(w.a)}</b> vs <b>${wfE(w.b)}</b><br><small style="opacity:.7">${WARL[w.l]||"War"}</small></td><td>${wfE(w.a)}: ${fmt(t.a)}${bt.a?`<br><small>+${wlK(bt.a)} troops</small>`:""}</td><td>${wfE(w.b)}: ${fmt(t.b)}${bt.b?`<br><small>+${wlK(bt.b)} troops</small>`:""}</td></tr>`}).join("")}</table></div>`:`<div class="mdx-empty">No active wars.</div>`}</div>
