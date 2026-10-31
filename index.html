@@ -2364,7 +2364,7 @@ let modelList=[],modelLayer=null;
 function setModels(list){modelList=list;if(modelLayer)modelLayer.sync();try{MM.triggerRepaint()}catch(e){}}
 function ensureModelLayer(){try{if(!MM||MM.getLayer("meridian-models"))return;
   const lab=MM.getStyle().layers.find(l=>l.type==="symbol");
-  MM.addLayer(modelLayer=makeModelLayer());if(typeof refreshDetail==="function")refreshDetail()}catch(e){console.warn("model layer",e)}}
+  detLast=null;origFilter={};MM.addLayer(modelLayer=makeModelLayer());if(typeof refreshDetail==="function")refreshDetail(true)}catch(e){console.warn("model layer",e)}}
 function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=false,mats={},det=null,detO=null,detFeats=null;
   const M=(c,o)=>new T.MeshLambertMaterial(Object.assign({color:c},o||{}));
   const box=(w,h,d,x,y,z,mat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y+h/2,z);return m};
@@ -2383,35 +2383,49 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     farm(){const g=new T.Group();g.add(box(18,7,12,0,0,0,M(0xa8483a)));const r=box(19,1,13,0,7,0,M(0x6d4a3a));g.add(r);
       g.add(cyl(3,3,16,13,0,0,M(0xc9ced4),16));const d=new T.Mesh(new T.SphereGeometry(3,16,8,0,Math.PI*2,0,Math.PI/2),M(0x8a9199));d.position.set(13,16,0);g.add(d);return g}};
 
-  /* big-city detail: pitched roofs on low buildings, setback crowns on towers, rooftop plant on mid-rise. One merged mesh, positions in metres from a local origin (no float jitter). */
+  /* generated buildings near the camera: tiers on towers, setback crowns on mid-rise, pitched roofs on houses, window grids fitted to each wall.
+     Built from the map's own footprints into three merged meshes (one per wall style, plus roofs); positions are metres from a local origin so nothing jitters. */
+  const WIN={};
+  function winTex(kind,night){const key=kind+night;if(WIN[key])return WIN[key];const c=document.createElement("canvas");c.width=c.height=128;const g=c.getContext("2d");
+    const wall={home:"#d8c3a8",mid:"#cfd3d8",tower:"#a9b8c9"}[kind];g.fillStyle=night?"#1d242d":wall;g.fillRect(0,0,128,128);
+    for(let i=0;i<2;i++)for(let j=0;j<2;j++){const x=i*64,y=j*64,lit=night&&Math.random()<.4;g.fillStyle=night?(lit?"#ffd98a":"#2a323d"):"#4f6479";
+      if(kind==="tower")g.fillRect(x+6,y+8,52,36);else g.fillRect(x+14,y+10,36,34);g.fillStyle=night?"#12171d":"rgba(0,0,0,.18)";g.fillRect(x,y+60,64,4)}
+    const t=new T.CanvasTexture(c);t.wrapS=t.wrapT=T.RepeatWrapping;t.anisotropy=4;return WIN[key]=t}
   function setDetail(feats,org){detFeats=feats;detO=org;if(T)buildDetail()}
-  function buildDetail(){if(det){scene.remove(det);det.geometry.dispose();det=null}
-    if(!detFeats||!detFeats.length||!detO)return;const dk=dark3d(),P=[],C=[],mc0=detO.mc,k=1/detO.sc;
-    const col=(hex)=>{const c=new T.Color(hex);return[c.r,c.g,c.b]};
-    const tri=(a,b,c,cl)=>{P.push(...a,...b,...c);for(let i=0;i<3;i++)C.push(...cl)};
-    const quad=(a,b,c,d,cl)=>{tri(a,b,c,cl);tri(a,c,d,cl)};
-    const prism=(cx,cz,u,v,hw,hd,y0,hgt,cl)=>{ /* box on an oriented rectangle */
-      const pt=(sx,sz,y)=>[cx+u[0]*sx*hw+v[0]*sz*hd,y,cz+u[1]*sx*hw+v[1]*sz*hd],y1=y0+hgt;
-      const a=pt(-1,-1,y0),b=pt(1,-1,y0),c=pt(1,1,y0),d=pt(-1,1,y0),a2=pt(-1,-1,y1),b2=pt(1,-1,y1),c2=pt(1,1,y1),d2=pt(-1,1,y1);
-      quad(a2,d2,c2,b2,cl);quad(a,a2,b2,b,cl);quad(b,b2,c2,c,cl);quad(c,c2,d2,d,cl);quad(d,d2,a2,a,cl)};
-    for(const f of detFeats){const ring=f.ring.map(([lo,la])=>{const m=maplibregl.MercatorCoordinate.fromLngLat([lo,la],0);return[(m.x-mc0.x)*k,(m.y-mc0.y)*k]});
-      if(ring.length<4)continue;let bi=0,bl=0;for(let i=0;i<ring.length-1;i++){const l=Math.hypot(ring[i+1][0]-ring[i][0],ring[i+1][1]-ring[i][1]);if(l>bl){bl=l;bi=i}}
-      if(bl<4)continue;const u=[(ring[bi+1][0]-ring[bi][0])/bl,(ring[bi+1][1]-ring[bi][1])/bl],v=[-u[1],u[0]];
-      let u0=1e9,u1=-1e9,v0=1e9,v1=-1e9,ar=0;for(let i=0;i<ring.length-1;i++){const x=ring[i][0],z=ring[i][1],pu=x*u[0]+z*u[1],pv=x*v[0]+z*v[1];u0=Math.min(u0,pu);u1=Math.max(u1,pu);v0=Math.min(v0,pv);v1=Math.max(v1,pv);ar+=ring[i][0]*ring[i+1][1]-ring[i+1][0]*ring[i][1]}
-      ar=Math.abs(ar)/2;const W=u1-u0,D=v1-v0;if(ar<.55*W*D||W<5||D<5||W>90||D>90)continue;
-      const cu=(u0+u1)/2,cv=(v0+v1)/2,cx=cu*u[0]+cv*v[0],cz=cu*u[1]+cv*v[1],h=f.h,y=h+(h>=40?1.6:0);
-      if(h<15){ /* gabled roof: ridge along the long side */
-        const long=W>=D,L=long?W:D,S=long?D:W,uu=long?u:v,vv=long?v:u,rh=Math.min(5,S*.32),hl=L/2+.4,hs=S/2+.4,
-          pt=(a,b,yy)=>[cx+uu[0]*a+vv[0]*b,yy,cz+uu[1]*a+vv[1]*b],cl=col(dk?0x4a3a38:0x9a4a3a),cl2=col(dk?0x3a2f2e:0x7d3a2e),cl3=col(dk?0x514744:0xb8a58c);
-        const e1=pt(-hl,-hs,y),e2=pt(hl,-hs,y),e3=pt(hl,hs,y),e4=pt(-hl,hs,y),r1=pt(-hl,0,y+rh),r2=pt(hl,0,y+rh);
-        quad(e1,r1,r2,e2,cl);quad(e3,r2,r1,e4,cl2);tri(e1,e4,r1,cl3);tri(e2,r2,e3,cl3)}
-      else if(h>=45){ /* tower crown: stepped tiers, antenna on the tallest */
-        const cl=col(dk?0x3a4450:0xd5dae0),cl2=col(dk?0x2a323c:0xb9c0c9),t=Math.min(12,h*.09);
-        prism(cx,cz,u,v,W*.34,D*.34,y,t,cl);prism(cx,cz,u,v,W*.2,D*.2,y+t,t*.8,cl2);
-        if(h>=90)prism(cx,cz,u,v,.5,.5,y+t*1.8,Math.min(30,h*.14),col(dk?0x8a9199:0xc0392b))}
-      else prism(cx,cz,u,v,Math.min(W*.18,4),Math.min(D*.18,4),y,3,col(dk?0x2a323c:0xa7afb8))}
-    if(!P.length)return;const g=new T.BufferGeometry();g.setAttribute("position",new T.Float32BufferAttribute(P,3));g.setAttribute("color",new T.Float32BufferAttribute(C,3));g.computeVertexNormals();
-    det=new T.Mesh(g,new T.MeshLambertMaterial({vertexColors:true,side:T.DoubleSide}));det.visible=false;scene.add(det)}
+  function buildDetail(){if(det){scene.remove(det);det.traverse(o=>{if(o.geometry)o.geometry.dispose()});det=null}
+    if(!detFeats||!detFeats.length||!detO)return;const night=dark3d(),mc0=detO.mc,k=1/detO.sc,acc={},R={P:[],N:[],C:[]};
+    const A=kd=>acc[kd]||(acc[kd]={P:[],U:[],N:[],C:[]}),col=h=>{const c=new T.Color(h);return[c.r,c.g,c.b]};
+    const cen=r=>{let x=0,z=0;for(const q of r){x+=q[0];z+=q[1]}return[x/r.length,z/r.length]},scl=(r,f)=>{const [cx,cz]=cen(r);return r.map(([x,z])=>[cx+(x-cx)*f,cz+(z-cz)*f])};
+    const wall=(kd,r,y0,y1,tint,sg)=>{const o=A(kd);for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len<.3)continue;
+      const bays=Math.max(1,Math.round(len/3.6))/2,fl=Math.max(1,Math.round((y1-y0)/3.2))/2,nx=sg*(b[1]-a[1])/len,nz=-sg*(b[0]-a[0])/len;
+      o.P.push(a[0],y0,a[1],b[0],y0,b[1],b[0],y1,b[1],a[0],y0,a[1],b[0],y1,b[1],a[0],y1,a[1]);o.U.push(0,0,bays,0,bays,fl,0,0,bays,fl,0,fl);
+      for(let q=0;q<6;q++){o.N.push(nx,0,nz);o.C.push(...tint)}}};
+    const cap=(r,y,c)=>{const idx=T.ShapeUtils.triangulateShape(r.map(q=>new T.Vector2(q[0],q[1])),[]);for(const t of idx)for(const v of t){R.P.push(r[v][0],y,r[v][1]);R.N.push(0,1,0);R.C.push(...c)}};
+    const box=(cx,cz,w,d,y,h,c)=>{const x0=cx-w/2,x1=cx+w/2,z0=cz-d/2,z1=cz+d/2,y1=y+h,f=(a,b,c2,d2,n)=>{for(const p of [a,b,c2,a,c2,d2]){R.P.push(...p);R.N.push(...n);R.C.push(...c)}};
+      f([x0,y1,z0],[x0,y1,z1],[x1,y1,z1],[x1,y1,z0],[0,1,0]);f([x0,y,z0],[x1,y,z0],[x1,y1,z0],[x0,y1,z0],[0,0,-1]);f([x1,y,z0],[x1,y,z1],[x1,y1,z1],[x1,y1,z0],[1,0,0]);f([x1,y,z1],[x0,y,z1],[x0,y1,z1],[x1,y1,z1],[0,0,1]);f([x0,y,z1],[x0,y,z0],[x0,y1,z0],[x0,y1,z1],[-1,0,0])};
+    const gable=(cx,cz,uu,vv,hl,hs,y,rh,c)=>{const pt=(a,b,yy)=>[cx+uu[0]*a+vv[0]*b,yy,cz+uu[1]*a+vv[1]*b],e1=pt(-hl,-hs,y),e2=pt(hl,-hs,y),e3=pt(hl,hs,y),e4=pt(-hl,hs,y),r1=pt(-hl,0,y+rh),r2=pt(hl,0,y+rh);
+      for(const [a,b,c2,n] of [[e1,r1,r2,[0,.5,-1]],[e1,r2,e2,[0,.5,-1]],[e3,r2,r1,[0,.5,1]],[e3,r1,e4,[0,.5,1]],[e1,e4,r1,[-1,.3,0]],[e2,r2,e3,[1,.3,0]]])for(const p of [a,b,c2]){R.P.push(...p);R.N.push(...n);R.C.push(...c)}};
+    for(const f of detFeats){let r=f.ring.map(([lo,la])=>{const m=maplibregl.MercatorCoordinate.fromLngLat([lo,la],0);return[(m.x-mc0.x)*k,(m.y-mc0.y)*k]});
+      if(r.length>1&&r[0][0]===r[r.length-1][0]&&r[0][1]===r[r.length-1][1])r.pop();if(r.length<3)continue;
+      let ar=0;for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length];ar+=a[0]*b[1]-b[0]*a[1]}const sg=ar<0?-1:1;ar=Math.abs(ar)/2;if(ar<4)continue;
+      let bi=0,bl=0;for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l>bl){bl=l;bi=i}}
+      const a0=r[bi],b0=r[(bi+1)%r.length],u=[(b0[0]-a0[0])/bl,(b0[1]-a0[1])/bl],v=[-u[1],u[0]];let u0=1e9,u1=-1e9,v0=1e9,v1=-1e9;
+      for(const [x,z] of r){const pu=x*u[0]+z*u[1],pv=x*v[0]+z*v[1];u0=Math.min(u0,pu);u1=Math.max(u1,pu);v0=Math.min(v0,pv);v1=Math.max(v1,pv)}
+      const W=u1-u0,D=v1-v0,rect=ar>.78*W*D,[cx,cz]=cen(r),hs=((f.ring[0][0]*7919+f.ring[0][1]*104729)%1+1)%1,
+        tint=col(new T.Color().setHSL(.08+hs*.5,.12+hs*.15,.82+hs*.12)),by=f.base||0,h=f.h,tall=h-by,
+        kd=tall>55?"tower":tall>20?"mid":"home",roof=col(night?0x2a323c:0xc4cad2),roof2=col(night?0x39434f:0xa7afb8);
+      if(kd==="tower"&&Math.min(W,D)>9){const t=[[1,0,.62],[.74,.62,.86],[.5,.86,1]];for(const [fc,p0,p1] of t){const rr=fc===1?r:scl(r,fc);wall(kd,rr,by+tall*p0,by+tall*p1,tint,sg);cap(rr,by+tall*p1+.02,roof)}
+        box(cx,cz,3,3,h,6,roof2);if(tall>100)box(cx,cz,.6,.6,h+6,22,col(0xc0392b))}
+      else if(kd==="mid"&&Math.min(W,D)>9){const h1=by+tall*.8,rr=scl(r,.8);wall(kd,r,by,h1,tint,sg);cap(r,h1+.02,roof);wall(kd,rr,h1,h,tint,sg);cap(rr,h+.02,roof);box(cx+2,cz,Math.min(5,W*.2),Math.min(4,D*.2),h,3.2,roof2)}
+      else{wall(kd,r,by,h,tint,sg);
+        if(kd==="home"&&rect&&W>5&&D>5&&W<90&&D<90){const cu=(u0+u1)/2,cv=(v0+v1)/2,gx=cu*u[0]+cv*v[0],gz=cu*u[1]+cv*v[1],long=W>=D,L=long?W:D,Sd=long?D:W;
+          gable(gx,gz,long?u:v,long?v:u,L/2+.4,Sd/2+.4,h,Math.min(5,Sd*.32),col(night?0x4a3a38:0x9a4a3a))}
+        else{cap(r,h+.02,roof);box(cx,cz,Math.min(W*.18,4),Math.min(D*.18,4),h,2.4,roof2)}}}
+    det=new T.Group();
+    for(const kd in acc){const o=acc[kd],g=new T.BufferGeometry(),tx=winTex(kd,night);g.setAttribute("position",new T.Float32BufferAttribute(o.P,3));g.setAttribute("uv",new T.Float32BufferAttribute(o.U,2));g.setAttribute("normal",new T.Float32BufferAttribute(o.N,3));g.setAttribute("color",new T.Float32BufferAttribute(o.C,3));
+      det.add(new T.Mesh(g,new T.MeshLambertMaterial({map:tx,vertexColors:true,side:T.DoubleSide,emissive:night?0xffffff:0,emissiveMap:night?tx:null,emissiveIntensity:night?.8:0})))}
+    if(R.P.length){const g=new T.BufferGeometry();g.setAttribute("position",new T.Float32BufferAttribute(R.P,3));g.setAttribute("normal",new T.Float32BufferAttribute(R.N,3));g.setAttribute("color",new T.Float32BufferAttribute(R.C,3));det.add(new T.Mesh(g,new T.MeshLambertMaterial({vertexColors:true,side:T.DoubleSide})))}
+    det.visible=false;scene.add(det)}
   function sync(){if(!T||!group)return;while(group.children.length)group.remove(group.children[0]);
     for(const m of modelList){const k=MODEL_KIND[m.cls];if(!k||!build[k])continue;const o=build[k](),mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),sc=mc.meterInMercatorCoordinateUnits();
       o.userData={mc,sc};group.add(o)}}
@@ -2425,21 +2439,36 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       for(const o of group.children){const {mc,sc}=o.userData;
         const m=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(sc,-sc,sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
         cam.projectionMatrix=pm.clone().multiply(m);for(const q of group.children)q.visible=q===o;ren.render(scene,cam)}
-      if(det&&detO&&z>=15.6){for(const q of group.children)q.visible=false;det.visible=true;const mc=detO.mc,dm=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(detO.sc,-detO.sc,detO.sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
+      if(det&&detO&&z>=15.4){for(const q of group.children)q.visible=false;det.visible=true;const mc=detO.mc,dm=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(detO.sc,-detO.sc,detO.sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
         cam.projectionMatrix=pm.clone().multiply(dm);ren.render(scene,cam);det.visible=false}}}}
 
 /* big cities (size 4-5) get roof and crown detail on the buildings in view, rebuilt when the map settles */
-let detTimer=0,detKey="";
-function refreshDetail(){clearTimeout(detTimer);detTimer=setTimeout(()=>{try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom(),ce=MM.getCenter();
-  const big=nearCity(ce.lng,ce.lat,.6);if(z<15.6||!big||big.size<4){modelLayer.setDetail(null,null);MM.triggerRepaint();return}
-  const ids=MM.getStyle().layers.filter(l=>l.type==="fill-extrusion"&&l.id!=="meridian-roofs").map(l=>l.id);if(!ids.length)return;
-  const fs=MM.queryRenderedFeatures({layers:ids}),seen=new Set(),out=[];
-  for(const f of fs){const g=f.geometry;if(!g)continue;const ring=g.type==="Polygon"?g.coordinates[0]:g.type==="MultiPolygon"?g.coordinates[0][0]:null;if(!ring||ring.length<4)continue;
-    const k=ring[0][0].toFixed(6)+","+ring[0][1].toFixed(6);if(seen.has(k))continue;seen.add(k);
-    const h=+f.properties.render_height||8,mh=+f.properties.render_min_height||0;if(mh>0)continue;out.push({ring,h,d:Math.hypot(ring[0][0]-ce.lng,ring[0][1]-ce.lat)})}
-  out.sort((a,b)=>a.d-b.d);const use=out.slice(0,700),mc=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0);
+let detTimer=0,detLast=null,origFilter={};
+/* near the camera the plain blocks are swapped for generated buildings: the blocks within a radius of the view centre are hidden with a "distance" filter and redrawn by the model layer */
+function detLayers(){const st=MM.getStyle();return st?st.layers.filter(l=>l.type==="fill-extrusion").map(l=>l.id):[]}
+function detRestore(){for(const id in origFilter){try{MM.setFilter(id,origFilter[id])}catch(e){}}origFilter={};detLast=null;if(modelLayer)modelLayer.setDetail(null,null);try{MM.triggerRepaint()}catch(e){}}
+function refreshDetail(force){clearTimeout(detTimer);detTimer=setTimeout(()=>{try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom(),ce=MM.getCenter();
+  if(z<15.4){if(detLast)detRestore();return}
+  const ids=detLayers();if(!ids.length)return;const base=MM.getLayer(ids.find(i=>i!=="meridian-roofs")||ids[0]);if(!base)return;
+  const mLat=111320,mLng=111320*Math.cos(ce.lat*Math.PI/180);
+  if(!force&&detLast&&Math.hypot((ce.lng-detLast.lng)*mLng,(ce.lat-detLast.lat)*mLat)<detLast.R*.35)return;
+  const src=base.source,sl=base.sourceLayer||base["source-layer"],fs=MM.querySourceFeatures(src,sl?{sourceLayer:sl}:{});let R=280,use=[];
+  const dseg=(px,py,ax,ay,bx,by)=>{const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy,t=l?Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l)):0;return Math.hypot(px-(ax+t*dx),py-(ay+t*dy))};
+  const dpoly=ring=>{let inside=false,best=1e9;const px=0,py=0;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const ax=(ring[i][0]-ce.lng)*mLng,ay=(ring[i][1]-ce.lat)*mLat,bx=(ring[j][0]-ce.lng)*mLng,by=(ring[j][1]-ce.lat)*mLat;
+      if((ay>0)!==(by>0)&&0<(bx-ax)*(0-ay)/(by-ay)+ax)inside=!inside;best=Math.min(best,dseg(0,0,ax,ay,bx,by))}return inside?0:best};
+  const pick=()=>{const seen=new Set(),out=[];
+    for(const f of fs){const g=f.geometry;if(!g)continue;const ring=g.type==="Polygon"?g.coordinates[0]:g.type==="MultiPolygon"?g.coordinates[0][0]:null;if(!ring||ring.length<4)continue;
+      if(g.type==="MultiPolygon"&&g.coordinates.length>1)continue;if(dpoly(ring)>R)continue;
+      const key=ring[0][0].toFixed(6)+","+ring[0][1].toFixed(6)+","+ring.length;if(seen.has(key))continue;seen.add(key);
+      const h=+f.properties.render_height||8,mh=+f.properties.render_min_height||0;if(h-mh<1)continue;out.push({ring,h,base:mh})}
+    return{out}};
+  let res=pick();while(res.out.length>900&&R>60){R*=.8;res=pick()}use=res.out;
+  if(!use.length){if(detLast)detRestore();return}
+  const hide=[">",["distance",{type:"Point",coordinates:[ce.lng,ce.lat]}],R];
+  for(const id of ids){if(!(id in origFilter))origFilter[id]=MM.getFilter(id)||null;const o=origFilter[id];MM.setFilter(id,o?["all",o,hide]:hide)}
+  const mc=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0);detLast={lng:ce.lng,lat:ce.lat,R};
   modelLayer.setDetail(use,{mc,sc:mc.meterInMercatorCoordinateUnits()});MM.triggerRepaint()}catch(e){console.warn("detail",e)}},350)}
-MM.on("moveend",refreshDetail);MM.on("idle",()=>{if(!detKey)detKey="1"});
+MM.on("moveend",()=>refreshDetail());
 function renderPins(){clearPins();setModels([]);if(!inStreet)return;ensurePositions();
   if(S.loc&&stCity&&S.loc.city===stCity.id){const tp=tripPos(Date.now()),pl=tp&&S.trip.local?tp:S.loc;const m=mkPin(pl.lat,pl.lon,"You","#be185d","You are here");m.getElement().style.zIndex=5;mkPins.push(m)}
   if(stCity&&hasAirport(stCity)){const a=airportPos(stCity);mkPins.push(mkPin(a.lat,a.lon,"Airport","#64748b",stCity.name+" airport"))}
