@@ -458,7 +458,7 @@ html.th-ledger #dcard>div{border-radius:2px;box-shadow:6px 6px 0 rgba(31,26,20,.
     <button id="tostreet" class="chip" hidden>View streets</button>
     <div id="hint">Drag to spin · scroll or pinch to zoom from the planet down to the streets · tap a city</div>
     <div id="toast"></div>
-    <div id="cfbox" hidden><div id="cfleg" aria-hidden="true"></div><button id="cfchip" class="chip" aria-pressed="true"></button><button id="lychip" class="chip" aria-expanded="false">🗂️ Layers</button><div id="lylist" hidden><button class="chip" data-ly="sat" aria-pressed="true"></button><button class="chip" data-ly="pl" aria-pressed="true"></button><button class="chip" data-ly="pfx" aria-pressed="true"></button><button class="chip" data-ly="colov" aria-pressed="true"></button><button class="chip" data-ly="mb" aria-pressed="true"></button><button class="chip" data-ly="mf" aria-pressed="true"></button><button class="chip" data-ly="mfa" aria-pressed="true"></button><button class="chip" data-ly="mm" aria-pressed="true"></button><button class="chip" data-ly="mw" aria-pressed="true"></button><button class="chip" data-ly="ob" aria-pressed="true"></button><button class="chip" data-ly="gov" aria-pressed="true"></button></div></div>
+    <div id="cfbox" hidden><div id="cfleg" aria-hidden="true"></div><button id="cfchip" class="chip" aria-pressed="true"></button><button id="lychip" class="chip" aria-expanded="false">🗂️ Layers</button><div id="lylist" hidden><button class="chip" data-ly="sat" aria-pressed="true"></button><button class="chip" data-ly="pl" aria-pressed="true"></button><button class="chip" data-ly="pfx" aria-pressed="true"></button><button class="chip" data-ly="colov" aria-pressed="true"></button><button class="chip" data-ly="al" aria-pressed="true"></button><button class="chip" data-ly="mb" aria-pressed="true"></button><button class="chip" data-ly="mf" aria-pressed="true"></button><button class="chip" data-ly="mfa" aria-pressed="true"></button><button class="chip" data-ly="mm" aria-pressed="true"></button><button class="chip" data-ly="mw" aria-pressed="true"></button><button class="chip" data-ly="ob" aria-pressed="true"></button><button class="chip" data-ly="gov" aria-pressed="true"></button></div></div>
     <div id="cfpop" hidden role="dialog" aria-label="Conflict details"></div>
     <button id="daily" hidden>🎁 Daily reward</button>
     <aside id="sheet" aria-live="polite"></aside>
@@ -2438,7 +2438,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
   function addChunk(feats,roads,withLm){if(!T||!scene||!detO)return null;if(!det){det=new T.Group();det.visible=false;scene.add(det)}if(dcache&&dcache.size>30000)dcache=null;const g=buildChunk(feats,roads,withLm);if(g)det.add(g);return g}
   const disp=g=>g.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose()});
   function removeChunk(g){if(det&&g){det.remove(g);disp(g)}}
-  function resetDetail(){if(det){scene.remove(det);disp(det);det=null}detO=null;dcache=null}
+  function resetDetail(){if(det){scene.remove(det);disp(det);det=null}detO=null;dcache=null;if(scene)atmoDrop()}
   const ready=()=>!!(T&&scene),count=()=>det?det.children.length:0;
   function buildChunk(detFeats,detRoads,withLm){
     if(!detO||!detFeats||(!detFeats.length&&!withLm))return null;const night=dark3d(),mc0=detO.mc,k=1/detO.sc,acc={},R={P:[],N:[],C:[]};let bad=0;
@@ -2564,6 +2564,31 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     const gm=mk(Gl,new T.MeshBasicMaterial({vertexColors:true,transparent:true,blending:T.AdditiveBlending,depthWrite:false,side:T.DoubleSide}));if(gm)gm.renderOrder=3;
     let tris=0;out.traverse(o=>{if(o.geometry&&o.geometry.attributes.position)tris+=o.geometry.attributes.position.count/3});
     dT={feat:Math.round(tB-tA),extras:Math.round(tC-tB),upload:Math.round(performance.now()-tC),tris:Math.round(tris),hits,total:detFeats.length};return out}
+  /* sky and street life: drifting clouds, chimney smoke and cars on the loaded roads, all in the same local frame as the generated buildings (metres from detO) */
+  let atmo=null,atmoO=null,atmoT=0,atmoC=null,atmoCars=0,clouds=[],puffs=[],cars=[],cloudM=null,carMats=[];
+  function atmoDrop(){if(atmo){scene.remove(atmo);disp(atmo)}atmo=null;atmoO=null;clouds=[];puffs=[];cars=[];cloudM=null;carMats=[]}
+  function atmoBuild(){atmoDrop();atmo=new T.Group();atmo.visible=false;scene.add(atmo);atmoO=detO;const k=1/detO.sc,mc0=detO.mc;
+    cloudM=new T.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.5,depthWrite:false});const sg=new T.IcosahedronGeometry(1,1);
+    for(let i=0;i<16;i++){const g=new T.Group(),n=3+Math.floor(Math.random()*3);for(let j=0;j<n;j++){const m=new T.Mesh(sg,cloudM);m.scale.set(70+Math.random()*90,22+Math.random()*18,60+Math.random()*70);m.position.set((j-n/2)*85+Math.random()*30,Math.random()*18,Math.random()*60);g.add(m)}
+      g.position.set(Math.random()*7000-3500,420+Math.random()*320,Math.random()*7000-3500);clouds.push(g);atmo.add(g)}
+    const pg=new T.IcosahedronGeometry(1,1);
+    for(const m of modelList){if(m.cls!=="site-ind")continue;const mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),x=(mc.x-mc0.x)*k,z=(mc.y-mc0.y)*k;
+      for(const cx of [10,15])for(let i=0;i<7;i++){const mt=new T.MeshBasicMaterial({color:0x9ca3af,transparent:true,opacity:0,depthWrite:false}),pm=new T.Mesh(pg,mt);atmo.add(pm);puffs.push({m:pm,mt,x:x+cx*1.0,z:z-6,ph:i/7+(cx>10?.07:0)})}}
+    for(const c of [0xc0392b,0x2563eb,0xe5e7eb,0x111827,0xf59e0b,0x16a34a])carMats.push(new T.MeshBasicMaterial({color:c}))}
+  function atmoCarsBuild(){if(!atmo||!detO)return;for(const c of cars){atmo.remove(c.m)}cars=[];const k=1/detO.sc,mc0=detO.mc,ce=map.getCenter(),cm=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0),cx=(cm.x-mc0.x)*k,cz=(cm.y-mc0.y)*k,list=[];
+    for(const rd of detRds){const pts=[];for(const [lo,la] of rd.pts){const m=maplibregl.MercatorCoordinate.fromLngLat([lo,la],0),x=(m.x-mc0.x)*k,z=(m.y-mc0.y)*k;if(isFinite(x)&&isFinite(z))pts.push([x,z])}
+      if(pts.length<2)continue;let len=0;const seg=[];for(let i=1;i<pts.length;i++){const l=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);seg.push(l);len+=l}
+      if(len<25)continue;let d=1e9;for(const q of pts)d=Math.min(d,Math.hypot(q[0]-cx,q[1]-cz));if(d>650)continue;list.push({pts,seg,len,d})}
+    list.sort((a,b)=>a.d-b.d);const g=new T.BoxGeometry(4.2,1.5,1.9);let n=0;
+    for(const r of list){const cnt=r.len>150?2:1;for(let q=0;q<cnt&&n<80;q++,n++){const m=new T.Mesh(g,carMats[Math.floor(Math.random()*carMats.length)]);atmo.add(m);cars.push({m,r,s:Math.random()*r.len,v:(7+Math.random()*7)*(Math.random()<.5?1:-1)})}}
+    atmoC=[cx,cz];atmoCars=performance.now()}
+  function atmoUpdate(dk){const now=performance.now(),dt=Math.min(.1,Math.max(0,(now-(atmoT||now))/1000));atmoT=now;
+    if(!atmo||atmoO!==detO){atmoBuild();atmoCarsBuild()}else if(now-atmoCars>5000){const k=1/detO.sc,ce=map.getCenter(),cm=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0);if(!atmoC||cars.length<30||Math.hypot((cm.x-detO.mc.x)*k-atmoC[0],(cm.y-detO.mc.y)*k-atmoC[1])>220)atmoCarsBuild();else atmoCars=now}
+    cloudM.color.set(dk?0x2a3350:0xffffff);cloudM.opacity=dk?.4:.5;
+    for(const c of clouds){c.position.x+=6*dt;if(c.position.x>3500)c.position.x-=7000}
+    const t=now/1000;for(const p of puffs){const f=(t/9+p.ph)%1;p.m.position.set(p.x+f*14,27+f*85,p.z);p.m.scale.setScalar(2.2+f*9);p.mt.opacity=Math.sin(f*Math.PI)*.42;p.mt.color.set(dk?0x4b5563:0xb6bcc6)}
+    for(const c of cars){c.s+=c.v*dt;const L=c.r.len;if(c.s>L)c.s-=L;else if(c.s<0)c.s+=L;let a=c.s,i=0;while(i<c.r.seg.length-1&&a>c.r.seg[i]){a-=c.r.seg[i];i++}const p0=c.r.pts[i],p1=c.r.pts[i+1],l=c.r.seg[i]||1,f=Math.min(1,a/l),dx=p1[0]-p0[0],dz=p1[1]-p0[1];
+      c.m.position.set(p0[0]+dx*f,.9,p0[1]+dz*f);c.m.rotation.y=-Math.atan2(dz,dx)}}
   function sync(){if(!T||!group)return;while(group.children.length)group.remove(group.children[0]);
     for(const m of modelList){const k=MODEL_KIND[m.cls];if(!k||!build[k])continue;const o=build[k](),mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),sc=mc.meterInMercatorCoordinateUnits();
       o.userData={mc,sc};group.add(o)}}
@@ -2573,12 +2598,12 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     render(gl,args){if(!T||!group)return;const z=map.getZoom();if(z<15)return;
       const dk=dark3d();hemi.intensity=dk?.35:.85;sun.intensity=dk?.3:.8;
       const pm=new T.Matrix4().fromArray(args.defaultProjectionData?args.defaultProjectionData.mainMatrix:args.projectionMatrix||args);
-      ren.resetState();if(det)det.visible=false;
+      ren.resetState();if(det)det.visible=false;if(atmo)atmo.visible=false;
       for(const o of group.children){const {mc,sc}=o.userData;
         const m=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(sc,-sc,sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
         cam.projectionMatrix=pm.clone().multiply(m);for(const q of group.children)q.visible=q===o;ren.render(scene,cam)}
       if(det&&detO&&z>=15){for(const q of group.children)q.visible=false;det.visible=true;const mc=detO.mc,dm=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(detO.sc,-detO.sc,detO.sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
-        cam.projectionMatrix=pm.clone().multiply(dm);ren.render(scene,cam);lastTris=ren.info.render.triangles;det.visible=false}}}}
+        const al=lyOn("al");if(al){try{atmoUpdate(dk)}catch(e){atmoDrop();console.warn("atmo off",e)}}if(atmo)atmo.visible=al;cam.projectionMatrix=pm.clone().multiply(dm);ren.render(scene,cam);lastTris=ren.info.render.triangles;det.visible=false;if(atmo)atmo.visible=false;if(al)map.triggerRepaint()}}}}
 
 /* big cities (size 4-5) get roof and crown detail on the buildings in view, rebuilt when the map settles */
 let detHud=0,detInfo={n:0,R:0},detTimer=0,detVerify=0,detWait=0,detLast=null,origFilter={};
@@ -3580,7 +3605,7 @@ function cfOpen(w,x,y){const el=document.getElementById("cfpop");_cfPop={id:w.id
   el.style.left=Math.max(12,Math.min(pw-bw-12,x-bw/2))+"px";el.style.top=Math.max(52,Math.min(ph-bh-12,y+18>ph-bh-12?y-bh-18:y+18))+"px";draw()}
 function cfClose(){_cfPop=null;const el=document.getElementById("cfpop");if(el)el.hidden=true;draw()}
 /* Layers: one chip opens the map toggles (same switches as Settings: sat, pl, pfx, colov; 0 = off) */
-const LYR=[["sat","🛰️ Satellites","satellites"],["pl","👥 Players","other players"],["pfx","✨ Planet effects","planet effects"],["colov","🪐 Colony badges","colony badges"],["mb","🏬 My shops","your own business icons"],["mf","🏭 My factories","your own factory icons"],["mfa","🌾 My farms","your own farm icons"],["mm","⛏️ My mines","your own mine icons"],["mw","📦 My depots","your own depot icons"],["ob","🏪 Others' shops","other players' businesses"],["gov","🏛️ Governed outline","the outline of the country you govern"]];
+const LYR=[["sat","🛰️ Satellites","satellites"],["pl","👥 Players","other players"],["pfx","✨ Planet effects","planet effects"],["colov","🪐 Colony badges","colony badges"],["al","☁️ Clouds, smoke and cars","street-view clouds, chimney smoke and moving cars"],["mb","🏬 My shops","your own business icons"],["mf","🏭 My factories","your own factory icons"],["mfa","🌾 My farms","your own farm icons"],["mm","⛏️ My mines","your own mine icons"],["mw","📦 My depots","your own depot icons"],["ob","🏪 Others' shops","other players' businesses"],["gov","🏛️ Governed outline","the outline of the country you govern"]];
 function lyOn(k){return !(S.set&&S.set[k]===0)}
 function satChip(){const L=document.getElementById("lylist"),c=document.getElementById("lychip");if(!L)return;
   for(const b of L.querySelectorAll("[data-ly]")){const d=LYR.find(x=>x[0]===b.dataset.ly),on=lyOn(d[0]);b.setAttribute("aria-pressed",on);b.title=(on?"Hide ":"Show ")+d[2]+" on the map";b.textContent=d[1]+(on?"":" (hidden)")}
