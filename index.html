@@ -818,13 +818,15 @@ function ensure3dBuildings(){const st=MM.getStyle();if(!st)return;const op=["int
   const ex=st.layers.filter(l=>l.type==="fill-extrusion"&&l.id!=="meridian-roofs");let base=ex[0];
   if(!ex.length){const src=Object.keys(st.sources).find(k=>st.sources[k].type==="vector");if(!src)return;const lab=st.layers.find(l=>l.type==="symbol");
     MM.addLayer({id:"meridian-3d-buildings",type:"fill-extrusion",source:src,"source-layer":"building",minzoom:14,
-      paint:{"fill-extrusion-height":["coalesce",["get","render_height"],8],"fill-extrusion-base":["coalesce",["get","render_min_height"],0]}},lab?lab.id:undefined);
+      paint:{"fill-extrusion-height":["coalesce",["get","render_height"],8],"fill-extrusion-base":["coalesce",["get","render_min_height"],0]}});
     base=MM.getLayer("meridian-3d-buildings");ex.push(base)}
   for(const l of ex)try{MM.setPaintProperty(l.id,"fill-extrusion-opacity",op);MM.setPaintProperty(l.id,"fill-extrusion-color",bldCol());MM.setPaintProperty(l.id,"fill-extrusion-pattern",bldPattern())}catch(e){console.warn("bld",e)}
+  /* buildings sit above every label layer, so street names behind a building are hidden by it */
+  for(const l of ex)try{MM.moveLayer(l.id)}catch(e){}
   /* plain roof cap on every building (the window pattern would otherwise paint the roofs); lighter and thicker on towers */
   if(!MM.getLayer("meridian-roofs")&&base)try{const h=["coalesce",["get","render_height"],8];
     MM.addLayer({id:"meridian-roofs",type:"fill-extrusion",source:base.source,"source-layer":base.sourceLayer||base["source-layer"]||"building",minzoom:14,
-      paint:{"fill-extrusion-color":["case",[">=",h,40],dk?"#2a323c":"#e4e7eb",dk?"#232a33":"#aab1ba"],"fill-extrusion-base":h,"fill-extrusion-height":["+",h,["case",[">=",h,40],1.5,.4]],"fill-extrusion-opacity":op}},MM.getStyle().layers[MM.getStyle().layers.findIndex(x=>x.id===base.id)+1]?.id)}catch(e){console.warn("roofs",e)}}
+      paint:{"fill-extrusion-color":["case",[">=",h,40],dk?"#2a323c":"#e4e7eb",dk?"#232a33":"#aab1ba"],"fill-extrusion-base":h,"fill-extrusion-height":["+",h,["case",[">=",h,40],1.5,.4]],"fill-extrusion-opacity":op}})}catch(e){console.warn("roofs",e)}}
 const st3t=$("#st3dt");
 function theme3dBtn(){st3t.textContent=dark3d()?"☀ Light":"☾ Dark"}
 st3t.onclick=()=>{try{localStorage.setItem("meridian-3d-dark",dark3d()?"0":"1")}catch(e){}theme3dBtn();loadMapStyle()};
@@ -2362,7 +2364,7 @@ let modelList=[],modelLayer=null;
 function setModels(list){modelList=list;if(modelLayer)modelLayer.sync();try{MM.triggerRepaint()}catch(e){}}
 function ensureModelLayer(){try{if(!MM||MM.getLayer("meridian-models"))return;
   const lab=MM.getStyle().layers.find(l=>l.type==="symbol");
-  MM.addLayer(modelLayer=makeModelLayer(),lab?lab.id:undefined);if(typeof refreshDetail==="function")refreshDetail()}catch(e){console.warn("model layer",e)}}
+  MM.addLayer(modelLayer=makeModelLayer());if(typeof refreshDetail==="function")refreshDetail()}catch(e){console.warn("model layer",e)}}
 function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=false,mats={},det=null,detO=null,detFeats=null;
   const M=(c,o)=>new T.MeshLambertMaterial(Object.assign({color:c},o||{}));
   const box=(w,h,d,x,y,z,mat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y+h/2,z);return m};
