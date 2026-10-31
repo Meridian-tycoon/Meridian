@@ -812,8 +812,12 @@ function bldImages(){const dk=dark3d();for(const k in BLD_KINDS){const id="mer-w
   MM.addImage(id,g.getImageData(0,0,32,32))}}
 function bldPattern(){const h=["coalesce",["get","render_height"],8];return["case",[">=",h,40],"mer-win-tower",[">=",h,14],"mer-win-mid","mer-win-home"]}
 /* building view distance: zoom where 3D buildings start. 13 shows them about twice as far out as the old 14; Low graphics keeps 14 for weak phones */
-function bldZ(){try{return gfx()===GFXQ.low?14:13}catch(e){return 14}}
-function bldOp(){const z=bldZ();return["interpolate",["linear"],["zoom"],z+.3,0,z+.8,1]}
+/* view distance slider (S.set.vd): 0 = Auto (follows graphics), 1 Short … 5 Max. z = zoom where buildings start, f = fade length, R = generated-building radius in metres, n = generated-building cap.
+   Max is the real limit: the map's building data only exists from zoom 13, so buildings cannot load further out than that. */
+const VDQ=[null,{z:15,f:[.2,.6],R:180,n:600},{z:14,f:[.4,.9],R:280,n:900},{z:13,f:[.3,.8],R:450,n:900},{z:13,f:[.1,.4],R:700,n:1300},{z:13,f:[0,.15],R:1000,n:1800}];
+function vdQ(){let v=0;try{v=+(S&&S.set&&S.set.vd)||0}catch(e){}if(VDQ[v])return VDQ[v];let q;try{q=gfx()}catch(e){}return q===GFXQ.low?{z:14,f:[.4,.9],R:280,n:900}:q===GFXQ.med?{z:13,f:[.3,.8],R:350,n:900}:VDQ[3]}
+function bldZ(){return vdQ().z}
+function bldOp(){const q=vdQ();return["interpolate",["linear"],["zoom"],q.z+q.f[0],0,q.z+q.f[1],1]}
 function bldZoomApply(){try{const st=MM.getStyle();if(!st)return;const z=bldZ();for(const l of st.layers)if(l.type==="fill-extrusion"&&(l.id==="meridian-roofs"||l.id==="meridian-3d-buildings"||/building/i.test(l.id))){MM.setLayerZoomRange(l.id,z,l.maxzoom||24);MM.setPaintProperty(l.id,"fill-extrusion-opacity",bldOp())}}catch(e){}}
 function ensure3dBuildings(){const st=MM.getStyle();if(!st)return;const op=bldOp(),dk=dark3d();
   for(const l of st.layers)if(l.type==="fill"&&/building/i.test(l.id))try{MM.setPaintProperty(l.id,"fill-color",dk?"#141a21":"#6b7480")}catch(e){}
@@ -2458,7 +2462,7 @@ function refreshDetail(force){clearTimeout(detTimer);detTimer=setTimeout(()=>{tr
   const mLat=111320,mLng=111320*Math.cos(ce.lat*Math.PI/180);
   if(!force&&detLast&&Math.hypot((ce.lng-detLast.lng)*mLng,(ce.lat-detLast.lat)*mLat)<detLast.R*.35)return;
   const src=base.source,sl=base.sourceLayer||base["source-layer"],fs=MM.querySourceFeatures(src,sl?{sourceLayer:sl}:{});/* generated radius by graphics: High 450 m, Medium 350 m, Low 280 m (old value); the 900-building cap below still shrinks it in dense cities */
-  let R=gfx()===GFXQ.low?280:gfx()===GFXQ.med?350:450,use=[];
+  const VQ=vdQ();let R=VQ.R,use=[];
   const dseg=(px,py,ax,ay,bx,by)=>{const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy,t=l?Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l)):0;return Math.hypot(px-(ax+t*dx),py-(ay+t*dy))};
   const dpoly=ring=>{let inside=false,best=1e9;const px=0,py=0;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const ax=(ring[i][0]-ce.lng)*mLng,ay=(ring[i][1]-ce.lat)*mLat,bx=(ring[j][0]-ce.lng)*mLng,by=(ring[j][1]-ce.lat)*mLat;
       if((ay>0)!==(by>0)&&0<(bx-ax)*(0-ay)/(by-ay)+ax)inside=!inside;best=Math.min(best,dseg(0,0,ax,ay,bx,by))}return inside?0:best};
@@ -2468,7 +2472,7 @@ function refreshDetail(force){clearTimeout(detTimer);detTimer=setTimeout(()=>{tr
       const key=ring[0][0].toFixed(6)+","+ring[0][1].toFixed(6)+","+ring.length;if(seen.has(key))continue;seen.add(key);
       const h=+f.properties.render_height||8,mh=+f.properties.render_min_height||0;if(h-mh<1)continue;out.push({ring,h,base:mh})}
     return{out}};
-  let res=pick();while(res.out.length>900&&R>60){R*=.8;res=pick()}use=res.out;
+  let res=pick();while(res.out.length>VQ.n&&R>60){R*=.8;res=pick()}use=res.out;
   if(!use.length){if(detLast)detRestore();return}
   const hide=[">",["distance",{type:"Point",coordinates:[ce.lng,ce.lat]}],R];
   for(const id of ids){if(!(id in origFilter))origFilter[id]=MM.getFilter(id)||null;const o=origFilter[id];MM.setFilter(id,o?["all",o,hide]:hide)}
@@ -10793,18 +10797,18 @@ setInterval(()=>{try{if(_cfPop){const el=document.getElementById("cfpop");if(el&
     if((card?card.dataset.bgsig:"")!==sig){if(Date.now()-(PH.touched||0)>=3000&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)))phRender()}
     else bgFill(PH.el)}}catch(e){console.warn("bgfill",e)}},2000);
 /* ---------- Settings app (device prefs in S.set; UI theme mirrored to localStorage for first paint) ---------- */
-var SET_DEF={gfx:"high",ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,fov:37,sat:1,pfx:1,colov:1,gov:1,alarm:1};
+var SET_DEF={gfx:"high",ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,fov:37,vd:0,sat:1,pfx:1,colov:1,gov:1,alarm:1};
 var SET_UI=[["classic","Classic","The original look"],["glass","Glass","Frosted dark panels, violet glow"],["ledger","Ledger","Cream paper, ink and serif type"],["command","Command","Neon HUD, cyan and magenta"]];
 var SET_FONT="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@500;700&family=Playfair+Display:wght@700;900&family=Source+Serif+4:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Chakra+Petch:wght@500;700&display=swap";
 var _setSig="";
-function setG(){const s=(S.set&&typeof S.set==="object")?S.set:(S.set={});for(const k in SET_DEF)if(s[k]==null)s[k]=SET_DEF[k];if(!SET_UI.some(u=>u[0]===s.ui))s.ui="classic";if(![.9,1,1.15].includes(+s.fs))s.fs=1;if(![.2,.5,.8,1].includes(+s.vol))s.vol=.5;if(!GFXQ[s.gfx])s.gfx="high";if(![30,37,50,60].includes(+s.fov))s.fov=37;return s}
+function setG(){const s=(S.set&&typeof S.set==="object")?S.set:(S.set={});for(const k in SET_DEF)if(s[k]==null)s[k]=SET_DEF[k];if(!SET_UI.some(u=>u[0]===s.ui))s.ui="classic";if(![.9,1,1.15].includes(+s.fs))s.fs=1;if(![.2,.5,.8,1].includes(+s.vol))s.vol=.5;if(!GFXQ[s.gfx])s.gfx="high";if(![30,37,50,60].includes(+s.fov))s.fov=37;if(!(+s.vd>=0&&+s.vd<=5))s.vd=0;s.vd=Math.round(+s.vd);return s}
 function setApply(force){const s=setG(),sig=JSON.stringify(s);if(!force&&sig===_setSig)return;_setSig=sig;const H=document.documentElement;
   for(const [k] of SET_UI)H.classList.toggle("th-"+k,k!=="classic"&&s.ui===k);
   if(s.ui!=="classic"&&!document.getElementById("th-font")){const l=document.createElement("link");l.id="th-font";l.rel="stylesheet";l.href=SET_FONT;document.head.appendChild(l)}
   H.classList.toggle("set-rm",!!s.rm||s.gfx==="low");H.classList.toggle("gfx-low",s.gfx==="low");H.classList.toggle("set-notick",!s.tick);H.style.setProperty("--setfs",s.fs);H.classList.toggle("set-fs",+s.fs!==1);
   try{reduce=REDUCE_OS||!!s.rm||s.gfx==="low"}catch(e){}
   try{const pr=Math.min(gfx().pr,devicePixelRatio||1);if(MM.getPixelRatio()!==pr){MM.setPixelRatio(pr);resize()}}catch(e){}
-  try{if(MM.getVerticalFieldOfView&&Math.abs(MM.getVerticalFieldOfView()-s.fov)>.5)MM.setVerticalFieldOfView(s.fov)}catch(e){}try{bldZoomApply()}catch(e){}
+  try{if(MM.getVerticalFieldOfView&&Math.abs(MM.getVerticalFieldOfView()-s.fov)>.5)MM.setVerticalFieldOfView(s.fov)}catch(e){}try{bldZoomApply();if(typeof refreshDetail==="function")refreshDetail(1)}catch(e){}
   try{localStorage.setItem("meridian-uitheme",s.ui)}catch(e){}
   const m=document.querySelector('meta[name="theme-color"]');if(m&&s.ui!=="classic")m.content={glass:"#0b1020",ledger:"#fbf5e6",command:"#000000"}[s.ui];else if(m)m.content=themeGet()==="light"?"#fbfaf5":"#141f21";
   try{if(typeof satChip==="function")satChip()}catch(e){}try{if(typeof plChip==="function")plChip()}catch(e){}
@@ -10819,6 +10823,7 @@ function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="g
   ${s.ui==="classic"?`<div class="set-row"><span>Light or dark<small>Classic theme only</small></span>${seg("mode",[["light","Light"],["dark","Dark"]],themeGet())}</div>`:""}
   <div class="set-row"><span>Graphics<small>Lower uses less CPU, GPU and battery</small></span>${seg("gfx",[["low","Low"],["med","Medium"],["high","High"]],s.gfx)}</div>
   <div class="set-row"><span>Field of view<small>How wide the 3D map camera sees when tilted</small></span>${seg("fov",[[30,"Narrow"],[37,"Normal"],[50,"Wide"],[60,"Ultra"]],s.fov)}</div>
+  <div class="set-row"><span>Building view distance<small>How far out 3D buildings load. <b id="vdl">${["Auto","Short","Medium","Far","Very far","Max"][s.vd]}</b>. Far settings cost more on phones</small></span><input type="range" min="0" max="5" step="1" value="${s.vd}" aria-label="Building view distance" style="width:120px" oninput="document.getElementById('vdl').textContent=['Auto','Short','Medium','Far','Very far','Max'][this.value]" onchange="setPut('vd',+this.value)"></div>
   <div class="set-row"><span>Text size<small>Panels, ticker and pop-ups</small></span>${seg("fs",[[.9,"Small"],[1,"Normal"],[1.15,"Large"]],s.fs)}</div>
   ${tog("sat","Satellites","Your launched satellites orbiting the globe")}
   ${tog("pfx","Planet effects","Wealth glow, election flashes, rocket launches and seasons")}
