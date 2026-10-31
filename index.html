@@ -5039,12 +5039,12 @@ function mkdOpen(){if(!document.getElementById("mdx-css")){const st=document.cre
     el.addEventListener("pointermove",at);el.addEventListener("pointerdown",e=>{if(e.target.closest&&e.target.closest(".mkd-plot")){MKD.hold=true;at(e)}});
     el.addEventListener("pointerup",e=>{if(e.pointerType!=="mouse")MKD.hold=false});
     el.addEventListener("pointerout",e=>{if(!e.target.closest||!e.target.closest(".mkd-plot")||(e.relatedTarget&&e.relatedTarget.closest&&e.relatedTarget.closest(".mkd-plot")))return;MKD.hold=false;MKD.hi=null;if(MKD.cd)mkdOhlc(null)});
-    el.addEventListener("input",e=>{const t=e.target;if(t.id==="mkd-q"){MKD.q=t.value;const p=t.selectionStart;mkdRender();const n=MKD.el.querySelector("#mkd-q");if(n){n.focus();n.setSelectionRange(p,p)}}else if(t.id==="exi-amt"){EXI.amt=t.value;const o=MKD.el.querySelector("#exi-amtt");if(o)o.textContent=exiAmtTxt();MKD.el.querySelectorAll("[data-md=exi]").forEach(b=>b.disabled=false)}else if(t.id==="mkd-amt"){MKD.amt=t.value;const o=MKD.el.querySelector("#mkd-amtt");if(o)o.textContent=mkdAmtTxt()}});
+    el.addEventListener("input",e=>{const t=e.target;if(t.id==="mkd-q"){MKD.q=t.value;const p=t.selectionStart;mkdRender();const n=MKD.el.querySelector("#mkd-q");if(n){n.focus();n.setSelectionRange(p,p)}}else if(t.id==="exi-pamt"){EXI.pamt=t.value}else if(t.id==="exi-amt"){EXI.amt=t.value;const o=MKD.el.querySelector("#exi-amtt");if(o)o.textContent=exiAmtTxt();MKD.el.querySelectorAll("[data-md=exi]").forEach(b=>b.disabled=false)}else if(t.id==="mkd-amt"){MKD.amt=t.value;const o=MKD.el.querySelector("#mkd-amtt");if(o)o.textContent=mkdAmtTxt()}});
     el.addEventListener("click",e=>{const x=e.target.closest("[data-md]");if(!x||x.disabled)return;const k=x.dataset.md,v=x.dataset.k;
       if(k==="close")return mkdHide();if(k==="theme"){themeSet(themeGet()==="dark"?"light":"dark");x.innerHTML=themeIco();return}
       if(k==="rng")MKD.rng=+v;else if(k==="ct")MKD.ct=v;else if(k==="sort")MKD.sort=v;else if(k==="own")MKD.own=!MKD.own;
       else if(k==="sel"){MKD.sel=MKD.sel===v?null:v;MKD.amt="";MKD.hi=null;const b=MKD.el.querySelector(".mdx-body");if(b&&MKD.sel)b.scrollTop=0}
-      else if(k==="trade")trade(MKD.sel,+x.dataset.q);else if(k==="tab"){MKD.tab=v}else if(k==="exsel"){EXI.sel=v;EXI.amt=""}else if(k==="exi"){if(v==="max"){exiMax();return}exiDo(v);return}
+      else if(k==="trade")trade(MKD.sel,+x.dataset.q);else if(k==="tab"){MKD.tab=v}else if(k==="exsel"){EXI.sel=v;EXI.amt=""}else if(k==="exi"){if(v==="max"){exiMax();return}exiDo(v);return}else if(k==="exp"){exiPool(v);return}
       else if(k==="amt"){const q=parseFloat(String(MKD.amt).replace(/,/g,""));if(!(q>0)){toast("Type an amount first");return}trade(MKD.sel,+x.dataset.q*q)}
       mkdRender()})}
   const vw=innerWidth,vh=innerHeight,el=MKD.el;if(vw<560){el.classList.add("mdx-full");el.classList.remove("bxd-wide");Object.assign(el.style,{left:"0px",top:"0px",width:vw+"px",height:vh+"px"})}
@@ -5086,7 +5086,7 @@ function mkdRender(){if(!MKD.el)return;const m=MK(),n=MKD.rng,body=MKD.el.queryS
 /* ---------- Exchange stock (Mark, 2026-10-30): the exchange owner buys shares into the exchange (world/exinv {uid,inv:{SYM:qty},at});
    other players buy from that stock or sell into it at the market price. Each fill writes exfill/{id} {amt}: the owner's 0.4% fee on that buy or sell
    (never negative since the exchange account change). The owner's save collects fills by deleting them, like excom commissions. ---------- */
-const EXI={inv:{},uid:null,ok:0,fills:[],busy:{},sel:"AAPL",amt:"",err:""};
+const EXI={inv:{},uid:null,ok:0,fills:[],busy:{},sel:"AAPL",amt:"",err:"",pamt:"",accts:[]};
 const exiK=s=>s.replace(".","_");
 const exiOwner=()=>!!(exOk()&&EX.ny&&EX.ny.uid===ON.user.uid&&exOwn());
 const exiQty=s=>EXI.uid&&EX.ny&&EXI.uid===EX.ny.uid?Math.max(0,+EXI.inv[exiK(s)]||0):0;
@@ -5096,6 +5096,24 @@ function exiMax(){const a=AK[EXI.sel];if(!a)return toast("Pick a stock");const p
   while(q>0&&p*q*(own?1:1+EXFEE)>S.cash)q=exiRound(a,a.t==="c"?q-1e-6:q-1);
   if(!(q>0))return toast(own?"You can't afford any "+a.s:exiQty(a.s)>0?"You can't afford any "+a.s:"The exchange has no "+a.s);
   EXI.amt=String(q);if(MKD.open)mkdRender()}
+/* Exchange accounts online (Mark, 2026-10-31): each buyer publishes exacct/{uid} {name,h:{SYM:qty},at} so the owner can list every account.
+   The owner keeps the account pool in S.expool (buys add the purchase price, sells take the sale value out) and can withdraw/deposit it any time;
+   "owed back" = every account's shares at today's price. */
+function exiAcctPub(){if(!exOk())return;const h={};for(const[k,v]of Object.entries(S.exb||{}))if(v>0&&AK[k])h[exiK(k)]=v;
+  ON.db.collection("exacct").doc(ON.user.uid).set({name:String(onProf().name||"Tycoon").slice(0,20),h,at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{})}
+function exiAcctSub(){if(EX.sub.a||!exOk())return;EX.sub.a=ON.db.collection("exacct").onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(d.id!==ON.user.uid&&v.h&&Object.keys(v.h).length)a.push({uid:d.id,name:v.name||"Player",h:v.h})});EXI.accts=a;if(MKD.open&&MKD.tab==="ex")mkdRender()},()=>{EX.sub.a=null})}
+function exiOwed(){const px=MK().px;let t=0;for(const a of EXI.accts)for(const[k,q]of Object.entries(a.h)){const s=k.replace("_",".");if(px[s]>0)t+=px[s]*(+q||0)}return t}
+function exiPool(kind){if(!exiOwner())return;const v=Math.round(Number(String(EXI.pamt).replace(/,/g,"")));if(!(v>0)||!isFinite(v))return toast("Enter an amount above 0");
+  if(kind==="dep"){if(S.cash<v)return toast(`Need ${fmt(v)}`);S.cash-=v;S.expool=(+S.expool||0)+v;toast(`Deposited ${fmt(v)} into the exchange accounts`)}
+  else{const p=+S.expool||0;if(p<v)return toast(`The accounts only hold ${fmt(Math.max(0,p))}`);S.expool=p-v;S.cash+=v;toast(`Withdrew ${fmt(v)} from the exchange accounts`)}
+  EXI.pamt="";save();hud();if(MKD.open)mkdRender()}
+function exiAcctHtml(){exiAcctSub();const pool=+S.expool||0,owed=exiOwed(),pct=owed>0?Math.max(0,Math.min(100,pool/owed*100)):100,col=pool>=owed?"#16a34a":pct>=50?"#d97706":"#dc2626",px=MK().px;
+  return `<div class="mdx-card" style="margin-top:12px"><h3 style="margin:0 0 6px">💼 Player exchange accounts</h3>
+  <div class="ph-rows" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));column-gap:24px"><div><span>Accounts hold</span><b>${fmt(pool)}</b></div><div><span>Owed back to players</span><b>${fmt(owed)}</b></div><div><span>${pool>=owed?"Spare":"Short by"}</span><b style="color:${col}">${fmt(Math.abs(pool-owed))}</b></div></div>
+  <div title="Accounts hold ${fmt(pool)} of ${fmt(owed)} owed" style="height:10px;border-radius:5px;background:#94a3b833;margin:8px 0;overflow:hidden"><div style="height:100%;width:${pct.toFixed(1)}%;background:${col}"></div></div>
+  <p class="ph-sub" style="margin:0 0 6px">${owed>0?`The accounts can pay back ${pct.toFixed(0)}% of what players are owed.`:"No player holds shares from your exchange yet."} Players are paid when they sell back, even if the accounts are short, so keep them topped up.</p>
+  <div class="mkd-tr" style="grid-template-columns:1fr auto auto"><input id="exi-pamt" type="text" inputmode="decimal" autocomplete="off" placeholder="Amount" value="${devEsc(EXI.pamt)}"><button data-md="exp" data-k="wd">Withdraw</button><button data-md="exp" data-k="dep" class="b">Deposit</button></div>
+  ${EXI.accts.length?`<table class="mkd-t" style="margin-top:10px"><tr><th>Player</th><th>Holdings</th><th>Worth now</th></tr>${EXI.accts.map(a=>{let w=0;const hs=Object.entries(a.h).map(([k,q])=>{const s=k.replace("_",".");w+=(px[s]||0)*(+q||0);return `${fq(+q||0)} ${s}`}).join(", ");return `<tr><td>${devEsc(a.name)}</td><td>${devEsc(hs)}</td><td>${fmt(w)}</td></tr>`}).join("")}</table>`:""}</div>`}
 /* shares a player may sell back to the exchange: only what they bought from it and still hold */
 function exiSellable(s){const h=MK().hold[s];return Math.max(0,Math.min(h?h.q:0,(S.exb&&+S.exb[s])||0))}
 function exiRound(a,q){return a.t==="c"?Math.floor(q*1e6+1e-9)/1e6:Math.floor(q)}
@@ -5104,7 +5122,8 @@ function exiListen(uid){const db=ON.db;
   EX.sub.f=db.collection("exfill").where("to","==",uid).onSnapshot(q=>{const a=[];q.forEach(d=>a.push(Object.assign({id:d.id},d.data()||{})));EXI.fills=a;exiCollect()},()=>{})}
 /* owner: apply each fill to cash (buys pay the owner, sells cost the owner) */
 function exiCollect(){if(!exiOwner())return;for(const o of EXI.fills){if(EXI.busy[o.id])continue;EXI.busy[o.id]=1;const ref=ON.db.collection("exfill").doc(o.id);
-  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)throw new Error("gone");t.delete(ref);return Math.max(-1e15,Math.min(1e15,Math.round(+d.data().amt||0)))})
+  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)throw new Error("gone");t.delete(ref);const pr=Math.max(-1e15,Math.min(1e15,Math.round(+d.data().pr||0)));if(pr)S.expool=(+S.expool||0)+pr;   // the buyer's purchase money goes into (or a sale comes out of) the exchange account pool
+    return Math.max(-1e15,Math.min(1e15,Math.round(+d.data().amt||0)))})
     .then(v=>{delete EXI.busy[o.id];if(v<0)v=Math.max(v,-Math.max(0,S.cash));   // a sale to the exchange never takes the owner below 0 cash
       S.cash+=v;if(v>0)S.earned=(S.earned||0)+v;const x=exFix();if(x){x.sold=(x.sold||0)+(v>0?v:0);x.bought=(x.bought||0)+(v<0?-v:0)}
       toast(v>=0?`🏛 ${o.byName||"A player"} traded ${fq(+o.q||0)} ${o.s} on your exchange: +${fmt(v)} fee`:`🏛 ${o.byName||"A player"} sold ${fq(+o.q||0)} ${o.s} to your exchange: −${fmt(-v)}`);save();hud();if(MKD.open)mkdRender()},()=>{delete EXI.busy[o.id]})}}
@@ -5124,9 +5143,9 @@ function exiDo(kind){if(!exOk())return toast("Sign in to trade with the exchange
   if(!own&&EX.ny.uid===ON.user.uid)return toast("Open your exchange to stock it");
   let run,ok;
   if(kind==="buy"){if(own)return;const cost=p*q*(1+f);if(S.cash<cost)return toast(`Need ${fmt(cost)}`);if(exiQty(s)<q-1e-9)return toast(`The exchange only has ${fq(exiQty(s))} ${s}`);
-    run=()=>exiTx(s,c=>{if(c<q-1e-9)throw new Error(`The exchange only has ${fq(c)} ${s}`);return exiRound(a,c-q)},{s,q,amt:Math.min(1e15,Math.round(p*q*EXFEE))});ok=()=>{S.cash-=cost;exiHold(s,q,p);const b=S.exb=S.exb||{};b[s]=(b[s]||0)+q;toast(`Bought ${fq(q)} ${s} from the exchange`)}}
+    run=()=>exiTx(s,c=>{if(c<q-1e-9)throw new Error(`The exchange only has ${fq(c)} ${s}`);return exiRound(a,c-q)},{s,q,amt:Math.min(1e15,Math.round(p*q*EXFEE)),pr:Math.min(1e15,Math.round(p*q))});ok=()=>{S.cash-=cost;exiHold(s,q,p);const b=S.exb=S.exb||{};b[s]=(b[s]||0)+q;exiAcctPub();toast(`Bought ${fq(q)} ${s} from the exchange`)}}
   else if(kind==="sell"){if(own)return;if(!hd||hd.q<q-1e-9)return toast(`You own ${hd?fq(hd.q):0} ${s}`);const sb=exiSellable(s);if(sb<q-1e-9)return toast(sb>0?`You can only sell back the ${fq(sb)} ${s} you bought from this exchange`:`You can only sell the exchange shares you bought from it`);const v=p*q*(1-f);
-    run=()=>exiTx(s,c=>exiRound(a,c+q),{s,q,amt:Math.min(1e15,Math.round(p*q*EXFEE))});ok=()=>{S.cash+=v;exiHold(s,-q,p);const b=S.exb=S.exb||{};b[s]=Math.max(0,(b[s]||0)-q);if(b[s]<1e-9)delete b[s];toast(`Sold ${fq(q)} ${s} to the exchange for ${fmt(v)}`)}}
+    run=()=>exiTx(s,c=>exiRound(a,c+q),{s,q,amt:Math.min(1e15,Math.round(p*q*EXFEE)),pr:-Math.min(1e15,Math.round(p*q))});ok=()=>{S.cash+=v;exiHold(s,-q,p);const b=S.exb=S.exb||{};b[s]=Math.max(0,(b[s]||0)-q);if(b[s]<1e-9)delete b[s];exiAcctPub();toast(`Sold ${fq(q)} ${s} to the exchange for ${fmt(v)}`)}}
   else if(kind==="stock"){if(!own)return;const cost=p*q;   // owner stock-up pays no exchange fee
     if(S.cash<cost)return toast(`Need ${fmt(cost)}`);
     run=()=>exiTx(s,c=>exiRound(a,c+q));ok=()=>{S.cash-=cost;toast(`Stocked ${fq(q)} ${s} on the exchange for ${fmt(cost)}`)}}
@@ -5136,7 +5155,7 @@ function exiDo(kind){if(!exOk())return toast("Sign in to trade with the exchange
     run=()=>exiTx(s,c=>{if(c<q-1e-9)throw new Error(`The exchange only has ${fq(c)} ${s}`);return exiRound(a,c-q)});ok=()=>{const m2=MK(),h=m2.hold[s]=m2.hold[s]||{q:0,avg:0};h.avg=(h.avg*h.q+p*q)/(h.q+q);h.q+=q;toast(`Moved ${fq(q)} ${s} from the exchange into your portfolio`)}}
   else return;
   EXI.busy.t=1;run().then(()=>{EXI.busy.t=0;ok();EXI.amt="";save();hud();if(MKD.open)mkdRender()},e=>{EXI.busy.t=0;toast(e&&e.message&&!/permission/i.test(e.message)?e.message:"The exchange trade didn't go through: "+(e&&e.code||e));if(MKD.open)mkdRender()})}
-function exiHtml(){const m=MK(),own=exiOwner(),ny=EX.ny;
+function exiHtml(){const m=MK(),own=exiOwner(),ny=EX.ny;if(!own&&!EXI.pub&&exOk()&&S.exb&&Object.keys(S.exb).length){EXI.pub=1;exiAcctPub()}
   if(!exOk())return `<div class="mdx-card" style="margin-top:12px"><p class="ph-sub">Sign in to see the exchange's stock.</p></div>`;
   if(!ny||!ny.uid)return `<div class="mdx-card" style="margin-top:12px"><p class="ph-sub">No one owns the New York Stock Exchange yet. Open it in ${EXC.city} to stock it.</p></div>`;
   const rows=ASSETS.map(a=>({a,q:exiQty(a.s)})),tot=rows.reduce((t,r)=>t+r.q*m.px[r.a.s],0),held=rows.filter(r=>r.q>0),sa=AK[EXI.sel]||AK.AAPL,sq=exiQty(sa.s),p=m.px[sa.s],f=EXFEE,hd=m.hold[sa.s];
@@ -5148,7 +5167,7 @@ function exiHtml(){const m=MK(),own=exiOwner(),ny=EX.ny;
   ${(()=>{const K=mkdCandles(m,sa.s,MKD.rng),h=K.map(k=>k.c),ch=(h[h.length-1]/h[0]-1)*100,col=ch>=0?"#16a34a":"#dc2626";return `<div class="mdx-card" style="margin-top:12px"><h3 style="margin:0">${sa.n} · ${sa.s} <span style="color:${col}">${ch>=0?"+":""}${ch.toFixed(2)}% over ${MKD.rng} days</span></h3><div class="ph-sub" style="margin:4px 0 8px">Daily candles from ${mkdDay(MKD.rng)} to today · same market prices as the public market</div><div class="mkd-rg" style="margin:0 0 6px">${[["candle","Candles"],["line","Line"]].map(([k,t])=>`<button data-md="ct" data-k="${k}" aria-pressed="${MKD.ct===k}">${t}</button>`).join("")}</div>${mkdChart(K,col)}${mkdStats(K)}</div>`})()}
   <div class="mdx-card" style="margin-top:12px"><h3 style="margin:0 0 6px">${own?"Stock your exchange":"Trade with the exchange"} · ${sa.s}</h3><div class="ph-rows" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));column-gap:24px"><div><span>Price</span><b>${fp(p)}</b></div><div><span>Exchange has</span><b>${fq(sq)}</b></div><div><span>You own</span><b>${hd?fq(hd.q):0}</b></div>${own?"":`<div><span>Your exchange account</span><b>${fmt(exiSellable(sa.s)*p)}</b></div>`}<div><span>Cash</span><b>${fmt(S.cash)}</b></div><div><span>Exchange fee</span><b>0.4% per trade, paid to the owner</b></div></div>
   <div class="mkd-tr" style="grid-template-columns:${own?"1fr auto auto auto auto":"1fr auto auto auto"};margin-top:8px"><input id="exi-amt" type="text" inputmode="decimal" autocomplete="off" placeholder="${sa.t==="c"?"Amount of "+sa.s:"Number of shares"}" value="${devEsc(EXI.amt)}">${btn("max","Buy max",0,0)}${own?btn("stock","Stock up",1,!qv||S.cash<p*qv)+btn("movein","Move my shares in",0,!qv||!hd||hd.q<qv-1e-9)+btn("unstock","Unstock",0,!qv||sq<qv-1e-9):btn("buy","Buy",1,!qv||sq<qv-1e-9||S.cash<p*qv*(1+f))+btn("sell","Sell",0,!qv||!hd||hd.q<qv-1e-9||exiSellable(sa.s)<qv-1e-9)}</div>
-  <div id="exi-amtt" class="ph-sub" style="margin-top:4px">${exiAmtTxt()}</div>${own&&EXI.fills.length?`<p class="ph-sub">Collecting ${EXI.fills.length} trade${EXI.fills.length>1?"s":""}…</p>`:""}</div>`}
+  <div id="exi-amtt" class="ph-sub" style="margin-top:4px">${exiAmtTxt()}</div>${own&&EXI.fills.length?`<p class="ph-sub">Collecting ${EXI.fills.length} trade${EXI.fills.length>1?"s":""}…</p>`:""}</div>${own?exiAcctHtml():""}`}
 function exiAmtTxt(){const a=AK[EXI.sel];if(!a)return"";const q=exiRound(a,Number(String(EXI.amt).replace(/,/g,"")));if(!(q>0)||!isFinite(q))return exiOwner()?"Stock up buys new shares at the market price (no fee). Move my shares in moves shares you own into the exchange (no fee). Unstock moves exchange shares back into your portfolio.":"Pick an asset, type an amount, then buy or sell.";
   const p=MK().px[a.s],f=EXFEE;return exiOwner()?`Stock up costs ${fmt(p*q)} (no fee) · moving shares in or out is free`:`Buy costs ${fmt(p*q*(1+f))} · sell pays ${fmt(p*q*(1-f))} (fee ${f*100}%)`}
 /* ---------- playtest progress reports: opt-in, sent to a Google Form (config: PLAYTEST near the state section) ---------- */

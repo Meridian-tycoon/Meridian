@@ -608,10 +608,15 @@ service cloud.firestore {
       let px = get(/databases/$(database)/documents/world/mkt).data.px;
       return s in px && px[s] is number && amt >= 0 && amt * 250 <= q * px[s] * 1.25 + 250;
     }
+    // pr: the purchase price going into (+) or the sale value coming out of (-) the owner's exchange-account pool; at most q x price with 25% slack
+    function exfillPrOk(s, q, pr) {
+      let px = get(/databases/$(database)/documents/world/mkt).data.px;
+      return s in px && px[s] is number && (pr < 0 ? -pr : pr) <= q * px[s] * 1.25 + 1;
+    }
     match /exfill/{id} {
       allow read: if request.auth != null && (resource.data.by == request.auth.uid || resource.data.to == request.auth.uid);
       allow create: if request.auth != null
-        && request.resource.data.keys().hasOnly(['by', 'byName', 'to', 's', 'q', 'amt', 'at'])
+        && request.resource.data.keys().hasOnly(['by', 'byName', 'to', 's', 'q', 'amt', 'pr', 'at'])
         && request.resource.data.by == request.auth.uid
         && request.resource.data.to == exiOwnerUid() && request.resource.data.to != request.auth.uid
         && request.resource.data.byName is string && request.resource.data.byName.size() <= 20
@@ -619,8 +624,19 @@ service cloud.firestore {
         && request.resource.data.q is number && request.resource.data.q > 0
         && request.resource.data.amt is int && request.resource.data.amt >= -1000000000000000 && request.resource.data.amt <= 1000000000000000
         && exfillAmtOk(request.resource.data.s, request.resource.data.q, request.resource.data.amt)
+        && (!('pr' in request.resource.data) || (request.resource.data.pr is int && exfillPrOk(request.resource.data.s, request.resource.data.q, request.resource.data.pr)))
         && request.resource.data.at == request.time;
       allow delete: if request.auth != null && resource.data.to == request.auth.uid;
+    }
+    // exacct/{uid}: a player's exchange account (shares bought from the exchange), public so the exchange owner can list them; only the player writes it
+    match /exacct/{uid} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'h', 'at'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 20
+        && request.resource.data.h is map && request.resource.data.h.size() <= 40
+        && request.resource.data.at == request.time;
+      allow delete: if request.auth != null && request.auth.uid == uid;
     }
     match /excom/{id} {
       allow read: if request.auth != null && (resource.data.by == request.auth.uid || resource.data.to == request.auth.uid);
