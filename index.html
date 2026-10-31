@@ -2516,14 +2516,14 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
   return{id:"meridian-models",type:"custom",renderingMode:"3d",sync,setDetail,ready,count,
     onAdd(mp,gl){map=mp;loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;
       scene=new T.Scene();cam=new T.Camera();group=new T.Group();scene.add(group);hemi=new T.HemisphereLight(0xffffff,0x667788,.85);sun=new T.DirectionalLight(0xffffff,.8);sun.position.set(.4,1,.6);scene.add(hemi,sun);sync();buildDetail();mp.triggerRepaint()}).catch(e=>console.warn("3d models off",e))},
-    render(gl,args){if(!T||!group)return;const z=map.getZoom();if(z<15.2)return;
+    render(gl,args){if(!T||!group)return;const z=map.getZoom();if(z<15)return;
       const dk=dark3d();hemi.intensity=dk?.35:.85;sun.intensity=dk?.3:.8;
       const pm=new T.Matrix4().fromArray(args.defaultProjectionData?args.defaultProjectionData.mainMatrix:args.projectionMatrix||args);
       ren.resetState();if(det)det.visible=false;
       for(const o of group.children){const {mc,sc}=o.userData;
         const m=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(sc,-sc,sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
         cam.projectionMatrix=pm.clone().multiply(m);for(const q of group.children)q.visible=q===o;ren.render(scene,cam)}
-      if(det&&detO&&z>=15.4){for(const q of group.children)q.visible=false;det.visible=true;const mc=detO.mc,dm=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(detO.sc,-detO.sc,detO.sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
+      if(det&&detO&&z>=15){for(const q of group.children)q.visible=false;det.visible=true;const mc=detO.mc,dm=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(detO.sc,-detO.sc,detO.sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
         cam.projectionMatrix=pm.clone().multiply(dm);ren.render(scene,cam);det.visible=false}}}}
 
 /* big cities (size 4-5) get roof and crown detail on the buildings in view, rebuilt when the map settles */
@@ -2531,12 +2531,12 @@ let detTimer=0,detVerify=0,detLast=null,origFilter={};
 /* near the camera the plain blocks are swapped for generated buildings: the blocks within a radius of the view centre are hidden with a "distance" filter and redrawn by the model layer */
 function detLayers(){const st=MM.getStyle();return st?st.layers.filter(l=>l.type==="fill-extrusion").map(l=>l.id):[]}
 function detRestore(){for(const id in origFilter){try{MM.setFilter(id,origFilter[id])}catch(e){}}origFilter={};detLast=null;if(modelLayer)modelLayer.setDetail(null,null);try{MM.triggerRepaint()}catch(e){}}
-function refreshDetail(force){clearTimeout(detTimer);detTimer=setTimeout(()=>{try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom(),ce0=MM.getCenter();
-  if(z<15.4){if(detLast)detRestore();return}
+function refreshDetail(force){clearTimeout(detTimer);detTimer=setTimeout(()=>{try{if(!modelLayer||!MM||!inStreet)return;if(MM.isMoving()||MM.isZooming())return;/* moveend calls again once the gesture settles */const z=MM.getZoom(),ce0=MM.getCenter();
+  if(z<15.4){if(detLast&&z<15)detRestore();return}/* once built, keep the swap down to zoom 15 so zooming near 15.4 does not toggle the buildings */
   const ids=detLayers();if(!ids.length)return;const base=MM.getLayer(ids.find(i=>i!=="meridian-roofs")||ids[0]);if(!base)return;
   const mLat=111320,mLng=111320*Math.cos(ce0.lat*Math.PI/180);
   /* while the view stays near the last build, keep its centre and radius so new tiles only rebuild the buildings and the hide filter is left alone (changing it reloads tiles and makes buildings flicker) */
-  const reuse=!force&&detLast&&Math.hypot((ce0.lng-detLast.lng)*mLng,(ce0.lat-detLast.lat)*mLat)<detLast.R*.35,ce=reuse?{lng:detLast.lng,lat:detLast.lat}:ce0;
+  const reuse=!force&&detLast&&Math.hypot((ce0.lng-detLast.lng)*mLng,(ce0.lat-detLast.lat)*mLat)<detLast.R*.5,ce=reuse?{lng:detLast.lng,lat:detLast.lat}:ce0;
   const src=base.source,sl=base.sourceLayer||base["source-layer"],fs=MM.querySourceFeatures(src,sl?{sourceLayer:sl}:{});/* generated radius by graphics: High 450 m, Medium 350 m, Low 280 m (old value); the 900-building cap below still shrinks it in dense cities */
   const VQ=vdQ();let R=reuse?detLast.R:VQ.R,use=[];
   const dseg=(px,py,ax,ay,bx,by)=>{const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy,t=l?Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l)):0;return Math.hypot(px-(ax+t*dx),py-(ay+t*dy))};
