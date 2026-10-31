@@ -2391,7 +2391,7 @@ function setModels(list){modelList=list;if(modelLayer)modelLayer.sync();try{MM.t
 function ensureModelLayer(){try{if(!MM||MM.getLayer("meridian-models"))return;
   const lab=MM.getStyle().layers.find(l=>l.type==="symbol");
   detLast=null;origFilter={};MM.addLayer(modelLayer=makeModelLayer());if(typeof refreshDetail==="function")refreshDetail(true)}catch(e){console.warn("model layer",e)}}
-function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=false,mats={},det=null,detO=null,detFeats=null;
+function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=false,mats={},det=null,detO=null,detFeats=null,detRoads=null;
   const M=(c,o)=>new T.MeshLambertMaterial(Object.assign({color:c},o||{}));
   const box=(w,h,d,x,y,z,mat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y+h/2,z);return m};
   const cyl=(rt,rb,h,x,y,z,mat,seg)=>{const m=new T.Mesh(new T.CylinderGeometry(rt,rb,h,seg||12),mat);m.position.set(x,y+h/2,z);return m};
@@ -2427,7 +2427,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       else if(kind==="tower"){win(x+6,y+8,52,36,"#4f6479");g.fillStyle=night?"#12171d":"rgba(0,0,0,.18)";g.fillRect(x,y+60,64,4)}
       else{win(x+14,y+10,36,34,"#4f6479");g.fillStyle=night?"#12171d":"rgba(0,0,0,.18)";g.fillRect(x,y+60,64,4)}}
     const t=new T.CanvasTexture(c);t.wrapS=t.wrapT=T.RepeatWrapping;t.anisotropy=4;return WIN[key]=t}
-  function setDetail(feats,org){detFeats=feats;detO=org;if(T)buildDetail()}
+  function setDetail(feats,org,roads){detFeats=feats;detO=org;detRoads=roads||null;if(T)buildDetail()}
   const ready=()=>!!(T&&scene),count=()=>det?det.children.length:0;
   function buildDetail(){if(det){scene.remove(det);det.traverse(o=>{if(o.geometry)o.geometry.dispose()});det=null}
     if(!detFeats||!detFeats.length||!detO)return;const night=dark3d(),mc0=detO.mc,k=1/detO.sc,acc={},R={P:[],N:[],C:[]};let bad=0;
@@ -2516,6 +2516,24 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
             else if(k>.45&&k<.52&&ppl<160&&!nt){const pp=[q[0]+nx*1.8,q[1]+nz*1.8];if(!blocked(pp[0],pp[1])){ppl++;const kk=rn(k,q[0]);cylv(R,pp[0],pp[1],0,1.1,.22,.2,col(shirt[Math.floor(kk*shirt.length)]),6);cylv(R,pp[0],pp[1],1.1,.6,.2,.16,col(0xe2b998),6)}}}
           if(ln>14&&lamps<420)for(let t=ln/2;t<ln-2&&t<ln/2+1;t+=22){const q=at(t),lp=[q[0]+nx*2.2,q[1]+nz*2.2];if(blocked(lp[0],lp[1]))continue;lamps++;bx(R,lp[0],lp[1],.18,.18,0,6,col(0x4a4f56));bx(Em,lp[0],lp[1],.7,.7,6,.35,col(nt?0xffe7a8:0x6a6f76));
             if(nt)for(let g=0;g<10;g++){const a0=g/10*Math.PI*2,a1=(g+1)/10*Math.PI*2;for(const [x,z,f] of [[0,0,1],[Math.cos(a0)*6.5,Math.sin(a0)*6.5,0],[Math.cos(a1)*6.5,Math.sin(a1)*6.5,0]]){Gl.P.push(lp[0]+x,.2,lp[1]+z);Gl.N.push(0,1,0);Gl.C.push(.26*f,.2*f,.09*f)}}}}}
+      /* street furniture from the map's road lines: sidewalks along both sides (cut back at junctions so they do not cross the road), a bench now and then, and signals at the bigger intersections */
+      if(detRoads&&detRoads.length){const HW={primary:8,secondary:6.5,tertiary:5.5,minor:4.2},RK={primary:4,secondary:3,tertiary:2,minor:1},nodes={},nk=(x,z)=>Math.round(x*2)+","+Math.round(z*2);
+        const lines=detRoads.map(rd=>({c:rd.c,pts:rd.pts.map(([lo,la])=>{const m=maplibregl.MercatorCoordinate.fromLngLat([lo,la],0);return[(m.x-mc0.x)*k,(m.y-mc0.y)*k]}).filter(q=>isFinite(q[0])&&isFinite(q[1]))}));
+        const addArm=(a,b,c)=>{const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<.5)return;const key=nk(a[0],a[1]);(nodes[key]||(nodes[key]={x:a[0],z:a[1],arms:[]})).arms.push({ux:(b[0]-a[0])/l,uz:(b[1]-a[1])/l,c})};
+        for(const ln of lines)for(let i=0;i<ln.pts.length;i++){if(i>0)addArm(ln.pts[i],ln.pts[i-1],ln.c);if(i<ln.pts.length-1)addArm(ln.pts[i],ln.pts[i+1],ln.c)}
+        const trimAt=(x,z)=>{const nd=nodes[nk(x,z)];if(!nd||nd.arms.length<3)return 0;let m=0;for(const a of nd.arms)m=Math.max(m,HW[a.c]);return m+2.6};
+        const walk=night?col(0x3a414d):col(0xb4b9c0),wood=col(0x7a5a3a),dark=col(0x2a2d33);let benches=0,segs=0;
+        for(const ln of lines){const hw=HW[ln.c];for(let i=0;i+1<ln.pts.length&&segs<2600;i++){const a=ln.pts[i],b=ln.pts[i+1],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len<3)continue;const ux=(b[0]-a[0])/len,uz=(b[1]-a[1])/len,ta=trimAt(a[0],a[1]),tb=trimAt(b[0],b[1]);if(len-ta-tb<3)continue;
+          const p0=[a[0]+ux*ta,a[1]+uz*ta],p1=[b[0]-ux*tb,b[1]-uz*tb];segs++;
+          for(const sd of [1,-1]){const nx=-uz*sd,nz=ux*sd,mx=(p0[0]+p1[0])/2+nx*(hw+1.2),mz=(p0[1]+p1[1])/2+nz*(hw+1.2);if(blocked(mx,mz))continue;
+            quad(Em,[p0[0]+nx*hw,.1,p0[1]+nz*hw],[p1[0]+nx*hw,.1,p1[1]+nz*hw],[p1[0]+nx*(hw+2.4),.1,p1[1]+nz*(hw+2.4)],[p0[0]+nx*(hw+2.4),.1,p0[1]+nz*(hw+2.4)],[0,1,0],walk);/* unlit, so both sides read the same whichever way the strip faces */
+            if(benches<140&&len-ta-tb>=26&&rn(mx*1.7,mz*2.3)<.22){benches++;const bx0=mx,bz0=mz;obox(R,bx0,bz0,ux,uz,1.8,.5,.45,.1,wood);obox(R,bx0-nx*.28,bz0-nz*.28,ux,uz,1.8,.08,.55,.45,wood);obox(R,bx0+ux*.7,bz0+uz*.7,ux,uz,.1,.4,.1,.35,dark);obox(R,bx0-ux*.7,bz0-uz*.7,ux,uz,.1,.4,.1,.35,dark)}}}}
+        /* signals: a pole on the right-hand kerb of each arm, with a red or green lamp (cross traffic is opposite) */
+        const sig=Object.values(nodes).filter(nd=>nd.arms.length>=3&&nd.arms.filter(a=>RK[a.c]>=2).length>=2).sort((p,q)=>Math.hypot(p.x,p.z)-Math.hypot(q.x,q.z)).slice(0,110);
+        for(const nd of sig){const a0=nd.arms[0];let tm=0;for(const a of nd.arms)tm=Math.max(tm,HW[a.c]);
+          for(const a of nd.arms){if(RK[a.c]<2&&nd.arms.length<4)continue;const green=Math.abs(a.ux*a0.ux+a.uz*a0.uz)>.7,hw=HW[a.c],rx=-a.uz,rz=a.ux,d=tm+1.8,px=nd.x+a.ux*d+rx*(hw+1.3)*-1,pz=nd.z+a.uz*d+rz*(hw+1.3)*-1;if(blocked(px,pz))continue;
+            bx(R,px,pz,.22,.22,0,5,dark);obox(R,px,pz,a.ux,a.uz,.4,.5,4.5,1.25,dark);
+            for(const [yy,on,cc] of [[5.45,!green,0xff2a2a],[5.1,false,0xffb000],[4.75,green,0x2aff5a]])obox(Em,px+a.ux*.22,pz+a.uz*.22,a.ux,a.uz,.06,.26,yy-.12,.24,col(on?cc:0x1a1a1a))}}}
       for(const lm of LANDMARKS){const m=maplibregl.MercatorCoordinate.fromLngLat([lm.lon,lm.lat],0),x=(m.x-mc0.x)*k,z=(m.y-mc0.y)*k;if(Math.hypot(x,z)<1500)landmark(lm.n,x,z,night)}}catch(e){console.warn("detail extras",e)}
     if(bad)console.warn("detail: skipped",bad,"odd footprints");
     det=new T.Group();
@@ -2570,11 +2588,17 @@ function refreshDetail(force){clearTimeout(detTimer);detTimer=setTimeout(()=>{tr
     return{out}};
   let res=pick();while(res.out.length>VQ.n&&R>60){R*=.8;res=pick()}use=res.out;
   if(!use.length){if(detLast)detRestore();return}
-  let hx=0;for(const u of use)hx=(hx+u.ring[0][0]*1e5+u.ring[0][1]*1e5)%1e9;const sig=use.length+":"+R+":"+Math.round(hx);if(!force&&detLast&&detLast.sig===sig&&Math.hypot((ce.lng-detLast.lng)*mLng,(ce.lat-detLast.lat)*mLat)<R*.35)return;
+  const RK2={primary:1,secondary:1,tertiary:1,minor:1},rds=[],rseen=new Set();
+  try{const rl=MM.getStyle().layers.find(l=>l["source-layer"]==="transportation");if(rl){const rfs=MM.querySourceFeatures(rl.source,{sourceLayer:"transportation"});
+    for(const f of rfs){const pr=f.properties||{};if(!RK2[pr.class]||pr.brunnel==="bridge"||pr.brunnel==="tunnel"||pr.ramp)continue;const g=f.geometry;if(!g)continue;
+      const lns=g.type==="LineString"?[g.coordinates]:g.type==="MultiLineString"?g.coordinates:[];
+      for(const pts of lns){if(pts.length<2)continue;let near=false;for(const q of pts){if(Math.hypot((q[0]-ce.lng)*mLng,(q[1]-ce.lat)*mLat)<=R+40){near=true;break}}if(!near)continue;
+        const key=pr.class+pts[0][0].toFixed(5)+","+pts[0][1].toFixed(5)+pts.length;if(rseen.has(key))continue;rseen.add(key);rds.push({c:pr.class,pts})}}}}catch(e){}
+  let hx=0;for(const u of use)hx=(hx+u.ring[0][0]*1e5+u.ring[0][1]*1e5)%1e9;const sig=use.length+":"+R+":"+Math.round(hx)+":"+rds.length;if(!force&&detLast&&detLast.sig===sig&&Math.hypot((ce.lng-detLast.lng)*mLng,(ce.lat-detLast.lat)*mLat)<R*.35)return;
   if(!modelLayer.ready()){detTimer=setTimeout(()=>refreshDetail(true),700);return}
   if(!reuse&&!MM.areTilesLoaded()&&detWait++<10){detTimer=setTimeout(()=>refreshDetail(force),600);return}detWait=0;
   const mc=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0);
-  modelLayer.setDetail(use,{mc,sc:mc.meterInMercatorCoordinateUnits()});
+  modelLayer.setDetail(use,{mc,sc:mc.meterInMercatorCoordinateUnits()},rds);
   if(modelLayer.count()<1){console.warn("detail: nothing built, keeping the plain blocks");if(detLast)detRestore();return}
   /* only now hide the plain blocks the new buildings replace */
   if(reuse&&R===detLast.R){detLast.sig=sig;MM.triggerRepaint();return}
