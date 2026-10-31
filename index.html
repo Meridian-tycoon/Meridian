@@ -1103,7 +1103,7 @@ const TECH=[
  {k:"quantum",t:2,n:"Quantum computing",d:"Research labs produce 25% more points.",rp:1200,cash:4e6,req:["semis"]},
  {k:"twin",t:2,n:"Digital twins",d:"Simulated production lines. Factories produce 10% more.",rp:900,cash:2.5e6,req:["leanmfg","semis"]},
  {k:"leanops",t:2,n:"Lean operations",d:"Leaner crews and shared equipment. Farm, ranch and mine upkeep drops 15%.",rp:700,cash:1.6e6,req:["maint"]},
- {k:"nuclear",t:2,n:"Nuclear power",d:"Unlocks nuclear power plants: burn uranium for four times the electricity of a coal plant. Uranium is bought on the market (you need a uranium permit) or mined at a permitted uranium mine.",rp:900,cash:3e6,req:["renew"]},
+ {k:"nuclear",t:2,n:"Nuclear power",d:"Unlocks nuclear power plants: burn uranium for four times the electricity of a coal plant. Uranium is bought on the market or mined at a uranium mine; both need a nuclear licence from the World Council.",rp:900,cash:3e6,req:["renew"]},
  {k:"govlic",t:3,n:"Defense contractor licence",d:"Government buyers in big cities (size 4+) will buy military and space goods at fixed prices.",rp:1500,cash:5e6,req:["aero","robotics"]},
  {k:"armored",t:3,n:"Armored vehicles",d:"Unlocks armored vehicle plants: cars, steel and robots.",rp:2000,cash:8e6,req:["govlic"]},
  {k:"drones",t:3,n:"Military drones",d:"Unlocks drone factories: chips, plastics and aerospace parts.",rp:2500,cash:1e7,req:["govlic"]},
@@ -1329,7 +1329,7 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
       h+=marketHtml(c);h+=`<button class="sec" data-act="lmfold" aria-expanded="${!!S.lmOpen}" style="display:flex;width:100%;align-items:center;background:none;border:0;padding-left:0;padding-right:0;font:inherit;color:inherit;text-align:left;cursor:pointer">Local market · buy at +15%<span style="margin-left:auto">${S.lmOpen?"▾ Hide":"▸ Show"}</span></button>`;
       if(S.lmOpen){h+=`${hasHQ(c)?"":`<p class="d" style="color:var(--bad);font-size:12px;margin:0 0 4px">No registered company here. Open an HQ in ${c.name} to sell in bulk, auto-sell, buy by the hundred, and sell to the government.</p>`}<div class="list">`;
       for(const g of GK.filter(g=>G[g][2]!=="gov")){const p=px(c,g)*1.15,base=G[g][1],cheap=p<base*1.05,nop=g==="uranium"&&!uranAnyPermit();
-        h+=`<div class="row"><div class="n">${G[g][0]}</div><div class="d"><b style="color:${cheap?"var(--good)":"var(--ink)"}">${fmt(p)}</b> each${cheap?" · good price":""}${nop?` · <b style="color:var(--bad)">Needs a uranium permit</b>`:""}</div>
+        h+=`<div class="row"><div class="n">${G[g][0]}</div><div class="d"><b style="color:${cheap?"var(--good)":"var(--ink)"}">${fmt(p)}</b> each${cheap?" · good price":""}${nop?` · <b style="color:var(--bad)">Needs a World Council nuclear licence</b>`:""}</div>
         <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2"><button class="buy up" data-act="buy" data-g="${g}" data-q="10" ${S.cash<p*10||nop?"disabled":""}>+10</button><button class="buy" data-act="buy" data-g="${g}" data-q="100" ${S.cash<p*100||nop||!hasHQ(c)?"disabled":""}>+100</button></span></div>`}
       h+=`</div>`}
       const here=S.fleet.filter(v=>v.city===c.id&&!v.arr),incoming=S.fleet.filter(v=>v.arr&&v.dest===c.id);
@@ -1383,7 +1383,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="whsell"){if(!hasWh(c))return;if(stored(c)>=.05){toast("Sell or ship the goods first");return}if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}const v=whSell(c);S.cash+=v;delete S.wh[c.id];delete S.inv[c.id];delete S.auto[c.id];delete S.pos["wh:"+c.id];toast(`Warehouse sold for ${fmt(v)}`)}
   else if(a==="whup"){const p=whUp(c);if(S.cash<p)return;S.cash-=p;S.wh[c.id]++;toast("Warehouse expanded")}
   else if(a==="sell"){if(noSell(b.dataset.g)){toast("Orbital launches can't be sold. Launch them from the Space app");return}if(G[b.dataset.g][2]==="gov"&&!govOK(c)){toast(hasTech("govlic")?"Government buyers are only in cities of size 4+":"Research the Defense contractor licence to sell this");return}if(G[b.dataset.g][2]==="gov"&&!hasHQ(c)){toast("Government contracts need a registered company: open an HQ here");return}const g=b.dataset.g,street=!hasHQ(c),q=street?Math.min(20,S.inv[c.id][g]||0):(S.inv[c.id][g]||0),v=sellGood(c,g,q)*(street?.7:1);S.cash+=v;S.earned=(S.earned||0)+v;S.inv[c.id][g]-=q;if(S.inv[c.id][g]<1e-6)delete S.inv[c.id][g];toast(`Sold ${gq(q)} ${G[g][0].toLowerCase()} for ${fmt(v)}`)}
-  else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q;if(g==="uranium"&&nlcNeed()){toast(nlcNeed());return}if(g==="uranium"&&!uranAnyPermit()){toast("Needs a uranium permit: apply to a government in the Gov tab first");return}const B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q*tpu(g)>whCap(c)+1e-9){toast(`Not enough warehouse space: ${fmtT(whRoom(c))} free, ${q} ${G[g][0].toLowerCase()} weigh ${fmtT(q*tpu(g))}`);return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
+  else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q;if(g==="uranium"&&nlcNeed()){toast(nlcNeed());return}if(g==="uranium"&&!uranAnyPermit()){toast(uranNeed());return}const B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q*tpu(g)>whCap(c)+1e-9){toast(`Not enough warehouse space: ${fmtT(whRoom(c))} free, ${q} ${G[g][0].toLowerCase()} weigh ${fmtT(q*tpu(g))}`);return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
   else if(a==="veh"){const k=b.dataset.k,V=VEH[k];if(S.cash<V.cost)return;S.cash-=V.cost;S.fleet.push({id:S.nid++,type:k,city:c.id,paid:V.cost,cond:100});toast(`${V.n} ready in ${c.name}`)}
   else if(a==="ship"){shipForm=shipForm===id?null:id;renderSheet();shipInfo();return}
   else if(a==="vsell"){const v=S.fleet.find(x=>x.id===id);if(!v||!vSellOk(v)){toast("That vehicle is busy and can't be sold right now");return}
@@ -2932,11 +2932,10 @@ const URQ={fee:10e6,wait:24*3600000,cd:6*3600000};
 const URQ_FREE=["BRGRStgYLlbkVbrBTagBrDbpVyg1"]; // player IDs with no retry cooldown after a refused uranium permit or a lost election (Gov tab)
 const urqCdOn=()=>{try{return !(devGod()||ON.user&&URQ_FREE.indexOf(ON.user.uid)>=0)}catch(e){return true}}; // fee, how long a player governor has to answer before the AI decides, retry cooldown after an AI refusal
 const uranFee=()=>URQ.fee;
-const uranPermit=n=>!!(S.gov&&S.gov[n]&&S.gov[n].uPermit);
+const uranPermit=n=>nlcOk(); // uranium now needs the World Council nuclear licence (no per-country Gov tab permit)
 /* true if the player holds a uranium permit in at least one country: needed to buy uranium on the market */
-function uranAnyPermit(){const g=S.gov;if(!g||typeof g!=="object")return false;for(const n in g)if(g[n]&&g[n].uPermit)return true;return false}
-function uranNeed(n){if(uranPermit(n))return "";const g=S.gov&&S.gov[n];if(g&&g.uReq)return `Waiting for ${onEsc(g.uReq.name||"the government")} to decide on your nuclear mining permit for ${n}`;
-  return `Needs government approval: apply for a nuclear mining permit from the ${n} government (Gov tab, ${fmt(uranFee())})`}
+function uranAnyPermit(){return nlcOk()}
+function uranNeed(n){if(nlcOk())return "";return NLC.doc&&NLC.doc.st==="p"?"☢️ Waiting for the World Council Leader to approve your nuclear licence":"☢️ Needs a nuclear licence from the World Council (Gov tab or Military → 🌍 World council)"}
 /* the online player who governs country n: highest office, then most recently seen. null = AI government */
 function uranGov(n){if(!ON.db||!ON.user)return null;let b=null;for(const p of ON.players||[]){if(p.govC!==n||!Number.isInteger(p.govR))continue;if(!b||p.govR>b.govR||(p.govR===b.govR&&onSeen(p)>onSeen(b)))b=p}return b}
 /* do I govern n? (top office there, no other player above me) */
@@ -3035,9 +3034,9 @@ function govHtml(c){const n=c.country,g=gov(n);if(!PARTIES[g.party])g.party="lib
   {const has=uranPermit(n),fee=uranFee(),q=g.uReq,o=uranGov(n),mine=uranIGov(n),cd=urqCdOn()&&g.uDen>Date.now();
     const who=mine?"You govern here, so you approve it yourself.":o?`Decided by <b>${onEsc(o.name||"a player")}</b> (${(GOVCFG.offices[o.govR]||{n:"in office"}).n}), the player governing ${n}. If they don't answer in ${fmtDur(URQ.wait)} the AI government decides.`:`Decided by the AI government (${Math.round(uranAiOdds(n)*100)}% chance of approval; better if you hold office here, have their ear or control the government).`;
     h+=`<div class="sec">Cannabis licence</div><div class="list"><div class="row"><div class="n">Cannabis retail licence ${g.wLic?"<b>ACTIVE</b>":""}</div><div class="d">Needed to open weed dispensaries anywhere in ${n}. One-time fee ${fmt(WLIC_FEE)}. ${g.laws.weed?"Cannabis is illegal here, so no licences are issued.":""}</div><button class="buy" data-gov="wlic" data-fixed="1" ${g.wLic||g.laws.weed||S.cash<WLIC_FEE?"disabled":""}>${g.wLic?"Licensed":"Buy "+fmt(WLIC_FEE)}</button></div></div>`;
-    h+=`<div class="sec">Nuclear mining permit</div><div class="list"><div class="row"><div class="n">Nuclear mining licence ${has?"<b>ACTIVE</b>":q?"<b>PENDING</b>":""}</div>
-    <div class="d">Uranium mines need this government's approval. Fee ${fmt(fee)}, refunded if refused. ${has?"":who}${q?` Waiting for ${onEsc(q.name)}.`:""}${cd?` Refused recently: retry in ${fmtDur(g.uDen-Date.now())}.`:""}</div>
-    <button class="buy" data-gov="upermit" data-fixed="1" ${has||q?"":(S.cash<fee||cd?"disabled":"")}>${has?"Give up permit":q?"Withdraw application":"Apply "+fmt(fee)}</button></div></div>`;
+    {const ok=nlcOk(),w=NLC.doc&&NLC.doc.st==="p";h+=`<div class="sec">Nuclear licence</div><div class="list"><div class="row"><div class="n">World Council nuclear licence ${ok?"<b>ACTIVE</b>":w?"<b>PENDING</b>":""}</div>
+    <div class="d">Uranium mining, uranium buying, nuclear plants and nuclear weapons need a licence from the World Council Leader, not from this government. ${ok?"":w?"Your application is waiting for the World Council Leader.":"Apply to the World Council (also on Military → 🌍 World council)."}</div>
+    ${ok||w?"":`<button class="buy" data-gov="nlca" data-fixed="1">Apply to the World Council</button>`}</div></div>`}
     {const has=rsPermit(n),rq=g.rReq,rcd=urqCdOn()&&g.rDen>Date.now();
       h+=`<div class="sec">Research licence</div><div class="list"><div class="row"><div class="n">Advanced research licence ${has?"<b>ACTIVE</b>":rq?"<b>PENDING</b>":""}</div>
       <div class="d">Tier IV (Government &amp; military) and Tier V (Space) research done in ${n} needs this government's approval. Fee ${fmt(RSQ.fee)}, refunded if refused. ${has?"":who}${rq?` Waiting for ${onEsc(rq.name)}.`:""}${rcd?` Refused recently: retry in ${fmtDur(g.rDen-Date.now())}.`:""}</div>
@@ -3065,6 +3064,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)
   if(a==="lobby")lobby(c,b.dataset.k,+b.dataset.dir);
   else if(a==="set"){const u=donUnit(c.country);if(S.cash<u||!g.ctrl)return;S.cash-=u;g.laws[b.dataset.k]+=+b.dataset.dir;logGov(`${c.country} decrees ${LAWS[b.dataset.k].n.toLowerCase()}: ${LAWS[b.dataset.k].v[g.laws[b.dataset.k]]}`);toast("Law changed")}
   else if(a==="wlic"){if(g.wLic||g.laws.weed||S.cash<WLIC_FEE)return;S.cash-=WLIC_FEE;g.wLic=1;toast(`Cannabis licence granted in ${c.country}`)}
+  else if(a==="nlca"){nlcApply()}
   else if(a==="upermit"){const n=c.country;if(uranPermit(n)){g.uPermit=0;toast("Permit given up")}else if(g.uReq)uranCancel(n);else uranApply(n)}
   else if(a==="uok"||a==="uno")uranRule(b.dataset.id,a==="uok")
   else if(a==="rpermit"){const n=c.country;if(rsPermit(n)&&!devGod()){g.rPermit=0;toast("Research licence given up")}else if(g.rReq)rsCancel(n);else rsApply(n)}
@@ -13020,23 +13020,23 @@ const NLCK=["nuke","hbomb","icbm"];
 function nlcOk(){try{if(devGod()||wclMine())return true}catch(e){}if(wcBE())return !!(NLC.doc&&NLC.doc.st==="ok");return S.nlc==="ok"}
 function nlcGov(){const p=pol();return p.r>=0&&!!p.c}
 /* "" when allowed, else why not */
-function nlcNeed(){if(!nlcGov()||nlcOk())return "";return NLC.doc&&NLC.doc.st==="p"?"☢️ Waiting for the World Council Leader to approve your nuclear licence":"☢️ Governments need a nuclear licence from the World Council Leader first (Military → 🌍 World council)"}
+function nlcNeed(){if(nlcOk())return "";return NLC.doc&&NLC.doc.st==="p"?"☢️ Waiting for the World Council Leader to approve your nuclear licence":"☢️ You need a nuclear licence from the World Council Leader first (Gov tab or Military → 🌍 World council)"}
 function nlcTick(){try{const db=wcBE();
   if(db&&!NLC.unsub){NLC.unsub=db.collection("nukeapp").doc(ON.user.uid).onSnapshot(d=>{const v=d.exists?d.data():null;const was=NLC.doc&&NLC.doc.st;NLC.doc=v?{st:v.st==="ok"?"ok":"p",c:String(v.c||"")}:null;
       if(was==="p"&&NLC.doc&&NLC.doc.st==="ok"){toast("☢️ The World Council Leader approved your nuclear licence");S.log.unshift("☢️ Nuclear licence approved by the World Council Leader.");S.log=S.log.slice(0,3)}
       if(was==="p"&&!NLC.doc)toast("☢️ The World Council Leader refused your nuclear licence");try{mxRender()}catch(e){}},()=>{});
     NLC.unsubL=db.collection("nukeapp").where("st","==","p").limit(50).onSnapshot(q=>{const l=[];q.forEach(d=>{const v=d.data()||{};l.push({uid:d.id,name:String(v.name||"Player").slice(0,40),c:String(v.c||"").slice(0,40)})});NLC.list=l;try{if(wclMine())mxRender()}catch(e){}},()=>{})}
   if(!db&&NLC.unsub){try{NLC.unsub();NLC.unsubL&&NLC.unsubL()}catch(e){}NLC.unsub=NLC.unsubL=null;NLC.doc=null;NLC.list=[]}}catch(e){console.warn("nlcTick",e)}}
-function nlcApply(){if(!nlcGov())return toast("Only a player in government needs a nuclear licence.");if(nlcOk())return toast("You already hold a nuclear licence.");const db=wcBE(),p=pol();
+function nlcApply(){if(nlcOk())return toast("You already hold a nuclear licence.");const db=wcBE(),p=pol();
   if(!db){S.nlc="ok";toast("☢️ The World council approved your nuclear licence");commit();return}
   if(NLC.busy||NLC.doc)return;NLC.busy=1;const auto=!wclHolder();
-  db.collection("nukeapp").doc(ON.user.uid).set({uid:ON.user.uid,name:String(S.name||"Player").slice(0,40),c:String(p.c).slice(0,40),st:auto?"ok":"p",at:firebase.firestore.FieldValue.serverTimestamp()})
+  db.collection("nukeapp").doc(ON.user.uid).set({uid:ON.user.uid,name:String(S.name||"Player").slice(0,40),c:String(p.c||"Private").slice(0,40),st:auto?"ok":"p",at:firebase.firestore.FieldValue.serverTimestamp()})
     .then(()=>{NLC.busy=0;toast(auto?"☢️ No World Council Leader is seated: the council approved your licence":"☢️ Application sent to the World Council Leader")},()=>{NLC.busy=0;toast("Couldn't send the application. Try again.")})}
 function nlcDecide(uid,yes){const db=wcBE();if(!db||!wclMine())return;const r=db.collection("nukeapp").doc(uid);
   (yes?r.update({st:"ok",at:firebase.firestore.FieldValue.serverTimestamp()}):r.delete()).then(()=>toast(yes?"Nuclear licence approved.":"Application refused."),()=>toast("Couldn't save your decision. Try again."))}
 function nlcCard(){if(wclMine()){const l=NLC.list;return `<div class="mdx-card" style="padding:14px;margin-bottom:12px"><div style="font-weight:600;margin-bottom:8px">☢️ Nuclear licence applications</div>`+(l.length?l.map(a=>`<div style="display:flex;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(127,127,127,.15)"><div style="flex:1;min-width:0">${onEsc(a.name)} · ${onEsc(a.c)}</div><button class="buy" data-mx="nlcy" data-v="${onEsc(a.uid)}">Approve</button><button data-mx="nlcn" data-v="${onEsc(a.uid)}" style="padding:4px 8px;border-radius:8px;border:1px solid rgba(127,127,127,.35);background:transparent;color:inherit">Refuse</button></div>`).join(""):`<div style="font-size:13px;opacity:.8">No applications waiting.</div>`)+`</div>`}
-  if(!nlcGov())return "";const ok=nlcOk(),w=NLC.doc&&NLC.doc.st==="p";
-  return `<div class="mdx-card" style="padding:14px;margin-bottom:12px"><div style="font-weight:600;margin-bottom:8px">☢️ Nuclear licence</div><div style="font-size:13px;margin-bottom:8px">${ok?"<b>Approved.</b> Your government may mine and use uranium and build and launch nukes, ICBMs and hydrogen bombs.":w?"Your application is waiting for the World Council Leader.":"Governments need the World Council Leader's approval to mine or use uranium and to build or launch nukes, ICBMs and hydrogen bombs."}</div>${ok||w?"":`<button class="buy" data-mx="nlca" style="width:100%">Apply to the World Council Leader</button>`}</div>`}
+  const ok=nlcOk(),w=NLC.doc&&NLC.doc.st==="p";
+  return `<div class="mdx-card" style="padding:14px;margin-bottom:12px"><div style="font-weight:600;margin-bottom:8px">☢️ Nuclear licence</div><div style="font-size:13px;margin-bottom:8px">${ok?"<b>Approved.</b> You may mine and use uranium and build and launch nukes, ICBMs and hydrogen bombs.":w?"Your application is waiting for the World Council Leader.":"Every player needs the World Council Leader's approval to mine or use uranium and to build or launch nukes, ICBMs and hydrogen bombs."}</div>${ok||w?"":`<button class="buy" data-mx="nlca" style="width:100%">Apply to the World Council Leader</button>`}</div>`}
 /* ---- board of directors: quarterly shareholder meetings once listed (S.brd, local to the save) ---- */
 const BDQ=30*DAYMS,BDWAIT=3*DAYMS,BDPOL={low:[.5,"Low payout","50% of the normal dividend: more cash for growth, shareholders grumble",-.03],normal:[1,"Normal payout","the standard public share of every hour of profit",0],high:[1.5,"High payout","150% of the normal dividend: shareholders cheer, less cash for you",.03]};
 const BDTG={inc:["Profit growth","grow 24 h average profit by 10%"],nw:["Net worth","grow net worth by 15%"],city:["Expansion","run businesses in one more city"]};
