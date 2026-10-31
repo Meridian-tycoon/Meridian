@@ -2588,7 +2588,7 @@ function detRestore(){detReset();detHidePlain(false);detLast=null;try{MM.trigger
 /* ?dev=1 readout: what the swap last did, for screenshots */
 function detDbg(n,built,R){try{if(localStorage.getItem("meridian-dev")!=="1")return;detInfo={n,built,R};if(detHud)return;
   const d=document.createElement("div");d.id="detDbg";d.style.cssText="position:fixed;left:6px;bottom:64px;z-index:9;font:11px monospace;color:#9f9;background:#000a;padding:2px 6px;border-radius:4px;pointer-events:none;white-space:pre";document.body.appendChild(d);
-  let fr=0,fps=0;MM.on("render",()=>fr++);detHud=setInterval(()=>{fps=fr;fr=0;const st=modelLayer&&modelLayer.stats?modelLayer.stats():{};
+  let fr=0,fps=0;const tick=()=>{fr++;requestAnimationFrame(tick)};requestAnimationFrame(tick);detHud=setInterval(()=>{fps=fr;fr=0;const st=modelLayer&&modelLayer.stats?modelLayer.stats():{};
     d.textContent="picked "+detInfo.n+" R"+Math.round(detInfo.R)+"m z"+MM.getZoom().toFixed(1)+"\nbuild "+((st.feat||0)+(st.extras||0)+(st.upload||0))+"ms (bld "+(st.feat||0)+" extras "+(st.extras||0)+" up "+(st.upload||0)+") cached "+(st.hits||0)+"/"+(st.total||0)+"\ntris "+(st.tris||0)+" drawn "+(st.drawn||0)+"  "+fps+" fps"},1000)}catch(e){}}
 function detSchedule(ms){if(detTimer)return;detTimer=setTimeout(()=>{detTimer=0;detStep()},ms)}
 function refreshDetail(force){detDirty=true;detSchedule(MM.isMoving()||MM.isZooming()?400:120)}
@@ -10948,7 +10948,7 @@ var SET_DEF={gfx:"high",ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5
 var SET_UI=[["classic","Classic","The original look"],["glass","Glass","Frosted dark panels, violet glow"],["ledger","Ledger","Cream paper, ink and serif type"],["command","Command","Neon HUD, cyan and magenta"]];
 var SET_FONT="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@500;700&family=Playfair+Display:wght@700;900&family=Source+Serif+4:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Chakra+Petch:wght@500;700&display=swap";
 var _setSig="";
-function setG(){const s=(S.set&&typeof S.set==="object")?S.set:(S.set={});for(const k in SET_DEF)if(s[k]==null)s[k]=SET_DEF[k];if(!SET_UI.some(u=>u[0]===s.ui))s.ui="classic";if(![.9,1,1.15].includes(+s.fs))s.fs=1;if(![.2,.5,.8,1].includes(+s.vol))s.vol=.5;if(!GFXQ[s.gfx])s.gfx="high";if(![30,37,50,60].includes(+s.fov))s.fov=37;s.vd=0;return s}
+function setG(){const s=(S.set&&typeof S.set==="object")?S.set:(S.set={});for(const k in SET_DEF)if(s[k]==null)s[k]=SET_DEF[k];if(!SET_UI.some(u=>u[0]===s.ui))s.ui="classic";if(![.9,1,1.15].includes(+s.fs))s.fs=1;if(![.2,.5,.8,1].includes(+s.vol))s.vol=.5;if(!GFXQ[s.gfx])s.gfx="high";if(![30,37,50,60,75].includes(+s.fov))s.fov=37;if(![0,1,2,3,4,5].includes(+s.vd))s.vd=0;return s}
 function setApply(force){const s=setG(),sig=JSON.stringify(s);if(!force&&sig===_setSig)return;_setSig=sig;const H=document.documentElement;
   for(const [k] of SET_UI)H.classList.toggle("th-"+k,k!=="classic"&&s.ui===k);
   if(s.ui!=="classic"&&!document.getElementById("th-font")){const l=document.createElement("link");l.id="th-font";l.rel="stylesheet";l.href=SET_FONT;document.head.appendChild(l)}
@@ -10969,7 +10969,8 @@ function setApp(){const s=setG(),seg=(k,opts,cur)=>`<div class="set-seg" role="g
   <div class="set-themes">${SET_UI.map(([k,n,d])=>`<button class="set-th set-th-${k}" data-ph="setv" data-k="ui" data-v="${k}" aria-pressed="${s.ui===k}"><i></i><span><b>${n}</b><small>${d}</small></span></button>`).join("")}</div>
   ${s.ui==="classic"?`<div class="set-row"><span>Light or dark<small>Classic theme only</small></span>${seg("mode",[["light","Light"],["dark","Dark"]],themeGet())}</div>`:""}
   <div class="set-row"><span>Graphics<small>Lower uses less CPU, GPU and battery</small></span>${seg("gfx",[["low","Low"],["med","Medium"],["high","High"]],s.gfx)}</div>
-  <div class="set-row"><span>Field of view<small>How wide the 3D map camera sees when tilted</small></span>${seg("fov",[[30,"Narrow"],[37,"Normal"],[50,"Wide"],[60,"Ultra"]],s.fov)}</div>
+  <div class="set-row"><span>Field of view<small>How wide the 3D map camera sees when tilted</small></span>${seg("fov",[[30,"Narrow"],[37,"Normal"],[50,"Wide"],[60,"Ultra"],[75,"Max"]],s.fov)}</div>
+  <div class="set-row"><span>View distance<small>How far out 3D buildings are built in street view; farther costs more speed</small></span>${seg("vd",[[0,"Auto"],[1,"Short"],[2,"Medium"],[3,"Far"],[4,"Very far"],[5,"Max"]],s.vd)}</div>
   <div class="set-row"><span>Text size<small>Panels, ticker and pop-ups</small></span>${seg("fs",[[.9,"Small"],[1,"Normal"],[1.15,"Large"]],s.fs)}</div>
   ${tog("sat","Satellites","Your launched satellites orbiting the globe")}
   ${tog("pfx","Planet effects","Wealth glow, election flashes, rocket launches and seasons")}
