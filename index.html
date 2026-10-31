@@ -2395,10 +2395,20 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
   /* generated buildings near the camera: tiers on towers, setback crowns on mid-rise, pitched roofs on houses, window grids fitted to each wall.
      Built from the map's own footprints into three merged meshes (one per wall style, plus roofs); positions are metres from a local origin so nothing jitters. */
   const WIN={};
+  /* wall styles. Each is one 128px tile = 2x2 bays; the shader repeats it per bay and per floor. */
   function winTex(kind,night){const key=kind+night;if(WIN[key])return WIN[key];const c=document.createElement("canvas");c.width=c.height=128;const g=c.getContext("2d");
-    const wall={home:"#d8c3a8",mid:"#cfd3d8",tower:"#a9b8c9"}[kind];g.fillStyle=night?"#1d242d":wall;g.fillRect(0,0,128,128);
-    for(let i=0;i<2;i++)for(let j=0;j<2;j++){const x=i*64,y=j*64,lit=night&&Math.random()<.4;g.fillStyle=night?(lit?"#ffd98a":"#2a323d"):"#4f6479";
-      if(kind==="tower")g.fillRect(x+6,y+8,52,36);else g.fillRect(x+14,y+10,36,34);g.fillStyle=night?"#12171d":"rgba(0,0,0,.18)";g.fillRect(x,y+60,64,4)}
+    const lit=()=>night&&Math.random()<.4,win=(x,y,w,h,day)=>{g.fillStyle=night?(lit()?"#ffd98a":"#2a323d"):day;g.fillRect(x,y,w,h)},
+      wallc={home:"#d8c3a8",brick:"#a8553f",concrete:"#b9bcc0",glass:"#4d7a9c",stone:"#d9cfbd",apt:"#d8c9b4",shop:"#7d848c"}[kind]||"#cfd3d8";
+    g.fillStyle=night?"#1d242d":wallc;g.fillRect(0,0,128,128);
+    for(let i=0;i<2;i++)for(let j=0;j<2;j++){const x=i*64,y=j*64;
+      if(kind==="brick"){if(!night){g.fillStyle="rgba(60,20,10,.22)";for(let q=4;q<64;q+=6)g.fillRect(x,y+q,64,1)}win(x+17,y+9,30,32,"#3f566b");g.fillStyle=night?"#12171d":"#d9c9b6";g.fillRect(x+15,y+41,34,3)}
+      else if(kind==="concrete"){if(night){win(x+3,y+14,28,22);win(x+34,y+14,27,22)}else win(x,y+14,64,22,"#46607a");g.fillStyle=night?"#12171d":"rgba(255,255,255,.35)";g.fillRect(x,y+36,64,3);g.fillRect(x+30,y+14,3,22)}
+      else if(kind==="glass"){g.fillStyle=night?"#26323f":"#5f8fb3";g.fillRect(x,y,64,64);if(night){win(x+8,y+8,48,40)}if(!night){g.fillStyle="rgba(255,255,255,.18)";g.fillRect(x,y,64,22)}g.fillStyle=night?"#12171d":"#3b5f7c";g.fillRect(x,y,2,64);g.fillRect(x,y+60,64,4)}
+      else if(kind==="stone"){win(x+22,y+8,20,38,"#4a6074");g.fillStyle=night?"#12171d":"rgba(0,0,0,.14)";g.fillRect(x,y,5,64);g.fillRect(x+59,y,5,64);g.fillStyle=night?"#12171d":"#efe7d6";g.fillRect(x+19,y+46,26,3)}
+      else if(kind==="apt"){win(x+12,y+8,40,26,"#4f6479");g.fillStyle=night?"#161b22":"#6b7683";g.fillRect(x+6,y+40,52,16);g.fillStyle=night?"#0e1217":"#d8c9b4";for(let q=8;q<58;q+=5)g.fillRect(x+q,y+41,2,14);g.fillRect(x+6,y+40,52,2)}
+      else if(kind==="shop"){const l=night&&Math.random()<.7;g.fillStyle=night?(l?"#ffcf7a":"#2a323d"):"#3d566b";g.fillRect(x+3,y+12,58,46);g.fillStyle=night?"#12171d":"#2a2f36";g.fillRect(x,y+58,64,6);g.fillRect(x+30,y+12,3,46);g.fillStyle=night?(l?"#ffe9b0":"#1d242d"):"#c9d2db";g.fillRect(x+3,y+4,58,5)}
+      else if(kind==="tower"){win(x+6,y+8,52,36,"#4f6479");g.fillStyle=night?"#12171d":"rgba(0,0,0,.18)";g.fillRect(x,y+60,64,4)}
+      else{win(x+14,y+10,36,34,"#4f6479");g.fillStyle=night?"#12171d":"rgba(0,0,0,.18)";g.fillRect(x,y+60,64,4)}}
     const t=new T.CanvasTexture(c);t.wrapS=t.wrapT=T.RepeatWrapping;t.anisotropy=4;return WIN[key]=t}
   function setDetail(feats,org){detFeats=feats;detO=org;if(T)buildDetail()}
   const ready=()=>!!(T&&scene),count=()=>det?det.children.length:0;
@@ -2411,6 +2421,12 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       o.P.push(a[0],y0,a[1],b[0],y0,b[1],b[0],y1,b[1],a[0],y0,a[1],b[0],y1,b[1],a[0],y1,a[1]);o.U.push(0,0,bays,0,bays,fl,0,0,bays,fl,0,fl);
       for(let q=0;q<6;q++){o.N.push(nx,0,nz);o.C.push(...tint)}}};
     const cap=(r,y,c)=>{let idx=[];try{idx=T.ShapeUtils.triangulateShape(r.map(q=>new T.Vector2(q[0],q[1])),[])}catch(e){}for(const t of idx)for(const v of t){R.P.push(r[v][0],y,r[v][1]);R.N.push(0,1,0);R.C.push(...c)}};
+    const awnPal=[0xb3392f,0x2f6e4f,0x2d4f8a,0xc99a2e,0x6b2f7a],
+      awning=(r,y,sg,pal)=>{for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len<6)continue;
+        const dx=(b[0]-a[0])/len,dz=(b[1]-a[1])/len,nx=sg*dz,nz=-sg*dx,n=Math.min(40,Math.round(len/1.2)),c1=col(pal),c2=col(0xf2f2f2);
+        for(let q=1;q<n-1;q++){const t0=len*q/n,t1=len*(q+1)/n,p0=[a[0]+dx*t0,a[1]+dz*t0],p1=[a[0]+dx*t1,a[1]+dz*t1],o=1.3,cc=q%2?c1:c2,
+          v=[[p0[0],y,p0[1]],[p1[0],y,p1[1]],[p1[0]+nx*o,y-.55,p1[1]+nz*o],[p0[0],y,p0[1]],[p1[0]+nx*o,y-.55,p1[1]+nz*o],[p0[0]+nx*o,y-.55,p0[1]+nz*o]];
+          for(const pt of v){R.P.push(...pt);R.N.push(nx*.3,.8,nz*.3);R.C.push(...cc)}}}};
     const box=(cx,cz,w,d,y,h,c)=>{const x0=cx-w/2,x1=cx+w/2,z0=cz-d/2,z1=cz+d/2,y1=y+h,f=(a,b,c2,d2,n)=>{for(const p of [a,b,c2,a,c2,d2]){R.P.push(...p);R.N.push(...n);R.C.push(...c)}};
       f([x0,y1,z0],[x0,y1,z1],[x1,y1,z1],[x1,y1,z0],[0,1,0]);f([x0,y,z0],[x1,y,z0],[x1,y1,z0],[x0,y1,z0],[0,0,-1]);f([x1,y,z0],[x1,y,z1],[x1,y1,z1],[x1,y1,z0],[1,0,0]);f([x1,y,z1],[x0,y,z1],[x0,y1,z1],[x1,y1,z1],[0,0,1]);f([x0,y,z1],[x0,y,z0],[x0,y1,z0],[x0,y1,z1],[-1,0,0])};
     const gable=(cx,cz,uu,vv,hl,hs,y,rh,c)=>{const pt=(a,b,yy)=>[cx+uu[0]*a+vv[0]*b,yy,cz+uu[1]*a+vv[1]*b],e1=pt(-hl,-hs,y),e2=pt(hl,-hs,y),e3=pt(hl,hs,y),e4=pt(-hl,hs,y),r1=pt(-hl,0,y+rh),r2=pt(hl,0,y+rh);
@@ -2424,11 +2440,14 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       for(const [x,z] of r){const pu=x*u[0]+z*u[1],pv=x*v[0]+z*v[1];u0=Math.min(u0,pu);u1=Math.max(u1,pu);v0=Math.min(v0,pv);v1=Math.max(v1,pv)}
       const W=u1-u0,D=v1-v0,rect=ar>.78*W*D,[cx,cz]=cen(r),hs=((f.ring[0][0]*7919+f.ring[0][1]*104729)%1+1)%1,
         tint=col(new T.Color().setHSL(.08+hs*.5,.12+hs*.15,.82+hs*.12)),by=f.base||0,h=f.h,tall=h-by,
-        kd=tall>55?"tower":tall>20?"mid":"home",roof=col(night?0x2a323c:0xc4cad2),roof2=col(night?0x39434f:0xa7afb8);
-      if(kd==="tower"&&Math.min(W,D)>9){const t=[[1,0,.62],[.74,.62,.86],[.5,.86,1]];for(const [fc,p0,p1] of t){const rr=fc===1?r:scl(r,fc);wall(kd,rr,by+tall*p0,by+tall*p1,tint,sg);cap(rr,by+tall*p1+.02,roof)}
+        kd=tall>55?"tower":tall>20?"mid":"home",roof=col(night?0x2a323c:0xc4cad2),roof2=col(night?0x39434f:0xa7afb8),
+        h2=(hs*977)%1,st=kd==="tower"?(h2<.7?"glass":"concrete"):kd==="mid"?(h2<.3?"brick":h2<.55?"concrete":h2<.8?"stone":"apt"):(h2<.5?"brick":h2<.8?"home":"stone"),
+        tn=st==="home"||st==="apt"?tint:col(new T.Color().setHSL(.03+hs*.06,.1,.88+hs*.1)),
+        shop=(kd!=="home")&&tall>12&&hs>.35,band=(rr,y0)=>{if(shop){wall("shop",rr,y0,y0+4.2,col(0xffffff),sg);awning(rr,y0+3.6,sg,awnPal[Math.floor(h2*awnPal.length)]);return y0+4.2}return y0};
+      if(kd==="tower"&&Math.min(W,D)>9){const t=[[1,0,.62],[.74,.62,.86],[.5,.86,1]];for(const [fc,p0,p1] of t){const rr=fc===1?r:scl(r,fc);let y0=by+tall*p0;if(fc===1)y0=band(rr,y0);wall(st,rr,y0,by+tall*p1,tn,sg);cap(rr,by+tall*p1+.02,roof)}
         box(cx,cz,3,3,h,6,roof2);if(tall>100)box(cx,cz,.6,.6,h+6,22,col(0xc0392b))}
-      else if(kd==="mid"&&Math.min(W,D)>9){const h1=by+tall*.8,rr=scl(r,.8);wall(kd,r,by,h1,tint,sg);cap(r,h1+.02,roof);wall(kd,rr,h1,h,tint,sg);cap(rr,h+.02,roof);box(cx+2,cz,Math.min(5,W*.2),Math.min(4,D*.2),h,3.2,roof2)}
-      else{wall(kd,r,by,h,tint,sg);
+      else if(kd==="mid"&&Math.min(W,D)>9){const h1=by+tall*.8,rr=scl(r,.8),y0=band(r,by);wall(st,r,y0,h1,tn,sg);cap(r,h1+.02,roof);wall(st,rr,h1,h,tn,sg);cap(rr,h+.02,roof);box(cx+2,cz,Math.min(5,W*.2),Math.min(4,D*.2),h,3.2,roof2)}
+      else{wall(st,r,by,h,tn,sg);
         if(kd==="home"&&rect&&W>5&&D>5&&W<90&&D<90){const cu=(u0+u1)/2,cv=(v0+v1)/2,gx=cu*u[0]+cv*v[0],gz=cu*u[1]+cv*v[1],long=W>=D,L=long?W:D,Sd=long?D:W;
           gable(gx,gz,long?u:v,long?v:u,L/2+.4,Sd/2+.4,h,Math.min(5,Sd*.32),col(night?0x4a3a38:0x9a4a3a))}
         else{cap(r,h+.02,roof);box(cx,cz,Math.min(W*.18,4),Math.min(D*.18,4),h,2.4,roof2)}}}catch(e){bad++}
