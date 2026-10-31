@@ -2585,7 +2585,12 @@ function detDbg(n,built,R){try{if(localStorage.getItem("meridian-dev")!=="1")ret
   const d=document.createElement("div");d.id="detDbg";d.style.cssText="position:fixed;left:6px;bottom:64px;z-index:9;font:11px monospace;color:#9f9;background:#000a;padding:2px 6px;border-radius:4px;pointer-events:none;white-space:pre";document.body.appendChild(d);
   let fr=0,fps=0;MM.on("render",()=>fr++);detHud=setInterval(()=>{fps=fr;fr=0;const st=modelLayer&&modelLayer.stats?modelLayer.stats():{};
     d.textContent="picked "+detInfo.n+" R"+Math.round(detInfo.R)+"m z"+MM.getZoom().toFixed(1)+"\nbuild "+((st.feat||0)+(st.extras||0)+(st.upload||0))+"ms (bld "+(st.feat||0)+" extras "+(st.extras||0)+" up "+(st.upload||0)+") cached "+(st.hits||0)+"/"+(st.total||0)+"\ntris "+(st.tris||0)+" drawn "+(st.drawn||0)+"  "+fps+" fps"},1000)}catch(e){}}
-function refreshDetail(force){clearTimeout(detTimer);detTimer=setTimeout(()=>{try{if(!modelLayer||!MM||!inStreet)return;if(MM.isMoving()||MM.isZooming())return;/* moveend calls again once the gesture settles */const z=MM.getZoom(),ce0=MM.getCenter();
+let detMovT=0;
+function refreshDetail(force){/* while the map is moving, look again at most about once a second (the pending check is left alone so tile events do not keep pushing it back) */
+  if(MM.isMoving()||MM.isZooming()){const t=Date.now();if(t-detMovT<1200)return;detMovT=t}
+  clearTimeout(detTimer);detTimer=setTimeout(()=>{try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom(),ce0=MM.getCenter();
+  /* while moving, only add buildings inside the current build (filter untouched), or re-centre once the view is near its edge; otherwise wait for the gesture to settle (changing the hide filter mid-gesture made buildings flicker) */
+  if(MM.isMoving()||MM.isZooming()){if(!detLast)return;const dd=Math.hypot((ce0.lng-detLast.lng)*111320*Math.cos(ce0.lat*Math.PI/180),(ce0.lat-detLast.lat)*111320);if(dd>=detLast.R*.5&&dd<detLast.R*.8)return}
   if(z<15.4){if(detLast&&z<15)detRestore();return}/* once built, keep the swap down to zoom 15 so zooming near 15.4 does not toggle the buildings */
   const ids=detLayers();if(!ids.length)return;const base=MM.getLayer(ids.find(i=>i!=="meridian-roofs")||ids[0]);if(!base)return;
   const mLat=111320,mLng=111320*Math.cos(ce0.lat*Math.PI/180);
