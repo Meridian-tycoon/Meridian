@@ -2572,7 +2572,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     let tris=0;out.traverse(o=>{if(o.geometry&&o.geometry.attributes.position)tris+=o.geometry.attributes.position.count/3});
     dT={feat:Math.round(tB-tA),extras:Math.round(tC-tB),upload:Math.round(performance.now()-tC),tris:Math.round(tris),hits,total:detFeats.length};return out}
   /* sky and street life: drifting clouds, chimney smoke and cars on the loaded roads, all in the same local frame as the generated buildings (metres from detO) */
-  let atmo=null,atmoO=null,atmoT=0,atmoC=null,atmoCars=0,clouds=[],puffs=[],cars=[],cloudM=null,carMats=[];
+  let atmo=null,atmoO=null,atmoT=0,atmoC=null,atmoCars=0,clouds=[],puffs=[],cars=[],cloudM=null,carMats=[],truckM=[];
   function atmoDrop(){if(atmo){scene.remove(atmo);disp(atmo)}atmo=null;atmoO=null;clouds=[];puffs=[];cars=[];cloudM=null;carMats=[]}
   function atmoBuild(){atmoDrop();atmo=new T.Group();atmo.visible=false;scene.add(atmo);atmoO=detO;const k=1/detO.sc,mc0=detO.mc;
     cloudM=new T.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.5,depthWrite:false});const sg=new T.IcosahedronGeometry(1,1);
@@ -2581,21 +2581,32 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     const pg=new T.IcosahedronGeometry(1,2);
     for(const m of modelList){if(m.cls!=="site-ind")continue;const mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),x=(mc.x-mc0.x)*k,z=(mc.y-mc0.y)*k;
       {const kk=m.k||1;for(const cx of [10,15])for(let i=0;i<7;i++){const mt=new T.MeshBasicMaterial({color:0x9ca3af,transparent:true,opacity:0,depthWrite:false}),pm=new T.Mesh(pg,mt);atmo.add(pm);puffs.push({m:pm,mt,x:x+cx*kk,z:z-6*kk,y0:26*kk,ph:i/7+(cx>10?.07:0)})}}}
-    for(const c of [0xc0392b,0x2563eb,0xe5e7eb,0x111827,0xf59e0b,0x16a34a])carMats.push(new T.MeshBasicMaterial({color:c}))}
+    for(const c of [0xc0392b,0x2563eb,0xe5e7eb,0x111827,0xf59e0b,0x16a34a])carMats.push(new T.MeshBasicMaterial({color:c}));truckM=[new T.MeshBasicMaterial({color:0xe5e7eb}),new T.MeshBasicMaterial({color:0xf59e0b})]}
   function atmoCarsBuild(){if(!atmo||!detO)return;for(const c of cars){atmo.remove(c.m)}cars=[];const k=1/detO.sc,mc0=detO.mc,ce=map.getCenter(),cm=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0),cx=(cm.x-mc0.x)*k,cz=(cm.y-mc0.y)*k,list=[];
     for(const rd of detRds){const pts=[];for(const [lo,la] of rd.pts){const m=maplibregl.MercatorCoordinate.fromLngLat([lo,la],0),x=(m.x-mc0.x)*k,z=(m.y-mc0.y)*k;if(isFinite(x)&&isFinite(z))pts.push([x,z])}
       if(pts.length<2)continue;let len=0;const seg=[];for(let i=1;i<pts.length;i++){const l=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);seg.push(l);len+=l}
       if(len<25)continue;let d=1e9;for(const q of pts)d=Math.min(d,Math.hypot(q[0]-cx,q[1]-cz));if(d>650)continue;list.push({pts,seg,len,d})}
     list.sort((a,b)=>a.d-b.d);const g=new T.BoxGeometry(4.2,1.5,1.9);let n=0;
     for(const r of list){const cnt=r.len>150?2:1;for(let q=0;q<cnt&&n<80;q++,n++){const m=new T.Mesh(g,carMats[Math.floor(Math.random()*carMats.length)]);atmo.add(m);cars.push({m,r,s:Math.random()*r.len,v:(7+Math.random()*7)*(Math.random()<.5?1:-1)})}}
+    /* delivery trucks: a road graph from the same polylines, and a shuttle on the shortest road path between each of your depots and your sites nearby */
+    try{const nk=(x,z)=>Math.round(x/2)+","+Math.round(z/2),nd=new Map(),node=(x,z)=>{const q=nk(x,z);let n=nd.get(q);if(!n){n={x,z,e:[],q};nd.set(q,n)}return n};
+      for(const r of list)for(let i=1;i<r.pts.length;i++){const A=node(r.pts[i-1][0],r.pts[i-1][1]),B=node(r.pts[i][0],r.pts[i][1]);if(A===B)continue;const l=Math.hypot(A.x-B.x,A.z-B.z);A.e.push([B,l]);B.e.push([A,l])}
+      const near=(x,z)=>{let b=null,bd=1e9;for(const n of nd.values()){const d=Math.hypot(n.x-x,n.z-z);if(d<bd){bd=d;b=n}}return bd<90?b:null},toL=m=>{const c=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0);return[(c.x-mc0.x)*k,(c.y-mc0.y)*k]};
+      const deps=modelList.filter(m=>m.cls==="wh").map(toL),dst=modelList.filter(m=>/^site-/.test(m.cls)).map(toL);let made=0;
+      for(const dp of deps){const src=near(dp[0],dp[1]);if(!src)continue;const dist=new Map([[src,0]]),prev=new Map(),open=new Set([src]),done=new Set();
+        while(open.size){let u=null,ud=1e9;for(const n of open){const d=dist.get(n);if(d<ud){ud=d;u=n}}open.delete(u);done.add(u);for(const [v,l] of u.e){if(done.has(v))continue;const nd2=ud+l;if(nd2<(dist.has(v)?dist.get(v):1e9)){dist.set(v,nd2);prev.set(v,u);open.add(v)}}}
+        for(const sp of dst){if(made>=6)break;if(Math.hypot(sp[0]-dp[0],sp[1]-dp[1])>1800)continue;const tg=near(sp[0],sp[1]);if(!tg||tg===src||!dist.has(tg))continue;const pts=[];for(let n=tg;n;n=prev.get(n))pts.unshift([n.x,n.z]);if(pts.length<2)continue;
+          const seg=[];let len=0;for(let i=1;i<pts.length;i++){const l=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);seg.push(l);len+=l}if(len<30)continue;made++;
+          for(let q=0;q<2;q++){const tr=new T.Group(),body=new T.Mesh(new T.BoxGeometry(6,2.8,2.6),truckM[0]),cab=new T.Mesh(new T.BoxGeometry(2,2.2,2.5),truckM[1]);body.position.set(-1,1.4,0);cab.position.set(3.1,1.1,0);tr.add(body,cab);atmo.add(tr);cars.push({m:tr,r:{pts,seg,len},s:q?len*.5:0,v:q?-9:9,pp:1,y:0})}}}
+    }catch(e){console.warn("trucks off",e)}
     atmoC=[cx,cz];atmoCars=performance.now()}
   function atmoUpdate(dk){const now=performance.now(),dt=Math.min(.1,Math.max(0,(now-(atmoT||now))/1000));atmoT=now;
     if(!atmo||atmoO!==detO){atmoBuild();atmoCarsBuild()}else if(now-atmoCars>5000){const k=1/detO.sc,ce=map.getCenter(),cm=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0);if(!atmoC||cars.length<30||Math.hypot((cm.x-detO.mc.x)*k-atmoC[0],(cm.y-detO.mc.y)*k-atmoC[1])>220)atmoCarsBuild();else atmoCars=now}
     cloudM.color.set(dk?0x2a3350:0xffffff);cloudM.opacity=dk?.4:.5;
     for(const c of clouds){c.position.x+=6*dt;if(c.position.x>3500)c.position.x-=7000}
     const t=now/1000;for(const p of puffs){const f=(t/9+p.ph)%1;p.m.position.set(p.x+f*14,(p.y0||26)+1+f*60,p.z);p.m.scale.setScalar(2.2+f*9);p.mt.opacity=Math.sin(f*Math.PI)*.32;p.mt.color.set(dk?0x4b5563:0xb6bcc6)}
-    for(const c of cars){c.s+=c.v*dt;const L=c.r.len;if(c.s>L)c.s-=L;else if(c.s<0)c.s+=L;let a=c.s,i=0;while(i<c.r.seg.length-1&&a>c.r.seg[i]){a-=c.r.seg[i];i++}const p0=c.r.pts[i],p1=c.r.pts[i+1],l=c.r.seg[i]||1,f=Math.min(1,a/l),dx=p1[0]-p0[0],dz=p1[1]-p0[1];
-      c.m.position.set(p0[0]+dx*f,.9,p0[1]+dz*f);c.m.rotation.y=-Math.atan2(dz,dx)}}
+    for(const c of cars){c.s+=c.v*dt;const L=c.r.len;if(c.pp){if(c.s>L){c.s=L;c.v=-Math.abs(c.v)}else if(c.s<0){c.s=0;c.v=Math.abs(c.v)}}else if(c.s>L)c.s-=L;else if(c.s<0)c.s+=L;let a=c.s,i=0;while(i<c.r.seg.length-1&&a>c.r.seg[i]){a-=c.r.seg[i];i++}const p0=c.r.pts[i],p1=c.r.pts[i+1],l=c.r.seg[i]||1,f=Math.min(1,a/l),dx=p1[0]-p0[0],dz=p1[1]-p0[1];
+      c.m.position.set(p0[0]+dx*f,c.y!=null?c.y:.9,p0[1]+dz*f);c.m.rotation.y=-Math.atan2(dz,dx)+(c.v<0?Math.PI:0)}}
   function sync(){if(!T||!group)return;while(group.children.length)group.remove(group.children[0]);
     for(const m of modelList){const k=MODEL_KIND[m.cls];if(!k||!build[k])continue;const o=build[k](m),mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),sc=mc.meterInMercatorCoordinateUnits();
       if(m.k&&m.k!==1)o.scale.setScalar(m.k);o.userData={mc,sc};group.add(o)}}
