@@ -2739,13 +2739,17 @@ function bakedNeed(ce,R,mLng,mLat){const c=bakedCity(ce.lng,ce.lat);if(!c)return
   if(!ix){bakedIdx[c]="wait";fetch("data/buildings/"+c+"/index.json").then(r=>r.ok?r.json():null).then(j=>{bakedIdx[c]=j||"none";refreshDetail()}).catch(()=>{bakedIdx[c]="none";refreshDetail()});return {c,rows:[]}}
   if(ix==="none")return null;if(ix==="wait")return {c,rows:[]};const T=ix.tile,dLng=R/mLng+T,dLat=R/mLat+T,rows=[];
   for(const t of ix.tiles){if(t.w>ce.lng+dLng-T||t.w<ce.lng-dLng||t.s>ce.lat+dLat-T||t.s<ce.lat-dLat)continue;const id=c+"/"+t.f,v=bakedTiles[id];
-    if(v===undefined){bakedTiles[id]=null;fetch("data/buildings/"+id).then(r=>r.json()).then(j=>{const o=j.o,b=[];for(const r of j.b){const ring=[];for(let i=2;i<r.length;i+=2)ring.push([o[0]+r[i]/1e6,o[1]+r[i+1]/1e6]);b.push({ring,h:r[0],mh:r[1]})}bakedTiles[id]=b;refreshDetail()}).catch(()=>{bakedTiles[id]=[]});continue}
+    if(v===undefined){bakedTiles[id]=null;fetch("data/buildings/"+id).then(r=>r.json()).then(j=>{const o=j.o,b=[];for(const r of j.b){const ring=[];for(let i=2;i<r.length;i+=2)ring.push([o[0]+r[i]/1e6,o[1]+r[i+1]/1e6]);if(ring.length<4||r[0]-r[1]<1)continue;
+      /* key worked out once here, not every time the queue is rebuilt */
+      b.push({ring,h:r[0],mh:r[1],x:ring[0][0],y:ring[0][1],key:ring[0][0].toFixed(6)+","+ring[0][1].toFixed(6)+","+ring.length})}bakedTiles[id]=b;refreshDetail()}).catch(()=>{bakedTiles[id]=[]});continue}
     if(v===null)continue;for(const x of v)rows.push(x)}
   /* tiles still loading are skipped; detDirty re-runs the queue when they arrive */
   return {c,rows}}
 function detQueue(base,ce,mLng,mLat,R){const sl=base.sourceLayer||base["source-layer"],bk=bakedNeed(ce,R,mLng,mLat),fs0=MM.querySourceFeatures(base.source,sl?{sourceLayer:sl}:{}),seen=new Set(),out=[];
   /* with a baked city loaded, map-tile buildings inside its box are skipped and the saved ones are used */
-  const fs=bk?fs0.filter(f=>{const g=f.geometry;const p=g&&(g.type==="Polygon"?g.coordinates[0][0]:g.type==="MultiPolygon"?g.coordinates[0][0][0]:null);return !p||bakedCity(p[0],p[1])!==bk.c}).concat(bk.rows.map(x=>({geometry:{type:"Polygon",coordinates:[x.ring]},properties:{render_height:x.h,render_min_height:x.mh}}))):fs0;
+  const fs=bk?fs0.filter(f=>{const g=f.geometry;const p=g&&(g.type==="Polygon"?g.coordinates[0][0]:g.type==="MultiPolygon"?g.coordinates[0][0][0]:null);return !p||bakedCity(p[0],p[1])!==bk.c}):fs0;
+  /* saved buildings: distance first (cheap), no copies to check since the bake keeps each building once */
+  if(bk){const dx=R/mLng,dy=R/mLat;for(const x of bk.rows){const ax=x.x-ce.lng,ay=x.y-ce.lat;if(ax>dx||ax<-dx||ay>dy||ay<-dy||detKeys.has(x.key))continue;const d=Math.hypot(ax*mLng,ay*mLat);if(d>R)continue;out.push({ring:x.ring,h:x.h,base:x.mh,key:x.key,key2:"b"+x.key,d})}}
   for(const f of fs){const g=f.geometry;if(!g)continue;const parts=g.type==="Polygon"?[g.coordinates[0]]:g.type==="MultiPolygon"?g.coordinates.map(q=>q[0]):[];
     const h=+f.properties.render_height||8,mh=+f.properties.render_min_height||0;if(h-mh<1)continue;
     for(const ring of parts){if(!ring||ring.length<4)continue;const key=ring[0][0].toFixed(6)+","+ring[0][1].toFixed(6)+","+ring.length;if(seen.has(key)||detKeys.has(key))continue;
@@ -2753,6 +2757,8 @@ function detQueue(base,ce,mLng,mLat,R){const sl=base.sourceLayer||base["source-l
       let cx=0,cy=0;for(const q of ring){cx+=q[0];cy+=q[1]}const key2="c"+(cx/ring.length).toFixed(5)+","+(cy/ring.length).toFixed(5)+","+Math.round(h)+","+Math.round(mh);if(seen.has(key2)||detKeys.has(key2))continue;seen.add(key);seen.add(key2);
       const d=Math.hypot((ring[0][0]-ce.lng)*mLng,(ring[0][1]-ce.lat)*mLat);if(d>R)continue;out.push({ring,h,base:mh,key,key2,d})}}
   out.sort((a,b)=>a.d-b.d);
+  /* a baked city has far more buildings than the map tiles: keep only the nearest ones the View distance allows */
+  if(bk){const lim=vdQ().n*2;if(out.length>lim)out.length=lim}
   const RK2={primary:1,secondary:1,tertiary:1,minor:1},rds=[],rseen=new Set();
   try{const rl=MM.getStyle().layers.find(l=>l["source-layer"]==="transportation");if(rl){for(const f of MM.querySourceFeatures(rl.source,{sourceLayer:"transportation"})){const pr=f.properties||{};if(!RK2[pr.class]||pr.brunnel==="bridge"||pr.brunnel==="tunnel"||pr.ramp)continue;const g=f.geometry;if(!g)continue;
     const lns=g.type==="LineString"?[g.coordinates]:g.type==="MultiLineString"?g.coordinates:[];
