@@ -723,6 +723,10 @@ const sheetUp=()=>sheet.classList.contains("open")&&!matchMedia("(min-width:820p
 /* map style: OpenFreeMap light or dark; the pick is remembered, otherwise it follows the game theme */
 const ML_STYLES={light:window.MERIDIAN_3D_STYLE||"https://tiles.openfreemap.org/styles/liberty",dark:window.MERIDIAN_3D_STYLE_DARK||"https://tiles.openfreemap.org/styles/dark"};
 const nightNow=()=>{const h=new Date().getHours();return h>=19||h<6};
+/* street-view sun from the local clock: rises in the east at 6, highest at 12:30, sets in the west at 19 (mirrored south of the equator), never below 8° in day mode.
+   x = east, y = up, z = south; warm is 1 near the horizon (golden hour) and 0 high up */
+const sun3d=lat=>{const d=new Date(),h=d.getHours()+d.getMinutes()/60,f=Math.max(0,Math.min(1,(h-6)/13)),la=lat||0,el=Math.max(.14,Math.sin(f*Math.PI)*(1.15-Math.min(.5,Math.abs(la)/120))),
+  a0=Math.PI/2+f*Math.PI,az=la<0?(3*Math.PI-a0)%(2*Math.PI):a0,ce=Math.cos(el);return{el,x:Math.sin(az)*ce,y:Math.sin(el),z:-Math.cos(az)*ce,warm:Math.max(0,1-el/.6)}};
 const dark3d=()=>{try{const v=localStorage.getItem("meridian-3d-dark");if(v==="a")return nightNow();if(v!=null)return v==="1"}catch(e){}const t=document.documentElement.dataset.theme;return t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches)};
 const ML_STYLE=()=>ML_STYLES[dark3d()?"dark":"light"];
 /* camera feel, measured from Capital Rift: each wheel notch scales the distance by 1.6, straight down above ~3.5 km, easing to 45° near the street */
@@ -746,6 +750,12 @@ const MM=new maplibregl.Map({container:glEl,style:localStyle(),center:[-V.lam,-V
   renderWorldCopies:false,attributionControl:{compact:true},pitchWithRotate:true,touchPitch:true,dragRotate:false,fadeDuration:250,
   transformCameraUpdate:camUpdate});
 MM.scrollZoom.setWheelZoomRate(1/72);              // one notch (deltaY 100) ≈ ×1.6, the same at every height
+/* in the street the wheel glides: each notch moves a target zoom and the camera eases there in about 0.4 s, toward the pointer; above street level the wheel works as before */
+{let zt=null,zLast=0;MM.getContainer().addEventListener("wheel",e=>{if(reduce||!inStreet||MM.getZoom()<ZST)return;e.preventDefault();e.stopPropagation();lastInput=Date.now();
+  const now=performance.now();if(zt===null||now-zLast>450||!MM.isMoving())zt=MM.getZoom();zLast=now;
+  let d=e.deltaY*(e.deltaMode===1?33:e.deltaMode===2?600:1);if(e.ctrlKey)d*=2.2;const dz=Math.max(-1,Math.min(1,-d/100*Math.log2(1.6)));
+  zt=Math.max(MM.getMinZoom(),Math.min(MM.getMaxZoom(),zt+dz));const r=MM.getContainer().getBoundingClientRect(),py=e.clientY-r.top,opt={zoom:zt,duration:420,easing:u=>1-Math.pow(1-u,3),essential:true};
+  if(py>r.height*.25)try{opt.around=MM.unproject([e.clientX-r.left,py])}catch(er){}MM.easeTo(opt)},{passive:false,capture:true})}
 MM.touchZoomRotate.disableRotation();MM.keyboard.disableRotation();
 const compass=new maplibregl.NavigationControl({showZoom:false,visualizePitch:true});let _free=false;
 /* turning is unlocked on touch screens and a compass appears once you are in a city; tap the compass to face north again */
@@ -989,7 +999,7 @@ function renderSheet(){sheet.classList.remove("bzv");if(mode==="sv")return;if(mo
   let h=`<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}${typeof stormAt==="function"&&stormAt(c)?`<span class="tag bust">STORM</span>`:""}${dmgLvl(c)>=DMG.dead?`<span class="tag bust">DESTROYED</span>`:dmgLvl(c)>=.05?`<span class="tag bust">DAMAGED</span>`:""}</h2>
     <p>${c.country} · market size ${"●".repeat(c.size)}${"○".repeat(5-c.size)}</p></div>
     <button class="x" id="cls" aria-label="Close">×</button></div>
-    <div class="meta"><div><span>Land price </span>×${PRICE[c.size]}</div><div><span>Demand </span>×${(DEMAND[c.size]*evMult(c)*compMult(c)).toFixed(2)}</div><div><span>Yours </span>${fmt(cityProfit(c))}/hr</div></div>${dmgLine(c)}`+tabsHtml()+(()=>{const f=stFeudLine(c);return f?`<div class="list">${f}</div>`:""})();
+    <div class="meta"><div><span>Land price </span>×${PRICE[c.size]}</div><div><span>Demand </span>×${(DEMAND[c.size]*evMult(c)*compMult(c)).toFixed(2)}</div><div><span>Yours </span>${fmt(cityProfit(c))}/hr</div></div>${dmgLine(c)}${typeof rbHtml==="function"?rbHtml(c):""}`+tabsHtml()+(()=>{const f=stFeudLine(c);return f?`<div class="list">${f}</div>`:""})();
   const mine0=BIZ.filter(b=>o[b.k]),avail0=BIZ.filter(b=>!o[b.k]&&(b.cx==null||b.cx===c.id));
   const bzq=bzF.q.trim().toLowerCase(),bzm=b=>!bzq||b.n.toLowerCase().includes(bzq)||(b.d||"").toLowerCase().includes(bzq);
   const bzNet=b=>{const p=potential(b,c,1);return p-(SUP[b.k]?useRate(b,1,c)*unitCost(b,c):0)},bzSort=(a,f)=>bzF.s==="az"?a.sort((x,y)=>x.n.localeCompare(y.n)):bzF.s==="cheap"?a.sort((x,y)=>cost(x,c)-cost(y,c)):a.sort((x,y)=>f(y)-f(x));
@@ -1874,8 +1884,8 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-prop]");if(!b
   else if(a==="furn"){const P=PK[pr.k],k=P.furn*PRICE[c.size];if(S.cash<k)return;S.cash-=k;pr.furn=1;toast("Furnished: market rent +25%")}
   else if(a==="sell"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}{const v=propSell(PK[pr.k],c);S.cash+=v;S.props=S.props.filter(x=>x!==pr);toast(`Property sold for ${fmt(v)}`)}}
   else return;e.stopPropagation();commit()});
-/* ---------- skyscraper projects: multi-stage towers that take game days to build ----------
-   Each tower goes through SKY.st stages (days scaled per tier). A stage's cost is paid when it starts; with too little cash the site waits for funds.
+/* ---------- real estate developments: multi-stage towers and malls that take game days to build ----------
+   Each tower goes through SKY.st stages (malls use SKY.ml via T.st) (days scaled per tier). A stage's cost is paid when it starts; with too little cash the site waits for funds.
    Progress runs in game-hour steps from accrue (skyTick, works offline up to OFFCAP). Delays: a storm over the city stops outdoor stages (weather),
    a construction-crew strike (rolled daily in skyDay, 1-3 days, can be settled for a fee) stops all work, lasting war damage (dmgLvl) slows work,
    a fresh missile hit on the city (skyHit from dmgStrike) knocks back the current stage, and an uninhabitable city (unhOn) halts the site.
@@ -1884,28 +1894,33 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-prop]");if(!b
 const SKY={occ:.9,set:.03,skP:.05,
   T:{res:{n:"Residential tower",i:"🏢",fl:30,cost:2500000,rent:9000,d:[2,3,2,2],min:1},
      off:{n:"Office tower",i:"🏙️",fl:55,cost:6000000,rent:21000,d:[2,4,3,3],min:3},
-     sup:{n:"Supertall",i:"🗼",fl:100,cost:18000000,rent:60000,d:[3,5,4,4],min:4}},
+     sup:{n:"Supertall",i:"🗼",fl:100,cost:18000000,rent:60000,d:[3,5,4,4],min:4},
+     mall:{n:"Shopping mall",i:"🛍️",fl:3,cost:4000000,rent:15000,d:[2,3,3,2],min:2,st:"ml",shop:1},
+     mega:{n:"Mega mall",i:"🏬",fl:5,cost:12000000,rent:42000,d:[3,4,4,3],min:4,st:"ml",shop:1}},
+  /* malls use their own stages; their rent also follows local shopper demand (popDem) */
+  ml:[{n:"Site works",out:1,c:.2},{n:"Structure",out:1,c:.35},{n:"Roof and atrium",out:1,c:.2},{n:"Shop fit-out",out:0,c:.25}],
   st:[{n:"Foundations",out:1,c:.2},{n:"Steel frame",out:1,c:.35},{n:"Facade",out:1,c:.25},{n:"Fit-out",out:0,c:.2}]};
+const skySt=pj=>{const T=SKY.T[pj.k];return (T&&T.st&&SKY[T.st])||SKY.st};
 function skyS(){if(!S.sky||typeof S.sky!=="object"||!Array.isArray(S.sky.l))S.sky={t:0,l:[]};return S.sky}
 const skyCost=(T,c)=>Math.round(T.cost*Math.pow(PRICE[c.size],1.3));
-const skyStageCost=(pj)=>{const c=CITIES[pj.city];return Math.round(skyCost(SKY.T[pj.k],c)*SKY.st[pj.s].c)};
+const skyStageCost=(pj)=>{const c=CITIES[pj.city];return Math.round(skyCost(SKY.T[pj.k],c)*skySt(pj)[pj.s].c)};
 const skyRent0=(pj)=>{const T=SKY.T[pj.k],c=CITIES[pj.city];return Math.round(T.rent*PRICE[c.size]*DEMAND[c.size])};
-function skyRent(pj){const c=CITIES[pj.city];if(!pj.done||unhOn(c))return 0;return skyRent0(pj)*SKY.occ*(typeof rentLaw==="function"?rentLaw(c):1)*(typeof dmgMult==="function"?dmgMult(c):1)}
+function skyRent(pj){const c=CITIES[pj.city];if(!pj.done||unhOn(c))return 0;const T=SKY.T[pj.k];return skyRent0(pj)*SKY.occ*(T&&T.shop&&typeof popDem==="function"?popDem(c):1)*(typeof rentLaw==="function"?rentLaw(c):1)*(typeof dmgMult==="function"?dmgMult(c):1)}
 function skyIncome(){const s=S.sky;if(!s||!Array.isArray(s.l)||!s.l.length)return 0;let m=1;try{m=1+.08*ofP("re")}catch(e){}return s.l.reduce((a,pj)=>a+skyRent(pj),0)*m}
 function skyVal(pj){const c=CITIES[pj.city];return Math.round(pj.done?skyCost(SKY.T[pj.k],c)*.9*(typeof flipMk==="function"?flipMk(c):1):pj.paid*.6)}
 function skyAssets(){const s=S.sky;if(!s||!Array.isArray(s.l))return 0;return s.l.reduce((a,pj)=>a+(CITIES[pj.city]?skyVal(pj):0),0)}
 function skyLog(t,quiet){try{if(!Array.isArray(S.news))S.news=[];S.news.unshift({t,at:Date.now()});S.news=S.news.slice(0,40);if(!quiet){S.log.unshift(t);S.log=S.log.slice(0,3)}}catch(e){}}
 /* why a site is not moving right now ("" = working) */
-function skyWhy(pj,t){const c=CITIES[pj.city];t=t||Date.now();if(pj.done)return "";if(unhOn(c))return "rad";if(!pj.f)return "funds";if(pj.sk>t)return "strike";if(SKY.st[pj.s].out&&stormAt(c,t))return "storm";return ""}
+function skyWhy(pj,t){const c=CITIES[pj.city];t=t||Date.now();if(pj.done)return "";if(unhOn(c))return "rad";if(!pj.f)return "funds";if(pj.sk>t)return "strike";if(skySt(pj)[pj.s].out&&stormAt(c,t))return "storm";return ""}
 function skyStep(pj,t){const c=CITIES[pj.city],T=SKY.T[pj.k];if(!c||!T||pj.done)return;
   if(!pj.f){const k=skyStageCost(pj);if(S.cash>=k){S.cash-=k;pj.paid+=k;pj.f=1}else return}
   const w=skyWhy(pj,t);if(w==="strike"){pj.dh.s++;return}if(w==="storm"){pj.dh.w++;return}if(w)return;
   const war=typeof dmgLvl==="function"?dmgLvl(c):0,r=Math.max(.1,1-war);if(war>.005)pj.dh.x+=1-r;
   pj.p+=r/(T.d[pj.s]*24);
   if(pj.p>=1){pj.p=0;pj.s++;pj.f=0;
-    if(pj.s>=SKY.st.length){pj.done=1;pj.s=SKY.st.length-1;pj.p=1;pj.f=1;const dl=Math.round(pj.dh.w+pj.dh.s+pj.dh.x);
-      skyLog(`${T.i} Your ${T.n.toLowerCase()} in ${c.name} is finished${dl>=1?` after ${dl} hours of delays`:""}. Tenants are moving in.`);try{bigMove(`a ${T.fl}-floor ${T.n.toLowerCase()} opened in ${c.name}`,pj.paid,1)}catch(e){}}
-    else skyLog(`${T.i} ${c.name} tower: ${SKY.st[pj.s-1].n.toLowerCase()} done, ${SKY.st[pj.s].n.toLowerCase()} next.`,1)}}
+    if(pj.s>=skySt(pj).length){pj.done=1;pj.s=skySt(pj).length-1;pj.p=1;pj.f=1;const dl=Math.round(pj.dh.w+pj.dh.s+pj.dh.x);
+      skyLog(`${T.i} Your ${T.n.toLowerCase()} in ${c.name} is finished${dl>=1?` after ${dl} hours of delays`:""}. Tenants are moving in.`);try{bigMove(`a ${skyFl(T)} opened in ${c.name}`,pj.paid,1)}catch(e){}}
+    else skyLog(`${T.i} ${c.name} ${T.shop?"mall":"tower"}: ${skySt(pj)[pj.s-1].n.toLowerCase()} done, ${skySt(pj)[pj.s].n.toLowerCase()} next.`,1)}}
 function skyTick(now){const s=S.sky;if(!s||!Array.isArray(s.l)||!s.l.some(p=>!p.done))return;now=now||Date.now();const step=DAYMS/24;
   if(!s.t||s.t>now)s.t=now;s.t=Math.max(s.t,now-OFFCAP*DAYMS);
   while(s.t+step<=now){s.t+=step;for(const pj of s.l)skyStep(pj,s.t)}}
@@ -1916,30 +1931,31 @@ function skyDay(quiet){const s=S.sky;if(!s||!Array.isArray(s.l))return;const now
 function skyHit(c,l){const s=S.sky;if(!c||!s||!Array.isArray(s.l))return;try{if(typeof ON!=="undefined"&&ON.user&&GOV_IMMUNE.includes(ON.user.uid))return}catch(e){} // dev account: no losses (Mark, 2026-10-26)
   for(const pj of s.l){if(pj.city!==c.id||pj.done)continue;
   const lost=Math.min(pj.p,Math.max(.05,.6*Math.min(1,l||0)));if(lost<=0)continue;pj.p-=lost;pj.dh.x+=lost*SKY.T[pj.k].d[pj.s]*24;
-  skyLog(`💥 A strike on ${c.name} damaged your tower site: ${SKY.st[pj.s].n.toLowerCase()} set back ${Math.round(lost*100)}%.`)}}
-function skyLeft(pj){const T=SKY.T[pj.k];let d=(1-pj.p)*T.d[pj.s];for(let i=pj.s+1;i<SKY.st.length;i++)d+=T.d[i];return d}
+  skyLog(`💥 A strike on ${c.name} damaged your ${SKY.T[pj.k].shop?"mall":"tower"} site: ${skySt(pj)[pj.s].n.toLowerCase()} set back ${Math.round(lost*100)}%.`)}}
+function skyLeft(pj){const T=SKY.T[pj.k];let d=(1-pj.p)*T.d[pj.s];for(let i=pj.s+1;i<skySt(pj).length;i++)d+=T.d[i];return d}
 function skyHtml(c){const s=skyS(),mine=s.l.filter(p=>p.city===c.id),now=Date.now();
-  let h=`<div class="sec">Skyscraper projects</div><p class="d" style="color:var(--muted);font-size:12px;margin:0 0 4px">Build a tower in four stages over several game days. Each stage is paid when it starts. Storms stop outdoor work, crews can strike, and war damage slows or sets back the site. Finished towers rent out at about ${Math.round(SKY.occ*100)}% occupancy.</p><div class="list">`;
+  let h=`<div class="sec">Real estate developments</div><p class="d" style="color:var(--muted);font-size:12px;margin:0 0 4px">Build a tower or mall in four stages over several game days. Each stage is paid when it starts. Storms stop outdoor work, crews can strike, and war damage slows or sets back the site. Finished buildings rent out at about ${Math.round(SKY.occ*100)}% occupancy; malls earn more where shoppers are plentiful.</p><div class="list">`;
   const WHY={rad:"☢ Halted: the city is uninhabitable",funds:"💰 Waiting for funds",strike:"🪧 Crews on strike",storm:"⛈ Storm: outdoor work stopped"};
   for(const pj of mine){const T=SKY.T[pj.k],w=skyWhy(pj,now),war=dmgLvl(c);
-    if(pj.done){h+=`<div class="row own"><div class="n">${T.i} ${T.n} · ${T.fl} floors <span class="tag boom">Open</span></div><div class="d">Rent <b>${fmt(skyRent(pj))}</b>/hr${pj.dh.w+pj.dh.s+pj.dh.x>=1?` · built with ${Math.round(pj.dh.w+pj.dh.s+pj.dh.x)} h of delays`:""}</div>
+    if(pj.done){h+=`<div class="row own"><div class="n">${T.i} ${T.n} · ${T.fl} ${T.shop?"levels":"floors"} <span class="tag boom">Open</span></div><div class="d">Rent <b>${fmt(skyRent(pj))}</b>/hr${pj.dh.w+pj.dh.s+pj.dh.x>=1?` · built with ${Math.round(pj.dh.w+pj.dh.s+pj.dh.x)} h of delays`:""}</div>
       <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy up" data-sky="sell" data-id="${pj.id}">Sell ${fmt(skyVal(pj))}</button></span></div>`;continue}
     const tot=SKY.T[pj.k].d.reduce((a,b)=>a+b,0),doneD=tot-skyLeft(pj),pc=Math.max(1,Math.round(doneD/tot*100));
     const dl=[pj.dh.w>=1?`weather ${Math.round(pj.dh.w)} h`:"",pj.dh.s>=1?`strikes ${Math.round(pj.dh.s)} h`:"",pj.dh.x>=1?`war ${Math.round(pj.dh.x)} h`:""].filter(Boolean).join(", ");
     h+=`<div class="row own" data-skyrow="${pj.id}"><div class="n">${T.i} ${T.n} <span class="tag ${w?"bust":"boom"}">${w?"Delayed":"Building"}</span></div>
-    <div class="d">Stage ${pj.s+1}/${SKY.st.length}: <b>${SKY.st[pj.s].n}</b> ${Math.round(pj.p*100)}% · about ${skyLeft(pj).toFixed(1)} game days left${war>.005?` (war damage slows work ${Math.round(Math.min(.9,war)*100)}%)`:""}
+    <div class="d">Stage ${pj.s+1}/${skySt(pj).length}: <b>${skySt(pj)[pj.s].n}</b> ${Math.round(pj.p*100)}% · about ${skyLeft(pj).toFixed(1)} game days left${war>.005?` (war damage slows work ${Math.round(Math.min(.9,war)*100)}%)`:""}
       <div class="wz-bar" style="margin:6px 0"><i style="width:${pc}%"></i></div>${w?`<span style="color:var(--bad)">${WHY[w]}${w==="funds"?` (${fmt(skyStageCost(pj))})`:w==="strike"?`, back in ${Math.max(1,Math.round((pj.sk-now)/DAYMS*24))} h`:""}</span><br>`:""}${dl?`<span style="color:var(--muted)">Delays so far: ${dl}</span>`:""}</div>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${w==="strike"?`<button class="buy" data-sky="settle" data-id="${pj.id}" ${S.cash<skySettle(pj)?"disabled":""}>Settle ${fmt(skySettle(pj))}</button>`:""}<button class="buy up" data-sky="sell" data-id="${pj.id}" title="Sell the unfinished site for 60% of what you paid">Sell site ${fmt(skyVal(pj))}</button></span></div>`}
   for(const k in SKY.T){const T=SKY.T[k],ok=c.size>=T.min,cost=skyCost(T,c),first=Math.round(cost*SKY.st[0].c),days=T.d.reduce((a,b)=>a+b,0);
-    h+=`<div class="row"${ok?"":' style="opacity:.6"'}><div class="n">${T.i} ${T.n} · ${T.fl} floors</div><div class="d">${ok?`Total ${fmt(cost)} over ${days} game days, rent about <b>${fmt(Math.round(T.rent*PRICE[c.size]*DEMAND[c.size]*SKY.occ))}</b>/hr when open.`:`Needs a bigger city.`}</div>
+    h+=`<div class="row"${ok?"":' style="opacity:.6"'}><div class="n">${T.i} ${T.n} · ${T.fl} ${T.shop?"levels":"floors"}</div><div class="d">${ok?`Total ${fmt(cost)} over ${days} game days, rent about <b>${fmt(Math.round(T.rent*PRICE[c.size]*DEMAND[c.size]*SKY.occ*(T.shop&&typeof popDem==="function"?popDem(c):1)))}</b>/hr when open.`:`Needs a bigger city.`}</div>
     <button class="buy" data-sky="start" data-k="${k}" ${!ok||S.cash<first||unhOn(c)?"disabled":""}>${ok?"Break ground "+fmt(first):"Too small"}</button></div>`}
   return h+`</div>`}
+const skyFl=T=>T.shop?`${T.fl}-level ${T.n.toLowerCase()}`:`${T.fl}-floor ${T.n.toLowerCase()}`;
 const skySettle=pj=>Math.round(skyCost(SKY.T[pj.k],CITIES[pj.city])*SKY.set);
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-sky]");if(!b||!sel)return;const c=sel,a=b.dataset.sky,s=skyS(),pj=s.l.find(x=>x.id===+b.dataset.id);
   if(a==="start"){const T=SKY.T[b.dataset.k];if(!T||c.size<T.min||unhOn(c))return;const k=Math.round(skyCost(T,c)*SKY.st[0].c);if(S.cash<k)return;S.cash-=k;
-    if(!s.l.some(p=>!p.done))s.t=Date.now();s.l.push({id:S.nid++,city:c.id,k:b.dataset.k,s:0,p:0,f:1,paid:k,sk:0,dh:{w:0,s:0,x:0},done:0});toast(`Broke ground on a ${T.fl}-floor ${T.n.toLowerCase()} in ${c.name}`);bigMove(`work started on a ${T.fl}-floor ${T.n.toLowerCase()} in ${c.name}`,skyCost(T,c))}
+    if(!s.l.some(p=>!p.done))s.t=Date.now();s.l.push({id:S.nid++,city:c.id,k:b.dataset.k,s:0,p:0,f:1,paid:k,sk:0,dh:{w:0,s:0,x:0},done:0});toast(`Broke ground on a ${skyFl(T)} in ${c.name}`);bigMove(`work started on a ${skyFl(T)} in ${c.name}`,skyCost(T,c))}
   else if(a==="settle"&&pj){const k=skySettle(pj);if(S.cash<k)return;S.cash-=k;pj.sk=0;toast("Strike settled: crews are back on site")}
-  else if(a==="sell"&&pj){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}const v=skyVal(pj);S.cash+=v;s.l=s.l.filter(x=>x!==pj);toast(`${pj.done?"Tower":"Site"} sold for ${fmt(v)}`)}
+  else if(a==="sell"&&pj){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}const v=skyVal(pj);S.cash+=v;s.l=s.l.filter(x=>x!==pj);toast(`${pj.done?(SKY.T[pj.k].shop?"Mall":"Tower"):"Site"} sold for ${fmt(v)}`)}
   else return;e.stopPropagation();commit()});
 /* ---------- property flipping: buy listed homes and commercial units, renovate them, resell into a hot market ----------
    Each city has 3–5 listings (more in big cities) that rotate daily. Prices = type base × PRICE[size]^1.3 × condition × the city's market index flipMk(c).
@@ -2437,7 +2453,7 @@ function ensureModelLayer(){try{if(!MM||MM.getLayer("meridian-models"))return;
 function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=false,mats={},det=null,detO=null,detFeats=null,detRoads=null,dcache=null,dcKey="",dT={},lastTris=0;
   const M=(c,o)=>new T.MeshLambertMaterial(Object.assign({color:c},o||{}));
   /* distance haze for the generated city: walls, roofs and roads fade into the sky colour with their distance from the camera (three's own fog would measure from the model origin, so this adds the camera position as a uniform) */
-  let FOG=null;const fogU=()=>FOG||(FOG={cam:{value:new T.Vector3()},col:{value:new T.Color(0xd3dde8)},rng:{value:new T.Vector2(900,3800)}});
+  let FOG=null,sunT=0,SUNV=null;const fogU=()=>FOG||(FOG={cam:{value:new T.Vector3()},col:{value:new T.Color(0xd3dde8)},rng:{value:new T.Vector2(900,3800)}});
   const HAZE=false,fogify=m=>{if(!HAZE)return m;const u=fogU();m.onBeforeCompile=sh=>{sh.uniforms.uCam=u.cam;sh.uniforms.uFogC=u.col;sh.uniforms.uFogR=u.rng;
     sh.vertexShader=sh.vertexShader.replace("#include <common>","#include <common>\nvarying vec3 vFW;").replace("#include <begin_vertex>","#include <begin_vertex>\nvFW=position;");
     sh.fragmentShader=sh.fragmentShader.replace("#include <common>","#include <common>\nvarying vec3 vFW;uniform vec3 uCam;uniform vec3 uFogC;uniform vec2 uFogR;").replace("#include <dithering_fragment>","gl_FragColor.rgb=mix(gl_FragColor.rgb,uFogC,smoothstep(uFogR.x,uFogR.y,distance(vFW,uCam)));\n#include <dithering_fragment>")};m.customProgramCacheKey=()=>"mfog";return m};
@@ -2477,16 +2493,16 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
      Built from the map's own footprints into three merged meshes (one per wall style, plus roofs); positions are metres from a local origin so nothing jitters. */
   const WIN={};
   /* wall styles. Each is one 128px tile = 2x2 bays; the shader repeats it per bay and per floor. */
-  function winTex(kind,night){const key=kind+night;if(WIN[key])return WIN[key];const c=document.createElement("canvas");c.width=c.height=128;const g=c.getContext("2d");
-    const lit=()=>night&&Math.random()<.4,win=(x,y,w,h,day)=>{g.fillStyle=night?(lit()?"#ffd98a":"#2a323d"):day;g.fillRect(x,y,w,h)},
-      wallc={home:"#d8c3a8",brick:"#a8553f",concrete:"#b9bcc0",glass:"#4d7a9c",stone:"#d9cfbd",apt:"#d8c9b4",shop:"#7d848c"}[kind]||"#cfd3d8";
-    g.fillStyle=night?"#1d242d":wallc;g.fillRect(0,0,128,128);
-    for(let i=0;i<2;i++)for(let j=0;j<2;j++){const x=i*64,y=j*64;
+  function winTex(kind,night){const key=kind+night;if(WIN[key])return WIN[key];const c=document.createElement("canvas");c.width=c.height=256;const g=c.getContext("2d");
+    const LW=["#ffd98a","#ffcf78","#ffe6b0","#ffc266","#fff1d2","#ffd98a","#cfe0ff"],lit=()=>night&&Math.random()<.42,win=(x,y,w,h,day)=>{g.fillStyle=night?(lit()?LW[Math.floor(Math.random()*LW.length)]:"#2a323d"):day;g.fillRect(x,y,w,h)},
+      wallc={home:"#ecdfcb",brick:"#a8553f",concrete:"#b9bcc0",glass:"#4d7a9c",stone:"#d9cfbd",apt:"#e8dccb",shop:"#7d848c"}[kind]||"#cfd3d8";
+    g.fillStyle=night?"#1d242d":wallc;g.fillRect(0,0,256,256);
+    for(let i=0;i<4;i++)for(let j=0;j<4;j++){const x=i*64,y=j*64;
       if(kind==="brick"){if(!night){g.fillStyle="rgba(60,20,10,.22)";for(let q=4;q<64;q+=6)g.fillRect(x,y+q,64,1)}win(x+17,y+9,30,32,"#3f566b");g.fillStyle=night?"#12171d":"#d9c9b6";g.fillRect(x+15,y+41,34,3)}
       else if(kind==="concrete"){if(night){win(x+3,y+14,28,22);win(x+34,y+14,27,22)}else win(x,y+14,64,22,"#46607a");g.fillStyle=night?"#12171d":"rgba(255,255,255,.35)";g.fillRect(x,y+36,64,3);g.fillRect(x+30,y+14,3,22)}
       else if(kind==="glass"){g.fillStyle=night?"#26323f":"#5f8fb3";g.fillRect(x,y,64,64);if(night){win(x+8,y+8,48,40)}if(!night){g.fillStyle="rgba(255,255,255,.18)";g.fillRect(x,y,64,22)}g.fillStyle=night?"#12171d":"#3b5f7c";g.fillRect(x,y,2,64);g.fillRect(x,y+60,64,4)}
       else if(kind==="stone"){win(x+22,y+8,20,38,"#4a6074");g.fillStyle=night?"#12171d":"rgba(0,0,0,.14)";g.fillRect(x,y,5,64);g.fillRect(x+59,y,5,64);g.fillStyle=night?"#12171d":"#efe7d6";g.fillRect(x+19,y+46,26,3)}
-      else if(kind==="apt"){win(x+12,y+8,40,26,"#4f6479");g.fillStyle=night?"#161b22":"#6b7683";g.fillRect(x+6,y+40,52,16);g.fillStyle=night?"#0e1217":"#d8c9b4";for(let q=8;q<58;q+=5)g.fillRect(x+q,y+41,2,14);g.fillRect(x+6,y+40,52,2)}
+      else if(kind==="apt"){win(x+12,y+8,40,26,"#4f6479");g.fillStyle=night?"#161b22":"#6b7683";g.fillRect(x+6,y+40,52,16);g.fillStyle=night?"#0e1217":"#e8dccb";for(let q=8;q<58;q+=5)g.fillRect(x+q,y+41,2,14);g.fillRect(x+6,y+40,52,2)}
       else if(kind==="shop"){const l=night&&Math.random()<.7;g.fillStyle=night?(l?"#ffcf7a":"#2a323d"):"#3d566b";g.fillRect(x+3,y+12,58,46);g.fillStyle=night?"#12171d":"#2a2f36";g.fillRect(x,y+58,64,6);g.fillRect(x+30,y+12,3,46);g.fillStyle=night?(l?"#ffe9b0":"#1d242d"):"#c9d2db";g.fillRect(x+3,y+4,58,5)}
       else if(kind==="tower"){win(x+6,y+8,52,36,"#4f6479");g.fillStyle=night?"#12171d":"rgba(0,0,0,.18)";g.fillRect(x,y+60,64,4)}
       else{win(x+14,y+10,36,34,"#4f6479");g.fillStyle=night?"#12171d":"rgba(0,0,0,.18)";g.fillRect(x,y+60,64,4)}}
@@ -2503,13 +2519,21 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     if(!detO||!detFeats||(!detFeats.length&&!withLm))return null;const night=dark3d(),mc0=detO.mc,k=1/detO.sc,acc={},R={P:[],N:[],C:[]};let bad=0;
     const lots=modelList.map(m=>{const c=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),r0={biz:9,wh:21,"site-ind":19,"site-farm":13,"site-mine":15,hq:15,home:10,prop:12}[m.cls]||12;return{x:(c.x-mc0.x)*k,z:(c.y-mc0.y)*k,R:r0*(m.k||1)}}),
       onLot=ring=>{if(!lots.length)return false;let sx=0,sy=0;for(const q of ring){sx+=q[0];sy+=q[1]}const c=maplibregl.MercatorCoordinate.fromLngLat([sx/ring.length,sy/ring.length],0),x=(c.x-mc0.x)*k,z=(c.y-mc0.y)*k;for(const l of lots)if(Math.hypot(x-l.x,z-l.z)<l.R)return true;return false};
-    const A=kd=>acc[kd]||(acc[kd]={P:[],U:[],N:[],C:[]}),col=h=>{const c=new T.Color(h);return[c.r,c.g,c.b]};
+    let uvo=[0,0];const A=kd=>acc[kd]||(acc[kd]={P:[],U:[],N:[],C:[]}),col=h=>{const c=new T.Color(h);return[c.r,c.g,c.b]};
     const cen=r=>{let x=0,z=0;for(const q of r){x+=q[0];z+=q[1]}return[x/r.length,z/r.length]},scl=(r,f)=>{const [cx,cz]=cen(r);return r.map(([x,z])=>[cx+(x-cx)*f,cz+(z-cz)*f])};
     const wall=(kd,r,y0,y1,tint,sg)=>{const o=A(kd);for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len<.3)continue;
-      const bays=Math.max(1,Math.round(len/3.6))/2,fl=Math.max(1,Math.round((y1-y0)/3.2))/2,nx=sg*(b[1]-a[1])/len,nz=-sg*(b[0]-a[0])/len;
-      o.P.push(a[0],y0,a[1],b[0],y0,b[1],b[0],y1,b[1],a[0],y0,a[1],b[0],y1,b[1],a[0],y1,a[1]);o.U.push(0,0,bays,0,bays,fl,0,0,bays,fl,0,fl);
+      const bays=Math.max(1,Math.round(len/3.6))/4,fl=Math.max(1,Math.round((y1-y0)/3.2))/4,nx=sg*(b[1]-a[1])/len,nz=-sg*(b[0]-a[0])/len;
+      o.P.push(a[0],y0,a[1],b[0],y0,b[1],b[0],y1,b[1],a[0],y0,a[1],b[0],y1,b[1],a[0],y1,a[1]);{const a=uvo[0],c=uvo[1];o.U.push(a,c,a+bays,c,a+bays,c+fl,a,c,a+bays,c+fl,a,c+fl)}
       for(let q=0;q<6;q++){o.N.push(nx,0,nz);o.C.push(...tint)}}};
     const cap=(r,y,c)=>{let idx=[];try{idx=T.ShapeUtils.triangulateShape(r.map(q=>new T.Vector2(q[0],q[1])),[])}catch(e){}for(const t of idx)for(const v of t){R.P.push(r[v][0],y,r[v][1]);R.N.push(0,1,0);R.C.push(...c)}};
+    /* facade tints (multiplied with the wall texture) and roof colours, picked per building so a block does not look copied */
+    const FAC={home:[0xf6ead4,0xe9d3ae,0xdde8d0,0xd5e1ee,0xf2d5c6,0xece0c0,0xfaf5ec,0xd9c7ae,0xe7d0dc],apt:[0xf6ead4,0xe6d2b4,0xd9e3d3,0xd8e2ec,0xf0dacb,0xfaf5ec,0xe2d6bf],
+      brick:[0xffffff,0xf2dacb,0xe8c9b3,0xd9b9a8,0xfff0de,0xcfb3a6],stone:[0xffffff,0xf5ecd6,0xe9e3d4,0xddd6cb,0xf2e0c6],concrete:[0xffffff,0xe6ebf0,0xf2ece0,0xdce3e9,0xe8ddcf,0xd4d9d4],glass:[0xffffff,0xd6e8f2,0xc6dfe6,0xe2ead8,0xb9c9dc,0xe8dccb]},
+      RFP=night?[0x3a4553,0x333b47,0x444c57,0x3d4440]:[0xc4cad2,0xa1a9b1,0x868e96,0xbcae9a,0x8e9e90,0xd6d2ca,0x6f777f],GBP=night?[0x4a3a38,0x3a3d44,0x423830,0x37403a]:[0x9a4a3a,0xae5e3e,0x5e646d,0x6d4b3a,0x50605a,0x8a3a32,0x7a7f86],
+      pick=(a,x)=>a[Math.floor(x*a.length)%a.length];
+    const hip=(cx,cz,uu,vv,hl,hs,y,rh,c)=>{const pt=(a,b,yy)=>[cx+uu[0]*a+vv[0]*b,yy,cz+uu[1]*a+vv[1]*b],q=Math.max(0,hl-hs*.9),e1=pt(-hl,-hs,y),e2=pt(hl,-hs,y),e3=pt(hl,hs,y),e4=pt(-hl,hs,y),r1=pt(-q,0,y+rh),r2=pt(q,0,y+rh);
+      for(const [a,b,c2] of [[e1,r1,r2],[e1,r2,e2],[e3,r2,r1],[e3,r1,e4],[e4,r1,e1],[e2,r2,e3]]){const ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2],wx=c2[0]-a[0],wy=c2[1]-a[1],wz=c2[2]-a[2];let nx=uy*wz-uz*wy,ny=uz*wx-ux*wz,nz=ux*wy-uy*wx;const nl=Math.hypot(nx,ny,nz)||1,sg=ny<0?-1:1;nx*=sg/nl;ny*=sg/nl;nz*=sg/nl;
+        if(!isFinite(nx)||nl<1e-6)continue;for(const p of [a,b,c2]){R.P.push(...p);R.N.push(nx,ny,nz);R.C.push(...c)}}};
     const awnPal=[0xb3392f,0x2f6e4f,0x2d4f8a,0xc99a2e,0x6b2f7a],
       awning=(r,y,sg,pal)=>{for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len<6)continue;
         const dx=(b[0]-a[0])/len,dz=(b[1]-a[1])/len,nx=sg*dz,nz=-sg*dx,n=Math.min(40,Math.round(len/1.2)),c1=col(pal),c2=col(0xf2f2f2);
@@ -2521,7 +2545,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     const gable=(cx,cz,uu,vv,hl,hs,y,rh,c)=>{const pt=(a,b,yy)=>[cx+uu[0]*a+vv[0]*b,yy,cz+uu[1]*a+vv[1]*b],e1=pt(-hl,-hs,y),e2=pt(hl,-hs,y),e3=pt(hl,hs,y),e4=pt(-hl,hs,y),r1=pt(-hl,0,y+rh),r2=pt(hl,0,y+rh);
       for(const [a,b,c2,n] of [[e1,r1,r2,[0,.5,-1]],[e1,r2,e2,[0,.5,-1]],[e3,r2,r1,[0,.5,1]],[e3,r1,e4,[0,.5,1]],[e1,e4,r1,[-1,.3,0]],[e2,r2,e3,[1,.3,0]]])for(const p of [a,b,c2]){R.P.push(...p);R.N.push(...n);R.C.push(...c)}};
     /* extra geometry targets: Sh = ground shadows (day), Em = unlit lamps/signs/beacons, Gl = additive light pools (night) */
-    const Sh={P:[],N:[],C:[]},Em={P:[],N:[],C:[]},Gl={P:[],N:[],C:[]},L=[],rn=(x,z)=>{const q=Math.sin(x*12.9898+z*78.233)*43758.5453;return q-Math.floor(q)};
+    const Sh={P:[],N:[],C:[],C4:1},Em={P:[],N:[],C:[]},Gl={P:[],N:[],C:[]},L=[],rn=(x,z)=>{const q=Math.sin(x*12.9898+z*78.233)*43758.5453;return q-Math.floor(q)};
     const quad=(tg,a,b,c,d,n,cl)=>{for(const p of [a,b,c,a,c,d]){tg.P.push(p[0],p[1],p[2]);tg.N.push(n[0],n[1],n[2]);tg.C.push(cl[0],cl[1],cl[2])}};
     const bx=(tg,cx,cz,w,d,y,h,c)=>{const x0=cx-w/2,x1=cx+w/2,z0=cz-d/2,z1=cz+d/2,y1=y+h;quad(tg,[x0,y1,z0],[x0,y1,z1],[x1,y1,z1],[x1,y1,z0],[0,1,0],c);quad(tg,[x0,y,z0],[x1,y,z0],[x1,y1,z0],[x0,y1,z0],[0,0,-1],c);quad(tg,[x1,y,z0],[x1,y,z1],[x1,y1,z1],[x1,y1,z0],[1,0,0],c);quad(tg,[x1,y,z1],[x0,y,z1],[x0,y1,z1],[x1,y1,z1],[0,0,1],c);quad(tg,[x0,y,z1],[x0,y,z0],[x0,y1,z0],[x0,y1,z1],[-1,0,0],c)};
     const obox=(tg,cx,cz,ux,uz,l,w,y,h,c)=>{const p=(a,b,yy)=>[cx+ux*a-uz*b,yy,cz+uz*a+ux*b],l2=l/2,w2=w/2,y1=y+h;
@@ -2558,16 +2582,17 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       for(const [x,z] of r){const pu=x*u[0]+z*u[1],pv=x*v[0]+z*v[1];u0=Math.min(u0,pu);u1=Math.max(u1,pu);v0=Math.min(v0,pv);v1=Math.max(v1,pv)}
       const W=u1-u0,D=v1-v0,rect=ar>.78*W*D,[cx,cz]=cen(r),hs=((f.ring[0][0]*7919+f.ring[0][1]*104729)%1+1)%1,
         tint=col(new T.Color().setHSL(.08+hs*.5,.12+hs*.15,.82+hs*.12)),by=f.base||0,h=f.h,tall=h-by,
-        kd=tall>55?"tower":tall>20?"mid":"home",roof=col(night?0x3a4553:0xc4cad2),roof2=col(night?0x4f5b6a:0xa7afb8),
+        kd=tall>55?"tower":tall>20?"mid":"home",roof=col(pick(RFP,rn(hs*3.1,hs*7.7))),roof2=col(night?0x4f5b6a:0xa7afb8),
         h2=(hs*977)%1,st=kd==="tower"?(h2<.7?"glass":"concrete"):kd==="mid"?(h2<.3?"brick":h2<.55?"concrete":h2<.8?"stone":"apt"):(h2<.5?"brick":h2<.8?"home":"stone"),
-        tn=st==="home"||st==="apt"?tint:col(new T.Color().setHSL(.03+hs*.06,.1,.88+hs*.1)),
+        tn=(()=>{const c=new T.Color(pick(FAC[st]||FAC.concrete,rn(hs*31.7,h2*17.3)));c.offsetHSL(0,0,(h2-.5)*.06);void tint;return[c.r,c.g,c.b]})(),
         shop=(kd!=="home")&&tall>12&&hs>.35,band=(rr,y0)=>{if(shop){wall("shop",rr,y0,y0+4.2,col(0xffffff),sg);awning(rr,y0+3.6,sg,awnPal[Math.floor(h2*awnPal.length)]);return y0+4.2}return y0};
+      uvo=[Math.floor(hs*4)*.25,Math.floor(h2*4)*.25];
       if(kd==="tower"&&Math.min(W,D)>9){const t=[[1,0,.62],[.74,.62,.86],[.5,.86,1]];for(const [fc,p0,p1] of t){const rr=fc===1?r:scl(r,fc);let y0=by+tall*p0;if(fc===1)y0=band(rr,y0);wall(st,rr,y0,by+tall*p1,tn,sg);cap(rr,by+tall*p1+.02,roof)}
-        box(cx,cz,3,3,h,6,roof2);if(tall>100)box(cx,cz,.6,.6,h+6,22,col(0xc0392b));if(tall>70)bx(Em,cx,cz,1.6,1.6,h+(tall>100?26:6),1.8,col(0xff2a1a))}
+        if(rect&&hs<.3&&tall<=100){const cu=(u0+u1)/2,cv=(v0+v1)/2;hip(cu*u[0]+cv*v[0],cu*u[1]+cv*v[1],u,v,W*.25,D*.25,h,Math.min(14,Math.min(W,D)*.3),col(pick(GBP,h2)))}else box(cx,cz,3,3,h,6,roof2);if(tall>100)box(cx,cz,.6,.6,h+6,22,col(0xc0392b));if(tall>70)bx(Em,cx,cz,1.6,1.6,h+(tall>100?26:6),1.8,col(0xff2a1a))}
       else if(kd==="mid"&&Math.min(W,D)>9){const h1=by+tall*.8,rr=scl(r,.8),y0=band(r,by);wall(st,r,y0,h1,tn,sg);cap(r,h1+.02,roof);wall(st,rr,h1,h,tn,sg);cap(rr,h+.02,roof);box(cx+2,cz,Math.min(5,W*.2),Math.min(4,D*.2),h,3.2,roof2)}
       else{wall(st,r,by,h,tn,sg);
         if(kd==="home"&&rect&&W>5&&D>5&&W<90&&D<90){const cu=(u0+u1)/2,cv=(v0+v1)/2,gx=cu*u[0]+cv*v[0],gz=cu*u[1]+cv*v[1],long=W>=D,L=long?W:D,Sd=long?D:W;
-          gable(gx,gz,long?u:v,long?v:u,L/2+.4,Sd/2+.4,h,Math.min(5,Sd*.32),col(night?0x4a3a38:0x9a4a3a))}
+          (h2>.6?hip:gable)(gx,gz,long?u:v,long?v:u,L/2+.4,Sd/2+.4,h,Math.min(5,Sd*.32),col(pick(GBP,rn(hs*5.3,h2*9.1))))}
         else{cap(r,h+.02,roof);box(cx,cz,Math.min(W*.18,4),Math.min(D*.18,4),h,2.4,roof2)}}
       /* rooftops: parapet rim, AC units, a water tank on some mid-rises, on flat roofs only */
       if(!(kd==="home"&&rect&&W>5&&D>5&&W<90&&D<90)&&ar>45){const rr=kd==="mid"&&Math.min(W,D)>9?scl(r,.8):r;
@@ -2581,22 +2606,38 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     /* shadows, street life and landmarks, from the stored footprints */
     try{const bb=L.map(o=>{let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const [x,z] of o.r){x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z)}return[x0,x1,z0,z1]});
       const blocked=(x,z)=>{for(let i=0;i<L.length;i++){const b=bb[i];if(x>=b[0]&&x<=b[1]&&z>=b[2]&&z<=b[3]&&inPoly(x,z,L[i].r))return true}return false};
-      const sd=[-.4,-.6],sl=Math.hypot(sd[0],sd[1]),shc=col(0x0a1018),nt=night,carC=[0xb83a32,0x2f4f8a,0xdcdcdc,0x222428,0x7a8088,0xc9a02e,0x2f6e4f],shirt=[0xc0392b,0x2f6ea8,0xe0b020,0x4a8a4a,0xd0d0d0,0x333333],sgn=[0xff4a6a,0x4ac8ff,0xffc84a,0x6aff8a,0xc86aff];
-      let trees=0,cars=0,ppl=0,lamps=0;
+      const SUN=sun3d(map.getCenter().lat),sd=[-SUN.x,-SUN.z],sl=Math.hypot(sd[0],sd[1])||1,cot=Math.min(3.2,Math.cos(SUN.el)/Math.sin(SUN.el)),shc=col(0x0a1018),hasRd=!!(detRoads&&detRoads.length),nt=night,carC=[0xb83a32,0x2f4f8a,0xdcdcdc,0x222428,0x7a8088,0xc9a02e,0x2f6e4f],shirt=[0xc0392b,0x2f6ea8,0xe0b020,0x4a8a4a,0xd0d0d0,0x333333],sgn=[0xff4a6a,0x4ac8ff,0xffc84a,0x6aff8a,0xc86aff];
+      let trees=0,cars=0,ppl=0,lamps=0,rlamps=0,rtrees=0,planters=0,parked=0;
+      const shq=(a,b,c,d,a0,a1)=>{for(const [p,al] of [[a,a0],[b,a0],[c,a1],[a,a0],[c,a1],[d,a1]]){Sh.P.push(p[0],p[1],p[2]);Sh.N.push(0,1,0);Sh.C.push(shc[0],shc[1],shc[2],al)}};
+      const carAt=(x,z,ux,uz,k)=>{const cc=col(carC[Math.floor(k*977%1*carC.length)]);obox(R,x,z,ux,uz,4.3,1.8,.25,.75,cc);obox(R,x-ux*.2,z-uz*.2,ux,uz,2.3,1.6,1,.6,col(nt?0x1a2430:0x3a4b5c));
+        if(nt){obox(Em,x+ux*2.1,z+uz*2.1,ux,uz,.2,1.3,.55,.25,col(0xfff2c0));obox(Em,x-ux*2.1,z-uz*2.1,ux,uz,.2,1.3,.55,.25,col(0xff3a2a))}else shq([x-ux*2.4-uz*1.1,.12,z-uz*2.4+ux*1.1],[x+ux*2.4-uz*1.1,.12,z+uz*2.4+ux*1.1],[x+ux*2.4+uz*1.1,.12,z+uz*2.4-ux*1.1],[x-ux*2.4+uz*1.1,.12,z-uz*2.4-ux*1.1],.5,.5)};
+      const pool=(x,z,rr,w)=>{for(let g=0;g<12;g++){const a0=g/12*Math.PI*2,a1=(g+1)/12*Math.PI*2;for(const [px,pz,f] of [[0,0,1],[Math.cos(a0)*rr,Math.sin(a0)*rr,0],[Math.cos(a1)*rr,Math.sin(a1)*rr,0]]){Gl.P.push(x+px,.2,z+pz);Gl.N.push(0,1,0);Gl.C.push(w[0]*f,w[1]*f,w[2]*f)}}};
+      /* street lamp with an arm over the road (ox,oz points at the road) */
+      const lampAt=(x,z,ox,oz)=>{const pc=col(0x3d434b);bx(R,x,z,.2,.2,0,7,pc);obox(R,x+ox*.8,z+oz*.8,ox,oz,1.7,.14,6.85,.14,pc);obox(Em,x+ox*1.55,z+oz*1.55,ox,oz,.6,.32,6.6,.22,col(nt?0xc9b27e:0x8a9098));if(nt)pool(x+ox*1.6,z+oz*1.6,6.5,[.14,.1,.04])};
+      const treeAt=(x,z,k)=>{const tc=col(new T.Color().setHSL(.24+k*.12,.36+k*.12,nt?.15+k*.05:.22+k*.11));bx(R,x,z,1.2,1.2,0,.14,col(nt?0x2c2620:0x5a4a3a));bx(R,x,z,.26,.26,0,2.4,col(0x4a3a2c));
+        const s=.8+k*.5;cylv(R,x,z,1.9,1.3*s,.9*s,2.1*s,tc,8);cylv(R,x,z,1.9+1.3*s,1.7*s,2.1*s,.5*s,tc,8);if(!nt){const L2=Math.min(8,4*cot)*s;shq([x-1.5,.12,z-1.5],[x+1.5,.12,z+1.5],[x+1.5+sd[0]/sl*L2,.12,z+1.5+sd[1]/sl*L2],[x-1.5+sd[0]/sl*L2,.12,z-1.5+sd[1]/sl*L2],.55,.1)}};
+      const planterAt=(x,z,ux,uz,k)=>{obox(R,x,z,ux,uz,2.2,.9,0,.6,col(nt?0x4a4e54:0x9aa0a6));obox(R,x,z,ux,uz,2,.75,.6,.3,col(new T.Color().setHSL(.28,.45,nt?.14:.27)));
+        if(k>.4)for(let q=0;q<3;q++)obox(R,x+ux*(q-1)*.6,z+uz*(q-1)*.6,ux,uz,.3,.3,.9,.18,col([0xe0405a,0xf0c040,0xf4f4f4][q]))};
       for(const o of L){const {r,sg,hs,kd,shop,by,h}=o,tall=h-by;
-        if(!nt&&tall>3){const len=Math.min(tall*.7,70),dx=sd[0]/sl*len,dz=sd[1]/sl*len;for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],ln=Math.hypot(b[0]-a[0],b[1]-a[1]);if(ln<.5)continue;const nx=sg*(b[1]-a[1])/ln,nz=-sg*(b[0]-a[0])/ln;if(nx*dx+nz*dz<=0)continue;
-          quad(Sh,[a[0],.12,a[1]],[b[0],.12,b[1]],[b[0]+dx,.12,b[1]+dz],[a[0]+dx,.12,a[1]+dz],[0,1,0],shc)}}
+        /* soft shadows: cast away from the sun, dark at the wall and fading out at the tip, plus a thin contact shade round every building foot (day and night) */
+        if(by<2)for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],ln=Math.hypot(b[0]-a[0],b[1]-a[1]);if(ln<.5)continue;const nx=sg*(b[1]-a[1])/ln,nz=-sg*(b[0]-a[0])/ln,o=1.7;shq([a[0],.11,a[1]],[b[0],.11,b[1]],[b[0]+nx*o,.11,b[1]+nz*o],[a[0]+nx*o,.11,a[1]+nz*o],nt?.5:.6,0)}
+        if(!nt&&tall>3){const len=Math.min(tall*cot,160),dx=sd[0]/sl*len,dz=sd[1]/sl*len;for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],ln=Math.hypot(b[0]-a[0],b[1]-a[1]);if(ln<.5)continue;const nx=sg*(b[1]-a[1])/ln,nz=-sg*(b[0]-a[0])/ln;if(nx*dx+nz*dz<=0)continue;
+          shq([a[0],.12,a[1]],[b[0],.12,b[1]],[b[0]+dx,.12,b[1]+dz],[a[0]+dx,.12,a[1]+dz],1,.12)}}
+        if(nt&&shop)for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],ln=Math.hypot(b[0]-a[0],b[1]-a[1]);if(ln<8)continue;const nx=sg*(b[1]-a[1])/ln,nz=-sg*(b[0]-a[0])/ln,o=4.5,w=[.34,.25,.1];
+          for(const [p,f] of [[[a[0],.2,a[1]],1],[[b[0],.2,b[1]],1],[[b[0]+nx*o,.2,b[1]+nz*o],0],[[a[0],.2,a[1]],1],[[b[0]+nx*o,.2,b[1]+nz*o],0],[[a[0]+nx*o,.2,a[1]+nz*o],0]]){Gl.P.push(...p);Gl.N.push(0,1,0);Gl.C.push(w[0]*f,w[1]*f,w[2]*f)}}
         for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],ln=Math.hypot(b[0]-a[0],b[1]-a[1]);if(ln<9)continue;const ux=(b[0]-a[0])/ln,uz=(b[1]-a[1])/ln,nx=sg*uz,nz=-sg*ux,at=t=>[a[0]+ux*t,a[1]+uz*t];
           if(shop&&i===0&&ln>8&&nt||shop&&i===0&&ln>8&&hs>.6){const t=Math.min(ln-2,3+hs*5),p=at(t),y0=by+2.6,c=col(sgn[Math.floor(hs*977%1*sgn.length)]);quad(Em,[p[0],y0,p[1]],[p[0]+nx*1.4,y0,p[1]+nz*1.4],[p[0]+nx*1.4,y0+1.2,p[1]+nz*1.4],[p[0],y0+1.2,p[1]],[ux,0,uz],c)}
           if(by<2)for(let t=4;t<ln-3;t+=11){const q=at(t),k=rn(q[0],q[1]);
-            const tp=[q[0]+nx*2.6,q[1]+nz*2.6];if(k<.38&&trees<520&&!blocked(tp[0],tp[1])){trees++;const gr=.28+k,tc=col(new T.Color().setHSL(.27+k*.1,.4,nt?.2+k*.06:.22+k*.12));bx(R,tp[0],tp[1],.3,.3,0,2,col(0x4a3a2c));cylv(R,tp[0],tp[1],1.6,3.4,1.9+gr,.3,tc,7)}
-            else if(k>.72&&cars<260){const cp=[q[0]+nx*5.4,q[1]+nz*5.4];if(!blocked(cp[0],cp[1])){cars++;const cc=col(carC[Math.floor(k*977%1*carC.length)]);obox(R,cp[0],cp[1],ux,uz,4.3,1.8,.25,.75,cc);obox(R,cp[0]-ux*.2,cp[1]-uz*.2,ux,uz,2.3,1.6,1,.6,col(nt?0x1a2430:0x3a4b5c));if(nt){obox(Em,cp[0]+ux*2.1,cp[1]+uz*2.1,ux,uz,.2,1.3,.55,.25,col(0xfff2c0));obox(Em,cp[0]-ux*2.1,cp[1]-uz*2.1,ux,uz,.2,1.3,.55,.25,col(0xff3a2a))}}}
+            const tp=[q[0]+nx*2.6,q[1]+nz*2.6];if(k<.38&&trees<520&&!blocked(tp[0],tp[1])){trees++;treeAt(tp[0],tp[1],k)}
+            else if(k>.72&&cars<260){const cp=[q[0]+nx*5.4,q[1]+nz*5.4];if(!hasRd&&!blocked(cp[0],cp[1])){cars++;carAt(cp[0],cp[1],ux,uz,k)}}
             else if(k>.45&&k<.52&&ppl<160&&!nt){const pp=[q[0]+nx*1.8,q[1]+nz*1.8];if(!blocked(pp[0],pp[1])){ppl++;const kk=rn(k,q[0]);cylv(R,pp[0],pp[1],0,1.1,.22,.2,col(shirt[Math.floor(kk*shirt.length)]),6);cylv(R,pp[0],pp[1],1.1,.6,.2,.16,col(0xe2b998),6)}}}
-          if(ln>14&&lamps<420)for(let t=ln/2;t<ln-2&&t<ln/2+1;t+=22){const q=at(t),lp=[q[0]+nx*2.2,q[1]+nz*2.2];if(blocked(lp[0],lp[1]))continue;lamps++;bx(R,lp[0],lp[1],.18,.18,0,6,col(0x4a4f56));bx(Em,lp[0],lp[1],.7,.7,6,.35,col(nt?0xffe7a8:0x6a6f76));
+          if(!hasRd&&ln>14&&lamps<420)for(let t=ln/2;t<ln-2&&t<ln/2+1;t+=22){const q=at(t),lp=[q[0]+nx*2.2,q[1]+nz*2.2];if(blocked(lp[0],lp[1]))continue;lamps++;bx(R,lp[0],lp[1],.18,.18,0,6,col(0x4a4f56));bx(Em,lp[0],lp[1],.7,.7,6,.35,col(nt?0xffe7a8:0x6a6f76));
             if(nt)for(let g=0;g<10;g++){const a0=g/10*Math.PI*2,a1=(g+1)/10*Math.PI*2;for(const [x,z,f] of [[0,0,1],[Math.cos(a0)*6.5,Math.sin(a0)*6.5,0],[Math.cos(a1)*6.5,Math.sin(a1)*6.5,0]]){Gl.P.push(lp[0]+x,.2,lp[1]+z);Gl.N.push(0,1,0);Gl.C.push(.26*f,.2*f,.09*f)}}}}}
       /* street furniture from the map's road lines: sidewalks along both sides (cut back at junctions so they do not cross the road), a bench now and then, and signals at the bigger intersections */
       if(detRoads&&detRoads.length){const HW={primary:8,secondary:6.5,tertiary:5.5,minor:4.2},RK={primary:4,secondary:3,tertiary:2,minor:1},nodes={},nk=(x,z)=>Math.round(x*2)+","+Math.round(z*2);
         const lines=detRoads.map(rd=>({c:rd.c,pts:rd.pts.map(([lo,la])=>{const m=maplibregl.MercatorCoordinate.fromLngLat([lo,la],0);return[(m.x-mc0.x)*k,(m.y-mc0.y)*k]}).filter(q=>isFinite(q[0])&&isFinite(q[1]))}));
+        /* roads nearest this chunk's buildings first, so the kerb lamps, trees and parked cars (capped per chunk) go where the buildings are */
+        {let mx=0,mz=0;for(const b of bb){mx+=(b[0]+b[1])/2;mz+=(b[2]+b[3])/2}if(bb.length){mx/=bb.length;mz/=bb.length}const dl=l=>{let d=1e9;for(const q of l.pts)d=Math.min(d,Math.hypot(q[0]-mx,q[1]-mz));return d};for(const l of lines)l.d=dl(l);lines.sort((a,b)=>a.d-b.d)}
         const addArm=(a,b,c)=>{const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<.5)return;const key=nk(a[0],a[1]);(nodes[key]||(nodes[key]={x:a[0],z:a[1],arms:[]})).arms.push({ux:(b[0]-a[0])/l,uz:(b[1]-a[1])/l,c})};
         for(const ln of lines)for(let i=0;i<ln.pts.length;i++){if(i>0)addArm(ln.pts[i],ln.pts[i-1],ln.c);if(i<ln.pts.length-1)addArm(ln.pts[i],ln.pts[i+1],ln.c)}
         const trimAt=(x,z)=>{const nd=nodes[nk(x,z)];if(!nd||nd.arms.length<3)return 0;let m=0;for(const a of nd.arms)m=Math.max(m,HW[a.c]);return m+2.6};
@@ -2605,6 +2646,10 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
           const p0=[a[0]+ux*ta,a[1]+uz*ta],p1=[b[0]-ux*tb,b[1]-uz*tb];segs++;
           for(const sd of [1,-1]){const nx=-uz*sd,nz=ux*sd,mx=(p0[0]+p1[0])/2+nx*(hw+1.2),mz=(p0[1]+p1[1])/2+nz*(hw+1.2);if(blocked(mx,mz))continue;
             quad(Em,[p0[0]+nx*hw,.1,p0[1]+nz*hw],[p1[0]+nx*hw,.1,p1[1]+nz*hw],[p1[0]+nx*(hw+2.4),.1,p1[1]+nz*(hw+2.4)],[p0[0]+nx*(hw+2.4),.1,p0[1]+nz*(hw+2.4)],[0,1,0],walk);/* unlit, so both sides read the same whichever way the strip faces */
+            /* along each kerb: a lamp every 24 m with trees and the odd planter in between, and cars parked in the kerb lane of smaller roads */
+            {const sl2=len-ta-tb;for(let t=6;t<sl2-4;t+=12){const px=p0[0]+ux*t+nx*(hw+1.1),pz=p0[1]+uz*t+nz*(hw+1.1),kk=rn(px*.7,pz*.9);if(blocked(px,pz))continue;
+              if(Math.round(t/12+(sd>0?0:1))%2===0){if(rlamps<500){rlamps++;lampAt(px,pz,-nx,-nz)}}else if(kk<.6){if(rtrees<700){rtrees++;treeAt(p0[0]+ux*t+nx*(hw+1.5),p0[1]+uz*t+nz*(hw+1.5),kk)}}else if(kk>.82&&planters<140){planters++;planterAt(px+nx*.5,pz+nz*.5,ux,uz,kk)}}
+              if(RK[ln.c]<=2)for(let t=8;t<sl2-6;t+=6.4){const k2=rn(p0[0]+t*1.3+sd*3.7,p0[1]+t*.7+sd*7.1);if(k2>.3||parked>=400)continue;const cx=p0[0]+ux*t+nx*(hw-1.3),cz=p0[1]+uz*t+nz*(hw-1.3);if(blocked(cx,cz))continue;parked++;carAt(cx,cz,ux,uz,k2/.3)}}
             if(benches<140&&len-ta-tb>=26&&rn(mx*1.7,mz*2.3)<.22){benches++;const bx0=mx,bz0=mz;obox(R,bx0,bz0,ux,uz,1.8,.5,.45,.1,wood);obox(R,bx0-nx*.28,bz0-nz*.28,ux,uz,1.8,.08,.55,.45,wood);obox(R,bx0+ux*.7,bz0+uz*.7,ux,uz,.1,.4,.1,.35,dark);obox(R,bx0-ux*.7,bz0-uz*.7,ux,uz,.1,.4,.1,.35,dark)}}}}
         /* signals: a pole on the right-hand kerb of each arm, with a red or green lamp (cross traffic is opposite) */
         const sig=Object.values(nodes).filter(nd=>nd.arms.length>=3&&nd.arms.filter(a=>RK[a.c]>=2).length>=2).sort((p,q)=>Math.hypot(p.x,p.z)-Math.hypot(q.x,q.z)).slice(0,110);
@@ -2617,11 +2662,11 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     if(bad)console.warn("detail: skipped",bad,"odd footprints");
     const out=new T.Group();
     for(const kd in acc){const o=acc[kd],g=new T.BufferGeometry(),tx=winTex(kd,night);g.setAttribute("position",new T.Float32BufferAttribute(o.P,3));g.setAttribute("uv",new T.Float32BufferAttribute(o.U,2));g.setAttribute("normal",new T.Float32BufferAttribute(o.N,3));g.setAttribute("color",new T.Float32BufferAttribute(o.C,3));
-      out.add(new T.Mesh(g,fogify(new T.MeshLambertMaterial({map:tx,vertexColors:true,side:T.DoubleSide,emissive:night?0xffffff:0,emissiveMap:night?tx:null,emissiveIntensity:night?.8:0}))))}
+      out.add(new T.Mesh(g,fogify(new T.MeshLambertMaterial({map:tx,vertexColors:true,side:T.DoubleSide,emissive:night?0xffffff:0,emissiveMap:night?tx:null,emissiveIntensity:night?.95:0}))))}
     if(R.P.length){const g=new T.BufferGeometry();g.setAttribute("position",new T.Float32BufferAttribute(R.P,3));g.setAttribute("normal",new T.Float32BufferAttribute(R.N,3));g.setAttribute("color",new T.Float32BufferAttribute(R.C,3));out.add(new T.Mesh(g,fogify(new T.MeshLambertMaterial({vertexColors:true,side:T.DoubleSide}))))}
-    const mk=(tg,mat)=>{if(!tg.P.length)return;const g=new T.BufferGeometry();g.setAttribute("position",new T.Float32BufferAttribute(tg.P,3));g.setAttribute("normal",new T.Float32BufferAttribute(tg.N,3));g.setAttribute("color",new T.Float32BufferAttribute(tg.C,3));const m=new T.Mesh(g,mat);out.add(m);return m};
+    const mk=(tg,mat)=>{if(!tg.P.length)return;const g=new T.BufferGeometry();g.setAttribute("position",new T.Float32BufferAttribute(tg.P,3));g.setAttribute("normal",new T.Float32BufferAttribute(tg.N,3));g.setAttribute("color",new T.Float32BufferAttribute(tg.C,tg.C4?4:3));const m=new T.Mesh(g,mat);out.add(m);return m};
     mk(Em,fogify(new T.MeshBasicMaterial({vertexColors:true,side:T.DoubleSide})));
-    const sm=mk(Sh,new T.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:.3,depthWrite:false,side:T.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));if(sm)sm.renderOrder=2;
+    const sm=mk(Sh,new T.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:.36,depthWrite:false,side:T.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));if(sm)sm.renderOrder=2;
     const gm=mk(Gl,new T.MeshBasicMaterial({vertexColors:true,transparent:true,blending:T.AdditiveBlending,depthWrite:false,side:T.DoubleSide}));if(gm)gm.renderOrder=3;
     let tris=0;out.traverse(o=>{if(o.geometry&&o.geometry.attributes.position)tris+=o.geometry.attributes.position.count/3});
     dT={feat:Math.round(tB-tA),extras:Math.round(tC-tB),upload:Math.round(performance.now()-tC),tris:Math.round(tris),hits,total:detFeats.length};return out}
@@ -2683,8 +2728,10 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
   return{id:"meridian-models",type:"custom",renderingMode:"3d",setFogR,setWx,sync,setOrigin,addChunk,removeChunk,resetDetail,ready,count,stats,
     onAdd(mp,gl){map=mp;loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;
       scene=new T.Scene();cam=new T.Camera();group=new T.Group();scene.add(group);hemi=new T.HemisphereLight(0xffffff,0x667788,.85);sun=new T.DirectionalLight(0xffffff,.8);sun.position.set(.4,1,.6);scene.add(hemi,sun);sync();mp.triggerRepaint()}).catch(e=>console.warn("3d models off",e))},
-    render(gl,args){if(!T||!group)return;const z=map.getZoom();if(z<15)return;
+    render(gl,args){if(!T||!group)return;const z=map.getZoom();if(z<13.6)return;
       const dk=dark3d(),wx=wxCur&&lyOn("wx")?.7:1;hemi.intensity=(dk?.35:.85)*wx;sun.intensity=(dk?.3:.8)*wx;
+      {const nw=performance.now();if(!SUNV||nw-sunT>5000){sunT=nw;SUNV=sun3d(map.getCenter().lat)}
+        if(!dk){const w=SUNV.warm;sun.position.set(SUNV.x,SUNV.y,SUNV.z);sun.color.setRGB(1,1-.2*w,1-.42*w);hemi.color.setRGB(1,1-.06*w,1-.16*w);sun.intensity*=(.75+.35*SUNV.y)}else{sun.position.set(.4,1,.6);sun.color.setRGB(.72,.8,1);hemi.color.setRGB(.82,.86,1)}}
       const pm=new T.Matrix4().fromArray(args.defaultProjectionData?args.defaultProjectionData.mainMatrix:args.projectionMatrix||args);
       ren.resetState();if(det)det.visible=false;if(atmo)atmo.visible=false;
       for(const o of group.children){const {mc,sc}=o.userData;
@@ -2714,7 +2761,24 @@ function detDbg(n,built,R){try{if(localStorage.getItem("meridian-dev")!=="1")ret
 function detSchedule(ms){if(detTimer)return;detTimer=setTimeout(()=>{detTimer=0;detStep()},ms)}
 function refreshDetail(force){detDirty=true;detSchedule(MM.isMoving()||MM.isZooming()?400:120)}
 /* every building in the loaded tiles that is not built yet, nearest to the view centre first, within the view distance */
-function detQueue(base,ce,mLng,mLat,R){const sl=base.sourceLayer||base["source-layer"],fs=MM.querySourceFeatures(base.source,sl?{sourceLayer:sl}:{}),seen=new Set(),out=[];
+/* Baked city buildings: inside these boxes street view uses buildings saved in data/buildings/<city>/ instead of the map tiles */
+const BAKED={montreal:[-73.98,45.40,-73.47,45.71]},bakedIdx={},bakedTiles={};
+function bakedCity(lng,lat){for(const k in BAKED){const b=BAKED[k];if(lng>=b[0]&&lng<=b[2]&&lat>=b[1]&&lat<=b[3])return k}return null}
+function bakedNeed(ce,R,mLng,mLat){const c=bakedCity(ce.lng,ce.lat);if(!c)return null;const ix=bakedIdx[c];
+  if(!ix){bakedIdx[c]="wait";fetch("data/buildings/"+c+"/index.json").then(r=>r.ok?r.json():null).then(j=>{bakedIdx[c]=j||"none";refreshDetail()}).catch(()=>{bakedIdx[c]="none";refreshDetail()});return {c,rows:[]}}
+  if(ix==="none")return null;if(ix==="wait")return {c,rows:[]};const T=ix.tile,dLng=R/mLng+T,dLat=R/mLat+T,rows=[];
+  for(const t of ix.tiles){if(t.w>ce.lng+dLng-T||t.w<ce.lng-dLng||t.s>ce.lat+dLat-T||t.s<ce.lat-dLat)continue;const id=c+"/"+t.f,v=bakedTiles[id];
+    if(v===undefined){bakedTiles[id]=null;fetch("data/buildings/"+id).then(r=>r.json()).then(j=>{const o=j.o,b=[];for(const r of j.b){const ring=[];for(let i=2;i<r.length;i+=2)ring.push([o[0]+r[i]/1e6,o[1]+r[i+1]/1e6]);if(ring.length<4||r[0]-r[1]<1)continue;
+      /* key worked out once here, not every time the queue is rebuilt */
+      b.push({ring,h:r[0],mh:r[1],x:ring[0][0],y:ring[0][1],key:ring[0][0].toFixed(6)+","+ring[0][1].toFixed(6)+","+ring.length})}bakedTiles[id]=b;refreshDetail()}).catch(()=>{bakedTiles[id]=[]});continue}
+    if(v===null)continue;for(const x of v)rows.push(x)}
+  /* tiles still loading are skipped; detDirty re-runs the queue when they arrive */
+  return {c,rows}}
+function detQueue(base,ce,mLng,mLat,R){const sl=base.sourceLayer||base["source-layer"],bk=bakedNeed(ce,R,mLng,mLat),fs0=MM.querySourceFeatures(base.source,sl?{sourceLayer:sl}:{}),seen=new Set(),out=[];
+  /* with a baked city loaded, map-tile buildings inside its box are skipped and the saved ones are used */
+  const fs=bk?fs0.filter(f=>{const g=f.geometry;const p=g&&(g.type==="Polygon"?g.coordinates[0][0]:g.type==="MultiPolygon"?g.coordinates[0][0][0]:null);return !p||bakedCity(p[0],p[1])!==bk.c}):fs0;
+  /* saved buildings: distance first (cheap), no copies to check since the bake keeps each building once */
+  if(bk){const dx=R/mLng,dy=R/mLat;for(const x of bk.rows){const ax=x.x-ce.lng,ay=x.y-ce.lat;if(ax>dx||ax<-dx||ay>dy||ay<-dy||detKeys.has(x.key))continue;const d=Math.hypot(ax*mLng,ay*mLat);if(d>R)continue;out.push({ring:x.ring,h:x.h,base:x.mh,key:x.key,key2:"b"+x.key,d})}}
   for(const f of fs){const g=f.geometry;if(!g)continue;const parts=g.type==="Polygon"?[g.coordinates[0]]:g.type==="MultiPolygon"?g.coordinates.map(q=>q[0]):[];
     const h=+f.properties.render_height||8,mh=+f.properties.render_min_height||0;if(h-mh<1)continue;
     for(const ring of parts){if(!ring||ring.length<4)continue;const key=ring[0][0].toFixed(6)+","+ring[0][1].toFixed(6)+","+ring.length;if(seen.has(key)||detKeys.has(key))continue;
@@ -2722,13 +2786,15 @@ function detQueue(base,ce,mLng,mLat,R){const sl=base.sourceLayer||base["source-l
       let cx=0,cy=0;for(const q of ring){cx+=q[0];cy+=q[1]}const key2="c"+(cx/ring.length).toFixed(5)+","+(cy/ring.length).toFixed(5)+","+Math.round(h)+","+Math.round(mh);if(seen.has(key2)||detKeys.has(key2))continue;seen.add(key);seen.add(key2);
       const d=Math.hypot((ring[0][0]-ce.lng)*mLng,(ring[0][1]-ce.lat)*mLat);if(d>R)continue;out.push({ring,h,base:mh,key,key2,d})}}
   out.sort((a,b)=>a.d-b.d);
+  /* a baked city has far more buildings than the map tiles: keep only the nearest ones the View distance allows */
+  if(bk){const lim=vdQ().n*2;if(out.length>lim)out.length=lim}
   const RK2={primary:1,secondary:1,tertiary:1,minor:1},rds=[],rseen=new Set();
   try{const rl=MM.getStyle().layers.find(l=>l["source-layer"]==="transportation");if(rl){for(const f of MM.querySourceFeatures(rl.source,{sourceLayer:"transportation"})){const pr=f.properties||{};if(!RK2[pr.class]||pr.brunnel==="bridge"||pr.brunnel==="tunnel"||pr.ramp)continue;const g=f.geometry;if(!g)continue;
     const lns=g.type==="LineString"?[g.coordinates]:g.type==="MultiLineString"?g.coordinates:[];
     for(const pts of lns){if(pts.length<2)continue;const key=pr.class+pts[0][0].toFixed(5)+","+pts[0][1].toFixed(5)+pts.length;if(rseen.has(key))continue;rseen.add(key);rds.push({c:pr.class,pts})}}}}catch(e){}
   detRds=rds;return out}
 function detStep(){try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom();
-  if(z<15.4){if((detHidden||detChunks.length)&&z<15)detRestore();return}/* once built, keep it down to zoom 15 so zooming near 15.4 does not toggle the buildings */
+  if(z<14){if((detHidden||detChunks.length)&&z<13.6)detRestore();return}/* 3D buildings from zoom 14 (higher up); once built, keep them down to 13.6 so zooming near 14 does not toggle them */
   if(!modelLayer.ready()){detSchedule(700);return}
   const night=dark3d();if(detNight!==null&&night!==detNight)detReset();detNight=night;
   const ce=MM.getCenter(),mLat=111320,mLng=111320*Math.cos(ce.lat*Math.PI/180),ids=detLayers();if(!ids.length)return;const base=MM.getLayer(ids.find(i=>i!=="meridian-roofs")||ids[0]);if(!base)return;
@@ -3083,7 +3149,7 @@ setInterval(worldNews,4*60000);setTimeout(worldNews,20000);
 /* ---------- economy tick ---------- */
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
 let pops=[]; // floating income labels
-function simDay(quiet){const{nw}=totals();try{wrDay(nw,quiet)}catch(e){console.warn("wrDay",e)}S.day++;try{gldDay()}catch(e){}try{slvDay()}catch(e){}if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}try{gxDay(quiet)}catch(e){console.warn("gxDay",e)}try{flipDay(quiet)}catch(e){console.warn("flipDay",e)}try{skyDay(quiet)}catch(e){console.warn("skyDay",e)}try{wevDay()}catch(e){console.warn("wevDay",e)}try{ipoDay(quiet)}catch(e){console.warn("ipoDay",e)}
+function simDay(quiet){const{nw}=totals();try{wrDay(nw,quiet)}catch(e){console.warn("wrDay",e)}S.day++;try{gldDay()}catch(e){}try{slvDay()}catch(e){}if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}try{gxDay(quiet)}catch(e){console.warn("gxDay",e)}try{spyTick(quiet)}catch(e){console.warn("spyTick",e)}try{flipDay(quiet)}catch(e){console.warn("flipDay",e)}try{skyDay(quiet)}catch(e){console.warn("skyDay",e)}try{wevDay()}catch(e){console.warn("wevDay",e)}try{ipoDay(quiet)}catch(e){console.warn("ipoDay",e)}
   try{mktDay()}catch(e){console.warn("mktDay",e)}try{lrvDay(quiet)}catch(e){console.warn("lrvDay",e)}audits(quiet);simProps(quiet);
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||Math.random()>.004)continue;
     const kinds=[["Break-in at your",.04],["Equipment breakdown at your",.03],["Health inspection fine at your",.02],["Customer lawsuit against your",.06]],[t,f]=kinds[Math.floor(Math.random()*kinds.length)];
@@ -3326,12 +3392,22 @@ function gov(n){S.gov=S.gov||{};let g=S.gov[n];if(g){for(const k in LAWS)if(g.la
   const laws={};for(const k in LAWS)laws[k]=p[k];
   return S.gov[n]={party:pk,appr:45+h%25,next:Date.now()+ELECT*(.25+((h>>3)%75)/100),laws,don:{},favor:0}}
 const law=(c,k)=>gov(c.country).laws[k];
+// Trade embargoes (cabinet bills): gov(a).emb[b]=time means country a blocks imports from b.
+const EMBCFG={own:.02,hit:.04,ownMax:.1,hitMax:.2,fr:1.2};
+const embOn=(a,b)=>!!(a&&b&&a!==b&&S.gov&&S.gov[a]&&S.gov[a].emb&&S.gov[a].emb[b]);
+const embList=a=>Object.keys((S.gov&&S.gov[a]&&S.gov[a].emb)||{});
+const embAgainst=b=>Object.keys(S.gov||{}).filter(a=>embOn(a,b));
+const embWhy=(c,d)=>c&&d&&embOn(d.country,c.country)?`${d.country} has an embargo on goods from ${c.country}`:"";
+// Businesses lose a little from their own country's embargoes and more from embargoes against it.
+function embMult(c){const n=c&&c.country;if(!n)return 1;return (1-Math.min(EMBCFG.ownMax,embList(n).length*EMBCFG.own))*(1-Math.min(EMBCFG.hitMax,embAgainst(n).length*EMBCFG.hit))}
+// Freight out of a sanctioned country, or into one that sanctions others, is rerouted and costs more.
+function embFr(c,d){if(!c||!d)return 1;return embAgainst(c.country).length||embList(d.country).length?EMBCFG.fr:1}
 const WLIC_FEE=50000;
 function lawBan(c,b){return (b.k==="casino"&&law(c,"casino")===1)||(b.k==="dispensary"&&law(c,"weed")===1)}
 function lawMult(c,b){let m=[1.06,1,.9][law(c,"wage")];
   if(RETAIL.includes(b.k))m*=[1,.97,.93][law(c,"tariff")];
   if(SMALL.includes(b.k)&&law(c,"grant"))m*=1.1;if(b.k==="prison")m*=[.7,1,1.4][law(c,"police")];
-  const g=gov(c.country);if(g.strike>Date.now())m*=.7;return m*warMult(c)*dipMult(c)*wmdMult(c)}
+  const g=gov(c.country);if(g.strike>Date.now())m*=.7;return m*embMult(c)*warMult(c)*dipMult(c)*wmdMult(c)}
 const taxRateC=c=>[.1,.15,.2,.25,.3][law(c,"tax")]*cfoTaxK();
 const rentLaw=c=>law(c,"rent")?.85:1;
 const jobLaw=c=>[.9,1,1.15][law(c,"wage")];
@@ -4044,7 +4120,7 @@ const wfMe=()=>(CITIES[(S.home||{city:0}).city]||CITIES[0]).country;
 function wfCR(){const d=wf();if(!Array.isArray(d.cr))d.cr=[];for(const x of d.cr)if(x&&x.end<=(S.day||0)&&RIVALS[x.a]&&(x.b===-1||RIVALS[x.b]))STF.push(x);d.cr=d.cr.filter(x=>x&&RIVALS[x.a]&&(x.b===-1||RIVALS[x.b])&&x.end>(S.day||0));return d.cr}
 function wfOff(){const d=wf();if(!Array.isArray(d.off))d.off=[];const n=Date.now(),p=pol();d.off=p.r>=0&&p.c?d.off.filter(x=>x&&x.exp>n&&x.to===p.c):[];return d.off}
 /* rival company in a feud with the player: cities they share earn a little less */
-function wfFeudHit(c){try{const cr=(S.wf&&S.wf.cr)||[];let m=1;for(const x of cr)if(x.b===-1&&x.end>(S.day||0)&&!crtInj("co:"+x.a)&&S.rivals[x.a]&&S.rivals[x.a].cities.includes(c.id))m*=WFCFG.cr.hit;return m}catch(e){return 1}}
+function wfFeudHit(c){try{if(typeof spyShield==="function"&&spyShield())return 1;const cr=(S.wf&&S.wf.cr)||[];let m=1;for(const x of cr)if(x.b===-1&&x.end>(S.day||0)&&!crtInj("co:"+x.a)&&S.rivals[x.a]&&S.rivals[x.a].cities.includes(c.id))m*=WFCFG.cr.hit;return m}catch(e){return 1}}
 function wfFeud(quiet){const C=WFCFG.cr,cr=wfCR(),pick=x=>x[Math.floor(Math.random()*x.length)];if(cr.length>=C.max||Math.random()>C.p)return null;
   const a=Math.floor(Math.random()*RIVALS.length),mine=Object.keys(S.own||{}).length>0;let b;
   if(mine&&Math.random()<C.you&&!cr.some(x=>x.a===a&&x.b===-1)&&!crtInj("co:"+a))b=-1;else{const o=RIVALS.map((_,j)=>j).filter(j=>j!==a&&!cr.some(x=>(x.a===a&&x.b===j)||(x.a===j&&x.b===a)));if(!o.length)return null;b=pick(o)}
@@ -4547,7 +4623,7 @@ const cardRate=s=>s>=740?.003:s>=670?.004:s>=580?.005:.007;
 function moneyRows(){const R=[],f=(n,fn)=>{let v=0;try{v=+fn()||0}catch(e){}if(Number.isFinite(v)&&Math.abs(v)>=.5)R.push([n,v])};let gain=0,loss=0,nl=0;
   for(const id in S.own){const c=CITIES[id];if(!c)continue;for(const b of BIZ){if(!S.own[id][b.k])continue;uSum(id,b.k,l=>{const v=profit(b,c,l);if(v>=0)gain+=v;else{loss+=v;nl++}return 0})}}
   if(Math.abs(gain)>=.5)R.push(["Businesses (profitable ones)",gain]);if(loss)R.push([`Businesses losing money (${nl})`,loss]);
-  f("Job and home rent",()=>lifeIncome());f("Rental properties",()=>propIncome());f("Skyscrapers",()=>skyIncome());f("Franchise royalties",()=>franIncome());f("Auction businesses",()=>aucIncome());f("Office / military pay",()=>polIncome()+(typeof milUpkeep==="function"?milUpkeep():0));
+  f("Job and home rent",()=>lifeIncome());f("Rental properties",()=>propIncome());f("Developments",()=>skyIncome());f("Franchise royalties",()=>franIncome());f("Auction businesses",()=>aucIncome());f("Office / military pay",()=>polIncome()+(typeof milUpkeep==="function"?milUpkeep():0));
   f("Military upkeep",()=>-milUpkeep());f("Land & factory upkeep",()=>-indUpkeep());f("Leases and land rent",()=>-rentTotal());f("HQ upkeep and links",()=>-hqTotalUpkeep());f("Office heads' salaries",()=>-ofUpk());
   f("Loan payments",()=>-(typeof bankPayHr==="function"?bankPayHr():S.debt*.003));f("Credit card interest",()=>{const c=B().card;return c&&!c.paidStmt?-Math.min(c.bal,c.stmt)*c.rate:0});f("War reparations",()=>{const m=S.pol&&S.pol.mil;return m&&Array.isArray(m.rep)?-m.rep.reduce((a,r)=>a+Math.min(r.left,r.per),0):0});f("Luxury items",()=>luxIncome());f("Flip homes (property tax)",()=>-flipUpk());f("Insurance & colonies",()=>-gxUpk());f("Ships",()=>ishIncome());f("Oil rigs (stored on board until sold)",()=>{let v=0;for(const r of (typeof rigs==="function"?rigs():[])){const d=rigDay(r),cp=rigCapU(r),st=r.st||{};if((st.fuel||0)>=cp.fuel-1e-6&&(st.oil||0)>=cp.oil-1e-6)continue;v+=d.oil*rigPx("oil")+d.fuel*rigPx("fuel")*RIGCFG.sell}return v});
   f("Tax building up (paid at year end)",()=>{const r=taxableRates(),h=EVADE.lv[evLevel()]||0;return-(r.reg*TAX_REG+r.un*TAX_UNREG)*(1-h)});
@@ -5920,13 +5996,40 @@ function cabCheck(){try{const p=pol();if(p.r<0||!p.c||polImmune())return;const o
 function cabHtml(n){const O=GOVCFG.offices,rows=[];for(let r=O.length-1;r>=0;r--){const a=cabOthers(n,r).map(q=>String(q.name||"Player").slice(0,20));const p=pol();if(p.r===r&&p.c===n)a.unshift("You");
   rows.push(`<div><span>${O[r].n}s ${a.length}/${CAB[r]}</span><b style="font-weight:500;text-align:right">${a.length?a.map(x=>x.replace(/[<>&"]/g,"")).join(", "):"open"}</b></div>`)}
   return `<div class="ph-sub" style="margin-top:10px">Cabinet of ${n}</div><div class="ph-rows">${rows.join("")}</div>`}
+/* ELECTIONS WITH CAMPAIGNS: before running for the next office the player builds public support (0-100) in that country with
+   ads, rallies and debates (S.pol.camp {c,r,sup,ad,ra,db,rcd,dcd}). Support adds up to +35% win chance (ELCFG.maxWin); at
+   ELCFG.land support the race is a landslide (win chance at least ELCFG.landWin) and a lost race keeps half the support with no
+   cooldown. Support is spent when the race is run and resets when you move to a different race. */
+const ELCFG={ad:{c:.04,g:5,max:8},ra:{c:.06,g:9,cd:2},db:{c:.03,win:10,lose:-6,cd:6},maxWin:.35,land:80,landWin:.85};
+function elCamp(){const p=pol(),r=p.r+1,n=p.r>=0?p.c:polHere();let c=p.camp;if(!c||typeof c!=="object"||c.c!==n||c.r!==r)c=p.camp={c:n,r,sup:0,ad:0,ra:0,db:0,rcd:0,dcd:0};c.sup=Math.max(0,Math.min(100,+c.sup||0));return c}
+const elCost=(k,c)=>Math.round(polCost(c.r,c.c)*ELCFG[k].c);
+const elBonus=()=>{const p=S.pol;if(!p||!p.camp)return 0;const r=p.r+1,n=p.r>=0?p.c:polHere(),c=p.camp;return c.c===n&&c.r===r?Math.min(100,+c.sup||0)/100*ELCFG.maxWin:0};
+function elDebateChance(){const p=pol(),c=elCamp(),{nw}=totals(),O=GOVCFG.offices[c.r];return Math.max(.25,Math.min(.8,.45+Math.min(.15,Math.log10(Math.max(1,nw/O.nw))*.06)+(p.r>=0?(p.appr-50)/300:0)))}
+function elAct(k){const p=pol(),C=GOVCFG;if(!C.offices[p.r+1])return;const c=elCamp(),now=Date.now(),E=ELCFG[k];if(!E)return;
+  if(S.trip)return toast("Finish your trip first");if(polHere()!==c.c)return toast(`You must be in ${c.c} to campaign`);
+  if(c.sup>=100)return toast("Support is already at 100");const cost=elCost(k,c);if(S.cash<cost)return toast(`Costs ${fmt(cost)}`);
+  if(k==="ad"&&c.ad>=E.max)return toast("No more ad slots this race");
+  if(k==="ra"&&now<c.rcd)return toast("Next rally in "+fmtDur(c.rcd-now));
+  if(k==="db"&&now<c.dcd)return toast("Next debate in "+fmtDur(c.dcd-now));
+  S.cash-=cost;
+  if(k==="ad"){c.ad++;c.sup=Math.min(100,c.sup+E.g);toast(`Ad campaign aired · support ${Math.round(c.sup)}`)}
+  else if(k==="ra"){c.ra++;c.rcd=now+E.cd*36e5;const g=E.g*(p.r>=0?.6+p.appr/125:1);c.sup=Math.min(100,c.sup+g);toast(`Rally in ${c.c} · support +${Math.round(g)}`)}
+  else{c.db++;c.dcd=now+E.cd*36e5;const ch=elDebateChance();if(Math.random()<ch){c.sup=Math.min(100,c.sup+E.win);toast(`You won the debate! Support +${E.win}`)}else{c.sup=Math.max(0,c.sup+E.lose);toast(`You lost the debate. Support ${E.lose}`)}}}
+function elHtml(r,n,dis){const c=elCamp(),now=Date.now(),E=ELCFG,land=c.sup>=E.land;
+  const b=(a,t,d)=>`<button class="buy" data-ph="${a}" style="flex:1;color:#fff;background:#1e3a8a!important;border-color:#60a5fa;padding:6px 4px;font-size:12px" ${d?"disabled":""}>${t}</button>`;
+  const ac=elCost("ad",c),rc=elCost("ra",c),dc=elCost("db",c),rw=Math.max(0,c.rcd-now),dw=Math.max(0,c.dcd-now);
+  return `<div class="ph-sub" style="margin-top:10px">Election campaign · support ${Math.round(c.sup)}/100${land?" · landslide":""}</div>
+  <div style="height:8px;border-radius:4px;background:#1f2937;overflow:hidden;margin:4px 0"><div style="height:100%;width:${Math.round(c.sup)}%;background:${land?"#22c55e":"#3b82f6"}"></div></div>
+  <div class="ph-rows"><div><span>Win chance from support</span><b style="color:#4ade80">+${Math.round(elBonus()*100)}%</b></div><div><span>Debate win odds</span><b>${Math.round(elDebateChance()*100)}%</b></div></div>
+  <div style="display:flex;gap:6px;margin-top:6px">${b("elad",`Ads ${fmt(ac)}<br><small>${c.ad}/${E.ad.max}</small>`,dis||c.ad>=E.ad.max||S.cash<ac||c.sup>=100)}${b("elra",`Rally ${fmt(rc)}${rw?`<br><small>${fmtDur(rw)}</small>`:""}`,dis||rw||S.cash<rc||c.sup>=100)}${b("eldb",`Debate ${fmt(dc)}${dw?`<br><small>${fmtDur(dw)}</small>`:""}`,dis||dw||S.cash<dc||c.sup>=100)}</div>
+  <p class="ph-sub" style="font-size:11px">Reach ${E.land} support for a landslide: at least ${Math.round(E.landWin*100)}% to win, and a loss keeps half your support with no cooldown.</p>`}
 const annexCost0=n=>Math.round(GOVCFG.annexCost*ctyScale(n)*(1+GOVCFG.annexStep*Object.keys(pol().ctrl).length));
 const annexCost=n=>Math.round(annexCost0(n)*(1-presFx("cost")));
 const annexChance=()=>{const p=pol(),C=GOVCFG;return Math.max(.1,Math.min(.85,C.annexWin+C.annexStepWin*Object.keys(p.ctrl).length+(p.appr-50)/200))};
 function polIncome(){const p=S.pol;if(!p||p.r==null||p.r<0||!p.c)return p&&p.mil&&typeof milUpkeep==="function"?milOccIncome()-milUpkeep():0;let v=GOVCFG.offices[p.r].pay*ctyScale(p.c);for(const n in p.ctrl)v+=GOVCFG.share*ctyScale(n);for(const n in (p.own||{}))v+=GOVCFG.offices[GOVCFG.offices.length-1].pay*ctyScale(n);if(typeof milUpkeep==="function")v+=milOccIncome()-milUpkeep();return v}
 function logPol(m,good){S.log.unshift("Government: "+m);S.log=S.log.slice(0,3);if(typeof toast==="function")toast(m)}
 const polDonCtrl=n=>!!(n&&S.gov&&S.gov[n]&&S.gov[n].ctrl&&!S.gov[n].polCtrl);
-function polChance(r){const p=pol(),{nw}=totals(),O=GOVCFG.offices[r],n=p.r>=0?p.c:polHere();return Math.max(.05,Math.min(.9,O.win+(polDonCtrl(n)?GOVCFG.ctrlWin:0)+Math.min(.15,Math.log10(Math.max(1,nw/O.nw))*.08)+(p.r>=0?(p.appr-50)/250:0)))}
+function polChance(r){const p=pol(),{nw}=totals(),O=GOVCFG.offices[r],n=p.r>=0?p.c:polHere();return Math.max(.05,Math.min(.9,O.win+(polDonCtrl(n)?GOVCFG.ctrlWin:0)+Math.min(.15,Math.log10(Math.max(1,nw/O.nw))*.08)+(p.r>=0?(p.appr-50)/250:0)+elBonus()))}
 /* TEMPORARY (Mark, 2026-10-30): office cooldowns are off for everyone. To restore them, set OFFICE_CD_ON back to true. */
 const OFFICE_CD_ON=false; // gates the campaign cooldown after a lost race or fall, and the minimum time in office before running for the next one
 function polRun(){const p=pol(),C=GOVCFG,now=Date.now(),r=p.r+1,O=C.offices[r];if(!O)return;
@@ -5940,9 +6043,9 @@ function polRun(){const p=pol(),C=GOVCFG,now=Date.now(),r=p.r+1,O=C.offices[r];i
   const mod=typeof ON!=="undefined"&&ON.user&&isMod(ON.user.uid,n); // Moderators: no net worth bar, no seat limit, always win in their country
   const {nw}=totals(),cost=polCost(r,n);if(!mod&&nw<O.nw)return toast(`Need net worth ${fmt(O.nw)}`);if(S.cash<cost)return toast(`Campaign costs ${fmt(cost)}`);
   const full=!mod&&cabFull(n,r),foe=full?cabWeak(n,r):null;if(full&&!foe)return toast(`Every ${O.n} seat in ${n} is held by immune players`);
-  const ch=mod?1:polChance(r);S.cash-=cost;
-  if(Math.random()<ch){p.r=r;p.c=n;p.since=now;if(foe)logPol(`You beat ${String(foe.name||"a player").slice(0,20)} for a ${O.n} seat`);try{onPublish(true)}catch(e){}p.appr=Math.max(p.r>0?p.appr:0,C.apprStart);logPol(`You won! You are now ${O.n} of ${n}`);if(r===C.offices.length-1)govAnn(n,"elect");else govAnn(n,"office",O.n);if(typeof confetti==="function")confetti(60,innerWidth/2,innerHeight/3)}
-  else{p.cd=now+C.loseCd*DAYMS;if(p.r>=0)p.appr=Math.max(0,p.appr-5);logPol(`You lost the race for ${O.n} of ${n} (${Math.round(ch*100)}% chance)`)}}
+  const camp=S.pol.camp&&S.pol.camp.c===n&&S.pol.camp.r===r?S.pol.camp:null,land=camp&&camp.sup>=ELCFG.land;const ch=mod?1:land?Math.max(ELCFG.landWin,polChance(r)):polChance(r);S.cash-=cost;
+  if(Math.random()<ch){p.camp=null;p.r=r;p.c=n;p.since=now;if(foe)logPol(`You beat ${String(foe.name||"a player").slice(0,20)} for a ${O.n} seat`);try{onPublish(true)}catch(e){}p.appr=Math.max(p.r>0?p.appr:0,C.apprStart);logPol(`You won! You are now ${O.n} of ${n}`);if(r===C.offices.length-1)govAnn(n,"elect");else govAnn(n,"office",O.n);if(typeof confetti==="function")confetti(60,innerWidth/2,innerHeight/3)}
+  else{if(land){camp.sup=Math.round(camp.sup/2)}else{p.cd=now+C.loseCd*DAYMS;if(camp)camp.sup=0}if(p.r>=0)p.appr=Math.max(0,p.appr-5);logPol(`You lost the race for ${O.n} of ${n} (${Math.round(ch*100)}% chance)`)}}
 const polPRq=p=>{const gb=Math.max(0,Math.min(GOVCFG.prGain,95-p.appr)),g=Math.max(0,Math.min(95-p.appr,gb*(1+presFx("pr"))));return {g,c:Math.round(polCost(p.r,p.c)*GOVCFG.prCost*gb/GOVCFG.prGain*(1-presFx("cost")))}}; // cost scales with approval actually gained (capped at 95)
 function polPR(){const p=pol();if(p.r<0)return;if(p.appr>=95)return toast("Approval is already maxed");const {g,c}=polPRq(p);if(S.cash<c)return toast(`PR campaign costs ${fmt(c)}`);S.cash-=c;p.appr=Math.min(95,p.appr+g);toast(`Approval +${Math.round(g*10)/10}`)}
 function polResign(){const p=pol();if(p.r<0)return;logPol(`You stepped down as ${GOVCFG.offices[p.r].n} of ${p.c}`);polFall();if(typeof milUpkeep==="function"&&milUpkeep()>0)setTimeout(()=>toast(`Your army is in reserve at ${fmt(milUpkeep())}/hr. Disband it in Gov › Military to stop the drain.`),1500)}
@@ -6032,7 +6135,7 @@ function govApp0(){const p=pol(),C=GOVCFG,now=Date.now(),{nw}=totals(),here=polH
   const r=p.r+1,n=p.r>=0?p.c:here;
   if(O[r]){const cost=polCost(r,n),cd=OFFICE_CD_ON&&urqCdOn()?Math.max(0,p.cd-now):0,hold=OFFICE_CD_ON&&p.r>=0?Math.max(0,p.since+C.minHold*DAYMS-now):0;
     h+=`<div class="ph-rows" style="margin-top:10px"><div><span>Next office</span><b>${O[r].n} of ${n}</b></div><div><span>Net worth needed</span><b style="color:${nw>=O[r].nw?"#4ade80":"#f87171"}">${fmt(O[r].nw)}</b></div><div><span>Campaign</span><b>${fmt(cost)}</b></div><div><span>Win chance</span><b>${Math.round(polChance(r)*100)}%</b></div>${cabFull(n,r)?`<div><span>Seats full · you must beat</span><b style="color:#fbbf24">${(cabWeak(n,r)||{name:"immune holders"}).name}</b></div>`:`<div><span>Seats taken</span><b>${cabOthers(n,r).length}/${CAB[r]}</b></div>`}${polDonCtrl(n)?`<div><span>Party you fund rules ${n}</span><b style="color:#4ade80">+${Math.round(C.ctrlWin*100)}%</b></div>`:""}${cd?`<div><span>Cooldown</span><b>${fmtDur(cd)}</b></div>`:""}${hold?`<div><span>Eligible in</span><b>${fmtDur(hold)}</b></div>`:""}</div>
-    ${btn("polrun",`Run for ${O[r].n}`,cd||hold||nw<O[r].nw||S.cash<cost||here!==n)}${here!==n?`<p class="ph-sub">Travel to ${n} to campaign.</p>`:""}`}
+    ${elHtml(r,n,here!==n)}${btn("polrun",`Run for ${O[r].n}`,cd||hold||nw<O[r].nw||S.cash<cost||here!==n)}${here!==n?`<p class="ph-sub">Travel to ${n} to campaign.</p>`:""}`}
   h+=cabHtml(n);
   if(lead){const g=gov(p.c),tc=Math.max(0,p.taxCd-now),xc=Math.max(0,(p.exCd||0)-now);
     if(xc&&!g.ctrl)h+=`<div class="ph-rows" style="margin-top:10px"><div><span>Exposed by the press · government control returns in</span><b style="color:#f87171">${fmtDur(xc)}</b></div></div>`;
@@ -7398,11 +7501,13 @@ function cabTick(){try{cabListen()}catch(e){}}
 function cabPaint(){if(MX.open&&(MX.page==="cab"||MX.page==="gch"||MX.page==="wcl")&&!mxBusy())mxRender()}
 /* bill state: open bills past their deadline, or that can no longer reach a majority, count as failed */
 function cabState(b){if(b.st!=="open")return b.st;const y=(b.yes||[]).length,n=(b.no||[]).length,s=Math.max(1,+b.seats||1);if(y*2>s)return "passed";if(s-n<=s/2||Date.now()>cabMs(b.exp))return "failed";return "open"}
-function cabTitle(b){const U=MILCFG.units;return b.k==="law"&&LAWS[b.key]?`${LAWS[b.key].n}: ${LAWS[b.key].v[b.val]||"?"}`:b.k==="war"?`Resolve the war with ${b.tg} (${Math.round(CABCFG.warWin*100)}% chance)`:b.k==="arms"?`Buy ${MILCFG.batch} ${(U[b.key]||{n:"units"}).n}`:b.k==="wto"?`Take-over step: bring ${b.tg} under our influence`:"Bill"}
+function cabTitle(b){const U=MILCFG.units;return b.k==="law"&&LAWS[b.key]?`${LAWS[b.key].n}: ${LAWS[b.key].v[b.val]||"?"}`:b.k==="war"?`Resolve the war with ${b.tg} (${Math.round(CABCFG.warWin*100)}% chance)`:b.k==="arms"?`Buy ${MILCFG.batch} ${(U[b.key]||{n:"units"}).n}`:b.k==="wto"?`Take-over step: bring ${b.tg} under our influence`:b.k==="emb"?`Embargo: block all imports from ${b.tg}`:b.k==="unemb"?`Lift the embargo on ${b.tg}`:"Bill"}
 /* passed laws: apply once on every member's save */
 function cabApply(){const p=pol();if(!(p.r>=0&&p.c===CB.c))return;if(!Array.isArray(p.cabA))p.cabA=[];let ch=0;
   for(const b of CB.bills.slice().reverse()){if(b.k!=="law"||!LAWS[b.key]||p.cabA.includes(b.id)||cabState(b)!=="passed")continue;const v=Math.max(0,Math.min(LAWS[b.key].v.length-1,b.val|0));
     gov(p.c).laws[b.key]=v;if(b.key==="tax")p.tax=v;p.cabA.unshift(b.id);ch=1;logPol(`Cabinet passed: ${cabTitle(b)}`)}
+  for(const b of CB.bills.slice().reverse()){if((b.k!=="emb"&&b.k!=="unemb")||!COUNTRIES.includes(b.tg)||b.tg===p.c||p.cabA.includes(b.id)||cabState(b)!=="passed")continue;
+    const g=gov(p.c);g.emb=g.emb||{};if(b.k==="emb")g.emb[b.tg]=Date.now();else delete g.emb[b.tg];p.cabA.unshift(b.id);ch=1;logPol(`Cabinet passed: ${cabTitle(b)}`)}
   if(ch){p.cabA=p.cabA.slice(0,60);try{save();hud()}catch(e){}}}
 function cabSay(world){const k=world?"gsay":"say",t=String(CB.f[k]||"").trim().slice(0,160),p=pol(),uid=cabUid();if(!t||!uid||!(p.r>=0&&p.c))return;if(CB.busy[k])return;
   if(Date.now()-CB.last<CABCFG.say)return toast("One message every few seconds");CB.last=Date.now();CB.busy[k]=1;const FV=window.firebase.firestore.FieldValue,b=ON.db.batch();
@@ -7411,7 +7516,7 @@ function cabSay(world){const k=world?"gsay":"say",t=String(CB.f[k]||"").trim().s
   Promise.resolve(onPublish(true)).then(()=>b.commit()).then(()=>{delete CB.busy[k];CB.f[k]="";mxRender()},e=>{delete CB.busy[k];toast("Message not sent: "+(e&&e.code||e))})}
 function cabPropose(){const p=pol(),f=CB.f,uid=cabUid();if(!uid||!(p.r>=0&&p.c))return;if(CB.busy.prop)return;const open=CB.bills.filter(b=>cabState(b)==="open").length;if(open>=8)return toast("Too many open bills: vote on those first");
   const d={k:f.k,key:"",val:0,tg:""};if(f.k==="law"){if(!LAWS[f.law])return;d.key=f.law;d.val=Math.max(0,Math.min(LAWS[f.law].v.length-1,+f.val|0))}
-  else if(f.k==="arms"){if(!MILCFG.units[f.unit])return;d.key=f.unit}else{if(!COUNTRIES.includes(f.tg)||f.tg===p.c)return toast("Pick a country");d.tg=f.tg}
+  else if(f.k==="arms"){if(!MILCFG.units[f.unit])return;d.key=f.unit}else if(f.k==="emb"&&embOn(p.c,f.tg))return toast(`We already embargo ${f.tg}`);else if(f.k==="unemb"&&!embOn(p.c,f.tg))return toast("We have no embargo on that country");else{if(!COUNTRIES.includes(f.tg)||f.tg===p.c)return toast("Pick a country");d.tg=f.tg}
   CB.busy.prop=1;const FV=window.firebase.firestore.FieldValue,s=cabSeats(p.c);
   ON.db.collection("cab").doc(p.c).collection("bill").add(Object.assign(d,{by:uid,byName:(onProf().name||"Tycoon").slice(0,20),at:FV.serverTimestamp(),exp:new Date(Date.now()+CABCFG.billHrs*36e5),seats:Math.min(10,s),yes:[uid],no:[],st:"open",done:false}))
     .then(()=>{delete CB.busy.prop;toast("Bill tabled")},e=>{delete CB.busy.prop;toast("Bill refused: "+(e&&e.code||e))})}
@@ -7434,7 +7539,7 @@ const cabFund=k=>cabMove(k,false);
 /* cost of carrying out a passed bill, paid from the matching fund */
 function cabCost(b){return b.k==="war"?Math.round(milWarCost(b.tg)*CABCFG.warCost):b.k==="arms"?milBatchCost(b.key):b.k==="wto"?annexCost(b.tg):0}
 const cabFundOf=b=>b.k==="war"?"war":b.k==="arms"?"arms":"wto";
-function cabRun(id){const b=CB.bills.find(x=>x.id===id),p=pol(),m=mil();if(!b||b.done||cabState(b)!=="passed"||!polLeader())return;if(CB.busy.run)return;
+function cabRun(id){const b=CB.bills.find(x=>x.id===id),p=pol(),m=mil();if(!b||b.done||cabState(b)!=="passed"||!polLeader()||!["war","arms","wto"].includes(b.k))return;if(CB.busy.run)return;
   const k=cabFundOf(b),c=cabCost(b);if(CB.fund[k]<c)return toast(`The ${k==="wto"?"take-over":k} fund needs ${fmt(c)}`);
   if(b.k==="war"&&!m.wars[b.tg])return toast(`You are not at war with ${b.tg}`);if(b.k==="wto"&&(p.ctrl[b.tg]||b.tg===p.c))return toast(`${b.tg} is already ours`);
   if(b.k==="wto"&&Date.now()<p.acd)return toast("Influence cooldown: "+fmtDur(p.acd-Date.now()));if(b.k==="arms"&&!polAtHome())return toast(`Recruit from ${p.c}`);
@@ -7454,12 +7559,12 @@ const cabBtn=(a,t,v,dis)=>`<button class="mdx-btn" data-mx="${a}"${v!=null?` dat
 function cabGate(){const p=pol();if(!(p.r>=0&&p.c))return `<div class="mdx-empty">Only office holders (Councillor, Minister or Leader) can use the cabinet. Run for office in the Government app.</div>`;
   if(!cabOn())return `<div class="mdx-empty">Sign in to the online world (Online app) to meet the rest of your government.</div>`;return ""}
 function cabDash(){const g=cabGate();if(g)return g;cabListen();const p=pol(),f=CB.f,uid=cabUid(),lead=polLeader(),U=MILCFG.units,m=mil(),wars=Object.keys(m.wars||{});
-  const others=COUNTRIES.filter(n=>n!==p.c),tgOpts=(f.k==="war"&&lead&&wars.length?wars:others).map(n=>[n,n]);if(f.k!=="law"&&f.k!=="arms"&&!tgOpts.some(o=>o[0]===f.tg))f.tg=tgOpts[0]?tgOpts[0][0]:"";
+  const others=COUNTRIES.filter(n=>n!==p.c),tgOpts=(f.k==="war"&&lead&&wars.length?wars:f.k==="unemb"?embList(p.c):f.k==="emb"?others.filter(n=>!embOn(p.c,n)):others).map(n=>[n,n]);if(f.k!=="law"&&f.k!=="arms"&&!tgOpts.some(o=>o[0]===f.tg))f.tg=tgOpts[0]?tgOpts[0][0]:"";
   const ctl=Object.keys(p.ctrl||{}).length+Object.keys(m.occ||{}).length,goal=COUNTRIES.length-1,left=others.filter(n=>!(p.ctrl||{})[n]&&!(m.occ||{})[n]),wtoNeed=left.reduce((a,n)=>a+annexCost(n),0);
   const pct=Math.round(100*ctl/Math.max(1,goal)),fpct=Math.min(100,Math.round(100*CB.fund.wto/Math.max(1,wtoNeed)));
-  const kind=cabSel("k",f.k,[["law","Law or tax"],["war","Resolve a war"],["arms","Buy arms"],["wto","World take-over step"]]),
+  const kind=cabSel("k",f.k,[["law","Law or tax"],["emb","Trade embargo"],["unemb","Lift an embargo"],["war","Resolve a war"],["arms","Buy arms"],["wto","World take-over step"]]),
     extra=f.k==="law"?cabSel("law",f.law,Object.keys(LAWS).map(k=>[k,LAWS[k].n]))+cabSel("val",f.val,(LAWS[f.law]||LAWS.tax).v.map((v,i)=>[i,v])):f.k==="arms"?cabSel("unit",f.unit,Object.keys(U).map(k=>[k,U[k].n])):cabSel("tg",f.tg,tgOpts);
-  const bills=CB.bills.map(b=>{const st=cabState(b),mine=(b.yes||[]).includes(uid)||(b.no||[]).includes(uid),c=cabCost(b),k=b.k==="law"?null:cabFundOf(b);
+  const bills=CB.bills.map(b=>{const st=cabState(b),mine=(b.yes||[]).includes(uid)||(b.no||[]).includes(uid),c=cabCost(b),k=b.k==="law"||b.k==="emb"||b.k==="unemb"?null:cabFundOf(b);
     const act=st==="open"?(mine?"<small>You voted</small>":cabBtn("cbyes","Yes",b.id)+" "+cabBtn("cbno","No",b.id))+(lead?" "+cabBtn("cbveto","Veto",b.id):"")
       :st==="passed"&&k?(b.done?"<small>Carried out</small>":lead?cabBtn("cbrun",`Carry out (${fmt(c)})`,b.id):`<small>Waiting for the Leader · needs ${fmt(c)}</small>`):"";
     return `<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.15)"><div><b>${onEsc(cabTitle(b))}</b> <small style="opacity:.7">· ${{open:"Open",passed:"Passed",failed:"Failed",vetoed:"Vetoed"}[st]||st} · ${(b.yes||[]).length} yes / ${(b.no||[]).length} no of ${b.seats||1} seats · by ${onEsc(b.byName||"?")}</small></div><div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${act}</div></div>`}).join("")||`<div class="mdx-empty">No bills yet.</div>`;
@@ -7468,11 +7573,15 @@ function cabDash(){const g=cabGate();if(g)return g;cabListen();const p=pol(),f=C
     card("🏛️ Members",cabHtml(p.c)+`<div class="ph-sub" style="margin-top:8px">A bill passes when more than half the seats vote yes (seats counted when it is tabled). It fails after ${CABCFG.billHrs} h. The Leader can veto any open bill.</div>`)+
     card("💬 Cabinet chat",`<div style="max-height:240px;overflow:auto">${cabChat(CB.msg)}</div><div style="display:flex;gap:6px;margin-top:8px">${cabIn("say",f.say,"Message your cabinet")}${cabBtn("cbsay","Send")}</div>`)+
     card("📜 Bills and laws",`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${kind}${extra}${cabBtn("cbprop","Table bill")}</div>${bills}`)+
+    card("🚫 Trade embargoes",embHtml(p.c))+
     card("💰 Funds",`<div class="ph-rows"><div><span>War fund (resolves wars at ${Math.round(CABCFG.warWin*100)}%)</span><b>${fmt(CB.fund.war)}</b></div><div><span>Arms fund</span><b>${fmt(CB.fund.arms)}</b></div><div><span>World take-over fund</span><b>${fmt(CB.fund.wto)}</b></div></div>
       <div class="ph-sub" style="margin-top:8px">Your deposits: wars ${fmt(CB.dep.war)} · arms ${fmt(CB.dep.arms)} · take-over ${fmt(CB.dep.wto)}. ${polLeader()?"As Leader you can withdraw anything in the funds.":"You can withdraw what you deposited while the fund still holds it."}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${cabIn("amt",f.amt,"Amount",100)}${cabBtn("cbfund","Fund wars","war")}${cabBtn("cbfund","Fund arms","arms")}${cabBtn("cbfund","Fund take-over","wto")}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${["war","arms","wto"].map(k=>cabBtn("cbwd","Withdraw "+{war:"wars",arms:"arms",wto:"take-over"}[k],k,(polLeader()?CB.fund[k]:Math.min(CB.dep[k],CB.fund[k]))<1000)).join("")}</div>`)+
     card("🌍 World take-over",`<div class="ph-rows"><div><span>Countries under our control</span><b>${ctl} / ${goal} (${pct}%)</b></div><div><span>Influence cost for the rest</span><b>${fmt(wtoNeed)}</b></div><div><span>Take-over fund covers</span><b>${fpct}%</b></div></div><div style="height:8px;border-radius:4px;background:rgba(127,127,127,.2);margin-top:8px"><div style="height:100%;width:${fpct}%;border-radius:4px;background:#dc2626"></div></div><div class="ph-sub" style="margin-top:6px">Table "World take-over step" bills to spend the fund on influence campaigns, one country at a time.</div>`)}
+function embHtml(n){const mine=embList(n),vs=embAgainst(n),pc=v=>Math.round(v*100);
+  return `<div class="ph-rows"><div><span>We block imports from</span><b>${mine.length?mine.map(onEsc).join(", "):"Nobody"}</b></div><div><span>Countries blocking our goods</span><b>${vs.length?vs.map(onEsc).join(", "):"None"}</b></div><div><span>Effect on our business revenue</span><b>−${100-pc(embMult({country:n}))}%</b></div></div>
+  <div class="ph-sub" style="margin-top:8px">Table a "Trade embargo" bill to block every import from a country: freight from it into ${onEsc(n)} is refused and hauls touching sanctioned trade cost ${pc(EMBCFG.fr-1)}% more. Our businesses earn ${pc(EMBCFG.own)}% less per embargo we hold (max ${pc(EMBCFG.ownMax)}%), and each embargo against a country cuts its business revenue ${pc(EMBCFG.hit)}% (max ${pc(EMBCFG.hitMax)}%).</div>`}
 function govChatDash(){const g=cabGate();if(g)return g;cabListen();
   return `<div class="mdx-card" style="padding:14px"><div style="font-weight:600;margin-bottom:8px">🌐 Government chat: every office holder in the world</div><div style="max-height:420px;overflow:auto">${cabChat(CB.gmsg)}</div><div style="display:flex;gap:6px;margin-top:8px">${cabIn("gsay",CB.f.gsay,"Message all governments")}${cabBtn("cbgsay","Send")}</div></div>`}
 function cabAct(a,b){const v=b.dataset.v;if(a==="cbsay")cabSay(false);else if(a==="cbgsay")cabSay(true);else if(a==="cbprop")cabPropose();else if(a==="cbyes"||a==="cbno")cabVote(v,a==="cbyes");else if(a==="cbveto")cabVeto(v);else if(a==="cbfund")cabFund(v);else if(a==="cbwd")cabMove(v,true);else if(a==="cbrun")cabRun(v)}
@@ -9387,7 +9496,7 @@ const botWh=()=>Object.keys(S.wh||{}).map(Number).filter(i=>CITIES[i]);
 const botHave=(c,g)=>((S.inv[c]||{})[g])||0;
 function botQuote(){const b=ON.bot,k=BX.kind,q=Math.floor(+BX.q||0),g=BX.g,c=BX.c===""?null:CITIES[+BX.c],d=BX.d===""?null:CITIES[+BX.d];
   if(!c)return{err:"Pick a warehouse city (you need a warehouse)"};if(!G[g])return{err:"Pick a good"};if(q<1)return{err:"Enter a quantity"};if(q>BOTMAXQ)return{err:`Maximum ${BOTMAXQ} units per request`};
-  if(k==="haul"){if(!d||d.id===c.id)return{err:"Pick a different destination warehouse"};if(landmass(c)!==landmass(d))return{err:"Trucks can't cross oceans"};
+  if(k==="haul"){if(!d||d.id===c.id)return{err:"Pick a different destination warehouse"};if(landmass(c)!==landmass(d))return{err:"Trucks can't cross oceans"};const ew=embWhy(c,d);if(ew)return{err:ew};
     const t=q*tpu(g);if(t>BOTMAXT)return{err:`Too heavy: max ${BOTMAXT} t per request`};if(botHave(c.id,g)<q)return{err:`Only ${Math.floor(botHave(c.id,g))} in ${c.name}`};
     const km=distKm(c,d),fee=botFee(km,t);if(fee>S.cash)return{err:`You need ${fmt(fee)} in cash`};
     return{amt:fee,give:q,line:`Haul ${q} ${G[g][0].toLowerCase()} (${fmtT?fmtT(t):t+" t"}) ${c.name} → ${d.name}, ${Math.round(km)} km, for ${fmt(fee)}`}}
@@ -9487,7 +9596,7 @@ const FR={tab:"open",c:"",d:"",g:"",q:"",p:"",h:"12",busy:false,unsub:null,docs:
 function FS(){const x=S.frt=S.frt&&typeof S.frt==="object"&&!Array.isArray(S.frt)?S.frt:{};for(const k of["my","run","owe"])if(!x[k]||typeof x[k]!=="object"||Array.isArray(x[k]))x[k]={};if(!Array.isArray(x.hist))x.hist=[];return x}
 function frLog(e){const x=FS();e.t=Date.now();x.hist.unshift(e);x.hist=x.hist.slice(0,12)}
 const frTons=(g,q)=>q*tpu(g),frKm=(a,b)=>distKm(CITIES[a],CITIES[b]);
-const frFee=(g,q,a,b)=>Math.min(FR_MAXPAY,Math.ceil(300+frKm(a,b)*frTons(g,q)*.1));
+const frFee=(g,q,a,b)=>Math.min(FR_MAXPAY,Math.ceil((300+frKm(a,b)*frTons(g,q)*.1)*embFr(CITIES[a],CITIES[b])));
 const frTr=(g,q)=>Math.max(1,Math.ceil(frTons(g,q)/FR_TRK));
 const frUsed=()=>Object.values(FS().run).reduce((a,r)=>a+(r.done?0:(+r.tr||0)),0);
 const frFree=()=>Math.max(0,freeTrucks()-frUsed());
@@ -9498,7 +9607,7 @@ function frListen(u){if(FR.unsub){try{FR.unsub()}catch(_){}FR.unsub=null}FR.docs
 function frPaint(){if(PH.open&&PH.app==="freight"&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))phRender()}
 /* shipper: post */
 function frPostChk(){const wh=botWh(),c=FR.c===""?null:CITIES[+FR.c],d=FR.d===""?null:CITIES[+FR.d],g=FR.g,q=Math.floor(+FR.q||0);
-  if(Object.keys(FS().my).length>=FR_MAXOPEN)return{err:`Limit: ${FR_MAXOPEN} posted hauls at once. Cancel one or wait for one to finish`};if(!c)return{err:"Pick a warehouse city (you need a warehouse)"};if(!d||d.id===c.id)return{err:"Pick a different destination warehouse"};if(landmass(c)!==landmass(d))return{err:"Trucks can't cross oceans"};
+  if(Object.keys(FS().my).length>=FR_MAXOPEN)return{err:`Limit: ${FR_MAXOPEN} posted hauls at once. Cancel one or wait for one to finish`};if(!c)return{err:"Pick a warehouse city (you need a warehouse)"};if(!d||d.id===c.id)return{err:"Pick a different destination warehouse"};if(landmass(c)!==landmass(d))return{err:"Trucks can't cross oceans"};const ew=embWhy(c,d);if(ew)return{err:ew};
   if(!G[g])return{err:"Pick a good"};if(q<1)return{err:"Enter a quantity"};if(q>FR_MAXQ)return{err:`Maximum ${FR_MAXQ} units per haul`};const t=frTons(g,q);if(t>FR_MAXT)return{err:`Too heavy: max ${FR_MAXT} t per haul`};
   if(botHave(c.id,g)<q)return{err:`Only ${Math.floor(botHave(c.id,g))} in ${c.name}`};
   const sug=frFee(g,q,c.id,d.id),pay=FR.p===""?sug:Math.floor(+FR.p||0);if(pay<FR_MINPAY)return{err:`Minimum pay is ${fmt(FR_MINPAY)}`};if(pay>FR_MAXPAY)return{err:`Maximum pay is ${fmt(FR_MAXPAY)}`};if(pay>S.cash)return{err:`You need ${fmt(pay)} in cash`};
@@ -9872,6 +9981,31 @@ function rcnAward(id,i){const c=CITIES[id];if(!c||!rcnGov(c.country))return;cons
   if(!free)S.cash-=b.price;S.dmg[id]={l0:Math.round(l*1e4)/1e4,t:now,own:e.own,k:e.k,sp:b.sp,rc:b.firm};
   const g=gov(c.country),up=Math.min(8,RCN.appr*l);g.appr=Math.min(100,(+g.appr||0)+up);
   logGov(`${c.country} hires ${b.firm} to rebuild ${c.name}`);save();toast(`${b.firm} is rebuilding ${c.name} at ${b.sp}× speed · approval +${up.toFixed(1)}`)}
+/* ---------- rebuilding contracts for businesses: after a strike, a damaged city tenders its rebuild and the player's company can bid.
+   Win: pay materials up front, rebuild at RB.sp× speed, get paid the full contract when the city is rebuilt. A new strike before then voids the job and the materials are lost.
+   S.rb[id]={t,cost,pay} while a job runs; S.rbX[id]=strike time of a tender already bid on (one bid per strike). */
+const RB={me:"Your company",sp:2,mat:.8, // repair speed ×, materials = mat × base value
+  bids:[["Lean",1.15,.8],["Fair",1.35,.55],["Steep",1.7,.3]]}; // [label, pay × base value, win chance]
+function rbBase(c){return Math.round(RCN.cost*(c.size||1)*dmgLvl(c)/1e5)*1e5}
+function rbHtml(c){const now=Date.now(),e=(S.dmg||{})[c.id],l=dmgLvl(c),j=(S.rb||{})[c.id];
+  if(j)return `<div class="sec">Rebuilding contract</div><div class="list"><div class="row own"><div class="n">You are rebuilding ${c.name}</div><div class="d">Paid ${fmt(j.cost)} for materials. The city pays <b>${fmt(j.pay)}</b> when the rebuild is done in ${fmtDur(dmgLeft(c))}. A new strike before then cancels the job.</div></div></div>`;
+  if(!e||l<.005||e.rc||rcnGov(c.country)||(+(S.unh||{})[c.id]||0)>now)return "";
+  const base=rbBase(c),m=Math.round(base*RB.mat),bid=(S.rbX||{})[c.id]===e.t;
+  return `<div class="sec">Rebuilding contract</div><div class="list"><div class="row"><div class="n">${c.name} is ${dmgWord(l)} ${dmgPct(l)}</div><div class="d">${bid?"Your bid lost. Another firm took the job.":`The city is taking bids to rebuild. Materials cost ${fmt(m)} up front if you win. A higher price earns more but is less likely to win. You rebuild ${RB.sp}× faster than normal.`}</div>${bid?"":`<div style="display:flex;gap:6px;flex-wrap:wrap">`+RB.bids.map((b,i)=>`<button class="buy" data-rb="${c.id}" data-i="${i}" data-fixed="1" ${S.cash<m?"disabled":""}>${b[0]} · ${fmt(base*b[1])} · ${Math.round(b[2]*100)}% win</button>`).join("")+`</div>`}</div></div>`}
+function rbBid(id,i){const c=CITIES[id],b=RB.bids[i];if(!c||!b)return;const e=(S.dmg||{})[id],l=dmgLvl(c),now=Date.now();
+  if(!e||l<.005||e.rc||rcnGov(c.country)||(S.rb||{})[id]||(S.rbX||{})[id]===e.t||(+(S.unh||{})[id]||0)>now)return;
+  const base=rbBase(c),m=Math.round(base*RB.mat);if(S.cash<m){toast("Not enough cash for materials");return}
+  S.rbX=S.rbX||{};S.rbX[id]=e.t;
+  if(Math.random()>=b[2]){S.log.unshift(`Lost the bid to rebuild ${c.name}`);S.log=S.log.slice(0,3);toast(`Your ${b[0].toLowerCase()} bid to rebuild ${c.name} lost`);commit();return}
+  S.cash-=m;S.dmg[id]={l0:Math.round(l*1e4)/1e4,t:now,own:e.own,k:e.k,sp:RB.sp,rc:RB.me};
+  S.rb=S.rb||{};S.rb[id]={t:now,cost:m,pay:Math.round(base*b[1])};
+  toast(`You won the contract to rebuild ${c.name}. Paid ${fmt(m)} for materials`);commit()}
+function rbTick(){const R=S.rb;if(!R)return;let ch=0;for(const id in R){const j=R[id],c=CITIES[id],e=(S.dmg||{})[id];
+  if(!c||!e||e.rc!==RB.me||e.t!==j.t){delete R[id];ch=1;toast(`A new strike on ${c?c.name:"a city"} cancelled your rebuilding job. Materials lost`);continue}
+  if(dmgLvl(c)<.005||dmgLeft(c)<=0){S.cash+=j.pay;delete R[id];ch=1;S.log.unshift(`Rebuilt ${c.name}: +${fmt(j.pay)}`);S.log=S.log.slice(0,3);toast(`${c.name} is rebuilt. The city paid you ${fmt(j.pay)}`)}}
+  if(ch){save();try{renderSheet();hud()}catch(e){}}}
+setInterval(()=>{try{rbTick()}catch(e){console.warn("rb",e)}},30000);setTimeout(()=>{try{rbTick()}catch(e){}},4000);
+sheet.addEventListener("click",ev=>{const b=ev.target.closest("[data-rb]");if(b)rbBid(+b.dataset.rb,+b.dataset.i)});
 // a strike lands: add its damage (stacking 1−(1−a)(1−b)), restart repairs, kill people; mine = fired by the player. Returns deaths.
 function dmgStrike(k,c,mine){const W=WPNCFG.w[k];if(!W||!c)return 0;S.dmg=S.dmg&&typeof S.dmg==="object"?S.dmg:{};const cur=dmgLvl(c),o=S.dmg[c.id],add=dmgHit(W,c)*W.struct,
   l=k==="icbm"?1:Math.min(1,1-(1-cur)*(1-add)),R=["msl","gas","nuke","icbm"],pk=o&&cur>0&&R.indexOf(o.k)>R.indexOf(k)?o.k:k;
@@ -10069,7 +10203,7 @@ function lxStockName(bk){const b=BIZ.find(x=>x.k===bk);return (b?b.n:bk)+" stock
 function lxVeh(v,t){const X=LX(),j=X.jobs.find(x=>x.id===v.job);if(!j){v.job=0;return}
   if(v.arr||v.cargo||v.route||v.city==null||!CITIES[v.city])return;const A=CITIES[j.from],B=CITIES[j.to],V=VEH[v.type];j.why="";
   if(j.left>1e-6){
-    if(v.city===j.from){const why=lxBlock(A,B)||(!lxVehOK(v,A,B)?"Trucks can't cross oceans":"");if(why){j.why=why;return}
+    if(v.city===j.from){const why=lxBlock(A,B)||embWhy(A,B)||(!lxVehOK(v,A,B)?"Trucks can't cross oceans":"");if(why){j.why=why;return}
       const q=Math.min(capV(v,j.g),j.left),fuel=vFuel(v.type,distKm(A,B),q*tpu(j.g),A,B);
       if(depart(v,A,B,"",t,{g:j.g,q,job:j.id})){j.left=j.left-q<1e-6?0:j.left-q;j.cost+=fuel}else j.why="Not enough cash for fuel"}
     else{const C=CITIES[v.city],why=lxBlock(C,A);if(why){j.why=why;return}const fuel=vFuel(v.type,distKm(C,A),0,C,A);if(depart(v,C,A,"",t))j.cost+=fuel;else j.why="Not enough cash for fuel"}}
@@ -10719,7 +10853,7 @@ const ofP=k=>{const h=ofHas(k)&&ofS().d[k];return h?1+.25*(ofLv(h)-1)+(h.deal>Da
 /* weekly empire report: every 7 game days, profit by business type, what each manager earned, and the best and worst moves */
 function wrS(){let w=S.wr;if(!w||typeof w!=="object")w=S.wr={};if(!w.c||typeof w.c!=="object")w.c=null;if(!Array.isArray(w.h))w.h=[];return w}
 function wrSeg(){const g={};for(const c of CITIES){const o=S.own[c.id];if(!o)continue;for(const b of BIZ){if(!o[b.k])continue;g[b.n]=(g[b.n]||0)+uSum(c.id,b.k,l=>profit(b,c,l))}}
-  try{if(exOwn())g["Stock exchange"]=exIncome()}catch(e){}try{if(typeof lifeIncome==="function"){const v=lifeIncome();if(v)g["Lifestyle"]=v}if(typeof propIncome==="function"){const v=propIncome();if(v)g["Property"]=v}if(typeof skyIncome==="function"){const v=skyIncome();if(v)g["Skyscrapers"]=v}}catch(e){}return g}
+  try{if(exOwn())g["Stock exchange"]=exIncome()}catch(e){}try{if(typeof lifeIncome==="function"){const v=lifeIncome();if(v)g["Lifestyle"]=v}if(typeof propIncome==="function"){const v=propIncome();if(v)g["Property"]=v}if(typeof skyIncome==="function"){const v=skyIncome();if(v)g["Developments"]=v}}catch(e){}return g}
 function wrDay(nw,quiet){const w=wrS(),m=MK(),now=Date.now();
   if(!w.c){const px={};for(const s in m.hold)if(m.hold[s]&&m.hold[s].q>0)px[s]=m.px[s];w.c={d0:S.day||1,nw0:nw,days:0,seg:{},mgr:{},px,bank:S.ob?(S.ob.ptot||0):0}}
   const c=w.c;c.days++;const g=wrSeg();for(const k in g)c.seg[k]=(c.seg[k]||0)+g[k];
@@ -11420,6 +11554,53 @@ function spApp(){gxS();const s=S.spt,C=GXCFG.sp,ids=Object.keys(s.cl);let h=`<di
   else{const sel=+(LT.spc!=null&&mine.some(c=>c.id===LT.spc)?LT.spc:mine[0].id);h+=`<select id="spcity" style="width:100%;margin-bottom:6px;color:#111">${mine.map(c=>`<option value="${c.id}"${c.id===sel?" selected":""}>${c.name}</option>`).join("")}</select>`+
     C.tiers.map((T,i)=>`<button class="buy" data-ph="spbuy" data-t="${i}" style="width:100%;margin-bottom:6px" ${S.cash<T.c?"disabled":""}>${T.n} · ${fmt(T.c)} · ${fmt(T.u)}/day</button>`).join("")}
   return h}
+/* ---------- SPY AGENCY (idea 12, Mark 2026-11-01): corporate espionage against rival companies, phone app "Spy" (S.cspy).
+   Hire agents (skill 1-5) and send one per mission: steal rival tech (+research points), sabotage a rival (net worth hit),
+   or uncover a cartel plot (cash bounty + shield: rival feuds don't cut your profits for a few days).
+   Missions take game days; a failed mission can get the agent caught: agent lost, a fine and sometimes an arrest.
+   A law firm lowers the risk (lawRisk). Mark's dev account (devGod) never gets caught and pays no fines. Local save only, no Firestore. */
+const SPYCFG={max:5,keep:8,
+  op:{tech:{n:"Steal rival tech",ic:"💾",base:.55,catch:.45,d:2,rv:1,txt:"Copy a rival's lab files: gain research points"},
+    sab:{n:"Sabotage a rival",ic:"🧨",base:.5,catch:.55,d:2,rv:1,txt:"Hit a rival's operations: their net worth drops"},
+    plot:{n:"Uncover cartel plot",ic:"🕵️",base:.6,catch:.3,d:3,rv:0,txt:"Expose a price-fixing ring: police bounty and 3 days safe from rival feuds"}}};
+const SPYNM=["Viper","Raven","Ghost","Falcon","Jackal","Lynx","Cobra","Shadow","Echo","Wolf","Sparrow","Onyx"];
+function spyS(){const x=S.cspy=S.cspy&&typeof S.cspy==="object"&&!Array.isArray(S.cspy)?S.cspy:{};
+  if(!Array.isArray(x.ag))x.ag=[];x.ag=x.ag.filter(a=>a&&typeof a==="object").slice(0,SPYCFG.max);x.ag.forEach(a=>{a.sk=Math.max(1,Math.min(5,Math.floor(+a.sk||1)));a.n=String(a.n||"Agent");if(a.op&&(!SPYCFG.op[a.op.k]||!(+a.op.end>0)))a.op=null});
+  if(!Array.isArray(x.log))x.log=[];x.log=x.log.filter(l=>l&&typeof l==="object").slice(0,SPYCFG.keep);for(const k of ["n","ok","caught","sh"])x[k]=+x[k]>=0?+x[k]:0;return x}
+function spyU(){let i=0;try{i=totals().inc}catch(e){}return Math.max(0,i)}
+const spyHireP=()=>Math.round(Math.max(5000,spyU()*3)*(1+.5*spyS().ag.length)),spyOpP=k=>Math.round(Math.max(2000,spyU()*(k==="plot"?1:1.5)));
+const spyOdds=(a,k)=>devGod()?1:Math.min(.95,SPYCFG.op[k].base+.07*(a.sk-1));
+const spyShield=()=>{const x=S.cspy;return !!x&&+x.sh>(S.day||0)};
+function spyHire(){const x=spyS(),p=spyHireP();if(x.ag.length>=SPYCFG.max)return toast(`Max ${SPYCFG.max} agents`);if(S.cash<p)return toast(`Need ${fmt(p)}`);
+  S.cash-=p;const used=x.ag.map(a=>a.n),fr=SPYNM.filter(n=>!used.includes(n)),n=fr.length?fr[Math.floor(Math.random()*fr.length)]:"Agent "+(x.ag.length+1),sk=1+Math.floor(Math.random()*3);
+  x.ag.push({n,sk,xp:0,op:null});toast(`Agent ${n} hired (skill ${sk})`);save();hud()}
+function spySend(i,k,ri){const x=spyS(),a=x.ag[i],O=SPYCFG.op[k];if(!a||!O||a.op)return;if(O.rv&&!(S.rivals&&S.rivals[ri]&&RIVALS[ri]))return toast("Pick a rival");
+  if(jailed())return toast("You can't run agents from prison");const p=spyOpP(k);if(S.cash<p)return toast(`Need ${fmt(p)}`);
+  S.cash-=p;a.op={k,ri:O.rv?ri:-1,end:Date.now()+O.d*DAYMS*(devGod()?.05:1),p};toast(`${a.n} is on the mission: back in ${fmtDur(a.op.end-Date.now())}`);save();hud()}
+function spyLog(t,ok,quiet){const x=spyS();x.log.unshift({t,ok:ok?1:0,at:Date.now()});x.log=x.log.slice(0,SPYCFG.keep);try{stNews("🕵️ "+t)}catch(e){}if(!quiet)toast(t)}
+function spyResolve(a,quiet){const o=a.op,x=spyS(),O=SPYCFG.op[o.k],rv=o.ri>=0?RIVALS[o.ri]:null,r=rv&&S.rivals[o.ri];a.op=null;x.n++;
+  if(O.rv&&!r)return spyLog(`${a.n} came home: the target company is gone`,0,quiet);
+  if(Math.random()<spyOdds(a,o.k)){x.ok++;a.xp=(a.xp||0)+1;if(a.xp>=3&&a.sk<5){a.sk++;a.xp=0}
+    if(o.k==="tech"){const g=Math.round(30*(1+.4*a.sk));S.rp=(S.rp||0)+g;return spyLog(`${a.n} stole lab files from ${rv.n}: +${g} research points`,1,quiet)}
+    if(o.k==="sab"){const f=.03+.01*a.sk,l=Math.round(r.nw*f);r.nw=Math.max(rivalSeed(o.ri)*.35,r.nw-l);return spyLog(`${a.n} sabotaged ${rv.n}: their net worth fell ${fmt(l)}`,1,quiet)}
+    const b=Math.round(o.p*(2+.5*a.sk));S.cash+=b;x.sh=Math.max(x.sh,S.day||0)+3;return spyLog(`${a.n} exposed a cartel price-fixing plot: ${fmt(b)} police bounty, safe from rival feuds for 3 days`,1,quiet)}
+  if(devGod()||Math.random()>=O.catch*lawRisk())return spyLog(`${a.n}'s mission ${rv?"against "+rv.n+" ":""}failed, but the agent got away`,0,quiet);
+  x.caught++;x.ag=x.ag.filter(y=>y!==a);const fine=Math.min(Math.round(o.p*3),Math.round(typeof taxCap==="function"?taxCap():o.p*3));S.cash-=fine;
+  let jl=false;if(o.k!=="plot"&&Math.random()<.3)try{jl=arrest("corporate espionage",6,null,quiet,0)}catch(e){}
+  spyLog(`${a.n} was caught ${rv?"spying on "+rv.n:"by the cartel"}: agent lost, fined ${fmt(fine)}${jl?" and you were arrested":""}`,0,quiet)}
+function spyTick(quiet,ns){const x=S.cspy;if(!x||!Array.isArray(x.ag))return;const now=Date.now();let d=0;for(const a of x.ag.slice())if(a&&a.op&&now>=+a.op.end){spyResolve(a,quiet);d=1}if(d&&!ns){save();hud()}}
+function spyApp(){const x=spyS();spyTick(false,1);const hp=spyHireP(),rv=(S.rivals||[]).map((r,i)=>r&&RIVALS[i]?i:-1).filter(i=>i>=0);
+  const sel=+(PH.spyR!=null&&rv.includes(PH.spyR)?PH.spyR:rv[0]),now=Date.now();
+  let h=`<div class="ph-sub">Hire agents to spy on rival companies. Missions can fail, and a caught agent costs you a fine${x.sh>(S.day||0)?` · 🛡 feud shield: ${x.sh-(S.day||0)} d`:""}.</div>
+  <div class="ph-rows"><div><span>Missions</span><b>${x.n} (${x.n?Math.round(x.ok/x.n*100):0}% success)</b></div><div><span>Agents caught</span><b>${x.caught}</b></div></div>`;
+  if(rv.length)h+=`<select id="spyrv" aria-label="Target rival" style="width:100%;margin:6px 0;color:#111">${rv.map(i=>`<option value="${i}"${i===sel?" selected":""}>${onEsc(RIVALS[i].n)}</option>`).join("")}</select>`;
+  h+=x.ag.length?x.ag.map((a,i)=>`<div class="ph-card"><b>🕴️ ${onEsc(a.n)} · skill ${"★".repeat(a.sk)}${"☆".repeat(5-a.sk)}</b>${a.op?`<span>${SPYCFG.op[a.op.k].ic} ${SPYCFG.op[a.op.k].n}${a.op.ri>=0&&RIVALS[a.op.ri]?" · "+onEsc(RIVALS[a.op.ri].n):""} · back in ${fmtDur(Math.max(0,a.op.end-now))}</span>`:
+    `<span>${Object.keys(SPYCFG.op).map(k=>{const O=SPYCFG.op[k];return `<button class="buy" data-ph="spysend" data-i="${i}" data-k="${k}" style="width:100%;margin-top:4px" title="${O.txt}" ${S.cash<spyOpP(k)||(O.rv&&!rv.length)?"disabled":""}>${O.ic} ${O.n} · ${fmt(spyOpP(k))} · ${Math.round(spyOdds(a,k)*100)}%</button>`}).join("")}</span>`}</div>`).join(""):`<p class="ph-sub">No agents yet.</p>`;
+  h+=`<button class="buy" data-ph="spyhire" style="width:100%;margin-top:6px" ${x.ag.length>=SPYCFG.max||S.cash<hp?"disabled":""}>${x.ag.length>=SPYCFG.max?`Agency full (${SPYCFG.max} agents)`:`Hire an agent · ${fmt(hp)}`}</button>
+  <p class="ph-sub" style="margin-top:6px">💾 steal tech: research points · 🧨 sabotage: rival net worth drops · 🕵️ cartel plot: bounty and a feud shield. A law firm lowers the risk of getting caught.</p>`;
+  if(x.log.length)h+=`<div class="ph-list" style="margin-top:8px">${x.log.map(l=>`<div><small>${fmtDur(now-l.at)} ago</small>${l.ok?"✅":"❌"} ${onEsc(l.t)}</div>`).join("")}</div>`;
+  return h}
+function spyAct(a,b){if(a==="spyhire")spyHire();else if(a==="spysend"){const s=PH.el.querySelector("#spyrv"),ri=s?+s.value:-1;if(s)PH.spyR=ri;spySend(+b.dataset.i,b.dataset.k,ri)}}
 const SPNM=["Rovers","United","Mariners","Comets","Titans","Athletic","Wanderers","Royals","Falcons","Kings"];
 function gxAct(a,b){gxS();const id=+b.dataset.c;
   if(a==="gxins"){const c=CITIES[id];if(!c)return;if(S.dsx.ins[id]){delete S.dsx.ins[id];toast(`Insurance cancelled in ${c.name}`)}else{S.dsx.ins[id]=1;toast(`${c.name} insured for ${fmt(dzPrem(c))}/day`)}}
@@ -11825,7 +12006,7 @@ function dvEst(v,W,N,g,q,rep){const H=CITIES[v.city],z={go:0,f0:0,ms1:0,f1:0,ms2
 function dvCreate(f,now){const v=S.fleet.find(x=>x.id===+f.v),W=CITIES[f.from],N=CITIES[f.to],g=f.g;
   if(!v||!dvIdle(v))return "That vehicle is no longer free.";if(!W||!hasWh(W))return "Pick a depot to load from.";
   if(!N||N===W||!dvCityOk(N))return "Pick a destination city.";if(!G[g])return "Pick the goods.";
-  const H=CITIES[v.city],b=lxBlock(W,N)||(H!==W?lxBlock(H,W):"");if(b)return b;if(!lxVehOK(v,H,W)||!lxVehOK(v,W,N))return "Trucks can't cross oceans.";
+  const H=CITIES[v.city],b=lxBlock(W,N)||embWhy(W,N)||(H!==W?lxBlock(H,W):"");if(b)return b;if(!lxVehOK(v,H,W)||!lxVehOK(v,W,N))return "Trucks can't cross oceans.";
   const q=Math.floor(Math.min(+f.q||0,capV(v,g),inv0(W,g)));if(q<1)return `No ${G[g][0].toLowerCase()} in ${W.name}.`;
   const z=dvEst(v,W,N,g,q,f.rep),need=H===W?z.f1:z.f0;if(S.cash<need)return `Need ${fmt(need)} for fuel.`;
   if(f.rep){const line={id:S.nid++,v:v.id,src:W.id,to:N.id,g,q,on:true,n:0,qd:0,why:"",t:now};S.dvl.push(line);dvLines(now);
@@ -14049,7 +14230,7 @@ const phScale=()=>Math.max(.5,Math.min(PH.sz,(innerWidth-8)/300,(innerHeight-8)/
 const phSave=()=>{try{localStorage.setItem("meridian-phone",JSON.stringify({open:PH.open,x:PH.x,y:PH.y}))}catch(e){}};
 let lastLog="";
 function trackNews(){const l=S.log[0];if(l&&l!==lastLog){lastLog=l;if(!S.news.length||S.news[0].t!==l){S.news.unshift({t:l,at:Date.now()});S.news=S.news.slice(0,40)}}}
-const ICO={space:`<path d="M12 2c3 2 5 6 5 10l-2 4H9l-2-4c0-4 2-8 5-10z M12 9.5a1.5 1.5 0 1 0 0 .01 M9 16l-3 3v2l4-2 M15 16l3 3v2l-4-2 M11 19h2v3h-2z"/>`,exch:`<path d="M3 21h18 M4 10h16 M12 3l9 5H3z M6 10v8 M10 10v8 M14 10v8 M18 10v8"/>`,events:`<path d="M5 21V4 M5 4h11l-2 4 2 4H5"/>`,auction:`<path d="M14 4l6 6-3 3-6-6z M11 7l-6 6 M8 10l6 6 M4 20h9 M13 13l7 7"/>`,lotto:`<path d="M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4z M14 7v12" stroke-dasharray="2 2"/>`,club:`<circle cx="12" cy="12" r="8"/><path d="M12 8l3 2.2-1.1 3.6h-3.8L9 10.2z M12 4v4 M19.6 9.5l-4.6.7 M17 18.5l-3-4.7 M7 18.5l3-4.7 M4.4 9.5l4.6.7"/>`,trophy:`<path d="M8 4h8v5a4 4 0 0 1-8 0z M8 6H5a3 3 0 0 0 3 4 M16 6h3a3 3 0 0 1-3 4 M12 13v4 M8 20h8 M9 17h6"/>`,props:`<path d="M3 20h18 M5 20V10l4-3v3l4-3v3l4-3v13 M17 7V4h2v16"/>`,rig:`<path d="M4 20h16 M7 20l3-12h4l3 12 M9 14h6 M10 8V4h4v4 M12 4V2"/>`,hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h.01 M16 9h.01"/>`,govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M3 10l9-6 9 6z"/>`,shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
+const ICO={spy:`<path d="M3 11h18 M6 11l2-6h8l2 6 M7.5 18a3 3 0 1 0 0-.01 M16.5 18a3 3 0 1 0 0-.01 M10.5 17.5h3"/>`,space:`<path d="M12 2c3 2 5 6 5 10l-2 4H9l-2-4c0-4 2-8 5-10z M12 9.5a1.5 1.5 0 1 0 0 .01 M9 16l-3 3v2l4-2 M15 16l3 3v2l-4-2 M11 19h2v3h-2z"/>`,exch:`<path d="M3 21h18 M4 10h16 M12 3l9 5H3z M6 10v8 M10 10v8 M14 10v8 M18 10v8"/>`,events:`<path d="M5 21V4 M5 4h11l-2 4 2 4H5"/>`,auction:`<path d="M14 4l6 6-3 3-6-6z M11 7l-6 6 M8 10l6 6 M4 20h9 M13 13l7 7"/>`,lotto:`<path d="M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4z M14 7v12" stroke-dasharray="2 2"/>`,club:`<circle cx="12" cy="12" r="8"/><path d="M12 8l3 2.2-1.1 3.6h-3.8L9 10.2z M12 4v4 M19.6 9.5l-4.6.7 M17 18.5l-3-4.7 M7 18.5l3-4.7 M4.4 9.5l4.6.7"/>`,trophy:`<path d="M8 4h8v5a4 4 0 0 1-8 0z M8 6H5a3 3 0 0 0 3 4 M16 6h3a3 3 0 0 1-3 4 M12 13v4 M8 20h8 M9 17h6"/>`,props:`<path d="M3 20h18 M5 20V10l4-3v3l4-3v3l4-3v13 M17 7V4h2v16"/>`,rig:`<path d="M4 20h16 M7 20l3-12h4l3 12 M9 14h6 M10 8V4h4v4 M12 4V2"/>`,hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h.01 M16 9h.01"/>`,govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M3 10l9-6 9 6z"/>`,shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
  wallet:'<path d="M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z M3 7l12-3v3 M16 13.5h2"/>',
  news:'<path d="M4 5h13v14H6a2 2 0 0 1-2-2z M17 9h3v8a2 2 0 0 1-2 2 M7 9h7 M7 12h7 M7 15h5"/>',
  needs:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -14064,7 +14245,7 @@ const ICO={space:`<path d="M12 2c3 2 5 6 5 10l-2 4H9l-2-4c0-4 2-8 5-10z M12 9.5a
  settings:'<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
  story:'<path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z M17 7h2v13 M8 8h6 M8 11h6 M8 14h4"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["props","Properties","#166534"],["pop","Population","#0369a1"],["trophy","Trophies","#a16207"],["story","Story","#6d28d9"],["lotto","Lottery","#9333ea"],["club","Sports","#16a34a"],["auction","Auction","#7c2d12"],["events","Events","#b91c1c"],["exch","Exchange","#1e40af"],["space","Space","#312e81"]];
+const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["props","Properties","#166534"],["pop","Population","#0369a1"],["trophy","Trophies","#a16207"],["story","Story","#6d28d9"],["lotto","Lottery","#9333ea"],["club","Sports","#16a34a"],["auction","Auction","#7c2d12"],["events","Events","#b91c1c"],["exch","Exchange","#1e40af"],["spy","Spy","#1f2937"],["space","Space","#312e81"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 /* side gutter for floating widgets: 12px or the safe-area inset, whichever is larger (measured from a hidden probe) */
 let _gutEl=null;function gutLR(){if(!_gutEl){_gutEl=document.createElement("div");_gutEl.setAttribute("aria-hidden","true");_gutEl.style.cssText="position:fixed;visibility:hidden;pointer-events:none;top:0;height:0;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px))";document.body.appendChild(_gutEl)}const r=_gutEl.getBoundingClientRect();return[r.left||12,Math.max(12,innerWidth-r.right)||12]}
@@ -14108,6 +14289,7 @@ function appHtml(k){const {inc,nw}=totals();
   if(k==="trophy")return achApp();
   if(k==="story")return storyApp();
   if(k==="lotto")return ltApp();
+  if(k==="spy")return spyApp();
   if(k==="auction")return aucApp();
   if(k==="events")return wevApp();
   if(k==="club")return spApp();
@@ -14152,7 +14334,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="dashoff"){DX.page="off";dxOpen();return}
   else if(a==="hqlink"||a==="hqunlink"){hqLinkAct(b.dataset.a,b.dataset.b,a==="hqlink");save();hud()}
   else if(a==="shoptab"){shopTab=b.dataset.k}
-  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="milunally"){const n=b.dataset.k;if(pres().ally[n])presDip("ally",n)}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="tkbuy"){tkBuy(b.dataset.k);save();hud()}else if(a==="tkai"){tkSellAi(b.dataset.k);save();hud()}else if(a==="tkoff"){const k=b.dataset.k,r=b.closest(".ph-rows")||PH.el,t=r.querySelector(`[data-tkto="${k}"]`),v=r.querySelector(`[data-tkp="${k}"]`);tkOffer(k,t&&t.value,v&&v.value)}else if(a==="tkcan"){tkCancel(b.dataset.k)}else if(a==="tkacc"){tkAccept(b.dataset.k);return}else if(a==="tkdec"){tkDecline(b.dataset.k)}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="rigpmt"){rigPermit();save();hud()}else if(a==="rigbuy"){rigStart();return}else if(a==="rigdash"){rxOpen();return}else if(a==="spdash"){spOpen();return}else if(a==="exdash"||a==="exvia"||a==="exoffer"||a==="exunoffer"||a==="exaccept"){if(exPhone(a,b.dataset.k||""))return}else if(a==="propstab"){propsTab=b.dataset.k}else if(a==="propsal"){S.aline=!S.aline;if(S.aline)alTick(Date.now());toast(S.aline?"Auto-line on: supplying your properties":"Auto-line off");save()}else if(a==="propsrun"){alTick(Date.now());toast("Auto-line recalculated");save()}else if(a==="propscity"){const c=CITIES[+b.dataset.k];if(c){openCity(c);return}}else if(a==="obdash"){bxOpen();return}else if(a==="mkdash"){if(b.dataset.k&&AK[b.dataset.k])MKD.sel=b.dataset.k;mkdOpen();return}else if(a==="rigship"){const sel=PH.el.querySelector(`[data-rigto="${b.dataset.k}"]`);if(sel)rigShip(+b.dataset.k,+sel.value);save();hud()}else if(a==="rigup"){rigUp(+b.dataset.k);save();hud()}else if(a==="rigsell"){rigSell(+b.dataset.k);save();hud()}else if(a==="airbuy"){airBuy();save();hud()}else if(a==="evbuy"){evBuy();save();hud()}else if(a==="g1buy"){g1Buy();save();hud()}else if(a==="s1buy"){s1Buy();save();hud()}else if(a==="s1go"){const sl=(b.closest(".bxd-con")||PH.el).querySelector("[data-s1to]");if(sl)s1Go(+sl.value);phRender();return}else if(a==="a1go"){const sl=(b.closest(".bxd-con")||PH.el).querySelector("[data-a1to]");if(sl)a1Go(+sl.value);phRender();return}else if(a==="a1up"){a1Up();save();hud()}else if(a==="g1go"){const sl=PH.el.querySelector("[data-g1to]");if(sl)g1Go(+sl.value);phRender();return}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="vault"){vaultMv(b.dataset.d,+b.dataset.f);save();hud();phRender();return}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrf"){milReinforce(b.dataset.k);save();hud()}else if(a==="milhome"){milHome(b.dataset.k);save()}else if(a==="milrec"||a==="mildis"){const qi=(b.closest(".bxd-con")||PH.el).querySelector(`[data-mq="${b.dataset.k}"]`),q=qi?qi.value:MILCFG.batch;if(a==="milrec"){milRecruit(b.dataset.k,q);save();hud()}else{milDisband(b.dataset.k,q);save()}}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){const qi=(b.closest(".bxd-con")||PH.el).querySelector(`[data-wq="${b.dataset.k}"]`);wpnBuildN(b.dataset.k,qi?qi.value:1);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnbar"){wpnBarrage(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
+  else if(a==="polrun"){polRun();save();hud()}else if(a==="polpr"){polPR();save();hud()}else if(a==="elad"||a==="elra"||a==="eldb"){elAct(a.slice(2));save();hud()}else if(a==="polquit"){polResign();save();hud()}else if(a==="mildisall"){milDisbandAll();save();hud()}else if(a==="milunally"){const n=b.dataset.k;if(pres().ally[n])presDip("ally",n)}else if(a==="poltax"){polSetTax(+b.dataset.k);save()}else if(a==="polannex"){polAnnex(b.dataset.k);save();hud()}else if(a==="polloy"){polLoyal(b.dataset.k);save();hud()}else if(a==="polrel"){polRelease(b.dataset.k);save()}else if(a==="tkbuy"){tkBuy(b.dataset.k);save();hud()}else if(a==="tkai"){tkSellAi(b.dataset.k);save();hud()}else if(a==="tkoff"){const k=b.dataset.k,r=b.closest(".ph-rows")||PH.el,t=r.querySelector(`[data-tkto="${k}"]`),v=r.querySelector(`[data-tkp="${k}"]`);tkOffer(k,t&&t.value,v&&v.value)}else if(a==="tkcan"){tkCancel(b.dataset.k)}else if(a==="tkacc"){tkAccept(b.dataset.k);return}else if(a==="tkdec"){tkDecline(b.dataset.k)}else if(a==="govtab"){govTab=b.dataset.k}else if(a==="pofenter"){presEnter();return}else if(a==="pofexit"){ofExit();return}else if(a==="bunkbuy"){bunkBuy();save();hud()}else if(a==="rigpmt"){rigPermit();save();hud()}else if(a==="rigbuy"){rigStart();return}else if(a==="rigdash"){rxOpen();return}else if(a==="spdash"){spOpen();return}else if(a==="exdash"||a==="exvia"||a==="exoffer"||a==="exunoffer"||a==="exaccept"){if(exPhone(a,b.dataset.k||""))return}else if(a==="propstab"){propsTab=b.dataset.k}else if(a==="propsal"){S.aline=!S.aline;if(S.aline)alTick(Date.now());toast(S.aline?"Auto-line on: supplying your properties":"Auto-line off");save()}else if(a==="propsrun"){alTick(Date.now());toast("Auto-line recalculated");save()}else if(a==="propscity"){const c=CITIES[+b.dataset.k];if(c){openCity(c);return}}else if(a==="obdash"){bxOpen();return}else if(a==="mkdash"){if(b.dataset.k&&AK[b.dataset.k])MKD.sel=b.dataset.k;mkdOpen();return}else if(a==="rigship"){const sel=PH.el.querySelector(`[data-rigto="${b.dataset.k}"]`);if(sel)rigShip(+b.dataset.k,+sel.value);save();hud()}else if(a==="rigup"){rigUp(+b.dataset.k);save();hud()}else if(a==="rigsell"){rigSell(+b.dataset.k);save();hud()}else if(a==="airbuy"){airBuy();save();hud()}else if(a==="evbuy"){evBuy();save();hud()}else if(a==="g1buy"){g1Buy();save();hud()}else if(a==="s1buy"){s1Buy();save();hud()}else if(a==="s1go"){const sl=(b.closest(".bxd-con")||PH.el).querySelector("[data-s1to]");if(sl)s1Go(+sl.value);phRender();return}else if(a==="a1go"){const sl=(b.closest(".bxd-con")||PH.el).querySelector("[data-a1to]");if(sl)a1Go(+sl.value);phRender();return}else if(a==="a1up"){a1Up();save();hud()}else if(a==="g1go"){const sl=PH.el.querySelector("[data-g1to]");if(sl)g1Go(+sl.value);phRender();return}else if(a==="bunkin"){bunkEnter();save();bunkHud()}else if(a==="vault"){vaultMv(b.dataset.d,+b.dataset.f);save();hud();phRender();return}else if(a==="bunkout"){bunkExit();save();bunkHud()}else if(a==="invrally"){dipRally();save();hud()}else if(a==="invtalks"){const iv=dip().inv;if(iv)warAct(iv.w,"peace");save();hud()}else if(a==="milrf"){milReinforce(b.dataset.k);save();hud()}else if(a==="milhome"){milHome(b.dataset.k);save()}else if(a==="milrec"||a==="mildis"){const qi=(b.closest(".bxd-con")||PH.el).querySelector(`[data-mq="${b.dataset.k}"]`),q=qi?qi.value:MILCFG.batch;if(a==="milrec"){milRecruit(b.dataset.k,q);save();hud()}else{milDisband(b.dataset.k,q);save()}}else if(a==="milwar"){milDeclare(b.dataset.k);save();hud()}else if(a==="milpeace"){milPeace(b.dataset.k);save();hud()}else if(a==="bgfocus"){bgFocus(b.dataset.k)}else if(a==="milgar"){const [n,d]=b.dataset.k.split("|");milGarrison(n,+d);save()}else if(a==="milab"){milAbandon(b.dataset.k);save()}else if(a==="wpnbuild"){const qi=(b.closest(".bxd-con")||PH.el).querySelector(`[data-wq="${b.dataset.k}"]`);wpnBuildN(b.dataset.k,qi?qi.value:1);save();hud()}else if(a==="wpntest"){if(_wtPick===b.dataset.k)wtCancel();else wtStart(b.dataset.k)}else if(a==="wpnbar"){wpnBarrage(b.dataset.k);save();hud()}else if(a==="wpnfire"){const [k,id]=b.dataset.k.split("|");wpnFire(k,id,1);save();hud()}
   else if(a==="misopen"){mxOpen();return}else if(a==="intopen"){intOpen();return}
   else if(a==="obtab"){obTab=b.dataset.k;obCu=0}
   else if(a==="hrtab"){hrTab=b.dataset.k}
@@ -14185,6 +14367,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="buyitem"){const it=ITEMS.find(x=>x.k===b.dataset.k),p=itemPrice(it,CITIES[(S.home||{city:0}).city]);if(S.cash<p)return;S.cash-=p;for(const [q] of NEEDS)if(it[q])S.need[q]=Math.max(0,Math.min(100,S.need[q]+it[q]));toast(`${it.n} delivered`);save();hud()}
   else if(a==="repay"){if(B().card&&B().card.bal)payCard(true);else if(B().loans[0])repayLoan(B().loans[0].id,true);S.debt=bankDebt();save();hud()}
   else if(/^(gxins|ltfree|ltscr|ltbuy|spbuy|spbud|spsell)$/.test(a)){gxAct(a,b)}
+  else if(a==="spyhire"||a==="spysend"){spyAct(a,b)}
   else if(a==="auctab"||a==="aucbid"){aucAct(a,b)}
   else if(a==="evopen"){if(innerWidth<820)PH.open=false;wevOpen()}
   else if(/^ct[a-z]+$/.test(a)){ctAct(a,b)}
@@ -14385,10 +14568,10 @@ setInterval(()=>{if(!document.hidden)uiSync()},250);
 function ask(){if(shown)return;shown=1;try{save()}catch(e){}
   const d=document.createElement("div");d.id="newver";d.style.cssText="position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 8px);z-index:99999;display:flex;align-items:center;gap:10px;max-width:calc(100vw - 32px);padding:8px 10px 8px 14px;border-radius:999px;background:#1d4ed8;color:#fff;font-size:13px;font-weight:600;box-shadow:0 6px 24px rgba(0,0,0,.35)";
   d.innerHTML='<span style="white-space:nowrap">🔄 Update ready · saved</span><button data-r="1" style="border:0;border-radius:999px;padding:6px 12px;background:#fff;color:#1d4ed8;font-weight:700;cursor:pointer">Reload</button><button data-r="0" aria-label="Later" style="border:0;background:transparent;color:#fff;opacity:.8;font-size:16px;cursor:pointer">×</button>';
-  d.onclick=e=>{const r=e.target.dataset&&e.target.dataset.r;if(r==="1"){try{save()}catch(x){}location.reload()}else if(r==="0"){d.remove();shown=0;nextAt=Date.now()+10*60000}};
+  d.onclick=e=>{const r=e.target.dataset&&e.target.dataset.r;if(r==="1"){try{save()}catch(x){}try{sessionStorage.setItem("mv-seen",String(window.__verT||0))}catch(x){}const u=new URL(location.href);u.searchParams.set("v",Date.now().toString(36));location.replace(u.href)}else if(r==="0"){d.remove();shown=0;nextAt=Date.now()+10*60000}};
   document.body.appendChild(d)}
 async function chk(){if(shown||Date.now()<nextAt||document.hidden||!/^https?:/.test(location.protocol)||!Number.isFinite(base))return;
-  try{const r=await fetch(location.pathname,{method:"HEAD",cache:"no-store"});const t=Date.parse(r.headers.get("last-modified")||"");if(Number.isFinite(t)&&t-base>5000)ask()}catch(e){}}
+  try{const r=await fetch(location.pathname,{method:"HEAD",cache:"no-store"});const t=Date.parse(r.headers.get("last-modified")||"");let seen=0;try{seen=+sessionStorage.getItem("mv-seen")||0}catch(x){}if(Number.isFinite(t)&&t-base>5000&&t>seen){window.__verT=t;ask()}}catch(e){}}
 window.__verAsk=ask;setInterval(chk,20000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)chk()});setTimeout(chk,15000)})();
 /* alerts center: every toast is kept (last 50, this browser only) and listed under a bell; the badge counts unread ones */
 const AL={k:"meridian-alerts",list:[],seen:0,open:0};

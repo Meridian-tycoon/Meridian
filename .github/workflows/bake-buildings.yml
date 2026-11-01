@@ -1,0 +1,38 @@
+name: Bake city buildings
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['tools/bake_buildings.py', '.github/workflows/bake-buildings.yml']
+  workflow_dispatch:
+    inputs:
+      city:
+        description: City to bake (see tools/bake_buildings.py)
+        default: montreal
+permissions:
+  contents: write
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cut Montreal out of the Quebec map file (Geofabrik) and bake it
+        timeout-minutes: 100
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q osmium-tool
+          curl -sSfL -o qc.pbf https://download.geofabrik.de/north-america/canada/quebec-latest.osm.pbf
+          osmium extract -b -73.98,45.40,-73.47,45.71 qc.pbf -o mtl.pbf
+          osmium tags-filter mtl.pbf a/building a/building:part w/building w/building:part -o bld.pbf
+          osmium export bld.pbf -f geojsonseq -o bld.geojsonseq --geometry-types=polygon
+          rm -rf data/buildings/montreal
+          python3 tools/bake_buildings.py montreal bld.geojsonseq
+      - if: always()
+        run: du -sh data/buildings/* || true
+      - name: Commit baked files (also after a timeout, so the next run resumes)
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add data/buildings
+          git commit -m "Bake ${{ inputs.city || 'montreal' }} buildings from OpenStreetMap" || exit 0
+          git pull --rebase && git push
