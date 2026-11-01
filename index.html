@@ -13431,7 +13431,7 @@ function tfTot(){return tfRemote()&&TFW?TFW.tot:S.tf?TF().loc:0}
 function tfPct(){return Math.min(100,tfTot()/TFCFG.goal*100)}
 function tfMs(){const p=tfPct();return TFCFG.ms.filter(m=>p>=m).length}
 function tfOpen(p,s){const need=p==="mars"&&TFCFG.site[+s];return !need||tfPct()>=need||!!(S.col&&Array.isArray(S.col.list)&&S.col.list.some(x=>x&&x.p===p&&x.s===+s))}
-function tfM(n){return "$"+Math.round(n).toLocaleString("en-US")}
+function tfM(n){n=Math.round(+n||0);return n>=1e9?mbB(n):n>=1e6?"$"+(+(n/1e6).toFixed(1))+"M":"$"+n.toLocaleString("en-US")}   // short money: $10M, $1.5B
 function mbB(n){return "$"+(+(n/1e9).toFixed(3))+"B"}
 function tfApply(c,amt){const t=TF();amt=Math.max(0,Math.min(1e13,Math.floor(+amt||0)));if(!amt)return;c=String(c||"?").slice(0,40);t.loc=Math.min(1e15,t.loc+amt);t.top[c]=(+t.top[c]||0)+amt;
   t.feed.unshift({t:Date.now(),x:`${c} funded ${tfM(amt)}`});t.feed.length=Math.min(t.feed.length,TFCFG.feed);t.dirty=1}
@@ -13996,7 +13996,7 @@ function mgOpen(){if(typeof maplibregl==="undefined")return toast("Map engine di
       <div id="mgbar" style="z-index:5;position:absolute;left:8px;right:8px;bottom:10px;display:flex;gap:6px;overflow-x:auto;padding:6px;background:rgba(18,12,16,.62);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);box-shadow:0 8px 24px rgba(0,0,0,.25);border-radius:16px;scrollbar-width:none;font-family:Figtree,system-ui,sans-serif"></div>`;
     document.body.appendChild(el);el.addEventListener("click",e=>{const b=e.target.closest("[data-mg]");if(!b)return;const a=b.dataset.mg;if(a==="close")mgClose();else if(a==="fly")mgFly();else if(a==="hud"){MG.hide=!MG.hide;mgHud()}else if(a==="cx")mgCard(null);else if(a.startsWith("demo:")){mgCard(null);mbDemolish(+a.slice(5))}else if(MBK[a]){MG.pick=MG.pick===a?null:a;if(MG.pick)MB().sel=a;else mgGhostOff();save();mgBar();spRefresh()}})}
   MG.el.style.display="block";MG.pick=null;if(MG.hide==null)MG.hide=innerWidth<=640;
-  if(!MG.map){MG.map=new maplibregl.Map({container:"mgmap",style:mgStyle(),center:[-60,10],zoom:1.6,minZoom:.6,maxZoom:MG3.maxZ,maxPitch:75,renderWorldCopies:false,attributionControl:false,dragRotate:true,pitchWithRotate:true});
+  if(!MG.map){MG.map=new maplibregl.Map({container:"mgmap",style:mgStyle(),pixelRatio:Math.min(devicePixelRatio||1,MGLOW?1.5:2),center:[-60,10],zoom:1.6,minZoom:.6,maxZoom:MG3.maxZ,maxPitch:75,renderWorldCopies:false,attributionControl:false,dragRotate:true,pitchWithRotate:true});
     try{MG.map.addControl(new maplibregl.NavigationControl({showZoom:true,visualizePitch:true}),"bottom-right")}catch(e){}
     MG.map.on("style.load",()=>{try{MG.map.setProjection({type:"globe"})}catch(e){}mg3Layer()});MG.map.on("zoom",mg3Zoom);mgFxOn();
     MG.map.on("click",e=>{if(e.originalEvent&&e.originalEvent.target.closest(".mgb"))return;if(mg3Pick(e.point))return;if(!MG.pick)return;const m=MB(),n=m.b.length;m.sel=MG.pick;mbBuild(e.lngLat.lng,e.lngLat.lat);if(MB().b.length>n){MG.pick=null;mgGhostOff();mgBar()}});
@@ -14039,12 +14039,12 @@ function mgExtra(b,st,w,now){const col=st.pw&&MGPOW.has(b.k)?"#ef4444":b.k==="ha
 function mgAtmo(){const m=MG.map;if(!m)return;const now=Date.now(),st=mgStorm(now),sun=mgSun(now);
   try{const s=m.getSource("night");if(s)s.setData(mgNight(now))}catch(e){}try{const s=m.getSource("lite");if(s)s.setData(mgLite(now))}catch(e){}
   try{m.setPaintProperty("dust","background-opacity",.06+.3*st)}catch(e){}
-  try{m.setSky({"sky-color":mgMix("#c98e6a","#7a4428",st),"horizon-color":mgMix("#f0b98d","#b5683a",st),"fog-color":mgMix("#d9a37c","#8a4a26",st),"fog-ground-blend":.6-.15*st,"horizon-fog-blend":.55+.35*st,"sky-horizon-blend":.6+.3*st,"atmosphere-blend":["interpolate",["linear"],["zoom"],1,.1+.15*st,7,.2+.4*st]})}catch(e){}
-  let az=210;try{az=((sun.lng-m.getCenter().lng)+270+360)%360}catch(e){}
-  try{m.setLight({anchor:"map",position:[1.3,az,sun.day?40:80],color:mgMix("#ffe2c4","#e0a070",st),intensity:(sun.day?.34:.16)*(1-.4*st)})}catch(e){}}
+  let az=210,dk=sun.day?0:1;try{const c=m.getCenter().lng;az=((sun.lng-c)+270+360)%360;dk=mgDark(c,sun.lng)}catch(e){}const tw=4*dk*(1-dk);   // dk: 0 noon side .. 1 night; tw peaks at dusk and dawn
+  try{m.setSky({"sky-color":mgMix(mgMix(mgMix("#c98e6a","#7a4428",st),"#d9825a",tw*.5),"#1c1220",dk*.7),"horizon-color":mgMix(mgMix(mgMix("#f0b98d","#b5683a",st),"#7fa3c9",tw*.45),"#3a2430",dk*.6),"fog-color":mgMix(mgMix("#d9a37c","#8a4a26",st),"#2a1a22",dk*.55),"fog-ground-blend":.6-.15*st,"horizon-fog-blend":.55+.35*st,"sky-horizon-blend":.6+.3*st,"atmosphere-blend":["interpolate",["linear"],["zoom"],1,.1+.15*st,7,.2+.4*st]})}catch(e){}
+  try{m.setLight({anchor:"map",position:[1.3,az,40+40*dk],color:mgMix(mgMix("#ffe2c4","#e0a070",st),"#ff9a66",tw*.6),intensity:(.34-.18*dk)*(1-.4*st)})}catch(e){}}
 function mgFxTick(){if(!MG.map||!MG.el||MG.el.style.display==="none")return;const now=Date.now(),n=MG.fxN=(MG.fxN||0)+1;
   const grow=MB().b.some(b=>now-(b.at||0)<MGBUILD.ms+250),near=MG.map.getZoom()>=MG3.z-.4;
-  if(grow||(near&&n%3===0))mg3Data();if(n%100===1)mgAtmo();if(n%250===0)mgHud()}
+  if(grow||(near&&n%(MGLOW?8:3)===0))mg3Data();if(n%(MGLOW?100:40)===1)mgAtmo();if(n%250===0)mgHud()}
 function mgFxOn(){if(!document.getElementById("mgfxcss")){const c=document.createElement("style");c.id="mgfxcss";c.textContent="@keyframes mgpop{0%{scale:.2;opacity:0;translate:0 18px}70%{scale:1.15;opacity:1}100%{scale:1;translate:0 0}}";document.head.appendChild(c)}
   if(!MG.fx)MG.fx=setInterval(()=>{try{mgFxTick()}catch(e){}},120);mgAtmo()}
 function mgFxOff(){clearInterval(MG.fx);MG.fx=0}
@@ -14064,7 +14064,8 @@ function mgSync(){if(!MG.map||!MG.el||MG.el.style.display==="none")return;MG.mk.
   d.addEventListener("click",e=>{e.stopPropagation();mgCard(b.id)});return new maplibregl.Marker({element:d,anchor:"bottom"}).setLngLat([b.lng,b.lat]).addTo(MG.map)}));mg3Data();mg3Zoom();mgBar()}
 /* 3D Mars buildings: each building is a small model made of extruded parts (MapLibre fill-extrusion, which works on the globe).
    Zoomed out you see the flat icons; past MG3.z the icons hide and the models take over. Sizes are in km (r = model radius), heights in metres. */
-const MG3={z:4.6,maxZ:11,r:26,
+const MGLOW=(()=>{try{return matchMedia("(pointer:coarse)").matches||innerWidth<760}catch(e){return false}})();   // phones and small screens get a lighter Mars globe
+const MG3={z:4.6,maxZ:11,r:26,seg:MGLOW?16:40,
   parts:{ // [shape c=circle|r=rect, dx, dy, size (radius, or [w,d] for rect), base, height, colour] in units of r
     hab:[["c",0,0,1,0,.08,"#94a3b8"],...[0,1,2,3,4,5,6,7,8,9].map(i=>{const a0=i/10*Math.PI/2,a1=(i+1)/10*Math.PI/2;return["c",0,0,Math.cos(a0)*.92,Math.sin(a0)*.7,Math.sin(a1)*.7,i>6?"#e0f2fe":i>3?"#bae6fd":"#7dd3fc"]}),["r",0,-1.05,[.3,.3],0,.22,"#fde68a"]],
     green:[["c",0,0,1,0,.08,"#94a3b8"],...[0,1,2,3,4,5,6,7,8].map(i=>{const a0=i/9*Math.PI/2,a1=(i+1)/9*Math.PI/2;return["c",0,0,Math.cos(a0)*.92,Math.sin(a0)*.6,Math.sin(a1)*.6,i>5?"#dcfce7":i>2?"#bbf7d0":"#4ade80"]}),["c",-.4,.1,.15,.08,.25,"#15803d"],["c",.35,-.2,.15,.08,.25,"#15803d"]],
@@ -14076,13 +14077,20 @@ const MG3={z:4.6,maxZ:11,r:26,
     oxy:[["r",0,0,[1.6,1],0,.1,"#94a3b8"],["r",-.4,0,[.7,.8],.1,.6,"#e2e8f0"],["c",.45,.25,.25,.1,1.1,"#38bdf8"],["c",.45,-.25,.25,.1,1.1,"#38bdf8"],["c",.45,.25,.27,1.1,1.15,"#e0f2fe"],["c",.45,-.25,.27,1.1,1.15,"#e0f2fe"],["r",-.6,.2,[.12,.12],.6,1.2,"#64748b"]],
     food:[["r",0,0,[1.6,1.1],0,.1,"#94a3b8"],["r",0,0,[1.3,.8],.1,.55,"#fde68a"],["r",0,0,[1.3,.3],.55,.7,"#d97706"],["c",.5,.55,.18,0,.8,"#cbd5e1"],["c",-.5,.55,.18,0,.8,"#cbd5e1"]],
     rover:[["r",0,0,[1.5,1],0,.5,"#cbd5e1"],["r",0,.48,[1.1,.08],0,.4,"#475569"],["r",0,0,[1.5,1],.5,.58,"#64748b"],["r",.2,.9,[.5,.3],0,.18,"#f59e0b"],["c",-.05,.82,.07,0,.07,"#111827"],["c",.45,.82,.07,0,.07,"#111827"]]}};
-function mg3Poly(lng,lat,p){const R=MG3.r,[sh,dx,dy,sz]=p,kx=1/(111.32*Math.max(.05,Math.cos(lat*Math.PI/180))),ky=1/110.57,cx=lng+dx*R*kx,cy=lat+dy*R*ky,ring=[];
-  if(sh==="c"){for(let i=0;i<=40;i++){const a=i/40*Math.PI*2;ring.push([cx+Math.cos(a)*sz*R*kx,cy+Math.sin(a)*sz*R*ky])}}
-  else{const w=sz[0]/2*R,d=sz[1]/2*R;ring.push([cx-w*kx,cy-d*ky],[cx+w*kx,cy-d*ky],[cx+w*kx,cy+d*ky],[cx-w*kx,cy+d*ky],[cx-w*kx,cy-d*ky])}return[ring]}
-function mg3Feats(){const out=[],R=MG3.r*1000,now=Date.now(),st=mbFlags(),w=mgWind(now),add=(b,props,dim)=>{const g=mgGrow(b,now),pp=[["c",0,0,1.3,0,.01+((b.id||0)%7)*.002,"#c9a083"]].concat(MG3.parts[b.k]||[],dim?[]:mgExtra(b,st,w,now));
-    for(let p of pp){let col=dim?mg3Dim(p[6]):p[6];if(b.k==="solar"&&p[6]==="#1e3a8a")col=mgMix(col,"#b8693c",mbDust(b,now));if(b.k==="mast"&&p[5]>1.5&&w)p=[p[0],p[1]+w*.05*p[5]/2.6,p[2]].concat(p.slice(3));
-      out.push({type:"Feature",properties:Object.assign({b:p[4]*R*g,h:Math.max(p[4]*R*g+1,p[5]*R*g),col},props),geometry:{type:"Polygon",coordinates:mg3Poly(b.lng,b.lat,p)}})}};
-  MBO.list.forEach((o,oi)=>o.b.forEach((b,bi)=>add(b,{oi,bi},1)));MB().b.forEach(b=>add(b,{id:b.id},0));return{type:"FeatureCollection",features:out}}
+function mg3Poly(lng,lat,p,rt,sc){const R=MG3.r*(sc||1),[sh,ox,oy,sz]=p,co=Math.cos(rt||0),si=Math.sin(rt||0),dx=ox*co-oy*si,dy=ox*si+oy*co,kx=1/(111.32*Math.max(.05,Math.cos(lat*Math.PI/180))),ky=1/110.57,cx=lng+dx*R*kx,cy=lat+dy*R*ky,ring=[];
+  if(sh==="c"){const N=MG3.seg;for(let i=0;i<=N;i++){const a=i/N*Math.PI*2;ring.push([cx+Math.cos(a)*sz*R*kx,cy+Math.sin(a)*sz*R*ky])}}
+  else{const w=sz[0]/2*R,d=sz[1]/2*R,co=Math.cos(rt||0),si=Math.sin(rt||0);for(const [x,y] of [[-w,-d],[w,-d],[w,d],[-w,d],[-w,-d]])ring.push([cx+(x*co-y*si)*kx,cy+(x*si+y*co)*ky])}return[ring]}
+// building variety: each building gets its own turn, size, height, tint and sometimes a side module or tank, fixed by its id so it never changes
+function mg3Var(b){const h=Math.imul(((b.id||0)+1)^(Math.round((b.lng||0)*100)),2654435761)>>>0,v=(h>>>5)%3;
+  return{rt:b.k==="solar"?((h%4)*Math.PI/2):(h%360)*Math.PI/180,sc:.88+((h>>>9)%25)/100,hs:.88+((h>>>13)%25)/100,tint:["#fef3c7","#e0e7ff","#fde2d4"][(h>>>17)%3],tt:((h>>>19)%10)/100,
+    ex:b.k==="solar"||b.k==="lander"?[]:v===1?[["r",1.15,0,[.35,.55],0,.32,"#cbd5e1"],["r",1.15,0,[.37,.57],.32,.36,"#94a3b8"]]:v===2?[["c",-.95,.75,.2,0,.45,"#e2e8f0"],["c",-.95,.75,.21,.45,.5,"#f8fafc"]]:[]}}
+function mg3Feats(){const out=[],R=MG3.r*1000,now=Date.now(),st=mbFlags(),w=mgWind(now),add=(b,props,dim,o)=>{const g=mgGrow(b,now),V=mg3Var(b),pp=[["c",0,0,1.3,0,.01+((b.id||0)%7)*.002,"#c9a083"]].concat(MG3.parts[b.k]||[],V.ex,dim?[]:mgExtra(b,st,w,now));
+    for(let p of pp){let col=dim?mg3Dim(p[6]):p[6];if(V.tt&&p[6]!=="#c9a083")col=mgMix(col,V.tint,V.tt);if(b.k==="solar"&&p[6]==="#1e3a8a")col=mgMix(col,"#b8693c",mbDust(b,now));if(!dim&&b.k==="mast"&&p[5]>1.5&&w)p=[p[0],p[1]+w*.05*p[5]/2.6,p[2]].concat(p.slice(3));
+      const k=R*g*V.sc*V.hs;(o||out).push({type:"Feature",properties:Object.assign({b:p[4]*k,h:Math.max(p[4]*k+1,p[5]*k),col},props),geometry:{type:"Polygon",coordinates:mg3Poly(b.lng,b.lat,p,V.rt,V.sc)}})}};
+  // other players' bases never animate, so keep their models until their buildings change (big saving with many bases)
+  const sig=MBO.list.map(o=>o.b.length).join(","),grow=MBO.list.some(o=>o.b.some(b=>now-(b.at||0)<MGBUILD.ms+250));
+  if(grow||!MG3.oc||MG3.ol!==MBO.list||MG3.os!==sig){const o=[];MBO.list.forEach((x,oi)=>x.b.forEach((b,bi)=>add(b,{oi,bi},1,o)));MG3.oc=o;MG3.ol=MBO.list;MG3.os=sig}
+  for(const f of MG3.oc)out.push(f);MB().b.forEach(b=>add(b,{id:b.id},0));return{type:"FeatureCollection",features:out}}
 function mg3Dim(c){const n=parseInt(c.slice(1),16),f=v=>Math.round(v*.7+128*.3);return "#"+[n>>16,n>>8&255,n&255].map(v=>f(v).toString(16).padStart(2,"0")).join("")}
 function mg3Layer(){const m=MG.map;try{if(!m.getSource("mb3d"))m.addSource("mb3d",{type:"geojson",data:mg3Feats()});
     if(!m.getLayer("mb3d"))m.addLayer({id:"mb3d",type:"fill-extrusion",source:"mb3d",minzoom:MG3.z-.4,paint:{"fill-extrusion-color":["get","col"],"fill-extrusion-base":["get","b"],"fill-extrusion-height":["get","h"],
