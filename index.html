@@ -3054,7 +3054,7 @@ setInterval(worldNews,4*60000);setTimeout(worldNews,20000);
 /* ---------- economy tick ---------- */
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
 let pops=[]; // floating income labels
-function simDay(quiet){const{nw}=totals();try{wrDay(nw,quiet)}catch(e){console.warn("wrDay",e)}S.day++;try{gldDay()}catch(e){}try{slvDay()}catch(e){}if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}try{gxDay(quiet)}catch(e){console.warn("gxDay",e)}try{flipDay(quiet)}catch(e){console.warn("flipDay",e)}try{skyDay(quiet)}catch(e){console.warn("skyDay",e)}try{wevDay()}catch(e){console.warn("wevDay",e)}try{ipoDay(quiet)}catch(e){console.warn("ipoDay",e)}
+function simDay(quiet){const{nw}=totals();try{wrDay(nw,quiet)}catch(e){console.warn("wrDay",e)}S.day++;try{gldDay()}catch(e){}try{slvDay()}catch(e){}if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}try{gxDay(quiet)}catch(e){console.warn("gxDay",e)}try{spyTick(quiet)}catch(e){console.warn("spyTick",e)}try{flipDay(quiet)}catch(e){console.warn("flipDay",e)}try{skyDay(quiet)}catch(e){console.warn("skyDay",e)}try{wevDay()}catch(e){console.warn("wevDay",e)}try{ipoDay(quiet)}catch(e){console.warn("ipoDay",e)}
   try{mktDay()}catch(e){console.warn("mktDay",e)}audits(quiet);simProps(quiet);
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||Math.random()>.004)continue;
     const kinds=[["Break-in at your",.04],["Equipment breakdown at your",.03],["Health inspection fine at your",.02],["Customer lawsuit against your",.06]],[t,f]=kinds[Math.floor(Math.random()*kinds.length)];
@@ -4015,7 +4015,7 @@ const wfMe=()=>(CITIES[(S.home||{city:0}).city]||CITIES[0]).country;
 function wfCR(){const d=wf();if(!Array.isArray(d.cr))d.cr=[];for(const x of d.cr)if(x&&x.end<=(S.day||0)&&RIVALS[x.a]&&(x.b===-1||RIVALS[x.b]))STF.push(x);d.cr=d.cr.filter(x=>x&&RIVALS[x.a]&&(x.b===-1||RIVALS[x.b])&&x.end>(S.day||0));return d.cr}
 function wfOff(){const d=wf();if(!Array.isArray(d.off))d.off=[];const n=Date.now(),p=pol();d.off=p.r>=0&&p.c?d.off.filter(x=>x&&x.exp>n&&x.to===p.c):[];return d.off}
 /* rival company in a feud with the player: cities they share earn a little less */
-function wfFeudHit(c){try{const cr=(S.wf&&S.wf.cr)||[];let m=1;for(const x of cr)if(x.b===-1&&x.end>(S.day||0)&&!crtInj("co:"+x.a)&&S.rivals[x.a]&&S.rivals[x.a].cities.includes(c.id))m*=WFCFG.cr.hit;return m}catch(e){return 1}}
+function wfFeudHit(c){try{if(typeof spyShield==="function"&&spyShield())return 1;const cr=(S.wf&&S.wf.cr)||[];let m=1;for(const x of cr)if(x.b===-1&&x.end>(S.day||0)&&!crtInj("co:"+x.a)&&S.rivals[x.a]&&S.rivals[x.a].cities.includes(c.id))m*=WFCFG.cr.hit;return m}catch(e){return 1}}
 function wfFeud(quiet){const C=WFCFG.cr,cr=wfCR(),pick=x=>x[Math.floor(Math.random()*x.length)];if(cr.length>=C.max||Math.random()>C.p)return null;
   const a=Math.floor(Math.random()*RIVALS.length),mine=Object.keys(S.own||{}).length>0;let b;
   if(mine&&Math.random()<C.you&&!cr.some(x=>x.a===a&&x.b===-1)&&!crtInj("co:"+a))b=-1;else{const o=RIVALS.map((_,j)=>j).filter(j=>j!==a&&!cr.some(x=>(x.a===a&&x.b===j)||(x.a===j&&x.b===a)));if(!o.length)return null;b=pick(o)}
@@ -11391,6 +11391,53 @@ function spApp(){gxS();const s=S.spt,C=GXCFG.sp,ids=Object.keys(s.cl);let h=`<di
   else{const sel=+(LT.spc!=null&&mine.some(c=>c.id===LT.spc)?LT.spc:mine[0].id);h+=`<select id="spcity" style="width:100%;margin-bottom:6px;color:#111">${mine.map(c=>`<option value="${c.id}"${c.id===sel?" selected":""}>${c.name}</option>`).join("")}</select>`+
     C.tiers.map((T,i)=>`<button class="buy" data-ph="spbuy" data-t="${i}" style="width:100%;margin-bottom:6px" ${S.cash<T.c?"disabled":""}>${T.n} · ${fmt(T.c)} · ${fmt(T.u)}/day</button>`).join("")}
   return h}
+/* ---------- SPY AGENCY (idea 12, Mark 2026-11-01): corporate espionage against rival companies, phone app "Spy" (S.cspy).
+   Hire agents (skill 1-5) and send one per mission: steal rival tech (+research points), sabotage a rival (net worth hit),
+   or uncover a cartel plot (cash bounty + shield: rival feuds don't cut your profits for a few days).
+   Missions take game days; a failed mission can get the agent caught: agent lost, a fine and sometimes an arrest.
+   A law firm lowers the risk (lawRisk). Mark's dev account (devGod) never gets caught and pays no fines. Local save only, no Firestore. */
+const SPYCFG={max:5,keep:8,
+  op:{tech:{n:"Steal rival tech",ic:"💾",base:.55,catch:.45,d:2,rv:1,txt:"Copy a rival's lab files: gain research points"},
+    sab:{n:"Sabotage a rival",ic:"🧨",base:.5,catch:.55,d:2,rv:1,txt:"Hit a rival's operations: their net worth drops"},
+    plot:{n:"Uncover cartel plot",ic:"🕵️",base:.6,catch:.3,d:3,rv:0,txt:"Expose a price-fixing ring: police bounty and 3 days safe from rival feuds"}}};
+const SPYNM=["Viper","Raven","Ghost","Falcon","Jackal","Lynx","Cobra","Shadow","Echo","Wolf","Sparrow","Onyx"];
+function spyS(){const x=S.cspy=S.cspy&&typeof S.cspy==="object"&&!Array.isArray(S.cspy)?S.cspy:{};
+  if(!Array.isArray(x.ag))x.ag=[];x.ag=x.ag.filter(a=>a&&typeof a==="object").slice(0,SPYCFG.max);x.ag.forEach(a=>{a.sk=Math.max(1,Math.min(5,Math.floor(+a.sk||1)));a.n=String(a.n||"Agent");if(a.op&&(!SPYCFG.op[a.op.k]||!(+a.op.end>0)))a.op=null});
+  if(!Array.isArray(x.log))x.log=[];x.log=x.log.filter(l=>l&&typeof l==="object").slice(0,SPYCFG.keep);for(const k of ["n","ok","caught","sh"])x[k]=+x[k]>=0?+x[k]:0;return x}
+function spyU(){let i=0;try{i=totals().inc}catch(e){}return Math.max(0,i)}
+const spyHireP=()=>Math.round(Math.max(5000,spyU()*3)*(1+.5*spyS().ag.length)),spyOpP=k=>Math.round(Math.max(2000,spyU()*(k==="plot"?1:1.5)));
+const spyOdds=(a,k)=>devGod()?1:Math.min(.95,SPYCFG.op[k].base+.07*(a.sk-1));
+const spyShield=()=>{const x=S.cspy;return !!x&&+x.sh>(S.day||0)};
+function spyHire(){const x=spyS(),p=spyHireP();if(x.ag.length>=SPYCFG.max)return toast(`Max ${SPYCFG.max} agents`);if(S.cash<p)return toast(`Need ${fmt(p)}`);
+  S.cash-=p;const used=x.ag.map(a=>a.n),fr=SPYNM.filter(n=>!used.includes(n)),n=fr.length?fr[Math.floor(Math.random()*fr.length)]:"Agent "+(x.ag.length+1),sk=1+Math.floor(Math.random()*3);
+  x.ag.push({n,sk,xp:0,op:null});toast(`Agent ${n} hired (skill ${sk})`);save();hud()}
+function spySend(i,k,ri){const x=spyS(),a=x.ag[i],O=SPYCFG.op[k];if(!a||!O||a.op)return;if(O.rv&&!(S.rivals&&S.rivals[ri]&&RIVALS[ri]))return toast("Pick a rival");
+  if(jailed())return toast("You can't run agents from prison");const p=spyOpP(k);if(S.cash<p)return toast(`Need ${fmt(p)}`);
+  S.cash-=p;a.op={k,ri:O.rv?ri:-1,end:Date.now()+O.d*DAYMS*(devGod()?.05:1),p};toast(`${a.n} is on the mission: back in ${fmtDur(a.op.end-Date.now())}`);save();hud()}
+function spyLog(t,ok,quiet){const x=spyS();x.log.unshift({t,ok:ok?1:0,at:Date.now()});x.log=x.log.slice(0,SPYCFG.keep);try{stNews("🕵️ "+t)}catch(e){}if(!quiet)toast(t)}
+function spyResolve(a,quiet){const o=a.op,x=spyS(),O=SPYCFG.op[o.k],rv=o.ri>=0?RIVALS[o.ri]:null,r=rv&&S.rivals[o.ri];a.op=null;x.n++;
+  if(O.rv&&!r)return spyLog(`${a.n} came home: the target company is gone`,0,quiet);
+  if(Math.random()<spyOdds(a,o.k)){x.ok++;a.xp=(a.xp||0)+1;if(a.xp>=3&&a.sk<5){a.sk++;a.xp=0}
+    if(o.k==="tech"){const g=Math.round(30*(1+.4*a.sk));S.rp=(S.rp||0)+g;return spyLog(`${a.n} stole lab files from ${rv.n}: +${g} research points`,1,quiet)}
+    if(o.k==="sab"){const f=.03+.01*a.sk,l=Math.round(r.nw*f);r.nw=Math.max(rivalSeed(o.ri)*.35,r.nw-l);return spyLog(`${a.n} sabotaged ${rv.n}: their net worth fell ${fmt(l)}`,1,quiet)}
+    const b=Math.round(o.p*(2+.5*a.sk));S.cash+=b;x.sh=Math.max(x.sh,S.day||0)+3;return spyLog(`${a.n} exposed a cartel price-fixing plot: ${fmt(b)} police bounty, safe from rival feuds for 3 days`,1,quiet)}
+  if(devGod()||Math.random()>=O.catch*lawRisk())return spyLog(`${a.n}'s mission ${rv?"against "+rv.n+" ":""}failed, but the agent got away`,0,quiet);
+  x.caught++;x.ag=x.ag.filter(y=>y!==a);const fine=Math.min(Math.round(o.p*3),Math.round(typeof taxCap==="function"?taxCap():o.p*3));S.cash-=fine;
+  let jl=false;if(o.k!=="plot"&&Math.random()<.3)try{jl=arrest("corporate espionage",6,null,quiet,0)}catch(e){}
+  spyLog(`${a.n} was caught ${rv?"spying on "+rv.n:"by the cartel"}: agent lost, fined ${fmt(fine)}${jl?" and you were arrested":""}`,0,quiet)}
+function spyTick(quiet,ns){const x=S.cspy;if(!x||!Array.isArray(x.ag))return;const now=Date.now();let d=0;for(const a of x.ag.slice())if(a&&a.op&&now>=+a.op.end){spyResolve(a,quiet);d=1}if(d&&!ns){save();hud()}}
+function spyApp(){const x=spyS();spyTick(false,1);const hp=spyHireP(),rv=(S.rivals||[]).map((r,i)=>r&&RIVALS[i]?i:-1).filter(i=>i>=0);
+  const sel=+(PH.spyR!=null&&rv.includes(PH.spyR)?PH.spyR:rv[0]),now=Date.now();
+  let h=`<div class="ph-sub">Hire agents to spy on rival companies. Missions can fail, and a caught agent costs you a fine${x.sh>(S.day||0)?` · 🛡 feud shield: ${x.sh-(S.day||0)} d`:""}.</div>
+  <div class="ph-rows"><div><span>Missions</span><b>${x.n} (${x.n?Math.round(x.ok/x.n*100):0}% success)</b></div><div><span>Agents caught</span><b>${x.caught}</b></div></div>`;
+  if(rv.length)h+=`<select id="spyrv" aria-label="Target rival" style="width:100%;margin:6px 0;color:#111">${rv.map(i=>`<option value="${i}"${i===sel?" selected":""}>${onEsc(RIVALS[i].n)}</option>`).join("")}</select>`;
+  h+=x.ag.length?x.ag.map((a,i)=>`<div class="ph-card"><b>🕴️ ${onEsc(a.n)} · skill ${"★".repeat(a.sk)}${"☆".repeat(5-a.sk)}</b>${a.op?`<span>${SPYCFG.op[a.op.k].ic} ${SPYCFG.op[a.op.k].n}${a.op.ri>=0&&RIVALS[a.op.ri]?" · "+onEsc(RIVALS[a.op.ri].n):""} · back in ${fmtDur(Math.max(0,a.op.end-now))}</span>`:
+    `<span>${Object.keys(SPYCFG.op).map(k=>{const O=SPYCFG.op[k];return `<button class="buy" data-ph="spysend" data-i="${i}" data-k="${k}" style="width:100%;margin-top:4px" title="${O.txt}" ${S.cash<spyOpP(k)||(O.rv&&!rv.length)?"disabled":""}>${O.ic} ${O.n} · ${fmt(spyOpP(k))} · ${Math.round(spyOdds(a,k)*100)}%</button>`}).join("")}</span>`}</div>`).join(""):`<p class="ph-sub">No agents yet.</p>`;
+  h+=`<button class="buy" data-ph="spyhire" style="width:100%;margin-top:6px" ${x.ag.length>=SPYCFG.max||S.cash<hp?"disabled":""}>${x.ag.length>=SPYCFG.max?`Agency full (${SPYCFG.max} agents)`:`Hire an agent · ${fmt(hp)}`}</button>
+  <p class="ph-sub" style="margin-top:6px">💾 steal tech: research points · 🧨 sabotage: rival net worth drops · 🕵️ cartel plot: bounty and a feud shield. A law firm lowers the risk of getting caught.</p>`;
+  if(x.log.length)h+=`<div class="ph-list" style="margin-top:8px">${x.log.map(l=>`<div><small>${fmtDur(now-l.at)} ago</small>${l.ok?"✅":"❌"} ${onEsc(l.t)}</div>`).join("")}</div>`;
+  return h}
+function spyAct(a,b){if(a==="spyhire")spyHire();else if(a==="spysend"){const s=PH.el.querySelector("#spyrv"),ri=s?+s.value:-1;if(s)PH.spyR=ri;spySend(+b.dataset.i,b.dataset.k,ri)}}
 const SPNM=["Rovers","United","Mariners","Comets","Titans","Athletic","Wanderers","Royals","Falcons","Kings"];
 function gxAct(a,b){gxS();const id=+b.dataset.c;
   if(a==="gxins"){const c=CITIES[id];if(!c)return;if(S.dsx.ins[id]){delete S.dsx.ins[id];toast(`Insurance cancelled in ${c.name}`)}else{S.dsx.ins[id]=1;toast(`${c.name} insured for ${fmt(dzPrem(c))}/day`)}}
@@ -14020,7 +14067,7 @@ const phScale=()=>Math.max(.5,Math.min(PH.sz,(innerWidth-8)/300,(innerHeight-8)/
 const phSave=()=>{try{localStorage.setItem("meridian-phone",JSON.stringify({open:PH.open,x:PH.x,y:PH.y}))}catch(e){}};
 let lastLog="";
 function trackNews(){const l=S.log[0];if(l&&l!==lastLog){lastLog=l;if(!S.news.length||S.news[0].t!==l){S.news.unshift({t:l,at:Date.now()});S.news=S.news.slice(0,40)}}}
-const ICO={space:`<path d="M12 2c3 2 5 6 5 10l-2 4H9l-2-4c0-4 2-8 5-10z M12 9.5a1.5 1.5 0 1 0 0 .01 M9 16l-3 3v2l4-2 M15 16l3 3v2l-4-2 M11 19h2v3h-2z"/>`,exch:`<path d="M3 21h18 M4 10h16 M12 3l9 5H3z M6 10v8 M10 10v8 M14 10v8 M18 10v8"/>`,events:`<path d="M5 21V4 M5 4h11l-2 4 2 4H5"/>`,auction:`<path d="M14 4l6 6-3 3-6-6z M11 7l-6 6 M8 10l6 6 M4 20h9 M13 13l7 7"/>`,lotto:`<path d="M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4z M14 7v12" stroke-dasharray="2 2"/>`,club:`<circle cx="12" cy="12" r="8"/><path d="M12 8l3 2.2-1.1 3.6h-3.8L9 10.2z M12 4v4 M19.6 9.5l-4.6.7 M17 18.5l-3-4.7 M7 18.5l3-4.7 M4.4 9.5l4.6.7"/>`,trophy:`<path d="M8 4h8v5a4 4 0 0 1-8 0z M8 6H5a3 3 0 0 0 3 4 M16 6h3a3 3 0 0 1-3 4 M12 13v4 M8 20h8 M9 17h6"/>`,props:`<path d="M3 20h18 M5 20V10l4-3v3l4-3v3l4-3v13 M17 7V4h2v16"/>`,rig:`<path d="M4 20h16 M7 20l3-12h4l3 12 M9 14h6 M10 8V4h4v4 M12 4V2"/>`,hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h.01 M16 9h.01"/>`,govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M3 10l9-6 9 6z"/>`,shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
+const ICO={spy:`<path d="M3 11h18 M6 11l2-6h8l2 6 M7.5 18a3 3 0 1 0 0-.01 M16.5 18a3 3 0 1 0 0-.01 M10.5 17.5h3"/>`,space:`<path d="M12 2c3 2 5 6 5 10l-2 4H9l-2-4c0-4 2-8 5-10z M12 9.5a1.5 1.5 0 1 0 0 .01 M9 16l-3 3v2l4-2 M15 16l3 3v2l-4-2 M11 19h2v3h-2z"/>`,exch:`<path d="M3 21h18 M4 10h16 M12 3l9 5H3z M6 10v8 M10 10v8 M14 10v8 M18 10v8"/>`,events:`<path d="M5 21V4 M5 4h11l-2 4 2 4H5"/>`,auction:`<path d="M14 4l6 6-3 3-6-6z M11 7l-6 6 M8 10l6 6 M4 20h9 M13 13l7 7"/>`,lotto:`<path d="M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4z M14 7v12" stroke-dasharray="2 2"/>`,club:`<circle cx="12" cy="12" r="8"/><path d="M12 8l3 2.2-1.1 3.6h-3.8L9 10.2z M12 4v4 M19.6 9.5l-4.6.7 M17 18.5l-3-4.7 M7 18.5l3-4.7 M4.4 9.5l4.6.7"/>`,trophy:`<path d="M8 4h8v5a4 4 0 0 1-8 0z M8 6H5a3 3 0 0 0 3 4 M16 6h3a3 3 0 0 1-3 4 M12 13v4 M8 20h8 M9 17h6"/>`,props:`<path d="M3 20h18 M5 20V10l4-3v3l4-3v3l4-3v13 M17 7V4h2v16"/>`,rig:`<path d="M4 20h16 M7 20l3-12h4l3 12 M9 14h6 M10 8V4h4v4 M12 4V2"/>`,hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h.01 M16 9h.01"/>`,govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M3 10l9-6 9 6z"/>`,shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
  wallet:'<path d="M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z M3 7l12-3v3 M16 13.5h2"/>',
  news:'<path d="M4 5h13v14H6a2 2 0 0 1-2-2z M17 9h3v8a2 2 0 0 1-2 2 M7 9h7 M7 12h7 M7 15h5"/>',
  needs:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -14035,7 +14082,7 @@ const ICO={space:`<path d="M12 2c3 2 5 6 5 10l-2 4H9l-2-4c0-4 2-8 5-10z M12 9.5a
  settings:'<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
  story:'<path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z M17 7h2v13 M8 8h6 M8 11h6 M8 14h4"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["props","Properties","#166534"],["pop","Population","#0369a1"],["trophy","Trophies","#a16207"],["story","Story","#6d28d9"],["lotto","Lottery","#9333ea"],["club","Sports","#16a34a"],["auction","Auction","#7c2d12"],["events","Events","#b91c1c"],["exch","Exchange","#1e40af"],["space","Space","#312e81"]];
+const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["props","Properties","#166534"],["pop","Population","#0369a1"],["trophy","Trophies","#a16207"],["story","Story","#6d28d9"],["lotto","Lottery","#9333ea"],["club","Sports","#16a34a"],["auction","Auction","#7c2d12"],["events","Events","#b91c1c"],["exch","Exchange","#1e40af"],["spy","Spy","#1f2937"],["space","Space","#312e81"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 /* side gutter for floating widgets: 12px or the safe-area inset, whichever is larger (measured from a hidden probe) */
 let _gutEl=null;function gutLR(){if(!_gutEl){_gutEl=document.createElement("div");_gutEl.setAttribute("aria-hidden","true");_gutEl.style.cssText="position:fixed;visibility:hidden;pointer-events:none;top:0;height:0;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px))";document.body.appendChild(_gutEl)}const r=_gutEl.getBoundingClientRect();return[r.left||12,Math.max(12,innerWidth-r.right)||12]}
@@ -14079,6 +14126,7 @@ function appHtml(k){const {inc,nw}=totals();
   if(k==="trophy")return achApp();
   if(k==="story")return storyApp();
   if(k==="lotto")return ltApp();
+  if(k==="spy")return spyApp();
   if(k==="auction")return aucApp();
   if(k==="events")return wevApp();
   if(k==="club")return spApp();
@@ -14156,6 +14204,7 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   else if(a==="buyitem"){const it=ITEMS.find(x=>x.k===b.dataset.k),p=itemPrice(it,CITIES[(S.home||{city:0}).city]);if(S.cash<p)return;S.cash-=p;for(const [q] of NEEDS)if(it[q])S.need[q]=Math.max(0,Math.min(100,S.need[q]+it[q]));toast(`${it.n} delivered`);save();hud()}
   else if(a==="repay"){if(B().card&&B().card.bal)payCard(true);else if(B().loans[0])repayLoan(B().loans[0].id,true);S.debt=bankDebt();save();hud()}
   else if(/^(gxins|ltfree|ltscr|ltbuy|spbuy|spbud|spsell)$/.test(a)){gxAct(a,b)}
+  else if(a==="spyhire"||a==="spysend"){spyAct(a,b)}
   else if(a==="auctab"||a==="aucbid"){aucAct(a,b)}
   else if(a==="evopen"){if(innerWidth<820)PH.open=false;wevOpen()}
   else if(/^ct[a-z]+$/.test(a)){ctAct(a,b)}
