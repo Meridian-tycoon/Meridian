@@ -1546,8 +1546,8 @@ const jobsIn=c=>JOBS.filter(j=>!j.ok||j.ok(c));
 const wage=(j,c)=>Math.round(j.w*COL(c)*100)/100;
 const homeRent=(h,c)=>Math.round(h.r*COL(c)*PRICE[c.size]*100)/100;
 const homeBuy=(h,c)=>Math.round(h.buy*PRICE[c.size]*PRICE[c.size]);
-function lifeIncome(){let v=0;if(S.job&&!(typeof jailed==="function"&&jailed())&&!S.trip&&S.loc&&S.loc.city===S.job.city)v+=wage(JK[S.job.k],CITIES[S.job.city])*(typeof jobLaw==="function"?jobLaw(CITIES[S.job.city]):1)*(typeof wageMult==="function"?wageMult():1)*(typeof rankMult==="function"?rankMult():1);if(S.home&&!S.home.own)v-=homeRent(HK[S.home.k],CITIES[S.home.city]);return v}
-function lifeAssets(){return S.home&&S.home.own?homeBuy(HK[S.home.k],CITIES[S.home.city])*.9:0}
+function lifeIncome(){let v=0;if(S.job&&!(typeof jailed==="function"&&jailed())&&!S.trip&&S.loc&&S.loc.city===S.job.city)v+=wage(JK[S.job.k],CITIES[S.job.city])*(typeof jobLaw==="function"?jobLaw(CITIES[S.job.city]):1)*(typeof wageMult==="function"?wageMult():1)*(typeof rankMult==="function"?rankMult():1)*(typeof happyMult==="function"?happyMult():1);if(typeof plUpkeep==="function")v-=plUpkeep();if(S.home&&!S.home.own)v-=homeRent(HK[S.home.k],CITIES[S.home.city]);return v}
+function lifeAssets(){return (S.home&&S.home.own?homeBuy(HK[S.home.k],CITIES[S.home.city])*.9:0)}
 /* Luxury: condos, mansions, jets, boats, a cruise ship. Use them yourself (vacation) or charter them out (business). Charter payback ~3-4 days, slower than real businesses. */
 const LUX=[
  {k:"condo",g:"Homes",n:"Beach condo",cost:250000,up:300,gr:3800,vac:25,d:"Sea-view condo. Rent it to holidaymakers or stay a while."},
@@ -1604,7 +1604,51 @@ function luxHtml(){const own=luxList(),now=Date.now();let h=`<div class="sec">Lu
     const cd=(o.vac||0)+12*DAYMS-now;
     h+=`<div class="row own"><div class="n">${x.n} <span class="tag boom">${o.biz?"Chartered":"Personal"}</span></div><div class="d">${o.biz?`Earning <b style="color:var(--good)">${fmt(net)}</b>/hr after upkeep`:`Upkeep ${fmt(x.up)}/hr${x.jet?` · free, ${Math.round((1-(x.spd||.7))*100)}% faster flights`:x.sea?" · sail between coastal cities":x.heli?" · fly across town":""}${cd>0?" · next vacation in "+fmtDur(cd):""}`}</div>
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${o.biz?"":`<button class="buy" data-life="luxvac" data-k="${x.k}" ${cd>0?"disabled":""}>Vacation</button>`}<button class="buy up" data-life="luxmode" data-k="${x.k}">${o.biz?"Keep for me":"Run as business"}</button><button class="buy up" data-life="luxsell" data-k="${x.k}">Sell ${fmt(x.cost*.8)}</button></span></div>`}
-  return h+`</div>`+gldHtml()+slvHtml()}
+  return h+`</div>`+plHtml()+gldHtml()+slvHtml()}
+/* Personal life: your car, a partner, kids and pets. Each costs upkeep per hour, slows how fast your needs drain and adds to Happiness.
+   Happiness 70+ gives +5% wages. Built on the Needs app (S.need) and the Life tab; S.pl={fam:{p,wed,kids,pets,date,time}}. */
+/* your car is the one from the phone's Travel app (S.car, CK). Pricier cars give more comfort; insurance and parking cost ~0.004% of the price per hour */
+const carTier=p=>p<10000?[.02,3]:p<30000?[.04,5]:p<50000?[.05,7]:p<100000?[.08,10]:p<500000?[.1,12]:p<1500000?[.12,13]:[.14,15];
+const myCar=()=>S.car&&typeof CK!=="undefined"&&CK[S.car.k]?CK[S.car.k]:null;
+const PETS=[{k:"cat",n:"Cat",cost:150,up:.3,m:.04},{k:"dog",n:"Dog",cost:600,up:.6,m:.05,h:.03}];
+const PETK=Object.fromEntries(PETS.map(x=>[x.k,x]));
+const FAM={date:120,wed:15000,kid:6000,kidUp:3,maxKids:3,timeCd:12*DAYMS,names:["Alex","Sam","Jordan","Taylor","Riley","Morgan","Casey","Jamie","Robin","Avery"]};
+function pl(){let p=S.pl;if(!p||typeof p!=="object")p=S.pl={};  if(!p.fam||typeof p.fam!=="object")p.fam={};const f=p.fam;f.kids=Math.max(0,Math.min(FAM.maxKids,f.kids|0));if(!Array.isArray(f.pets))f.pets=[];f.pets=f.pets.filter(k=>PETK[k]);return p}
+const plCol=()=>COL(CITIES[(S.home||{city:0}).city]||CITIES[0]);
+const bigHome=()=>(S.home&&S.home.k==="house")||luxList().some(o=>!o.biz&&LUXK[o.k].g==="Homes");
+/* hourly cost of cars (all of them), kids and pets, scaled to your home city's cost of living */
+function plUpkeep(){const p=pl(),f=p.fam;const car=myCar();let v=(car?car.p*.00004:0)+f.kids*FAM.kidUp+f.pets.reduce((a,k)=>a+PETK[k].up,0);return Math.round(v*plCol()*100)/100}
+/* how much slower each need drains (only your best car counts) */
+function plCut(k){const p=pl(),f=p.fam,c=myCar();let cut=0;if(c&&k==="m")cut+=carTier(c.p)[0];if(f.wed&&k==="m")cut+=.1;else if(f.p&&k==="m")cut+=.05;if(k==="m")cut+=f.kids*.03;
+  for(const q of f.pets)if(PETK[q][k])cut+=PETK[q][k];if(happy()>=70&&k==="m")cut+=.05;return Math.min(.35,cut)}
+function happy(){const N=S.need||{h:100,f:100,m:100},p=pl(),f=p.fam,c=myCar();let v=(N.h+N.f+N.m)/3*.5;
+  v+=S.home?(S.home.k==="house"?10:S.home.k==="studio"?6:3):0;if(luxList().some(o=>!o.biz))v+=5;v+=c?carTier(c.p)[1]:0;
+  v+=f.wed?10:f.p?6:0;v+=Math.min(10,f.kids*4);v+=f.pets.length?3:0;return Math.max(0,Math.min(100,Math.round(v)))}
+const happyMult=()=>happy()>=70?1.05:1;
+function plHtml(){const p=pl(),f=p.fam,now=Date.now(),col=plCol(),hp=happy();let h=`<div class="sec">Personal life</div><div class="list">`;
+  h+=`<div class="row own"><div class="n">😊 Happiness <span class="tag${hp>=70?" boom":""}">${hp}/100</span></div><div class="d">From your needs, home, car, family and pets. ${hp>=70?"<b style='color:var(--good)'>70+: wages +5% and your mood drains slower.</b>":"Reach 70 for +5% wages and slower mood drain."} Personal upkeep <b>${fmt(plUpkeep())}</b>/hr.</div><span></span></div>`;
+  h+=`<div class="d" style="font-weight:700;padding:6px 0 2px">Garage</div>`;
+  {const c=myCar();h+=c?`<div class="row own"><div class="n">🚗 ${c.n} <span class="tag boom">Yours</span></div><div class="d">Mood drains ${Math.round(carTier(c.p)[0]*100)}% slower · +${carTier(c.p)[1]} happiness · insurance and parking ${fmt(c.p*.00004*col)}/hr. Swap it in the phone's Travel app, Garage tab.</div><span></span></div>`
+    :`<div class="row"><div class="n">🚗 No car</div><div class="d">Buy one in the phone's Travel app, Garage tab. Better cars mean more comfort: up to +15 happiness and mood draining 14% slower.</div><span></span></div>`}
+  h+=`<div class="d" style="font-weight:700;padding:6px 0 2px">Family</div>`;
+  const dc=Math.round(FAM.date*col),wc=Math.round(FAM.wed*col),kc=Math.round(FAM.kid*col),dcd=(f.date||0)+DAYMS-now,tcd=(f.time||0)+FAM.timeCd-now;
+  if(!f.p)h+=`<div class="row"><div class="n">💐 Go on a date</div><div class="d">Dinner and drinks: +10 mood, and a 35% chance you meet someone special (mood drains 5% slower). Once a day.${dcd>0?" Next in "+fmtDur(dcd):""}</div><button class="buy" data-life="pldate" ${S.cash<dc||dcd>0?"disabled":""}>${fmt(dc)}</button></div>`;
+  else{h+=`<div class="row own"><div class="n">❤️ ${f.p} <span class="tag boom">${f.wed?"Married":"Dating"}</span></div><div class="d">${f.wed?"Your spouse: mood drains 10% slower.":"Your partner: mood drains 5% slower."} Family time once every 12 h: +20 mood, +5 health.${tcd>0?" Next in "+fmtDur(tcd):""}</div>
+      <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-life="pltime" ${tcd>0?"disabled":""}>Family time</button><button class="buy up" data-life="plsplit">Break up</button></span></div>`;
+    if(!f.wed){const why=!S.home||S.home.k==="room"?"Needs a studio or bigger home.":"";h+=`<div class="row"><div class="n">💍 Get married</div><div class="d">A wedding for family and friends. ${why}</div><button class="buy" data-life="plwed" ${why||S.cash<wc?"disabled":""}>${fmt(wc)}</button></div>`}
+    else if(f.kids<FAM.maxKids){const why=!bigHome()?"Needs a house or a luxury home you keep.":"";h+=`<div class="row"><div class="n">👶 Have a child</div><div class="d">Each child: mood drains 3% slower, +4 happiness, costs ${fmt(FAM.kidUp*col)}/hr. Up to ${FAM.maxKids}. ${why}</div><button class="buy" data-life="plkid" ${why||S.cash<kc?"disabled":""}>${fmt(kc)}</button></div>`}}
+  if(f.kids)h+=`<div class="row own"><div class="n">🧒 Children <span class="tag boom">${f.kids}</span></div><div class="d">Costs ${fmt(f.kids*FAM.kidUp*col)}/hr for school, food and clothes.</div><span></span></div>`;
+  for(const x of PETS){const own=f.pets.includes(x.k),c=Math.round(x.cost*col);h+=`<div class="row${own?" own":""}"><div class="n">${x.k==="dog"?"🐕":"🐈"} ${x.n}${own?' <span class="tag boom">Yours</span>':""}</div><div class="d">Upkeep ${fmt(x.up*col)}/hr · mood drains ${Math.round(x.m*100)}% slower${x.h?`, health ${Math.round(x.h*100)}% slower`:""}</div>${own?"<span></span>":`<button class="buy" data-life="plpet" data-k="${x.k}" ${S.cash<c||!S.home?"disabled":""}>Adopt ${fmt(c)}</button>`}</div>`}
+  return h+`</div>`}
+function plAct(a,b){const p=pl(),f=p.fam,col=plCol(),now=Date.now();
+  if(a==="pldate"){const c=Math.round(FAM.date*col);if(f.p||S.cash<c||now<(f.date||0)+DAYMS)return false;S.cash-=c;f.date=now;S.need.m=Math.min(100,S.need.m+10);
+    if(Math.random()<.35){f.p=FAM.names[Math.floor(Math.random()*FAM.names.length)];toast(`You hit it off with ${f.p}!`)}else toast("Nice evening, but no spark")}
+  else if(a==="pltime"){if(!f.p||now<(f.time||0)+FAM.timeCd)return false;f.time=now;S.need.m=Math.min(100,S.need.m+20);S.need.h=Math.min(100,S.need.h+5);toast("Family time: mood "+Math.round(S.need.m)+"%")}
+  else if(a==="plwed"){const c=Math.round(FAM.wed*col);if(!f.p||f.wed||!S.home||S.home.k==="room"||S.cash<c)return false;S.cash-=c;f.wed=now;S.need.m=Math.min(100,S.need.m+30);toast(`You married ${f.p}!`)}
+  else if(a==="plkid"){const c=Math.round(FAM.kid*col);if(!f.wed||f.kids>=FAM.maxKids||!bigHome()||S.cash<c)return false;S.cash-=c;f.kids++;S.need.m=Math.min(100,S.need.m+15);toast("Welcome to the family, little one!")}
+  else if(a==="plpet"){const x=PETK[b.dataset.k],c=x&&Math.round(x.cost*col);if(!x||f.pets.includes(x.k)||!S.home||S.cash<c)return false;S.cash-=c;f.pets.push(x.k);toast(`You adopted a ${x.n.toLowerCase()}`)}
+  else if(a==="plsplit"){if(!f.p)return false;if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return "arm"}const c=f.wed?Math.round(Math.max(0,S.cash)*.1):0;S.cash-=c;S.need.m=Math.max(0,S.need.m-25);toast(f.wed?`Divorced ${f.p}. Settlement: ${fmt(c)}`:`You and ${f.p} split up`);f.p=null;f.wed=0}
+  else return false;return true}
 /* population drives the economy: a country's people vs its starting population (S.popn[n].p0). Growth lifts demand a little,
    war/strike losses shrink markets and the job market. Bounded: demand ×0.80–1.10, hiring ×0.85–1.05. Reads S.popn directly (POPCFG is declared later). */
 function popRatio(n){const p=S.popn&&S.popn[n];return p&&p.p>0&&p.p0>0?p.p/p.p0:1}
@@ -1657,6 +1701,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-life]");if(!b
     else if(a==="luxsell"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm sale";return}S.cash+=x.cost*.8;S.lux=S.lux.filter(q=>q!==o);toast(`Sold ${x.n} for ${fmt(x.cost*.8)}`)}
     else if(a==="luxmode"){o.biz=!o.biz;toast(o.biz?`${x.n} is now chartered out`:`${x.n} is yours to enjoy`)}
     else if(a==="luxvac"){if(o.biz||Date.now()<(o.vac||0)+12*DAYMS)return;if(!S.need)S.need={h:100,f:100,m:100};o.vac=Date.now();S.need.m=Math.min(100,S.need.m+x.vac);S.need.f=Math.min(100,S.need.f+Math.round(x.vac/2));toast(`Vacation on your ${x.n.toLowerCase()}: mood ${Math.round(S.need.m)}%`)}}
+  else if(/^pl/.test(a)){const r=plAct(a,b);if(!r||r==="arm")return}
   else if(a==="quit"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}S.job=null;toast("You quit")}
   else return;save();hud();renderSheet()});
 
@@ -5886,7 +5931,7 @@ const GEAR=[
  {k:"wristwatch",n:"Luxury watch",p:8000,c:"Fashion",e:"Mind drains 4% slower"}];
 const GEARFX={fridge:{f:.15},microwave:{f:.05},washer:{m:.05},ac:{m:.08,h:.05},tv:{m:.08},console:{m:.05},dishwasher:{m:.03},dryer:{m:.03},airfryer:{f:.03},coffee:{m:.03},blender:{f:.02,h:.02},purifier:{h:.04},robovac:{m:.03},freezer:{f:.05},tablet:{m:.03},headphones:{m:.04},speaker:{m:.02},watch:{h:.04},camera:{m:.04},vr:{m:.04},pcrig:{m:.06},sofa:{m:.05},bed:{h:.06,m:.03},desk:{h:.03},chair:{h:.03},dining:{f:.03},bookcase:{m:.03},treadmill:{h:.08},weights:{h:.04},bike:{h:.05,m:.02},yogamat:{m:.02,h:.02},rower:{h:.06},suit:{m:.03},sneakers:{m:.02},jacket:{m:.02},wristwatch:{m:.04}};
 function gearOwn(){if(!S.gear||typeof S.gear!=="object")S.gear={};return S.gear}
-function gearDecay(k){const g=gearOwn();let cut=0;for(const x in GEARFX)if(g[x]&&GEARFX[x][k])cut+=GEARFX[x][k];return 1-Math.min(k==="h"?.15:.25,cut)}
+function gearDecay(k){const g=gearOwn();let cut=0;for(const x in GEARFX)if(g[x]&&GEARFX[x][k])cut+=GEARFX[x][k];return (1-Math.min(k==="h"?.15:.25,cut))*(typeof plCut==="function"?1-plCut(k):1)}
 function gearAssets(){const g=gearOwn();return GEAR.reduce((a,x)=>a+(g[x.k]?x.p*.5:0),0)}
 let shopTab="Cars";
 function shopApp(){const g=gearOwn();let h=`<div class="ph-seg ob-seg" style="grid-template-columns:repeat(3,1fr)">${["Cars","Appliances","Electronics","Furniture","Fitness","Fashion"].map(k=>`<button data-ph="shoptab" data-k="${k}" aria-pressed="${shopTab===k}">${k}</button>`).join("")}</div>`;
