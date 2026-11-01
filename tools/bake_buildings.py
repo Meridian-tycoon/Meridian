@@ -34,10 +34,10 @@ def height(tags):
         mh = ml * 3.66 if ml else 0
     return (h or 8.0), (mh or 0.0)
 
-def fetch(s, w, n, e):
+def query(s, w, n, e, tries):
     q = f'[out:json][timeout:180];(way["building"]({s},{w},{n},{e});way["building:part"]({s},{w},{n},{e}););out tags geom;'
     data = urllib.parse.urlencode({"data": q}).encode()
-    for attempt in range(6):
+    for attempt in range(tries):
         url = SERVERS[attempt % len(SERVERS)]
         try:
             req = urllib.request.Request(url, data=data, headers={"User-Agent": "meridian-bake/1"})
@@ -46,7 +46,22 @@ def fetch(s, w, n, e):
         except Exception as ex:
             print("  retry", attempt, url, ex, flush=True)
             time.sleep(10 * (attempt + 1))
-    raise SystemExit("Overpass failed for tile")
+    return None
+
+def fetch(s, w, n, e, depth=0):
+    """Busy downtown squares time out: after two tries split the square in four."""
+    els = query(s, w, n, e, 2 if depth < 3 else 6)
+    if els is not None:
+        return els
+    if depth >= 3:
+        raise SystemExit(f"Overpass failed for {s},{w},{n},{e}")
+    print(f"  splitting {s:.4f},{w:.4f} in four", flush=True)
+    ms, mw, out, ids = (s + n) / 2, (w + e) / 2, [], set()
+    for a, b, c, d in ((s, w, ms, mw), (s, mw, ms, e), (ms, w, n, mw), (ms, mw, n, e)):
+        for el in fetch(a, b, c, d, depth + 1):
+            if el.get("id") not in ids:
+                ids.add(el.get("id")); out.append(el)
+    return out
 
 def main(city):
     s0, w0, n0, e0 = CITIES[city]
