@@ -685,7 +685,7 @@ const USE={cart:{burgers:2},coffeecart:{bread:1},icecream:{bread:1},taco:{beef:1
 const WEEDSTOCK=["cannabis","prerolls","edibles","thcoil"];   // dispensary stock: any mix of these, 2 units/hr per level
 const supFrac=(c,b)=>USE[b.k]?((S.sup||{})[c.id]||{})[b.k]||0:0;
 function potential(b,c,lv){const k=bkey(c,b.k),o=S.opf[k],st=S.staff[k];S.opf[k]=1;S.staff[k]=1;const v=profit(b,c,lv);if(o==null)delete S.opf[k];else S.opf[k]=o;if(st)S.staff[k]=st;else delete S.staff[k];return v}
-function profit(b,c,lv){if(unhOn(c))return 0;if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round((typeof ofP==="function"?(1+.06*ofP("mkt"))*(ofCampOn()?1.1:1):1)*b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("marsciv")?1.25:1)*(1+(b.k==="dispensary"&&((S.sup||{})[c.id]||{}).dispAll?1.2:.35)*supFrac(c,b))*bonus(b,c)*compMult(c)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof mktMult==="function"?mktMult(c):1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(typeof gxMult==="function"?gxMult(c,b):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)*(typeof ishBiz==="function"?ishBiz(b):1)*(typeof pandMult==="function"?pandMult(b):1)*techBiz(b)*wevBiz(b)*(typeof ctTurf==="function"?ctTurf(c):1)*(typeof aucMult==="function"?aucMult(c):1)*(typeof wcBiz==="function"?wcBiz(b):1)*(b.fuel&&typeof gasFull==="function"&&gasFull(c,b)?1+GAS_FULL_B:1)-bizWage(b,c,lv))}
+function profit(b,c,lv){if(unhOn(c))return 0;if(typeof lawBan==="function"&&lawBan(c,b))return 0;return Math.round((typeof ofP==="function"?(1+.06*ofP("mkt"))*(ofCampOn()?1.1:1):1)*b.gross*menuG(c,b)*.85*(typeof lawMult==="function"?lawMult(c,b):1)*(typeof opFactor==="function"?opFactor(c,b):1)*(1+Math.min(.5,(S.sats||0)*.005))*(hasTech("marsciv")?1.25:1)*(1+(b.k==="dispensary"&&((S.sup||{})[c.id]||{}).dispAll?1.2:.35)*supFrac(c,b))*bonus(b,c)*compMult(c)*(typeof lrvMult==="function"?lrvMult(c,b):1)*DEMAND[c.size]*evMult(c)*(S.mgr[c.id]?1.2:1)*(typeof mktMult==="function"?mktMult(c):1)*(typeof burnout==="function"?burnout():1)*((S.bonus||{})[c.id]?1.08:1)*(typeof hqNetB==="function"?1+hqNetB(c):1)*(typeof gxMult==="function"?gxMult(c,b):1)*(1+0.55*(lv-1))*(typeof hrOut==="function"?hrOut(c,b):1)*(typeof ishBiz==="function"?ishBiz(b):1)*(typeof pandMult==="function"?pandMult(b):1)*techBiz(b)*wevBiz(b)*(typeof ctTurf==="function"?ctTurf(c):1)*(typeof aucMult==="function"?aucMult(c):1)*(typeof wcBiz==="function"?wcBiz(b):1)*(b.fuel&&typeof gasFull==="function"&&gasFull(c,b)?1+GAS_FULL_B:1)-bizWage(b,c,lv))}
 // hourly wages a business is charged inside profit(); HQ Employees shows the same figure
 const WAGECUT=.95; // Mark 2026-10-28: every wage in the game is 5% lower
 function bizWage(b,c,lv){return WAGECUT*b.up*1.15*(typeof isStaffed==="function"&&!isStaffed(c,b.k)&&!(typeof tenantRun==="function"&&tenantRun(b.k))?.25:1)*PRICE[c.size]*((S.bonus||{})[c.id]?1.25:1)*(1+0.15*(lv-1))*(typeof hrPay==="function"?hrPay(c,b):1)*techWage()}
@@ -1023,7 +1023,7 @@ function renderSheet(){sheet.classList.remove("bzv");if(mode==="sv")return;if(mo
     for(const i of here)h+=`<div class="row"><div class="n"><span style="display:inline-block;width:9px;height:9px;background:${RIVALS[i].col};margin-right:6px"></span>${RIVALS[i].n}</div>
       <div class="d">Buy out their local branch to win back customers.<br><small style="color:var(--muted)">${rivalFacts(i)}</small></div><button class="buy up" data-bo="${i}" ${S.cash<bc?"disabled":""}>Buy out ${fmt(bc)}</button></div>`;
     h+=`</div>`}
-  h+=exRow(c);h+=fchHtml(c);
+  h+=lrvHtml(c);h+=exRow(c);h+=fchHtml(c);
   if(bzF.v!=="mine"){h+=`<div class="sec">Open a business${bzq||bzF.aff?` <small>${avail.length} of ${avail0.length}</small>`:""}</div><div class="list">`;
   for(const b of avail){const k=cost(b,c),blk=bizBlock(b,c),lock=0,p=potential(b,c,1),pn=p-(SUP[b.k]?useRate(b,1,c)*unitCost(b,c):0),pay=pn>0?Math.ceil(k/pn):null;
     h+=`<div class="row"${lock?' style="opacity:.6"':""}><div class="n">${lock?"🔒 ":""}${b.n}</div>
@@ -1679,6 +1679,35 @@ function mktHtml(c){const live=mcLive(),here=live.filter(x=>x.city===c.id||x.cit
   for(const t of MKT){const busy=t.g?live.some(x=>x.city==null):live.some(x=>x.city===c.id),p=mktCost(t,c),b=mktBoost(t,c);
     h+=`<div class="row"><div class="n">${t.e} ${t.n}</div><div class="d">+${Math.round(b*100)}% sales ${t.g?"in all your cities":"here"} for ${mktDur(t)}${b<t.b-.001?` <span style="color:var(--bad)">(audience tired: was +${Math.round(t.b*100)}%)</span>`:""}</div><button class="buy up" data-mkt="${t.k}" ${S.cash<p||busy?"disabled":""}>${busy?(live.some(x=>x.k===t.k&&(t.g||x.city===c.id))?"Running":"Wait"):"Run "+fmt(p)}</button></div>`}
   return h}
+/* ---------- Local business rivals (Earth) ----------
+   Named AI competitors open next to your best sites and start a price war on that one business.
+   S.lrv["cityId|bizKey"]={n,cut,hp,lv,d}: cut = share of that business's gross lost (starts 15%, +2%/day, max 35%);
+   hp starts 100 and drops each game day you fight back: -35 while any campaign runs in that city, -30 per level
+   your units there gained since the rival opened. At 0 hp the rival closes. One opens about every 12 game days
+   (max 3 at once, only on businesses earning over 0). Dev account: rivals still show, but take no customers. */
+const LRV_N=["Ortega","Nakamura","Okafor","Lindgren","Rossi","Patel","Kowalski","Moreau","Haddad","Silva","Novak","Kim","Brennan","Duarte","Achebe","Volkov"];
+const LRV_S=["& Sons","Express","Discount","Prime","Corner","Budget","Plus","City"];
+function lrvS(){if(!S.lrv||typeof S.lrv!=="object"||Array.isArray(S.lrv))S.lrv={};for(const key in S.lrv){const r=S.lrv[key],[id,k]=key.split("|");if(!r||typeof r!=="object"||!CITIES[id]||!BIZ.some(b=>b.k===k)||!(S.own[id]||{})[k]){delete S.lrv[key];continue}
+  r.cut=Math.min(.35,Math.max(.05,+r.cut||.15));r.hp=Number.isFinite(+r.hp)?Math.max(0,Math.min(100,+r.hp)):100;r.lv=Number.isFinite(+r.lv)?+r.lv:1;if(typeof r.n!=="string")r.n="Local rival"}return S.lrv}
+lrvS();
+const lrvLv=(id,k)=>uSum(id,k,l=>l);
+function lrvMult(c,b){const r=S.lrv&&S.lrv[c.id+"|"+b.k];if(!r||devGod())return 1;return 1-r.cut}
+function lrvDay(quiet){const R=lrvS(),live=mcLive();
+  for(const key in R){const r=R[key],[id,k]=key.split("|"),c=CITIES[id],b=BIZ.find(x=>x.k===k),lv=lrvLv(id,k);
+    let hit=0;if(live.some(x=>x.city==null||x.city===c.id))hit+=35;if(lv>r.lv){hit+=30*(lv-r.lv);r.lv=lv}
+    r.hp=Math.max(0,r.hp-hit);
+    if(r.hp<=0){delete R[key];if(!quiet){S.log.unshift(`${r.n} closed in ${c.name}: your ${b.n.toLowerCase()} won its customers back`);S.log=S.log.slice(0,3)}continue}
+    if(!hit)r.cut=Math.min(.35,r.cut+.02)}
+  if(Object.keys(R).length>=3||Math.random()>1/12)return;
+  let best=null,bp=0;for(const id in S.own){const c=CITIES[id];if(!c)continue;for(const b of BIZ){if(!S.own[id][b.k]||R[id+"|"+b.k])continue;const p=uSum(id,b.k,l=>profit(b,c,l));if(p>bp){bp=p;best=[c,b]}}}
+  if(!best)return;const[c,b]=best,n=`${LRV_N[Math.floor(Math.random()*LRV_N.length)]} ${LRV_S[Math.floor(Math.random()*LRV_S.length)]}`;
+  R[c.id+"|"+b.k]={n,cut:.15,hp:100,lv:lrvLv(c.id,b.k),d:S.day||0};
+  if(!quiet){S.log.unshift(`${n} opened next to your ${b.n.toLowerCase()} in ${c.name} and cut prices`);S.log=S.log.slice(0,3);try{toast(`⚔️ ${n} opened next to your ${b.n.toLowerCase()} in ${c.name}`)}catch(e){}}}
+function lrvHtml(c){const R=lrvS(),here=Object.keys(R).filter(key=>key.split("|")[0]==String(c.id));if(!here.length)return"";
+  let h=`<div class="sec">Local rivals · price war</div><div class="list">`;
+  for(const key of here){const r=R[key],b=BIZ.find(x=>x.k===key.split("|")[1]);
+    h+=`<div class="row"><div class="n">⚔️ ${r.n}</div><div class="d">Undercutting your ${b.n.toLowerCase()}: <b style="color:var(--bad)">−${Math.round(r.cut*100)}% sales</b>${devGod()?" (dev account: no loss)":""} · strength ${Math.round(r.hp)}%<br><small style="color:var(--muted)">Fight back: run a marketing campaign here (−35 a day) or upgrade this business (−30 per level). Their cut grows every day you don't.</small></div><span></span></div>`}
+  return h+`</div>`}
 S.hq=S.hq||{};S.reg=S.reg||{};S.bonus=S.bonus||{};
 const TAXDAYS=7,TAXP=TAXDAYS*24*DAYMS,TAX_REG=.2,TAX_UNREG=.4;
 if(!S.tax)S.tax={start:Date.now(),reg:0,unreg:0,paid:0};
@@ -3055,7 +3084,7 @@ setInterval(worldNews,4*60000);setTimeout(worldNews,20000);
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
 let pops=[]; // floating income labels
 function simDay(quiet){const{nw}=totals();try{wrDay(nw,quiet)}catch(e){console.warn("wrDay",e)}S.day++;try{gldDay()}catch(e){}try{slvDay()}catch(e){}if(typeof hrDay==="function")hrDay(quiet);driftPrices();lxDay(quiet);try{lxSnap()}catch(e){console.warn("lxSnap",e)}try{fxDay(quiet)}catch(e){console.warn("fxDay",e)}try{pandDay(quiet)}catch(e){console.warn("pandDay",e)}try{gxDay(quiet)}catch(e){console.warn("gxDay",e)}try{flipDay(quiet)}catch(e){console.warn("flipDay",e)}try{skyDay(quiet)}catch(e){console.warn("skyDay",e)}try{wevDay()}catch(e){console.warn("wevDay",e)}try{ipoDay(quiet)}catch(e){console.warn("ipoDay",e)}
-  try{mktDay()}catch(e){console.warn("mktDay",e)}audits(quiet);simProps(quiet);
+  try{mktDay()}catch(e){console.warn("mktDay",e)}try{lrvDay(quiet)}catch(e){console.warn("lrvDay",e)}audits(quiet);simProps(quiet);
   for(const id in S.own){const c=CITIES[id];for(const b of BIZ){const lv=S.own[id][b.k];if(!lv||Math.random()>.004)continue;
     const kinds=[["Break-in at your",.04],["Equipment breakdown at your",.03],["Health inspection fine at your",.02],["Customer lawsuit against your",.06]],[t,f]=kinds[Math.floor(Math.random()*kinds.length)];
     const o2=S.own[id];if(t.startsWith("Break-in")&&hasT(o2,"secfirm")&&Math.random()<.7)continue;if(t.startsWith("Customer lawsuit")&&hasT(o2,"lawfirm"))continue;
