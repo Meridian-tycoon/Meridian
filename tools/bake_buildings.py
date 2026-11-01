@@ -63,7 +63,25 @@ def fetch(s, w, n, e, depth=0):
                 ids.add(el.get("id")); out.append(el)
     return out
 
-def main(city):
+
+def load_geojsonseq(path):
+    """Buildings from `osmium export -f geojsonseq` (Geofabrik extract), as Overpass-like elements."""
+    els = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip().lstrip("\x1e")
+            if not line:
+                continue
+            ft = json.loads(line)
+            g = ft.get("geometry") or {}
+            rings = [g["coordinates"][0]] if g.get("type") == "Polygon" else \
+                    [p[0] for p in g["coordinates"]] if g.get("type") == "MultiPolygon" else []
+            for r in rings:
+                els.append({"tags": ft.get("properties") or {},
+                            "geometry": [{"lon": x, "lat": y} for x, y in r]})
+    return els
+
+def main(city, local=None):
     s0, w0, n0, e0 = CITIES[city]
     out = os.path.join("data", "buildings", city)
     os.makedirs(out, exist_ok=True)
@@ -74,14 +92,14 @@ def main(city):
             w = w0 + ix * TILE; s = s0 + iy * TILE
             name = f"{ix}_{iy}.json"
             path = os.path.join(out, name)
-            if os.path.exists(path):  # resume: a square saved by an earlier run is kept
+            if local is None and os.path.exists(path):  # resume: a square saved by an earlier run is kept
                 with open(path) as f:
                     nb = len(json.load(f)["b"])
                 tiles.append({"f": name, "w": round(w, 6), "s": round(s, 6), "n": nb})
                 total += nb
                 continue
             # take a building in the tile its first point falls in, so seams have no copies
-            els = fetch(s, w, s + TILE, w + TILE)
+            els = local if local is not None else fetch(s, w, s + TILE, w + TILE)
             o = [round(w, 6), round(s, 6)]
             b = []
             for el in els:
@@ -107,11 +125,13 @@ def main(city):
             tiles.append({"f": name, "w": round(w, 6), "s": round(s, 6), "n": len(b)})
             total += len(b)
             print(f"tile {name}: {len(b)} buildings", flush=True)
-            time.sleep(2)
+            if local is None:
+                time.sleep(2)
     with open(os.path.join(out, "index.json"), "w") as f:
         json.dump({"city": city, "bbox": [w0, s0, e0, n0], "tile": TILE, "count": total,
                    "baked": time.strftime("%Y-%m-%d"), "tiles": tiles}, f, separators=(",", ":"))
     print("total", total)
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "montreal")
+    city = sys.argv[1] if len(sys.argv) > 1 else "montreal"
+    main(city, load_geojsonseq(sys.argv[2]) if len(sys.argv) > 2 else None)

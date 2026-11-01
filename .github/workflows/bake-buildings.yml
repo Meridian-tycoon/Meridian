@@ -16,8 +16,16 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      - timeout-minutes: 100
-        run: python3 tools/bake_buildings.py "${{ inputs.city || 'montreal' }}"
+      - name: Cut Montreal out of the Quebec map file (Geofabrik) and bake it
+        timeout-minutes: 100
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q osmium-tool
+          curl -sSfL -o qc.pbf https://download.geofabrik.de/north-america/canada/quebec-latest.osm.pbf
+          osmium extract -b -73.98,45.40,-73.47,45.71 qc.pbf -o mtl.pbf
+          osmium tags-filter mtl.pbf a/building a/building:part w/building w/building:part -o bld.pbf
+          osmium export bld.pbf -f geojsonseq -o bld.geojsonseq --geometry-types=polygon
+          rm -rf data/buildings/montreal
+          python3 tools/bake_buildings.py montreal bld.geojsonseq
       - if: always()
         run: du -sh data/buildings/* || true
       - name: Commit baked files (also after a timeout, so the next run resumes)
