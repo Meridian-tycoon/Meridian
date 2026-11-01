@@ -2723,7 +2723,7 @@ let detKeys=new Set(),detChunks=[],detOrg=null,detNight=null,detQ=null,detQc=nul
 function detHidePlain(on){try{const ids=detLayers();if(on){for(const id of ids){if(!(id in origVis))origVis[id]=MM.getLayoutProperty(id,"visibility")||"visible";if(MM.getLayoutProperty(id,"visibility")!=="none")MM.setLayoutProperty(id,"visibility","none")}detHidden=true}
   else{for(const id in origVis){try{MM.setLayoutProperty(id,"visibility",origVis[id])}catch(e){}}origVis={};detHidden=false}}catch(e){}}
 function detReset(){clearTimeout(detTimer);detTimer=0;detKeys=new Set();detChunks=[];detOrg=null;detQ=null;detDirty=true;detLm=false;try{if(modelLayer&&modelLayer.ready())modelLayer.resetDetail()}catch(e){}}
-function detRestore(){detReset();detHidePlain(false);detLast=null;try{MM.triggerRepaint()}catch(e){}}
+function detRestore(){detReset();detHidePlain(false);detLast=null;/* leaving street view: let go of the saved Montreal squares (reloaded when you come back) */for(const k in bakedTiles)if(bakedTiles[k])delete bakedTiles[k];try{MM.triggerRepaint()}catch(e){}}
 /* ?dev=1 readout: what the swap last did, for screenshots */
 function detDbg(n,built,R){try{if(localStorage.getItem("meridian-dev")!=="1")return;detInfo={n,built,R};if(detHud)return;
   const d=document.createElement("div");d.id="detDbg";d.style.cssText="position:fixed;left:6px;bottom:64px;z-index:9;font:11px monospace;color:#9f9;background:#000a;padding:2px 6px;border-radius:4px;pointer-events:none;white-space:pre";document.body.appendChild(d);
@@ -2743,6 +2743,8 @@ function bakedNeed(ce,R,mLng,mLat){const c=bakedCity(ce.lng,ce.lat);if(!c)return
       /* key worked out once here, not every time the queue is rebuilt */
       b.push({ring,h:r[0],mh:r[1],x:ring[0][0],y:ring[0][1],key:ring[0][0].toFixed(6)+","+ring[0][1].toFixed(6)+","+ring.length})}bakedTiles[id]=b;refreshDetail()}).catch(()=>{bakedTiles[id]=[]});continue}
     if(v===null)continue;for(const x of v)rows.push(x)}
+  /* squares well away from the view are let go so memory does not keep growing as you travel */
+  for(const t of ix.tiles){const id=c+"/"+t.f;if(bakedTiles[id]&&(t.w>ce.lng+dLng+T||t.w<ce.lng-dLng-T||t.s>ce.lat+dLat+T||t.s<ce.lat-dLat-T))delete bakedTiles[id]}
   /* tiles still loading are skipped; detDirty re-runs the queue when they arrive */
   return {c,rows}}
 function detQueue(base,ce,mLng,mLat,R){const sl=base.sourceLayer||base["source-layer"],bk=bakedNeed(ce,R,mLng,mLat),fs0=MM.querySourceFeatures(base.source,sl?{sourceLayer:sl}:{}),seen=new Set(),out=[];
