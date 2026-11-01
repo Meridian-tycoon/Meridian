@@ -13780,6 +13780,12 @@ function mgTex(){if(CO.bg.mgTex)return CO.bg.mgTex;const W=2048,H=1024,c=documen
   // craters
   for(let i=0;i<900;i++){const lng=rnd()*360-180,lat=rnd()*160-80,[px,py]=P(lng,lat),r=(1+rnd()*rnd()*rnd()*14)/Math.max(.25,Math.cos(lat*Math.PI/180))*(W/2048),ry=1+rnd()*rnd()*rnd()*14;
     x.save();x.translate(px,py);x.scale(r/ry,1);x.fillStyle="rgba(70,25,8,.35)";x.beginPath();x.arc(0,0,ry,0,7);x.fill();x.strokeStyle="rgba(245,185,140,.35)";x.lineWidth=1;x.beginPath();x.arc(0,ry*.08,ry,.3,2.8);x.stroke();x.restore()}
+  // rough ground: wind streaks, rocky ridges and fine grain so the surface reads as rough regolith
+  for(let i=0;i<500;i++){const [px,py]=P(rnd()*360-180,rnd()*150-75),L=8+rnd()*40,a=rnd()*7;x.strokeStyle=rnd()<.5?"rgba(70,25,8,.18)":"rgba(240,170,120,.14)";x.lineWidth=.6+rnd()*1.4;x.beginPath();x.moveTo(px,py);
+    let qx=px,qy=py;for(let k=0;k<6;k++){qx+=Math.cos(a)*L/6+(rnd()-.5)*4;qy+=Math.sin(a)*L/6+(rnd()-.5)*4;x.lineTo(qx,qy)}x.stroke()}
+  for(let i=0;i<500;i++){const [px,py]=P(rnd()*360-180,rnd()*150-75),r=2+rnd()*rnd()*12,n=9;x.fillStyle="rgba(60,22,8,.28)";x.strokeStyle="rgba(250,190,145,.3)";x.lineWidth=1;x.beginPath();
+    for(let k=0;k<=n;k++){const a=k/n*7,rr=r*(.75+rnd()*.5);k?x.lineTo(px+Math.cos(a)*rr,py+Math.sin(a)*rr):x.moveTo(px+Math.cos(a)*rr,py+Math.sin(a)*rr)}x.fill();x.stroke()}
+  {const id=x.getImageData(0,0,W,H),d=id.data;for(let i=0;i<d.length;i+=4){const n=(rnd()-.5)*26;d[i]+=n;d[i+1]+=n*.8;d[i+2]+=n*.6}x.putImageData(id,0,0)}
   // polar caps
   const cap=(top)=>{const g=x.createLinearGradient(0,top?0:H,0,top?H*.09:H*.91);g.addColorStop(0,"rgba(250,248,245,.97)");g.addColorStop(.7,"rgba(245,235,225,.75)");g.addColorStop(1,"rgba(245,235,225,0)");x.fillStyle=g;x.fillRect(0,top?0:H*.91,W,H*.09)};cap(1);cap(0);
   return CO.bg.mgTex=c}
@@ -13887,12 +13893,13 @@ const MG3={z:4.6,maxZ:11,r:26,
     oxy:[["r",0,0,[1.6,1],0,.1,"#94a3b8"],["r",-.4,0,[.7,.8],.1,.6,"#e2e8f0"],["c",.45,.25,.25,.1,1.1,"#38bdf8"],["c",.45,-.25,.25,.1,1.1,"#38bdf8"],["c",.45,.25,.27,1.1,1.15,"#e0f2fe"],["c",.45,-.25,.27,1.1,1.15,"#e0f2fe"],["r",-.6,.2,[.12,.12],.6,1.2,"#64748b"]],
     food:[["r",0,0,[1.6,1.1],0,.1,"#94a3b8"],["r",0,0,[1.3,.8],.1,.55,"#fde68a"],["r",0,0,[1.3,.3],.55,.7,"#d97706"],["c",.5,.55,.18,0,.8,"#cbd5e1"],["c",-.5,.55,.18,0,.8,"#cbd5e1"]],
     rover:[["r",0,0,[1.5,1],0,.5,"#cbd5e1"],["r",0,.48,[1.1,.08],0,.4,"#475569"],["r",0,0,[1.5,1],.5,.58,"#64748b"],["r",.2,.9,[.5,.3],0,.18,"#f59e0b"],["c",-.05,.82,.07,0,.07,"#111827"],["c",.45,.82,.07,0,.07,"#111827"]]}};
-function mg3Poly(lng,lat,p){const R=MG3.r,[sh,dx,dy,sz]=p,kx=1/(111.32*Math.max(.05,Math.cos(lat*Math.PI/180))),ky=1/110.57,cx=lng+dx*R*kx,cy=lat+dy*R*ky,ring=[];
-  if(sh==="c"){for(let i=0;i<=20;i++){const a=i/20*Math.PI*2;ring.push([cx+Math.cos(a)*sz*R*kx,cy+Math.sin(a)*sz*R*ky])}}
-  else{const w=sz[0]/2*R,d=sz[1]/2*R;ring.push([cx-w*kx,cy-d*ky],[cx+w*kx,cy-d*ky],[cx+w*kx,cy+d*ky],[cx-w*kx,cy+d*ky],[cx-w*kx,cy-d*ky])}return[ring]}
+function mg3Poly(lng,lat,p,sd){const R=MG3.r,[sh,dx,dy,sz]=p,kx=1/(111.32*Math.max(.05,Math.cos(lat*Math.PI/180))),ky=1/110.57,cx=lng+dx*R*kx,cy=lat+dy*R*ky,ring=[];
+  let h=(sd|0)*2654435761+977;const rn=()=>{h=Math.imul(h^h>>>15,2246822507)^Math.imul(h^h>>>13,3266489909);return ((h>>>0)%1000)/1000-.5};   // weathered, hand-built look: edges wobble a little
+  if(sh==="c"){const n=14;for(let i=0;i<n;i++){const a=i/n*Math.PI*2,k=1+rn()*.1;ring.push([cx+Math.cos(a)*sz*k*R*kx,cy+Math.sin(a)*sz*k*R*ky])}ring.push(ring[0])}
+  else{const w=sz[0]/2*R,d=sz[1]/2*R,j=Math.min(w,d)*.12,c=[[-w,-d],[0,-d],[w,-d],[w,0],[w,d],[0,d],[-w,d],[-w,0]];for(const q of c)ring.push([cx+(q[0]+rn()*j)*kx,cy+(q[1]+rn()*j)*ky]);ring.push(ring[0])}return[ring]}
 function mg3Feats(){const out=[],R=MG3.r*1000,now=Date.now(),st=mbFlags(),w=mgWind(now),add=(b,props,dim)=>{const g=mgGrow(b,now),pp=(MG3.parts[b.k]||[]).concat(dim?[]:mgExtra(b,st,w,now));
-    for(let p of pp){let col=dim?mg3Dim(p[6]):p[6];if(b.k==="solar"&&p[6]==="#1e3a8a")col=mgMix(col,"#b8693c",mbDust(b,now));if(b.k==="mast"&&p[5]>1.5&&w)p=[p[0],p[1]+w*.05*p[5]/2.6,p[2]].concat(p.slice(3));
-      out.push({type:"Feature",properties:Object.assign({b:p[4]*R*g,h:Math.max(p[4]*R*g+1,p[5]*R*g),col},props),geometry:{type:"Polygon",coordinates:mg3Poly(b.lng,b.lat,p)}})}};
+    let pi=0;for(let p of pp){pi++;const sd=(b.id||Math.round(b.lng*977+b.lat*131))*31+pi;let col=mgMix(dim?mg3Dim(p[6]):p[6],"#6b3a22",.1+.12*(((sd*2654435761)>>>0)%100)/100);if(b.k==="solar"&&p[6]==="#1e3a8a")col=mgMix(col,"#b8693c",mbDust(b,now));if(b.k==="mast"&&p[5]>1.5&&w)p=[p[0],p[1]+w*.05*p[5]/2.6,p[2]].concat(p.slice(3));
+      out.push({type:"Feature",properties:Object.assign({b:p[4]*R*g,h:Math.max(p[4]*R*g+1,p[5]*R*g),col},props),geometry:{type:"Polygon",coordinates:mg3Poly(b.lng,b.lat,p,sd)}})}};
   MBO.list.forEach((o,oi)=>o.b.forEach((b,bi)=>add(b,{oi,bi},1)));MB().b.forEach(b=>add(b,{id:b.id},0));return{type:"FeatureCollection",features:out}}
 function mg3Dim(c){const n=parseInt(c.slice(1),16),f=v=>Math.round(v*.7+128*.3);return "#"+[n>>16,n>>8&255,n&255].map(v=>f(v).toString(16).padStart(2,"0")).join("")}
 function mg3Layer(){const m=MG.map;try{if(!m.getSource("mb3d"))m.addSource("mb3d",{type:"geojson",data:mg3Feats()});
