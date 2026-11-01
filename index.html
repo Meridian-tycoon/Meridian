@@ -989,7 +989,7 @@ function renderSheet(){sheet.classList.remove("bzv");if(mode==="sv")return;if(mo
   let h=`<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}${typeof stormAt==="function"&&stormAt(c)?`<span class="tag bust">STORM</span>`:""}${dmgLvl(c)>=DMG.dead?`<span class="tag bust">DESTROYED</span>`:dmgLvl(c)>=.05?`<span class="tag bust">DAMAGED</span>`:""}</h2>
     <p>${c.country} · market size ${"●".repeat(c.size)}${"○".repeat(5-c.size)}</p></div>
     <button class="x" id="cls" aria-label="Close">×</button></div>
-    <div class="meta"><div><span>Land price </span>×${PRICE[c.size]}</div><div><span>Demand </span>×${(DEMAND[c.size]*evMult(c)*compMult(c)).toFixed(2)}</div><div><span>Yours </span>${fmt(cityProfit(c))}/hr</div></div>${dmgLine(c)}`+tabsHtml()+(()=>{const f=stFeudLine(c);return f?`<div class="list">${f}</div>`:""})();
+    <div class="meta"><div><span>Land price </span>×${PRICE[c.size]}</div><div><span>Demand </span>×${(DEMAND[c.size]*evMult(c)*compMult(c)).toFixed(2)}</div><div><span>Yours </span>${fmt(cityProfit(c))}/hr</div></div>${dmgLine(c)}${typeof rbHtml==="function"?rbHtml(c):""}`+tabsHtml()+(()=>{const f=stFeudLine(c);return f?`<div class="list">${f}</div>`:""})();
   const mine0=BIZ.filter(b=>o[b.k]),avail0=BIZ.filter(b=>!o[b.k]&&(b.cx==null||b.cx===c.id));
   const bzq=bzF.q.trim().toLowerCase(),bzm=b=>!bzq||b.n.toLowerCase().includes(bzq)||(b.d||"").toLowerCase().includes(bzq);
   const bzNet=b=>{const p=potential(b,c,1);return p-(SUP[b.k]?useRate(b,1,c)*unitCost(b,c):0)},bzSort=(a,f)=>bzF.s==="az"?a.sort((x,y)=>x.n.localeCompare(y.n)):bzF.s==="cheap"?a.sort((x,y)=>cost(x,c)-cost(y,c)):a.sort((x,y)=>f(y)-f(x));
@@ -9876,6 +9876,31 @@ function rcnAward(id,i){const c=CITIES[id];if(!c||!rcnGov(c.country))return;cons
   if(!free)S.cash-=b.price;S.dmg[id]={l0:Math.round(l*1e4)/1e4,t:now,own:e.own,k:e.k,sp:b.sp,rc:b.firm};
   const g=gov(c.country),up=Math.min(8,RCN.appr*l);g.appr=Math.min(100,(+g.appr||0)+up);
   logGov(`${c.country} hires ${b.firm} to rebuild ${c.name}`);save();toast(`${b.firm} is rebuilding ${c.name} at ${b.sp}× speed · approval +${up.toFixed(1)}`)}
+/* ---------- rebuilding contracts for businesses: after a strike, a damaged city tenders its rebuild and the player's company can bid.
+   Win: pay materials up front, rebuild at RB.sp× speed, get paid the full contract when the city is rebuilt. A new strike before then voids the job and the materials are lost.
+   S.rb[id]={t,cost,pay} while a job runs; S.rbX[id]=strike time of a tender already bid on (one bid per strike). */
+const RB={me:"Your company",sp:2,mat:.8, // repair speed ×, materials = mat × base value
+  bids:[["Lean",1.15,.8],["Fair",1.35,.55],["Steep",1.7,.3]]}; // [label, pay × base value, win chance]
+function rbBase(c){return Math.round(RCN.cost*(c.size||1)*dmgLvl(c)/1e5)*1e5}
+function rbHtml(c){const now=Date.now(),e=(S.dmg||{})[c.id],l=dmgLvl(c),j=(S.rb||{})[c.id];
+  if(j)return `<div class="sec">Rebuilding contract</div><div class="list"><div class="row own"><div class="n">You are rebuilding ${c.name}</div><div class="d">Paid ${fmt(j.cost)} for materials. The city pays <b>${fmt(j.pay)}</b> when the rebuild is done in ${fmtDur(dmgLeft(c))}. A new strike before then cancels the job.</div></div></div>`;
+  if(!e||l<.005||e.rc||rcnGov(c.country)||(+(S.unh||{})[c.id]||0)>now)return "";
+  const base=rbBase(c),m=Math.round(base*RB.mat),bid=(S.rbX||{})[c.id]===e.t;
+  return `<div class="sec">Rebuilding contract</div><div class="list"><div class="row"><div class="n">${c.name} is ${dmgWord(l)} ${dmgPct(l)}</div><div class="d">${bid?"Your bid lost. Another firm took the job.":`The city is taking bids to rebuild. Materials cost ${fmt(m)} up front if you win. A higher price earns more but is less likely to win. You rebuild ${RB.sp}× faster than normal.`}</div>${bid?"":`<div style="display:flex;gap:6px;flex-wrap:wrap">`+RB.bids.map((b,i)=>`<button class="buy" data-rb="${c.id}" data-i="${i}" data-fixed="1" ${S.cash<m?"disabled":""}>${b[0]} · ${fmt(base*b[1])} · ${Math.round(b[2]*100)}% win</button>`).join("")+`</div>`}</div></div>`}
+function rbBid(id,i){const c=CITIES[id],b=RB.bids[i];if(!c||!b)return;const e=(S.dmg||{})[id],l=dmgLvl(c),now=Date.now();
+  if(!e||l<.005||e.rc||rcnGov(c.country)||(S.rb||{})[id]||(S.rbX||{})[id]===e.t||(+(S.unh||{})[id]||0)>now)return;
+  const base=rbBase(c),m=Math.round(base*RB.mat);if(S.cash<m){toast("Not enough cash for materials");return}
+  S.rbX=S.rbX||{};S.rbX[id]=e.t;
+  if(Math.random()>=b[2]){S.log.unshift(`Lost the bid to rebuild ${c.name}`);S.log=S.log.slice(0,3);toast(`Your ${b[0].toLowerCase()} bid to rebuild ${c.name} lost`);commit();return}
+  S.cash-=m;S.dmg[id]={l0:Math.round(l*1e4)/1e4,t:now,own:e.own,k:e.k,sp:RB.sp,rc:RB.me};
+  S.rb=S.rb||{};S.rb[id]={t:now,cost:m,pay:Math.round(base*b[1])};
+  toast(`You won the contract to rebuild ${c.name}. Paid ${fmt(m)} for materials`);commit()}
+function rbTick(){const R=S.rb;if(!R)return;let ch=0;for(const id in R){const j=R[id],c=CITIES[id],e=(S.dmg||{})[id];
+  if(!c||!e||e.rc!==RB.me||e.t!==j.t){delete R[id];ch=1;toast(`A new strike on ${c?c.name:"a city"} cancelled your rebuilding job. Materials lost`);continue}
+  if(dmgLvl(c)<.005||dmgLeft(c)<=0){S.cash+=j.pay;delete R[id];ch=1;S.log.unshift(`Rebuilt ${c.name}: +${fmt(j.pay)}`);S.log=S.log.slice(0,3);toast(`${c.name} is rebuilt. The city paid you ${fmt(j.pay)}`)}}
+  if(ch){save();try{renderSheet();hud()}catch(e){}}}
+setInterval(()=>{try{rbTick()}catch(e){console.warn("rb",e)}},30000);setTimeout(()=>{try{rbTick()}catch(e){}},4000);
+sheet.addEventListener("click",ev=>{const b=ev.target.closest("[data-rb]");if(b)rbBid(+b.dataset.rb,+b.dataset.i)});
 // a strike lands: add its damage (stacking 1−(1−a)(1−b)), restart repairs, kill people; mine = fired by the player. Returns deaths.
 function dmgStrike(k,c,mine){const W=WPNCFG.w[k];if(!W||!c)return 0;S.dmg=S.dmg&&typeof S.dmg==="object"?S.dmg:{};const cur=dmgLvl(c),o=S.dmg[c.id],add=dmgHit(W,c)*W.struct,
   l=k==="icbm"?1:Math.min(1,1-(1-cur)*(1-add)),R=["msl","gas","nuke","icbm"],pk=o&&cur>0&&R.indexOf(o.k)>R.indexOf(k)?o.k:k;
