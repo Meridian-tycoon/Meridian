@@ -827,13 +827,9 @@ function bldPattern(){const h=["coalesce",["get","render_height"],8];return["cas
 /* view distance slider (S.set.vd): 0 = Auto (follows graphics), 1 Short … 5 Max. z = zoom where buildings start, f = fade length, R = how far out buildings are built, in metres (nearest first, in chunks), n = half the number of built buildings kept in memory; far chunks are dropped.
    Max is the real limit: the map's building data only exists from zoom 13, so buildings cannot load further out than that. */
 const VDQ=[null,{z:15,f:[.2,.6],R:300,n:600},{z:14,f:[.4,.9],R:500,n:900},{z:13,f:[.3,.8],R:900,n:1500},{z:13,f:[.1,.4],R:1800,n:3000},{z:13,f:[0,.15],R:4000,n:10000}];
-function vdQ(){let v=0;try{v=+(S&&S.set&&S.set.vd)||0}catch(e){}if(VDQ[v])return vdCap(VDQ[v]);let q;try{q=gfx()}catch(e){}return q===GFXQ.low?{z:14,f:[.4,.9],R:500,n:900}:q===GFXQ.med?{z:13,f:[.3,.8],R:700,n:1200}:VDQ[3]}
-/* graphics quality also caps the street buildings so Low really is cheaper: Low keeps at most the Medium view distance and builds plain blocks (no street props, shadows, awnings or roof clutter); Medium keeps at most Far */
-function bldLite(){try{return gfx()===GFXQ.low}catch(e){return false}}
-function vdCap(q){let g;try{g=gfx()}catch(e){}const c=g===GFXQ.low?VDQ[2]:g===GFXQ.med?VDQ[3]:null;return c&&q.R>c.R?Object.assign({},q,{R:c.R,n:c.n}):q}
-/* plain map buildings start at zoom 13 in every city (the map only has building shapes from there) */
-function bldZ(){return 13}
-function bldOp(){const q=vdQ(),z=bldZ();return["interpolate",["linear"],["zoom"],z+q.f[0],0,z+q.f[1],1]}
+function vdQ(){let v=0;try{v=+(S&&S.set&&S.set.vd)||0}catch(e){}if(VDQ[v])return VDQ[v];let q;try{q=gfx()}catch(e){}return q===GFXQ.low?{z:14,f:[.4,.9],R:500,n:900}:q===GFXQ.med?{z:13,f:[.3,.8],R:700,n:1200}:VDQ[3]}
+function bldZ(){return vdQ().z}
+function bldOp(){const q=vdQ();return["interpolate",["linear"],["zoom"],q.z+q.f[0],0,q.z+q.f[1],1]}
 function bldZoomApply(){try{const st=MM.getStyle();if(!st)return;const z=bldZ();for(const l of st.layers)if(l.type==="fill-extrusion"&&(l.id==="meridian-roofs"||l.id==="meridian-3d-buildings"||/building/i.test(l.id))){MM.setLayerZoomRange(l.id,z,l.maxzoom||24);MM.setPaintProperty(l.id,"fill-extrusion-opacity",bldOp())}}catch(e){}}
 /* sky and distance haze at street level: a gradient sky with a glowing horizon, and fog that melts far blocks into it. Off again on the planet view */
 function streetSky(){try{if(!MM||!MM.setSky)return;if(!inStreet){MM.setSky({"atmosphere-blend":0});return}
@@ -2485,8 +2481,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
   function stats(){return Object.assign({},dT,{drawn:lastTris})}
   /* generated buildings are kept as chunks (groups of about 250 buildings) under one parent, all drawn relative to one origin; chunks are added nearest-first and dropped when far */
   function setOrigin(org){detO=org}
-  let dcMax=30000;const setCacheMax=n=>{dcMax=n};
-  function addChunk(feats,roads,withLm){if(!T||!scene||!detO)return null;if(!det){det=new T.Group();det.visible=false;scene.add(det)}if(dcache&&dcache.size>dcMax)dcache=null;const g=buildChunk(feats,roads,withLm);if(g)det.add(g);return g}
+  function addChunk(feats,roads,withLm){if(!T||!scene||!detO)return null;if(!det){det=new T.Group();det.visible=false;scene.add(det)}if(dcache&&dcache.size>30000)dcache=null;const g=buildChunk(feats,roads,withLm);if(g)det.add(g);return g}
   const disp=g=>g.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose()});
   function removeChunk(g){if(det&&g){det.remove(g);disp(g)}}
   function resetDetail(){if(det){scene.remove(det);disp(det);det=null}detO=null;dcache=null;if(scene)atmoDrop()}
@@ -2545,7 +2540,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       else if(n==="needle"){const wc=C(night?0x8a8e92:0xeef0f2);cylv(R,x,z,0,92,13,2.4,wc,8);cylv(R,x,z,92,56,2.4,6.5,wc,8);cylv(R,x,z,146,5,14,21.5,C(night?0x6a6350:0xcdb677),16);cylv(R,x,z,151,5,21.5,13,wc,16);
         cylv(R,x,z,156,14,10,.8,wc,12);cylv(R,x,z,170,14,.8,.4,wc,6);if(night)cylv(Em,x,z,147.5,2,21.7,21.7,C(0xffd98a),16)}
       else if(n==="burj"){const gc=C(night?0x56606b:0x9fb4c7);let y=0;for(const [h,a,b] of [[190,19,15],[200,15,11],[170,11,7],[120,7,4]]){cylv(R,x,z,y,h,a,b,gc,6);y+=h}cylv(R,x,z,y,150,1.8,.3,gc,6);bx(Em,x,z,.8,.8,y+120,4,C(0xff4a3a))}};
-    const LITE=bldLite(),tA=performance.now(),okey=detO.mc.x+","+detO.mc.y+","+night+","+LITE;if(!dcache||dcKey!==okey){dcache=new Map();dcKey=okey}let hits=0;
+    const tA=performance.now(),okey=detO.mc.x+","+detO.mc.y+","+night;if(!dcache||dcKey!==okey){dcache=new Map();dcKey=okey}let hits=0;
     for(const f of detFeats)try{if(onLot(f.ring))continue;const ck=f.ring[0][0].toFixed(7)+","+f.ring[0][1].toFixed(7)+","+f.ring.length+","+f.h+","+(f.base||0),cc=dcache.get(ck);
       if(cc){hits++;for(const kd in cc.acc){const o=A(kd),q=cc.acc[kd];o.P.push(...q.P);o.U.push(...q.U);o.N.push(...q.N);o.C.push(...q.C)}R.P.push(...cc.R.P);R.N.push(...cc.R.N);R.C.push(...cc.R.C);L.push(cc.L);continue}
       const snap={};for(const kd in acc)snap[kd]=[acc[kd].P.length,acc[kd].U.length,acc[kd].N.length,acc[kd].C.length];const sR=[R.P.length,R.N.length,R.C.length];
@@ -2561,7 +2556,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
         kd=tall>55?"tower":tall>20?"mid":"home",roof=col(pick(RFP,rn(hs*3.1,hs*7.7))),roof2=col(night?0x4f5b6a:0xa7afb8),
         h2=(hs*977)%1,st=kd==="tower"?(h2<.7?"glass":"concrete"):kd==="mid"?(h2<.3?"brick":h2<.55?"concrete":h2<.8?"stone":"apt"):(h2<.5?"brick":h2<.8?"home":"stone"),
         tn=(()=>{const c=new T.Color(pick(FAC[st]||FAC.concrete,rn(hs*31.7,h2*17.3)));c.offsetHSL(0,0,(h2-.5)*.06);void tint;return[c.r,c.g,c.b]})(),
-        shop=!LITE&&(kd!=="home")&&tall>12&&hs>.35,band=(rr,y0)=>{if(shop){wall("shop",rr,y0,y0+4.2,col(0xffffff),sg);awning(rr,y0+3.6,sg,awnPal[Math.floor(h2*awnPal.length)]);return y0+4.2}return y0};
+        shop=(kd!=="home")&&tall>12&&hs>.35,band=(rr,y0)=>{if(shop){wall("shop",rr,y0,y0+4.2,col(0xffffff),sg);awning(rr,y0+3.6,sg,awnPal[Math.floor(h2*awnPal.length)]);return y0+4.2}return y0};
       uvo=[Math.floor(hs*4)*.25,Math.floor(h2*4)*.25];
       if(kd==="tower"&&Math.min(W,D)>9){const t=[[1,0,.62],[.74,.62,.86],[.5,.86,1]];for(const [fc,p0,p1] of t){const rr=fc===1?r:scl(r,fc);let y0=by+tall*p0;if(fc===1)y0=band(rr,y0);wall(st,rr,y0,by+tall*p1,tn,sg);cap(rr,by+tall*p1+.02,roof)}
         if(rect&&hs<.3&&tall<=100){const cu=(u0+u1)/2,cv=(v0+v1)/2;hip(cu*u[0]+cv*v[0],cu*u[1]+cv*v[1],u,v,W*.25,D*.25,h,Math.min(14,Math.min(W,D)*.3),col(pick(GBP,h2)))}else box(cx,cz,3,3,h,6,roof2);if(tall>100)box(cx,cz,.6,.6,h+6,22,col(0xc0392b));if(tall>70)bx(Em,cx,cz,1.6,1.6,h+(tall>100?26:6),1.8,col(0xff2a1a))}
@@ -2571,7 +2566,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
           (h2>.6?hip:gable)(gx,gz,long?u:v,long?v:u,L/2+.4,Sd/2+.4,h,Math.min(5,Sd*.32),col(pick(GBP,rn(hs*5.3,h2*9.1))))}
         else{cap(r,h+.02,roof);box(cx,cz,Math.min(W*.18,4),Math.min(D*.18,4),h,2.4,roof2)}}
       /* rooftops: parapet rim, AC units, a water tank on some mid-rises, on flat roofs only */
-      if(!LITE&&!(kd==="home"&&rect&&W>5&&D>5&&W<90&&D<90)&&ar>45){const rr=kd==="mid"&&Math.min(W,D)>9?scl(r,.8):r;
+      if(!(kd==="home"&&rect&&W>5&&D>5&&W<90&&D<90)&&ar>45){const rr=kd==="mid"&&Math.min(W,D)>9?scl(r,.8):r;
         if(kd==="tower"&&Math.min(W,D)>9){}else{const yT=h+.02,pc=night?col(0x56616f):roof2;for(let i=0;i<rr.length;i++){const a=rr[i],b=rr[(i+1)%rr.length],ln=Math.hypot(b[0]-a[0],b[1]-a[1]);if(ln<.5)continue;const nx=sg*(b[1]-a[1])/ln,nz=-sg*(b[0]-a[0])/ln;quad(R,[a[0],yT,a[1]],[b[0],yT,b[1]],[b[0],yT+.9,b[1]],[a[0],yT+.9,a[1]],[nx,0,nz],pc)}
           const cu=(u0+u1)/2,cv=(v0+v1)/2,nu=Math.min(5,Math.floor(ar/90)+1);for(let q=0;q<nu;q++){const a=(rn(hs*91+q,hs*13)-.5)*.6*W,b=(rn(hs*57,q+hs*7)-.5)*.6*D,px=(cu+a)*u[0]+(cv+b)*v[0],pz=(cu+a)*u[1]+(cv+b)*v[1];if(!inPoly(px,pz,rr))continue;
             const sz=1.6+rn(q,hs)*1.8;obox(R,px,pz,u[0],u[1],sz,sz*.8,yT,1.1+rn(hs,q)*.9,col(q%2?0xaab0b6:0x8b939b));if(q===0)cylv(R,px,pz,yT+1.1,.4,.6,.6,col(0x555d66),8)}
@@ -2580,8 +2575,6 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       {const ent={acc:{},R:{P:R.P.slice(sR[0]),N:R.N.slice(sR[1]),C:R.C.slice(sR[2])},L:lrec};for(const kd in acc){const b0=snap[kd]||[0,0,0,0],o=acc[kd];ent.acc[kd]={P:o.P.slice(b0[0]),U:o.U.slice(b0[1]),N:o.N.slice(b0[2]),C:o.C.slice(b0[3])}}dcache.set(ck,ent)}}catch(e){bad++}
     const tB=performance.now();
     /* shadows, street life and landmarks, from the stored footprints */
-    /* Low quality: no street props or shadows (landmarks still show) */
-    if(LITE){L.length=0;detRoads=null}
     try{const bb=L.map(o=>{let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const [x,z] of o.r){x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z)}return[x0,x1,z0,z1]});
       const blocked=(x,z)=>{for(let i=0;i<L.length;i++){const b=bb[i];if(x>=b[0]&&x<=b[1]&&z>=b[2]&&z<=b[3]&&inPoly(x,z,L[i].r))return true}return false};
       const SUN=sun3d(map.getCenter().lat),sd=[-SUN.x,-SUN.z],sl=Math.hypot(sd[0],sd[1])||1,cot=Math.min(3.2,Math.cos(SUN.el)/Math.sin(SUN.el)),shc=col(0x0a1018),hasRd=!!(detRoads&&detRoads.length),nt=night,carC=[0xb83a32,0x2f4f8a,0xdcdcdc,0x222428,0x7a8088,0xc9a02e,0x2f6e4f],shirt=[0xc0392b,0x2f6ea8,0xe0b020,0x4a8a4a,0xd0d0d0,0x333333],sgn=[0xff4a6a,0x4ac8ff,0xffc84a,0x6aff8a,0xc86aff];
@@ -2703,7 +2696,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
         for(const [fw,fd,fx,fz] of [[pw,.3,0,pd/2],[pw,.3,0,-pd/2],[.3,pd,pw/2,0],[.3,pd,-pw/2,0]])o.add(box(fw,1.4,fd,fx,.25,fz,fm))}}
       if(m.k&&m.k!==1)o.scale.setScalar(m.k);o.userData={mc,sc};group.add(o)}}
   let fogR=2500,wxCur="";const setFogR=r=>{fogR=r},setWx=w=>{wxCur=w||""};
-  return{id:"meridian-models",type:"custom",renderingMode:"3d",setFogR,setCacheMax,setWx,sync,setOrigin,addChunk,removeChunk,resetDetail,ready,count,stats,
+  return{id:"meridian-models",type:"custom",renderingMode:"3d",setFogR,setWx,sync,setOrigin,addChunk,removeChunk,resetDetail,ready,count,stats,
     onAdd(mp,gl){map=mp;loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;
       scene=new T.Scene();cam=new T.Camera();group=new T.Group();scene.add(group);hemi=new T.HemisphereLight(0xffffff,0x667788,.85);sun=new T.DirectionalLight(0xffffff,.8);sun.position.set(.4,1,.6);scene.add(hemi,sun);sync();mp.triggerRepaint()}).catch(e=>console.warn("3d models off",e))},
     render(gl,args){if(!T||!group)return;const z=map.getZoom();if(z<11.6)return;
@@ -2777,12 +2770,11 @@ function detQueue(base,ce,mLng,mLat,R){const sl=base.sourceLayer||base["source-l
     for(const pts of lns){if(pts.length<2)continue;const key=pr.class+pts[0][0].toFixed(5)+","+pts[0][1].toFixed(5)+pts.length;if(rseen.has(key))continue;rseen.add(key);rds.push({c:pr.class,pts})}}}}catch(e){}
   detRds=rds;return out}
 function detStep(){try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom();
-  /* 3D buildings from zoom 12 in cities with saved buildings (Montreal), 13 elsewhere because map tiles only carry buildings from 13; once built they stay until 0.4 below */
-  {const c0=MM.getCenter(),z0=bakedCity(c0.lng,c0.lat)?12:13;if(z<z0){if((detHidden||detChunks.length)&&z<z0-.4)detRestore();else if(detHidden&&!detChunks.length)detHidePlain(false);return}}/* 3D buildings from zoom 12 (high up); once built, keep them down to 11.6 so zooming near 12 does not toggle them */
+  if(z<12){if((detHidden||detChunks.length)&&z<11.6)detRestore();return}/* 3D buildings from zoom 12 (high up); once built, keep them down to 11.6 so zooming near 12 does not toggle them */
   if(!modelLayer.ready()){detSchedule(700);return}
   const night=dark3d();if(detNight!==null&&night!==detNight)detReset();detNight=night;
   const ce=MM.getCenter(),mLat=111320,mLng=111320*Math.cos(ce.lat*Math.PI/180),ids=detLayers();if(!ids.length)return;const base=MM.getLayer(ids.find(i=>i!=="meridian-roofs")||ids[0]);if(!base)return;
-  const VQ=vdQ();try{modelLayer.setFogR(VQ.R);modelLayer.setCacheMax(Math.max(3000,VQ.n*3))}catch(e){}try{let w="";const ce=MM.getCenter(),f=(()=>{try{return localStorage.getItem("meridian-wx")}catch(e){return null}})();
+  const VQ=vdQ();try{modelLayer.setFogR(VQ.R)}catch(e){}try{let w="";const ce=MM.getCenter(),f=(()=>{try{return localStorage.getItem("meridian-wx")}catch(e){return null}})();
     if(f==="rain"||f==="snow")w=f;else if(f!=="off"&&typeof stormAt==="function"&&stormAt({lon:ce.lng,lat:ce.lat}))w=Math.abs(ce.lat)>48?"snow":"rain";modelLayer.setWx(w)}catch(e){}
   if(detOrg&&Math.hypot((ce.lng-detOrg.lng)*mLng,(ce.lat-detOrg.lat)*mLat)>8000)detReset();
   if(!detOrg){const mc=maplibregl.MercatorCoordinate.fromLngLat([ce.lng,ce.lat],0);detOrg={lng:ce.lng,lat:ce.lat};modelLayer.setOrigin({mc,sc:mc.meterInMercatorCoordinateUnits()})}
@@ -2795,9 +2787,8 @@ function detStep(){try{if(!modelLayer||!MM||!inStreet)return;const z=MM.getZoom(
     if(g){for(const f of take){detKeys.add(f.key);detKeys.add(f.key2)}detChunks.push({g,keys:take.flatMap(f=>[f.key,f.key2]),lng:(x0+x1)/2,lat:(y0+y1)/2});detHidePlain(true)}
     /* far chunks are dropped (and rebuilt from the cache if you come back) to keep memory in check */
     /* only chunks well outside the picked radius are dropped; dropping ones inside it made them come straight back (the buildings blinked in and out) */
-    const lim=VQ.n*2,dist=c=>Math.hypot((c.lng-ce.lng)*mLng,(c.lat-ce.lat)*mLat);const RR=bakedR?Math.min(VQ.R,bakedR):VQ.R;detChunks.sort((a,b)=>dist(b)-dist(a));
-      /* over budget: drop far chunks down to 70%; under budget: still let go of anything well past the view distance */
-      while(detChunks.length>1&&dist(detChunks[0])>RR*1.3&&((detKeys.size>>1)>lim*.7||dist(detChunks[0])>RR*2)){const c=detChunks.shift();modelLayer.removeChunk(c.g);for(const k of c.keys)detKeys.delete(k)}
+    const lim=VQ.n*2,dist=c=>Math.hypot((c.lng-ce.lng)*mLng,(c.lat-ce.lat)*mLat);const RR=bakedR?Math.min(VQ.R,bakedR):VQ.R;if((detKeys.size>>1)>lim){detChunks.sort((a,b)=>dist(b)-dist(a));
+      while((detKeys.size>>1)>lim*.8&&detChunks.length>1&&dist(detChunks[0])>RR*1.3){const c=detChunks.shift();modelLayer.removeChunk(c.g);for(const k of c.keys)detKeys.delete(k)}}
     MM.triggerRepaint();detDbg((detKeys.size>>1),detChunks.length,VQ.R)}
   if(detQ.length)detSchedule(MM.isMoving()||MM.isZooming()?120:50)}catch(e){console.warn("detail",e);try{detRestore()}catch(e2){}}}
 /* re-check whenever the view settles or more map tiles arrive */
