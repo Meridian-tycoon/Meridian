@@ -3297,12 +3297,22 @@ function gov(n){S.gov=S.gov||{};let g=S.gov[n];if(g){for(const k in LAWS)if(g.la
   const laws={};for(const k in LAWS)laws[k]=p[k];
   return S.gov[n]={party:pk,appr:45+h%25,next:Date.now()+ELECT*(.25+((h>>3)%75)/100),laws,don:{},favor:0}}
 const law=(c,k)=>gov(c.country).laws[k];
+// Trade embargoes (cabinet bills): gov(a).emb[b]=time means country a blocks imports from b.
+const EMBCFG={own:.02,hit:.04,ownMax:.1,hitMax:.2,fr:1.2};
+const embOn=(a,b)=>!!(a&&b&&a!==b&&S.gov&&S.gov[a]&&S.gov[a].emb&&S.gov[a].emb[b]);
+const embList=a=>Object.keys((S.gov&&S.gov[a]&&S.gov[a].emb)||{});
+const embAgainst=b=>Object.keys(S.gov||{}).filter(a=>embOn(a,b));
+const embWhy=(c,d)=>c&&d&&embOn(d.country,c.country)?`${d.country} has an embargo on goods from ${c.country}`:"";
+// Businesses lose a little from their own country's embargoes and more from embargoes against it.
+function embMult(c){const n=c&&c.country;if(!n)return 1;return (1-Math.min(EMBCFG.ownMax,embList(n).length*EMBCFG.own))*(1-Math.min(EMBCFG.hitMax,embAgainst(n).length*EMBCFG.hit))}
+// Freight out of a sanctioned country, or into one that sanctions others, is rerouted and costs more.
+function embFr(c,d){if(!c||!d)return 1;return embAgainst(c.country).length||embList(d.country).length?EMBCFG.fr:1}
 const WLIC_FEE=50000;
 function lawBan(c,b){return (b.k==="casino"&&law(c,"casino")===1)||(b.k==="dispensary"&&law(c,"weed")===1)}
 function lawMult(c,b){let m=[1.06,1,.9][law(c,"wage")];
   if(RETAIL.includes(b.k))m*=[1,.97,.93][law(c,"tariff")];
   if(SMALL.includes(b.k)&&law(c,"grant"))m*=1.1;if(b.k==="prison")m*=[.7,1,1.4][law(c,"police")];
-  const g=gov(c.country);if(g.strike>Date.now())m*=.7;return m*warMult(c)*dipMult(c)*wmdMult(c)}
+  const g=gov(c.country);if(g.strike>Date.now())m*=.7;return m*embMult(c)*warMult(c)*dipMult(c)*wmdMult(c)}
 const taxRateC=c=>[.1,.15,.2,.25,.3][law(c,"tax")]*cfoTaxK();
 const rentLaw=c=>law(c,"rent")?.85:1;
 const jobLaw=c=>[.9,1,1.15][law(c,"wage")];
@@ -7369,11 +7379,13 @@ function cabTick(){try{cabListen()}catch(e){}}
 function cabPaint(){if(MX.open&&(MX.page==="cab"||MX.page==="gch"||MX.page==="wcl")&&!mxBusy())mxRender()}
 /* bill state: open bills past their deadline, or that can no longer reach a majority, count as failed */
 function cabState(b){if(b.st!=="open")return b.st;const y=(b.yes||[]).length,n=(b.no||[]).length,s=Math.max(1,+b.seats||1);if(y*2>s)return "passed";if(s-n<=s/2||Date.now()>cabMs(b.exp))return "failed";return "open"}
-function cabTitle(b){const U=MILCFG.units;return b.k==="law"&&LAWS[b.key]?`${LAWS[b.key].n}: ${LAWS[b.key].v[b.val]||"?"}`:b.k==="war"?`Resolve the war with ${b.tg} (${Math.round(CABCFG.warWin*100)}% chance)`:b.k==="arms"?`Buy ${MILCFG.batch} ${(U[b.key]||{n:"units"}).n}`:b.k==="wto"?`Take-over step: bring ${b.tg} under our influence`:"Bill"}
+function cabTitle(b){const U=MILCFG.units;return b.k==="law"&&LAWS[b.key]?`${LAWS[b.key].n}: ${LAWS[b.key].v[b.val]||"?"}`:b.k==="war"?`Resolve the war with ${b.tg} (${Math.round(CABCFG.warWin*100)}% chance)`:b.k==="arms"?`Buy ${MILCFG.batch} ${(U[b.key]||{n:"units"}).n}`:b.k==="wto"?`Take-over step: bring ${b.tg} under our influence`:b.k==="emb"?`Embargo: block all imports from ${b.tg}`:b.k==="unemb"?`Lift the embargo on ${b.tg}`:"Bill"}
 /* passed laws: apply once on every member's save */
 function cabApply(){const p=pol();if(!(p.r>=0&&p.c===CB.c))return;if(!Array.isArray(p.cabA))p.cabA=[];let ch=0;
   for(const b of CB.bills.slice().reverse()){if(b.k!=="law"||!LAWS[b.key]||p.cabA.includes(b.id)||cabState(b)!=="passed")continue;const v=Math.max(0,Math.min(LAWS[b.key].v.length-1,b.val|0));
     gov(p.c).laws[b.key]=v;if(b.key==="tax")p.tax=v;p.cabA.unshift(b.id);ch=1;logPol(`Cabinet passed: ${cabTitle(b)}`)}
+  for(const b of CB.bills.slice().reverse()){if((b.k!=="emb"&&b.k!=="unemb")||!COUNTRIES.includes(b.tg)||b.tg===p.c||p.cabA.includes(b.id)||cabState(b)!=="passed")continue;
+    const g=gov(p.c);g.emb=g.emb||{};if(b.k==="emb")g.emb[b.tg]=Date.now();else delete g.emb[b.tg];p.cabA.unshift(b.id);ch=1;logPol(`Cabinet passed: ${cabTitle(b)}`)}
   if(ch){p.cabA=p.cabA.slice(0,60);try{save();hud()}catch(e){}}}
 function cabSay(world){const k=world?"gsay":"say",t=String(CB.f[k]||"").trim().slice(0,160),p=pol(),uid=cabUid();if(!t||!uid||!(p.r>=0&&p.c))return;if(CB.busy[k])return;
   if(Date.now()-CB.last<CABCFG.say)return toast("One message every few seconds");CB.last=Date.now();CB.busy[k]=1;const FV=window.firebase.firestore.FieldValue,b=ON.db.batch();
@@ -7382,7 +7394,7 @@ function cabSay(world){const k=world?"gsay":"say",t=String(CB.f[k]||"").trim().s
   Promise.resolve(onPublish(true)).then(()=>b.commit()).then(()=>{delete CB.busy[k];CB.f[k]="";mxRender()},e=>{delete CB.busy[k];toast("Message not sent: "+(e&&e.code||e))})}
 function cabPropose(){const p=pol(),f=CB.f,uid=cabUid();if(!uid||!(p.r>=0&&p.c))return;if(CB.busy.prop)return;const open=CB.bills.filter(b=>cabState(b)==="open").length;if(open>=8)return toast("Too many open bills: vote on those first");
   const d={k:f.k,key:"",val:0,tg:""};if(f.k==="law"){if(!LAWS[f.law])return;d.key=f.law;d.val=Math.max(0,Math.min(LAWS[f.law].v.length-1,+f.val|0))}
-  else if(f.k==="arms"){if(!MILCFG.units[f.unit])return;d.key=f.unit}else{if(!COUNTRIES.includes(f.tg)||f.tg===p.c)return toast("Pick a country");d.tg=f.tg}
+  else if(f.k==="arms"){if(!MILCFG.units[f.unit])return;d.key=f.unit}else if(f.k==="emb"&&embOn(p.c,f.tg))return toast(`We already embargo ${f.tg}`);else if(f.k==="unemb"&&!embOn(p.c,f.tg))return toast("We have no embargo on that country");else{if(!COUNTRIES.includes(f.tg)||f.tg===p.c)return toast("Pick a country");d.tg=f.tg}
   CB.busy.prop=1;const FV=window.firebase.firestore.FieldValue,s=cabSeats(p.c);
   ON.db.collection("cab").doc(p.c).collection("bill").add(Object.assign(d,{by:uid,byName:(onProf().name||"Tycoon").slice(0,20),at:FV.serverTimestamp(),exp:new Date(Date.now()+CABCFG.billHrs*36e5),seats:Math.min(10,s),yes:[uid],no:[],st:"open",done:false}))
     .then(()=>{delete CB.busy.prop;toast("Bill tabled")},e=>{delete CB.busy.prop;toast("Bill refused: "+(e&&e.code||e))})}
@@ -7405,7 +7417,7 @@ const cabFund=k=>cabMove(k,false);
 /* cost of carrying out a passed bill, paid from the matching fund */
 function cabCost(b){return b.k==="war"?Math.round(milWarCost(b.tg)*CABCFG.warCost):b.k==="arms"?milBatchCost(b.key):b.k==="wto"?annexCost(b.tg):0}
 const cabFundOf=b=>b.k==="war"?"war":b.k==="arms"?"arms":"wto";
-function cabRun(id){const b=CB.bills.find(x=>x.id===id),p=pol(),m=mil();if(!b||b.done||cabState(b)!=="passed"||!polLeader())return;if(CB.busy.run)return;
+function cabRun(id){const b=CB.bills.find(x=>x.id===id),p=pol(),m=mil();if(!b||b.done||cabState(b)!=="passed"||!polLeader()||!["war","arms","wto"].includes(b.k))return;if(CB.busy.run)return;
   const k=cabFundOf(b),c=cabCost(b);if(CB.fund[k]<c)return toast(`The ${k==="wto"?"take-over":k} fund needs ${fmt(c)}`);
   if(b.k==="war"&&!m.wars[b.tg])return toast(`You are not at war with ${b.tg}`);if(b.k==="wto"&&(p.ctrl[b.tg]||b.tg===p.c))return toast(`${b.tg} is already ours`);
   if(b.k==="wto"&&Date.now()<p.acd)return toast("Influence cooldown: "+fmtDur(p.acd-Date.now()));if(b.k==="arms"&&!polAtHome())return toast(`Recruit from ${p.c}`);
@@ -7425,12 +7437,12 @@ const cabBtn=(a,t,v,dis)=>`<button class="mdx-btn" data-mx="${a}"${v!=null?` dat
 function cabGate(){const p=pol();if(!(p.r>=0&&p.c))return `<div class="mdx-empty">Only office holders (Councillor, Minister or Leader) can use the cabinet. Run for office in the Government app.</div>`;
   if(!cabOn())return `<div class="mdx-empty">Sign in to the online world (Online app) to meet the rest of your government.</div>`;return ""}
 function cabDash(){const g=cabGate();if(g)return g;cabListen();const p=pol(),f=CB.f,uid=cabUid(),lead=polLeader(),U=MILCFG.units,m=mil(),wars=Object.keys(m.wars||{});
-  const others=COUNTRIES.filter(n=>n!==p.c),tgOpts=(f.k==="war"&&lead&&wars.length?wars:others).map(n=>[n,n]);if(f.k!=="law"&&f.k!=="arms"&&!tgOpts.some(o=>o[0]===f.tg))f.tg=tgOpts[0]?tgOpts[0][0]:"";
+  const others=COUNTRIES.filter(n=>n!==p.c),tgOpts=(f.k==="war"&&lead&&wars.length?wars:f.k==="unemb"?embList(p.c):f.k==="emb"?others.filter(n=>!embOn(p.c,n)):others).map(n=>[n,n]);if(f.k!=="law"&&f.k!=="arms"&&!tgOpts.some(o=>o[0]===f.tg))f.tg=tgOpts[0]?tgOpts[0][0]:"";
   const ctl=Object.keys(p.ctrl||{}).length+Object.keys(m.occ||{}).length,goal=COUNTRIES.length-1,left=others.filter(n=>!(p.ctrl||{})[n]&&!(m.occ||{})[n]),wtoNeed=left.reduce((a,n)=>a+annexCost(n),0);
   const pct=Math.round(100*ctl/Math.max(1,goal)),fpct=Math.min(100,Math.round(100*CB.fund.wto/Math.max(1,wtoNeed)));
-  const kind=cabSel("k",f.k,[["law","Law or tax"],["war","Resolve a war"],["arms","Buy arms"],["wto","World take-over step"]]),
+  const kind=cabSel("k",f.k,[["law","Law or tax"],["emb","Trade embargo"],["unemb","Lift an embargo"],["war","Resolve a war"],["arms","Buy arms"],["wto","World take-over step"]]),
     extra=f.k==="law"?cabSel("law",f.law,Object.keys(LAWS).map(k=>[k,LAWS[k].n]))+cabSel("val",f.val,(LAWS[f.law]||LAWS.tax).v.map((v,i)=>[i,v])):f.k==="arms"?cabSel("unit",f.unit,Object.keys(U).map(k=>[k,U[k].n])):cabSel("tg",f.tg,tgOpts);
-  const bills=CB.bills.map(b=>{const st=cabState(b),mine=(b.yes||[]).includes(uid)||(b.no||[]).includes(uid),c=cabCost(b),k=b.k==="law"?null:cabFundOf(b);
+  const bills=CB.bills.map(b=>{const st=cabState(b),mine=(b.yes||[]).includes(uid)||(b.no||[]).includes(uid),c=cabCost(b),k=b.k==="law"||b.k==="emb"||b.k==="unemb"?null:cabFundOf(b);
     const act=st==="open"?(mine?"<small>You voted</small>":cabBtn("cbyes","Yes",b.id)+" "+cabBtn("cbno","No",b.id))+(lead?" "+cabBtn("cbveto","Veto",b.id):"")
       :st==="passed"&&k?(b.done?"<small>Carried out</small>":lead?cabBtn("cbrun",`Carry out (${fmt(c)})`,b.id):`<small>Waiting for the Leader · needs ${fmt(c)}</small>`):"";
     return `<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.15)"><div><b>${onEsc(cabTitle(b))}</b> <small style="opacity:.7">· ${{open:"Open",passed:"Passed",failed:"Failed",vetoed:"Vetoed"}[st]||st} · ${(b.yes||[]).length} yes / ${(b.no||[]).length} no of ${b.seats||1} seats · by ${onEsc(b.byName||"?")}</small></div><div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${act}</div></div>`}).join("")||`<div class="mdx-empty">No bills yet.</div>`;
@@ -7439,11 +7451,15 @@ function cabDash(){const g=cabGate();if(g)return g;cabListen();const p=pol(),f=C
     card("🏛️ Members",cabHtml(p.c)+`<div class="ph-sub" style="margin-top:8px">A bill passes when more than half the seats vote yes (seats counted when it is tabled). It fails after ${CABCFG.billHrs} h. The Leader can veto any open bill.</div>`)+
     card("💬 Cabinet chat",`<div style="max-height:240px;overflow:auto">${cabChat(CB.msg)}</div><div style="display:flex;gap:6px;margin-top:8px">${cabIn("say",f.say,"Message your cabinet")}${cabBtn("cbsay","Send")}</div>`)+
     card("📜 Bills and laws",`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${kind}${extra}${cabBtn("cbprop","Table bill")}</div>${bills}`)+
+    card("🚫 Trade embargoes",embHtml(p.c))+
     card("💰 Funds",`<div class="ph-rows"><div><span>War fund (resolves wars at ${Math.round(CABCFG.warWin*100)}%)</span><b>${fmt(CB.fund.war)}</b></div><div><span>Arms fund</span><b>${fmt(CB.fund.arms)}</b></div><div><span>World take-over fund</span><b>${fmt(CB.fund.wto)}</b></div></div>
       <div class="ph-sub" style="margin-top:8px">Your deposits: wars ${fmt(CB.dep.war)} · arms ${fmt(CB.dep.arms)} · take-over ${fmt(CB.dep.wto)}. ${polLeader()?"As Leader you can withdraw anything in the funds.":"You can withdraw what you deposited while the fund still holds it."}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${cabIn("amt",f.amt,"Amount",100)}${cabBtn("cbfund","Fund wars","war")}${cabBtn("cbfund","Fund arms","arms")}${cabBtn("cbfund","Fund take-over","wto")}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${["war","arms","wto"].map(k=>cabBtn("cbwd","Withdraw "+{war:"wars",arms:"arms",wto:"take-over"}[k],k,(polLeader()?CB.fund[k]:Math.min(CB.dep[k],CB.fund[k]))<1000)).join("")}</div>`)+
     card("🌍 World take-over",`<div class="ph-rows"><div><span>Countries under our control</span><b>${ctl} / ${goal} (${pct}%)</b></div><div><span>Influence cost for the rest</span><b>${fmt(wtoNeed)}</b></div><div><span>Take-over fund covers</span><b>${fpct}%</b></div></div><div style="height:8px;border-radius:4px;background:rgba(127,127,127,.2);margin-top:8px"><div style="height:100%;width:${fpct}%;border-radius:4px;background:#dc2626"></div></div><div class="ph-sub" style="margin-top:6px">Table "World take-over step" bills to spend the fund on influence campaigns, one country at a time.</div>`)}
+function embHtml(n){const mine=embList(n),vs=embAgainst(n),pc=v=>Math.round(v*100);
+  return `<div class="ph-rows"><div><span>We block imports from</span><b>${mine.length?mine.map(onEsc).join(", "):"Nobody"}</b></div><div><span>Countries blocking our goods</span><b>${vs.length?vs.map(onEsc).join(", "):"None"}</b></div><div><span>Effect on our business revenue</span><b>−${100-pc(embMult({country:n}))}%</b></div></div>
+  <div class="ph-sub" style="margin-top:8px">Table a "Trade embargo" bill to block every import from a country: freight from it into ${onEsc(n)} is refused and hauls touching sanctioned trade cost ${pc(EMBCFG.fr-1)}% more. Our businesses earn ${pc(EMBCFG.own)}% less per embargo we hold (max ${pc(EMBCFG.ownMax)}%), and each embargo against a country cuts its business revenue ${pc(EMBCFG.hit)}% (max ${pc(EMBCFG.hitMax)}%).</div>`}
 function govChatDash(){const g=cabGate();if(g)return g;cabListen();
   return `<div class="mdx-card" style="padding:14px"><div style="font-weight:600;margin-bottom:8px">🌐 Government chat: every office holder in the world</div><div style="max-height:420px;overflow:auto">${cabChat(CB.gmsg)}</div><div style="display:flex;gap:6px;margin-top:8px">${cabIn("gsay",CB.f.gsay,"Message all governments")}${cabBtn("cbgsay","Send")}</div></div>`}
 function cabAct(a,b){const v=b.dataset.v;if(a==="cbsay")cabSay(false);else if(a==="cbgsay")cabSay(true);else if(a==="cbprop")cabPropose();else if(a==="cbyes"||a==="cbno")cabVote(v,a==="cbyes");else if(a==="cbveto")cabVeto(v);else if(a==="cbfund")cabFund(v);else if(a==="cbwd")cabMove(v,true);else if(a==="cbrun")cabRun(v)}
@@ -9358,7 +9374,7 @@ const botWh=()=>Object.keys(S.wh||{}).map(Number).filter(i=>CITIES[i]);
 const botHave=(c,g)=>((S.inv[c]||{})[g])||0;
 function botQuote(){const b=ON.bot,k=BX.kind,q=Math.floor(+BX.q||0),g=BX.g,c=BX.c===""?null:CITIES[+BX.c],d=BX.d===""?null:CITIES[+BX.d];
   if(!c)return{err:"Pick a warehouse city (you need a warehouse)"};if(!G[g])return{err:"Pick a good"};if(q<1)return{err:"Enter a quantity"};if(q>BOTMAXQ)return{err:`Maximum ${BOTMAXQ} units per request`};
-  if(k==="haul"){if(!d||d.id===c.id)return{err:"Pick a different destination warehouse"};if(landmass(c)!==landmass(d))return{err:"Trucks can't cross oceans"};
+  if(k==="haul"){if(!d||d.id===c.id)return{err:"Pick a different destination warehouse"};if(landmass(c)!==landmass(d))return{err:"Trucks can't cross oceans"};const ew=embWhy(c,d);if(ew)return{err:ew};
     const t=q*tpu(g);if(t>BOTMAXT)return{err:`Too heavy: max ${BOTMAXT} t per request`};if(botHave(c.id,g)<q)return{err:`Only ${Math.floor(botHave(c.id,g))} in ${c.name}`};
     const km=distKm(c,d),fee=botFee(km,t);if(fee>S.cash)return{err:`You need ${fmt(fee)} in cash`};
     return{amt:fee,give:q,line:`Haul ${q} ${G[g][0].toLowerCase()} (${fmtT?fmtT(t):t+" t"}) ${c.name} → ${d.name}, ${Math.round(km)} km, for ${fmt(fee)}`}}
@@ -9458,7 +9474,7 @@ const FR={tab:"open",c:"",d:"",g:"",q:"",p:"",h:"12",busy:false,unsub:null,docs:
 function FS(){const x=S.frt=S.frt&&typeof S.frt==="object"&&!Array.isArray(S.frt)?S.frt:{};for(const k of["my","run","owe"])if(!x[k]||typeof x[k]!=="object"||Array.isArray(x[k]))x[k]={};if(!Array.isArray(x.hist))x.hist=[];return x}
 function frLog(e){const x=FS();e.t=Date.now();x.hist.unshift(e);x.hist=x.hist.slice(0,12)}
 const frTons=(g,q)=>q*tpu(g),frKm=(a,b)=>distKm(CITIES[a],CITIES[b]);
-const frFee=(g,q,a,b)=>Math.min(FR_MAXPAY,Math.ceil(300+frKm(a,b)*frTons(g,q)*.1));
+const frFee=(g,q,a,b)=>Math.min(FR_MAXPAY,Math.ceil((300+frKm(a,b)*frTons(g,q)*.1)*embFr(CITIES[a],CITIES[b])));
 const frTr=(g,q)=>Math.max(1,Math.ceil(frTons(g,q)/FR_TRK));
 const frUsed=()=>Object.values(FS().run).reduce((a,r)=>a+(r.done?0:(+r.tr||0)),0);
 const frFree=()=>Math.max(0,freeTrucks()-frUsed());
@@ -9469,7 +9485,7 @@ function frListen(u){if(FR.unsub){try{FR.unsub()}catch(_){}FR.unsub=null}FR.docs
 function frPaint(){if(PH.open&&PH.app==="freight"&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))phRender()}
 /* shipper: post */
 function frPostChk(){const wh=botWh(),c=FR.c===""?null:CITIES[+FR.c],d=FR.d===""?null:CITIES[+FR.d],g=FR.g,q=Math.floor(+FR.q||0);
-  if(Object.keys(FS().my).length>=FR_MAXOPEN)return{err:`Limit: ${FR_MAXOPEN} posted hauls at once. Cancel one or wait for one to finish`};if(!c)return{err:"Pick a warehouse city (you need a warehouse)"};if(!d||d.id===c.id)return{err:"Pick a different destination warehouse"};if(landmass(c)!==landmass(d))return{err:"Trucks can't cross oceans"};
+  if(Object.keys(FS().my).length>=FR_MAXOPEN)return{err:`Limit: ${FR_MAXOPEN} posted hauls at once. Cancel one or wait for one to finish`};if(!c)return{err:"Pick a warehouse city (you need a warehouse)"};if(!d||d.id===c.id)return{err:"Pick a different destination warehouse"};if(landmass(c)!==landmass(d))return{err:"Trucks can't cross oceans"};const ew=embWhy(c,d);if(ew)return{err:ew};
   if(!G[g])return{err:"Pick a good"};if(q<1)return{err:"Enter a quantity"};if(q>FR_MAXQ)return{err:`Maximum ${FR_MAXQ} units per haul`};const t=frTons(g,q);if(t>FR_MAXT)return{err:`Too heavy: max ${FR_MAXT} t per haul`};
   if(botHave(c.id,g)<q)return{err:`Only ${Math.floor(botHave(c.id,g))} in ${c.name}`};
   const sug=frFee(g,q,c.id,d.id),pay=FR.p===""?sug:Math.floor(+FR.p||0);if(pay<FR_MINPAY)return{err:`Minimum pay is ${fmt(FR_MINPAY)}`};if(pay>FR_MAXPAY)return{err:`Maximum pay is ${fmt(FR_MAXPAY)}`};if(pay>S.cash)return{err:`You need ${fmt(pay)} in cash`};
@@ -10040,7 +10056,7 @@ function lxStockName(bk){const b=BIZ.find(x=>x.k===bk);return (b?b.n:bk)+" stock
 function lxVeh(v,t){const X=LX(),j=X.jobs.find(x=>x.id===v.job);if(!j){v.job=0;return}
   if(v.arr||v.cargo||v.route||v.city==null||!CITIES[v.city])return;const A=CITIES[j.from],B=CITIES[j.to],V=VEH[v.type];j.why="";
   if(j.left>1e-6){
-    if(v.city===j.from){const why=lxBlock(A,B)||(!lxVehOK(v,A,B)?"Trucks can't cross oceans":"");if(why){j.why=why;return}
+    if(v.city===j.from){const why=lxBlock(A,B)||embWhy(A,B)||(!lxVehOK(v,A,B)?"Trucks can't cross oceans":"");if(why){j.why=why;return}
       const q=Math.min(capV(v,j.g),j.left),fuel=vFuel(v.type,distKm(A,B),q*tpu(j.g),A,B);
       if(depart(v,A,B,"",t,{g:j.g,q,job:j.id})){j.left=j.left-q<1e-6?0:j.left-q;j.cost+=fuel}else j.why="Not enough cash for fuel"}
     else{const C=CITIES[v.city],why=lxBlock(C,A);if(why){j.why=why;return}const fuel=vFuel(v.type,distKm(C,A),0,C,A);if(depart(v,C,A,"",t))j.cost+=fuel;else j.why="Not enough cash for fuel"}}
@@ -11796,7 +11812,7 @@ function dvEst(v,W,N,g,q,rep){const H=CITIES[v.city],z={go:0,f0:0,ms1:0,f1:0,ms2
 function dvCreate(f,now){const v=S.fleet.find(x=>x.id===+f.v),W=CITIES[f.from],N=CITIES[f.to],g=f.g;
   if(!v||!dvIdle(v))return "That vehicle is no longer free.";if(!W||!hasWh(W))return "Pick a depot to load from.";
   if(!N||N===W||!dvCityOk(N))return "Pick a destination city.";if(!G[g])return "Pick the goods.";
-  const H=CITIES[v.city],b=lxBlock(W,N)||(H!==W?lxBlock(H,W):"");if(b)return b;if(!lxVehOK(v,H,W)||!lxVehOK(v,W,N))return "Trucks can't cross oceans.";
+  const H=CITIES[v.city],b=lxBlock(W,N)||embWhy(W,N)||(H!==W?lxBlock(H,W):"");if(b)return b;if(!lxVehOK(v,H,W)||!lxVehOK(v,W,N))return "Trucks can't cross oceans.";
   const q=Math.floor(Math.min(+f.q||0,capV(v,g),inv0(W,g)));if(q<1)return `No ${G[g][0].toLowerCase()} in ${W.name}.`;
   const z=dvEst(v,W,N,g,q,f.rep),need=H===W?z.f1:z.f0;if(S.cash<need)return `Need ${fmt(need)} for fuel.`;
   if(f.rep){const line={id:S.nid++,v:v.id,src:W.id,to:N.id,g,q,on:true,n:0,qd:0,why:"",t:now};S.dvl.push(line);dvLines(now);
