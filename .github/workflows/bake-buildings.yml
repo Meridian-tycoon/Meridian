@@ -1,0 +1,27 @@
+name: Bake city buildings
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['tools/bake_buildings.py', '.github/workflows/bake-buildings.yml']
+  workflow_dispatch:
+    inputs:
+      city:
+        description: City to bake (see tools/bake_buildings.py)
+        default: montreal
+permissions:
+  contents: write
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/bake_buildings.py "${{ inputs.city || 'montreal' }}"
+      - run: du -sh data/buildings/*
+      - name: Commit baked files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add data/buildings
+          git commit -m "Bake ${{ inputs.city || 'montreal' }} buildings from OpenStreetMap" || exit 0
+          git push
