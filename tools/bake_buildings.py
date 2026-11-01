@@ -72,6 +72,14 @@ def main(city):
     for ix in range(nx):
         for iy in range(ny):
             w = w0 + ix * TILE; s = s0 + iy * TILE
+            name = f"{ix}_{iy}.json"
+            path = os.path.join(out, name)
+            if os.path.exists(path):  # resume: a square saved by an earlier run is kept
+                with open(path) as f:
+                    nb = len(json.load(f)["b"])
+                tiles.append({"f": name, "w": round(w, 6), "s": round(s, 6), "n": nb})
+                total += nb
+                continue
             # take a building in the tile its first point falls in, so seams have no copies
             els = fetch(s, w, s + TILE, w + TILE)
             o = [round(w, 6), round(s, 6)]
@@ -94,8 +102,7 @@ def main(city):
                 for p in g:
                     row += [round((p["lon"] - o[0]) * 1e6), round((p["lat"] - o[1]) * 1e6)]
                 b.append(row)
-            name = f"{ix}_{iy}.json"
-            with open(os.path.join(out, name), "w") as f:
+            with open(path, "w") as f:
                 json.dump({"o": o, "b": b}, f, separators=(",", ":"))
             tiles.append({"f": name, "w": round(w, 6), "s": round(s, 6), "n": len(b)})
             total += len(b)

@@ -16,12 +16,15 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      - run: python3 tools/bake_buildings.py "${{ inputs.city || 'montreal' }}"
-      - run: du -sh data/buildings/*
-      - name: Commit baked files
+      - timeout-minutes: 100
+        run: python3 tools/bake_buildings.py "${{ inputs.city || 'montreal' }}"
+      - if: always()
+        run: du -sh data/buildings/* || true
+      - name: Commit baked files (also after a timeout, so the next run resumes)
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
           git add data/buildings
           git commit -m "Bake ${{ inputs.city || 'montreal' }} buildings from OpenStreetMap" || exit 0
-          git push
+          git pull --rebase && git push
