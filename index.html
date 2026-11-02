@@ -13836,13 +13836,19 @@ function bdHtml(){const o=S.ipo;if(!o||o.st!=="live")return"";const b=bdS(),E=dx
   return h+`<div class="mdx-note" style="color:var(--dxmut)">Every 30 game days the shareholders meet: hit both targets for a share jump and a bonus of 12 hours of profit (at least $100,000); misses knock the share price.</div></div>`}
 /* ===== Commodity futures (Stocks app › Futures): oil, grain, colony ores. Cash-settled against game spot prices; 20% margin; commission via exOnTrade ===== */
 const FUTC={m:.2,fee:.001,call:.9,exp:[3,7,14],max:500,
-  k:{oil:{n:"Crude oil",ico:"🛢",u:"bbl",sz:1000,c:.0015,v:.012},grain:{n:"Grain",ico:"🌾",u:"bu",sz:5000,c:.001,v:.01},kreep:{n:"KREEP rare earths",ico:"🪨",u:"units",sz:10,c:.003,v:.02},he3:{n:"Helium-3",ico:"⚛️",u:"units",sz:10,c:.003,v:.025},lice:{n:"Lunar ice",ico:"🧊",u:"units",sz:10,c:.0025,v:.018}}};
+  k:{oil:{n:"Crude oil",ico:"🛢",u:"bbl",sz:1000,c:.0015,v:.012},grain:{n:"Grain (food)",ico:"🌾",u:"bu",sz:5000,c:.001,v:.01},steel:{n:"Steel",ico:"🏗",u:"t",sz:500,c:.0012,v:.012},kreep:{n:"KREEP rare earths",ico:"🪨",u:"units",sz:10,c:.003,v:.02},he3:{n:"Helium-3",ico:"⚛️",u:"units",sz:10,c:.003,v:.025},lice:{n:"Lunar ice",ico:"🧊",u:"units",sz:10,c:.0025,v:.018}}};
 const FUTK=Object.keys(FUTC.k);let futQ=1;
 function FUT(){let f=S.fut;if(!f||typeof f!=="object"||Array.isArray(f))f=S.fut={};if(!f.w||typeof f.w!=="object")f.w={};for(const k of FUTK)if(!(f.w[k]>0&&isFinite(f.w[k])))f.w[k]=1;
   if(!Array.isArray(f.pos))f.pos=[];f.pos=f.pos.filter(p=>p&&FUTC.k[p.k]&&isFinite(p.e)&&isFinite(p.px)&&p.px>0&&(p.n|0)!==0&&isFinite(p.m));if(!Array.isArray(f.log))f.log=[];if(!(f.seq>=0))f.seq=0;if(!(f.real>-1e18))f.real=0;if(!(f.t>0))f.t=Date.now();
   if(!f.d||typeof f.d!=="object")f.d={day:0,vol:0,n:0};return f}
 const futAvg=g=>{let t=0,n=0;for(const c of CITIES){const v=px(c,g);if(v>0&&isFinite(v)){t+=v;n++}}return n?t/n:G[g][1]};
-function futBase(k){return k==="oil"?futAvg("oil"):k==="grain"?(futAvg("wheat")+futAvg("corn"))/2:G[k][1]*COLCFG.broker}
+function futRaw(k){return k==="oil"?futAvg("oil"):k==="grain"?(futAvg("wheat")+futAvg("corn"))/2:k==="steel"?futAvg("steel"):G[k][1]*COLCFG.broker}
+/* War and embargo pressure on Earth commodities: world tension (0-100) and the number of active trade embargoes push prices up.
+   Oil +0.35%/tension point (max +35%) and +1.5% per embargo; steel (arms demand) +0.25%/pt and +1%/embargo; grain +0.15%/pt and +2%/embargo. Embargo part capped at +20%. */
+const FUTWAR={oil:[.0035,.015],steel:[.0025,.01],grain:[.0015,.02]};
+function futEmbN(){let n=0;try{for(const a of Object.keys(S.gov||{}))n+=embList(a).length}catch(e){}return n}
+function futWar(k){const c=FUTWAR[k];if(!c)return{t:0,e:0,m:1};let t=0;try{t=typeof tension==="function"?tension():0}catch(e){}const ne=futEmbN(),pt=t*c[0],pe=Math.min(.2,ne*c[1]);return{t,ne,pt,pe,m:(1+pt)*(1+pe)}}
+function futBase(k){return futRaw(k)*futWar(k).m}
 function futSpot(k){return futBase(k)*FUT().w[k]}
 const futNoise=(k,e)=>{let h=7;for(const ch of k+e)h=(h*31+ch.charCodeAt(0))|0;return ((Math.abs(h)%201)-100)/10000}; // fixed ±1% basis per contract
 function futPx(k,e,now){now=now||Date.now();const d=Math.max(0,(e-now)/DAYMS),w=FUT().w[k],we=1+(w-1)*Math.pow(.95,24*d);return futBase(k)*we*(1+FUTC.k[k].c*d)*(1+futNoise(k,e)*Math.min(1,d/3))}   // priced on the expected spot: the price shock fades 5%/hour, so there is no free reversion bet
@@ -13873,10 +13879,10 @@ function futTick(now){now=now||Date.now();const f=FUT(),dt=Math.max(0,Math.min(n
 function futLive(){const el=PH.el;if(!el)return;el.querySelectorAll("[data-futpx]").forEach(x=>{const [k,e]=x.dataset.futpx.split("|"),t=futPxS(futPx(k,+e));if(x.textContent!==t)x.textContent=t});
   el.querySelectorAll("[data-futpl]").forEach(x=>{const p=FUT().pos.find(q=>q.id==x.dataset.futpl);if(!p)return;const v=futPnl(p),t=(v>=0?"+":"-")+futD(Math.abs(v));if(x.textContent!==t){x.textContent=t;x.style.color=v>=0?"#22c55e":"#ef4444"}})}
 function futHtml(){const f=FUT(),now=Date.now(),ex=futExps(now),dev=spDev();
-  let h=`<p class="ph-sub" style="margin-top:6px">Cash-settled futures on game prices. Pay ${Math.round(FUTC.m*100)}% margin; at expiry you get the difference against spot. Loss reaching ${Math.round(FUTC.call*100)}% of margin = margin call.${dev?" <b style='color:#fde68a'>Dev account: losses waived.</b>":""}</p>
+  let h=`<p class="ph-sub" style="margin-top:6px">Cash-settled futures on game prices. Oil, steel and grain climb when wars heat up and embargoes pile up, and fall back when peace returns. Pay ${Math.round(FUTC.m*100)}% margin; at expiry you get the difference against spot. Loss reaching ${Math.round(FUTC.call*100)}% of margin = margin call.${dev?" <b style='color:#fde68a'>Dev account: losses waived.</b>":""}</p>
   <div style="display:flex;gap:4px;align-items:center;margin:6px 0"><span class="ph-sub" style="margin:0">Contracts:</span>${[1,5,25].map(q=>`<button class="buy" data-ph="futq" data-k="${q}" style="min-width:0;flex:1;padding:4px;color:#fff;${futQ===q?"background:#166534!important;border-color:#22c55e":"border-color:#ffffff55"}">${q}</button>`).join("")}</div>`;
   for(const k of FUTK){const C=FUTC.k[k],sp=futSpot(k);
-    h+=`<div style="margin-top:8px;padding:6px 8px;border:1px solid #ffffff22;border-radius:8px"><div style="display:flex;justify-content:space-between;color:#fff"><b>${C.ico} ${C.n}</b><span>spot ${futPxS(sp)}</span></div><small style="color:#cbd5e1">${C.sz.toLocaleString("en-US")} ${C.u}/contract · margin ${futD(sp*C.sz*FUTC.m)}</small>`;
+    h+=`<div style="margin-top:8px;padding:6px 8px;border:1px solid #ffffff22;border-radius:8px"><div style="display:flex;justify-content:space-between;color:#fff"><b>${C.ico} ${C.n}</b><span>spot ${futPxS(sp)}</span></div><small style="color:#cbd5e1">${C.sz.toLocaleString("en-US")} ${C.u}/contract · margin ${futD(sp*C.sz*FUTC.m)}</small>${(()=>{const w=futWar(k);return FUTWAR[k]?`<small style="display:block;color:${w.pt+w.pe>0?"#fca5a5":"#94a3b8"}">⚔️ War premium +${(w.pt*100).toFixed(1)}% (tension ${w.t}) · 🚫 embargoes +${(w.pe*100).toFixed(1)}% (${w.ne} active)</small>`:""})()}`;
     for(const e of ex){const F=futPx(k,e,now),m=F*C.sz*FUTC.m*futQ;const dis=S.cash<m*(1+FUTC.fee/FUTC.m)?"disabled":"";
       h+=`<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:5px;align-items:center;margin-top:4px;color:#e5e7eb"><span>${Math.ceil((e-now)/DAYMS)}d</span><span data-futpx="${k}|${e}" style="font-family:var(--mono)">${futPxS(F)}</span>
         <button class="buy" data-ph="futo" data-k="${k}|${e}|1" style="min-width:0;padding:3px 8px;font-size:11px;background:#22c55e;color:#06210f;border-color:#22c55e;font-weight:700" ${dis}>Long</button><button class="buy up" data-ph="futo" data-k="${k}|${e}|-1" style="min-width:0;padding:3px 8px;font-size:11px;color:#fff;border-color:#ffffff55" ${dis}>Short</button></div>`}
