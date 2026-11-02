@@ -4604,7 +4604,11 @@ function creditFactors(){const b=B(),now=Date.now();
 function creditScore(){const f=creditFactors();return Math.round(300+550*(.33*f.ph+.25*f.ut+.14*f.age+.08*f.iq+.08*f.mix+.12*f.dti))}
 const scoreBand=s=>s>=800?["Exceptional","#15803d"]:s>=740?["Very good","#4d9f2a"]:s>=670?["Good","#a3a01c"]:s>=580?["Fair","#d97706"]:["Poor","#c2410c"];
 const ofCfoCut=()=>{try{return Math.max(.1,1-.2*ofP("cfo"))}catch(e){return 1}};
-const loanRate=(s,type)=>(s>=800?.0008:s>=740?.0012:s>=670?.002:s>=580?.0035:.006)*(type==="business"?.8:1);
+/* Debt history: a lasting record of how past loans ended. Each loan paid off in full cuts new loan rates 5% (max 5 = -25%);
+   each loan sent to collections adds 20% (max 3 = +60%). Range x0.75 to x1.6. The dev account never gets the penalty. */
+const debtHist=()=>{const b=B();return{paid:b.paidOff||0,coll:b.collEver||0}};
+const debtRateMul=()=>{const h=debtHist(),m=1-.05*Math.min(5,h.paid)+.2*Math.min(3,h.coll);return Math.max(.75,Math.min(1.6,devGod()?Math.min(1,m):m))};
+const loanRate=(s,type)=>(s>=800?.0008:s>=740?.0012:s>=670?.002:s>=580?.0035:.006)*(type==="business"?.8:1)*debtRateMul();
 const cardRate=s=>s>=740?.003:s>=670?.004:s>=580?.005:.007;
 /* "Where my money goes": every hourly income and cost, biggest first. One "hour" here = one real hour = one game day (DAYMS).
    The rows sum to totals().inc only when there are no loans, tax, reparations or card interest: totals().inc leaves out loan payments (bankPayHr),
@@ -4667,7 +4671,8 @@ function bankHour(quiet){const b=B();
   const cut=ofCfoCut();for(const l of b.loans){if(cut<1)try{ofSav("cfo",l.bal*l.rate*(1-cut))}catch(e){}l.bal*=1+l.rate*cut;const due=Math.min(l.pay,l.bal);
     if(S.cash>=due){S.cash-=due;l.bal-=due;l.miss=0;b.ontime+=cfoCredK();l.left--}
     else{l.miss++;l.bal+=Math.max(5,due*.05);b.lates.push(Date.now());if(!quiet)logBank(`Missed a ${LOANT[l.type].n.toLowerCase()} payment (late fee charged)`);
-      if(l.miss>=3&&!l.coll){l.coll=1;l.rate*=1.5;l.bal*=1.1;l.pay=Math.max(l.pay,amort(l.bal,l.rate,Math.max(24,l.left)));/* re-amortize so 1.5x rate can't outgrow the payment on long terms */b.lates.push(Date.now(),Date.now());if(!quiet)logBank(`${LOANT[l.type].n} sent to collections`)}}}
+      if(l.miss>=3&&!l.coll){l.coll=1;b.collEver=(b.collEver||0)+1;l.rate*=1.5;l.bal*=1.1;l.pay=Math.max(l.pay,amort(l.bal,l.rate,Math.max(24,l.left)));/* re-amortize so 1.5x rate can't outgrow the payment on long terms */b.lates.push(Date.now(),Date.now());if(!quiet)logBank(`${LOANT[l.type].n} sent to collections`)}}}
+  for(const l of b.loans)if(l.bal<=.5&&!l.coll){b.paidOff=(b.paidOff||0)+1;if(!quiet)logBank(`${LOANT[l.type].n} paid off: better rates on new loans`)}
   b.loans=b.loans.filter(l=>l.bal>.5);
   const c=b.card;if(c){if(!c.paidStmt)c.bal+=Math.min(c.bal,c.stmt)*c.rate;
     if(Date.now()>=c.due){const min=Math.min(c.bal,Math.max(25,c.bal*.03));
@@ -4677,14 +4682,14 @@ function bankHour(quiet){const b=B();
   b.hist.push(creditScore());b.hist=b.hist.slice(-96)}
 const bankPayHr=()=>B().loans.reduce((a,l)=>a+Math.min(l.pay,l.bal),0);
 function repayLoan(id,all){const l=B().loans.find(x=>x.id===id);if(!l)return;const v=Math.min(all?l.bal:l.pay*5,l.bal,Math.max(0,S.cash));if(v<=0)return;S.cash-=v;l.bal-=v;
-  if(l.bal<=.5){B().loans=B().loans.filter(x=>x!==l);B().ontime+=3;toast(`${LOANT[l.type].n} paid off!`)}else{l.left=Math.max(1,Math.ceil(Math.log(1/(1-l.bal*l.rate/l.pay))/Math.log(1+l.rate))||l.left);toast(`Paid ${fmt(v)}`)}}
+  if(l.bal<=.5){B().loans=B().loans.filter(x=>x!==l);B().ontime+=3;if(!l.coll)B().paidOff=(B().paidOff||0)+1;toast(`${LOANT[l.type].n} paid off!`)}else{l.left=Math.max(1,Math.ceil(Math.log(1/(1-l.bal*l.rate/l.pay))/Math.log(1+l.rate))||l.left);toast(`Paid ${fmt(v)}`)}}
 function payCard(all){const c=B().card;if(!c)return;const v=Math.min(all?c.bal:Math.max(25,c.bal*.03),c.bal,Math.max(0,S.cash));if(v<=0)return;S.cash-=v;c.bal-=v;c.stmt=Math.max(0,c.stmt-v);if(c.stmt<=0)c.paidStmt=true;toast(`Paid ${fmt(v)} on your card`)}
 function scoreSpark(){const h=B().hist;if(h.length<2)return"";const w=280,ht=40,mn=Math.min(...h)-5,mx=Math.max(...h)+5;
   return `<svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:40px;display:block"><polyline fill="none" stroke="var(--own)" stroke-width="2" points="${h.map((v,i)=>`${i/(h.length-1)*w},${ht-(v-mn)/(mx-mn)*ht}`).join(" ")}"/></svg>`}
 function bankHtml(){const b=B(),s=creditScore(),[band,col]=scoreBand(s),f=creditFactors();
   const fac=(n,v,t)=>`<div><span>${n}</span><b style="color:${v>.75?"var(--good)":v>.45?"#d97706":"var(--bad)"}">${t}</b></div>`;
   let h=`<div class="sec">Bank · credit score</div><div class="list"><div class="row"><div class="n"><span style="font-family:var(--mono);font-size:28px;font-weight:700;color:${col}">${s}</span> <span class="tag" style="background:${col};color:#fff">${band.toUpperCase()}</span></div>
-    <div class="d">300–850. Updates every game hour.${scoreSpark()}<div class="ph-rows" style="margin-top:6px">${fac("Payment history",f.ph,`${b.ontime} on time · ${b.lates.length} late`)}${fac("Card utilization",f.ut,f.util==null?"no card":Math.round(f.util*100)+"%")}${fac("Credit age",f.age,b.first?fmtDur(Date.now()-b.first):"none")}${fac("Hard inquiries",f.iq,`${f.inq} in 48 h`)}${fac("Credit mix",f.mix,`${(b.card?1:0)+(b.loans.length?1:0)} types`)}${fac("Debt to income",f.dti,fmt(bankDebt()))}</div></div></div></div>`;
+    <div class="d">300–850. Updates every game hour.${scoreSpark()}<div class="ph-rows" style="margin-top:6px">${fac("Payment history",f.ph,`${b.ontime} on time · ${b.lates.length} late`)}${fac("Card utilization",f.ut,f.util==null?"no card":Math.round(f.util*100)+"%")}${fac("Credit age",f.age,b.first?fmtDur(Date.now()-b.first):"none")}${fac("Hard inquiries",f.iq,`${f.inq} in 48 h`)}${fac("Credit mix",f.mix,`${(b.card?1:0)+(b.loans.length?1:0)} types`)}${fac("Debt to income",f.dti,fmt(bankDebt()))}${(()=>{const h=debtHist(),m=debtRateMul();return fac("Debt history",m<=1?(m<1?1:.6):m<1.3?.5:.2,`${h.paid} paid off · ${h.coll} collections · loan rates ×${m.toFixed(2)}`)})()}</div></div></div></div>`;
   h+=`<div class="sec">Credit card</div><div class="list">`;
   if(b.card){const c=b.card;h+=`<div class="row"><div class="n">Meridian Card <b style="font-family:var(--mono)">${fmt(c.bal)}</b> / ${fmt(c.lim)}</div>
     <div class="d">${(c.rate*100).toFixed(2)}%/hr interest on unpaid statement balances. Statement ${fmt(c.stmt)} · min due ${fmt(Math.min(c.bal,Math.max(25,c.bal*.03)))} in ${fmtDur(c.due-Date.now())}. Covers you automatically if your cash goes negative. Keep it under 30% for your score.</div>
@@ -4701,7 +4706,7 @@ function bankHtml(){const b=B(),s=creditScore(),[band,col]=scoreBand(s),f=credit
       <span style="display:block;margin-top:3px">${fmt(top)} over ${n} h: ${fmt(amort(top,r,n))}/hr · ${fmt(amort(top,r,n)*n)} total</span>`:"";
     h+=`<div class="row"><div class="n">${T.n}</div><div class="d">${T.d} ${T.terms[0]}–${T.terms[2]} h terms · ${s<T.min?`<b>needs ${T.min}+ score</b>`:`${(r*100).toFixed(2)}%/hr · up to ${fmt(room)}`}${chips}</div>
       <span style="display:flex;gap:6px;grid-row:1/3;grid-column:2;flex-direction:column">${s>=T.min?opts.map(v=>`<button class="buy up" data-bank="loan" data-t="${k}" data-a="${v}" data-fixed="1">${fmt(v)}</button>`).join(""):""}</span></div>`}
-  return h+`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Miss 3 payments in a row and a loan goes to collections: 1.5× the rate, a 10% penalty and a big score hit. Every application is a hard inquiry.</p>`}
+  return h+`</div><p class="d" style="color:var(--muted);font-size:12px;margin:6px 0">Miss 3 payments in a row and a loan goes to collections: 1.5× the rate, a 10% penalty and a big score hit. Every application is a hard inquiry. Debt history sticks: each loan you pay off cuts future loan rates 5% (up to 25%), each one sent to collections raises them 20% (up to 60%).</p>`}
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-bank]");if(!b)return;const a=b.dataset.bank;
   if(a==="card")applyCard();else if(a==="loan")applyLoan(b.dataset.t,+b.dataset.a,bankTerm(b.dataset.t));else if(a==="term"){const k=b.dataset.t,i=+b.dataset.i;if(LOANT[k]&&i>=0&&i<3){const bk=B();(bk.terms=bk.terms||{})[k]=i}}else if(a==="payall")repayLoan(+b.dataset.id,true);
   else if(a==="cardall")payCard(true);else if(a==="adv"){const c=B().card,v=Math.min(c.lim-c.bal,Math.round(c.lim/4));c.bal+=v*1.05;S.cash+=v;c.paidStmt=false;toast(`Cash advance ${fmt(v)} (5% fee)`)}
