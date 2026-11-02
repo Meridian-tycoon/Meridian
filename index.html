@@ -5128,18 +5128,20 @@ function devHtml(){if(!devOn())return"";const dp=S.pol&&S.pol.r>=0&&S.pol.c;retu
   <div class="row"><div class="n">Finish deliveries</div><div class="d">${S.fleet.filter(v=>v.arr).length} vehicles on the road · ${(S.hired||[]).length} hired</div><button class="buy" data-dev="fleet" ${S.fleet.some(v=>v.arr)||(S.hired||[]).length?"":"disabled"}>Finish now</button></div>
   ${(()=>{const o=S.ipo||{},left=(+o.ban||0)+IPOC.ban-Date.now();return `<div class="row"><div class="n">Reset delisting cooldown</div><div class="d">${left>0?"Next IPO allowed in "+wevLeft(left):"No cooldown: you can start a new IPO"}</div><button class="buy" data-dev="ipoban" ${left>0?"":"disabled"}>Reset</button></div>`})()}${dvmHtml()}${mpHtml()}</div>`}
 /* Money printer (Mark, 2026-11-02): developer account only. A collapsible dev business that prints cash while it runs, plus a one-off print. */
-const MPR=[1e9,1e12,1e14,1e15];
-const MP=()=>S.mp=S.mp&&typeof S.mp==="object"?S.mp:{on:0,r:1,tot:0,at:0};
+const MPR=[1e9,1e12,1e14,1e15],MPU=[["second",1000],["minute",60000],["hour",3600000],["day",86400000]];
+const mpU=m=>MPU[m.u]||MPU[1];
+const MP=()=>S.mp=S.mp&&typeof S.mp==="object"?S.mp:{on:0,r:1,u:1,tot:0,at:0};
 function mpHtml(){if(!devGod())return"";const m=MP(),rt=MPR[m.r]||MPR[1];
-  return `<details class="row" style="display:block" ${window.MPO?"open":""} ontoggle="window.MPO=this.open"><summary style="cursor:pointer;font-weight:600">🖨 Money printer <span class="d" style="font-weight:400">· ${m.on?"Printing "+fmt(rt)+"/min":"Off"} · printed ${fmt(m.tot||0)}</span></summary>
-  <div class="d" style="margin:8px 0">Developer account only. While it runs it adds ${fmt(rt)} to your cash every minute, even with the menu closed.</div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">${MPR.map((v,i)=>`<button class="buy${m.r===i?"":" up"}" data-dev="mprate" data-i="${i}">${fmt(v)}/min</button>`).join("")}<button class="buy" data-dev="mpon">${m.on?"Stop printing":"Start printing"}</button></div>
+  return `<details class="row" style="display:block" ${window.MPO?"open":""} ontoggle="window.MPO=this.open"><summary style="cursor:pointer;font-weight:600">🖨 Money printer <span class="d" style="font-weight:400">· ${m.on?"Printing "+fmt(rt)+" every "+mpU(m)[0]:"Off"} · printed ${fmt(m.tot||0)}</span></summary>
+  <div class="d" style="margin:8px 0">Developer account only. While it runs it adds ${fmt(rt)} to your cash every ${mpU(m)[0]}, even with the menu closed.</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">${MPR.map((v,i)=>`<button class="buy${m.r===i?"":" up"}" data-dev="mprate" data-i="${i}">${fmt(v)}</button>`).join("")}<select id="mpu" data-devsel="mpu">${MPU.map((u,i)=>`<option value="${i}" ${(m.u??1)===i?"selected":""}>every ${u[0]}</option>`).join("")}</select><button class="buy" data-dev="mpon">${m.on?"Stop printing":"Start printing"}</button></div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input id="mpamt" inputmode="numeric" placeholder="Amount, e.g. 1000000000000" style="flex:1;min-width:160px"><button class="buy" data-dev="mpnow">Print now</button></div></details>`}
-function mpTick(){try{if(!devGod())return;const m=MP();if(!m.on)return;const now=Date.now(),dt=Math.min(3600000,Math.max(0,now-(m.at||now)));m.at=now;const v=Math.round((MPR[m.r]||MPR[1])*dt/60000);if(v>0){S.cash+=v;m.tot=(m.tot||0)+v;hud()}}catch(e){}}
-setInterval(mpTick,5000);
+function mpTick(){try{if(!devGod())return;const m=MP();if(!m.on)return;const now=Date.now(),dt=Math.min(3600000,Math.max(0,now-(m.at||now)));m.at=now;const v=Math.round((MPR[m.r]||MPR[1])*dt/mpU(m)[1]);if(v>0){S.cash+=v;m.tot=(m.tot||0)+v;hud()}}catch(e){}}
+setInterval(mpTick,1000);
+document.addEventListener("change",e=>{const t=e.target;if(!t||t.dataset.devsel!=="mpu"||!devOn()||!devGod())return;const m=MP();mpTick();m.u=Math.max(0,Math.min(MPU.length-1,+t.value||0));toast(`Money printer pays out every ${mpU(m)[0]}`);save();hud();reSheet()});
 function devAct(b){const k=b.dataset.dev;
   if(k==="mprate"||k==="mpon"||k==="mpnow"){if(!devGod())return toast("Sign in with the developer account to use the money printer");const m=MP();
-    if(k==="mprate"){mpTick();m.r=Math.max(0,Math.min(MPR.length-1,+b.dataset.i||0));toast(`Money printer set to ${fmt(MPR[m.r])}/min`)}
+    if(k==="mprate"){mpTick();m.r=Math.max(0,Math.min(MPR.length-1,+b.dataset.i||0));toast(`Money printer set to ${fmt(MPR[m.r])} every ${mpU(m)[0]}`)}
     else if(k==="mpon"){mpTick();m.on=m.on?0:1;m.at=Date.now();toast(m.on?"🖨 Money printer on":"Money printer off")}
     else{const e=document.getElementById("mpamt"),v=Math.round(Number(String(e?e.value:"").replace(/[,$\s]/g,"")));if(!(v>0)||!isFinite(v))return toast("Enter an amount above 0");const x=Math.min(v,1e18);S.cash+=x;m.tot=(m.tot||0)+x;toast(`🖨 Printed ${fmt(x)}`)}
     save();hud();reSheet();return}
