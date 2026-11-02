@@ -2671,7 +2671,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     let tris=0;out.traverse(o=>{if(o.geometry&&o.geometry.attributes.position)tris+=o.geometry.attributes.position.count/3});
     dT={feat:Math.round(tB-tA),extras:Math.round(tC-tB),upload:Math.round(performance.now()-tC),tris:Math.round(tris),hits,total:detFeats.length};return out}
   /* sky and street life: drifting clouds, chimney smoke and cars on the loaded roads, all in the same local frame as the generated buildings (metres from detO) */
-  const boomFx=new Map(),ruinFx=new Map();let _puffT=null;
+  let boomTo=null;const boomGo=new Set(),boomFx=new Map(),ruinFx=new Map();let _puffT=null;
   /* soft cloudy puff texture (made once): a radial falloff with a few lumpy blobs, used by explosion and ruin smoke sprites so they read as billows, not solid balls */
   function puffTex(){if(_puffT)return _puffT;const cv=document.createElement("canvas");cv.width=cv.height=128;const g=cv.getContext("2d");
     for(let i=0;i<9;i++){const a=i/9*Math.PI*2,d=i?26+Math.random()*10:0,x=64+Math.cos(a)*d,y=64+Math.sin(a)*d,r=i?30+Math.random()*10:46,gr=g.createRadialGradient(x,y,0,x,y,r);
@@ -2724,8 +2724,11 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     /* strike explosions: when a strike on a city within ~12 km lands, a white flash, an orange fireball, a ground shockwave ring and a rising smoke column at the city centre for ~14 s.
        Few meshes (4 per strike, at most 3 strikes at once); the smoke column is skipped on Low graphics. */
     try{const m=S.pol&&S.pol.mil,wn=Date.now(),k=1/detO.sc,mc0=detO.mc,live=new Set();
-      if(m&&Array.isArray(m.strikes))for(const s of m.strikes){const c=CITIES[s.city];if(!c)continue;const id=s.city+"|"+s.k+"|"+s.t,land=(typeof _trjFl!=="undefined"&&_trjFl[id])||s.t,age=(wn-land)/1000;if(age<0||age>14)continue;
-        const mc=maplibregl.MercatorCoordinate.fromLngLat([c.lon,c.lat],0),x=(mc.x-mc0.x)*k,z=(mc.y-mc0.y)*k;if(Math.hypot(x,z)>12000||live.size>=3)continue;live.add(id);
+      if(m&&Array.isArray(m.strikes))for(const s of m.strikes){const c=CITIES[s.city];if(!c)continue;const id=s.city+"|"+s.k+"|"+s.t,land=(typeof _trjFl!=="undefined"&&_trjFl[id])||s.t,age=(wn-land)/1000;if(age<0||age>20)continue;
+        const mc=maplibregl.MercatorCoordinate.fromLngLat([c.lon,c.lat],0),x=(mc.x-mc0.x)*k,z=(mc.y-mc0.y)*k;
+        /* landed outside the view: a toast names the city; tapping it flies there (same zoom/pitch) while the 20 s explosion is still going. The camera never moves by itself. */
+        if(Math.hypot(x,z)>12000){if(age<3&&!boomGo.has(id)){boomGo.add(id);try{const t=$("#toast");boomTo={c,until:wn+20000};toast(`💥 Strike landed on ${c.name}, out of view · tap here to watch it`);if(t&&!t._boom){t._boom=1;t.style.cursor="pointer";t.addEventListener("click",()=>{if(!boomTo||Date.now()>boomTo.until)return;const q=boomTo.c;boomTo=null;map.flyTo({center:[q.lon,q.lat],zoom:Math.max(15.5,map.getZoom()),pitch:map.getPitch(),bearing:map.getBearing(),duration:2500,essential:true})})}}catch(_){}}continue}
+        if(live.size>=3)continue;live.add(id);
         let e=boomFx.get(id);const big=/nuke|hbomb|icbm/.test(s.k)?2.6:1;
         if(!e){const sg=new T.IcosahedronGeometry(1,2),mk=(c2,o)=>{const mm=new T.Sprite(new T.SpriteMaterial({map:puffTex(),color:c2,transparent:true,opacity:o,depthWrite:false,rotation:Math.random()*6.28}));atmo.add(mm);return mm};
           const ring=new T.Mesh(new T.RingGeometry(.85,1,48),new T.MeshBasicMaterial({color:0xffd9a0,transparent:true,depthWrite:false,side:T.DoubleSide}));ring.rotation.x=-Math.PI/2;atmo.add(ring);
@@ -2733,7 +2736,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
           const nk=big>1,lo=gfx()===GFXQ.low,st=nk&&!lo?new T.Mesh(new T.CylinderGeometry(.35,.6,1,14,1,true),new T.MeshBasicMaterial({color:0x5a4a40,transparent:true,opacity:0,depthWrite:false})):null;if(st)atmo.add(st);
           const cp=nk&&!lo?mk(0x6a5548,0):null,n=lo?0:60,ep=new Float32Array(n*3),ev=[];for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,u=Math.random()*.9+.1;ev.push([Math.cos(a)*u,.4+Math.random()*1.1,Math.sin(a)*u])}
           let em=null;if(n){const g=new T.BufferGeometry();g.setAttribute("position",new T.BufferAttribute(ep,3));em=new T.Points(g,new T.PointsMaterial({color:0xffb050,size:big*6,transparent:true,depthWrite:false,blending:T.AdditiveBlending}));em.frustumCulled=false;atmo.add(em)}
-          e={x,z,big,fl:mk(0xffffff,1),fb:mk(0xff7a1a,1),gl,st,cp,em,ev,sm:lo?null:mk(0x3a3430,0),ring};boomFx.set(id,e)}
+          e={x,z,big,fl:mk(0xffffff,1),fb:mk(0xff7a1a,1),gl,st,cp,em,ev,sm:lo?null:mk(0x3a3430,0),ring};for(const mm of [e.fl,e.fb,e.gl,e.st,e.cp,e.em,e.sm,e.ring])if(mm)mm.userData.boom=1;boomFx.set(id,e)}
         const B=e.big*140,f=Math.min(1,age/2.5);
         e.fl.position.set(x,B*.4,z);e.fl.scale.setScalar(B*(.3+age*2));e.fl.material.opacity=Math.max(0,1-age*2.5);
         e.fb.position.set(x,B*(.25+age*.08),z);e.fb.scale.setScalar(B*(.25+.75*f));e.fb.material.color.setHSL(.07-.05*Math.min(1,age/8),1,.55-.35*Math.min(1,age/10));e.fb.material.opacity=Math.max(0,1-age/12);
@@ -2778,7 +2781,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
         {const f=fogU(),tr=map.transform,cp=tr&&tr.cameraPosition;if(cp&&detO){const kk=1/detO.sc,ws=512*Math.pow(2,map.getZoom());f.cam.value.set((cp[0]/ws-detO.mc.x)*kk,cp[2]/ws*kk,(cp[1]/ws-detO.mc.y)*kk)}
           const hr=new Date().getHours()+new Date().getMinutes()/60,auto=(()=>{try{return localStorage.getItem("meridian-3d-dark")==="a"}catch(e){return false}})(),warm=auto&&((hr>=17&&hr<19)||(hr>=6&&hr<8));
           f.col.value.set(wxCur&&lyOn("wx")?(dk?0x20263a:0x9aa4b0):dk?0x1a2038:warm?0xe6b894:0xd3dde8);const R=Math.max(600,Math.min(5000,fogR||2500))*(wxCur&&lyOn("wx")?.55:1);f.rng.value.set(R*.22,R*.95)}
-          const al=lyOn("al");if(al){try{atmoUpdate(dk)}catch(e){atmoDrop();console.warn("atmo off",e)}}if(atmo)atmo.visible=al;cam.projectionMatrix=pm.clone().multiply(dm);ren.render(scene,cam);lastTris=ren.info.render.triangles;det.visible=false;if(atmo)atmo.visible=false;if(al)map.triggerRepaint()}}}}
+          const al=lyOn("al"),sm=S.pol&&S.pol.mil,hot=!al&&sm&&Array.isArray(sm.strikes)&&sm.strikes.some(q=>Math.abs(Date.now()-q.t)<6e5);if(al||hot||boomFx.size)try{atmoUpdate(dk)}catch(e){atmoDrop();console.warn("atmo off",e)}if(atmo){atmo.visible=true;for(const ch of atmo.children)ch.visible=al||!!ch.userData.boom}cam.projectionMatrix=pm.clone().multiply(dm);ren.render(scene,cam);lastTris=ren.info.render.triangles;det.visible=false;if(atmo)atmo.visible=false;if(al)map.triggerRepaint()}}}}
 
 /* big cities (size 4-5) get roof and crown detail on the buildings in view, rebuilt when the map settles */
 let detHud=0,detInfo={n:0,R:0},detTimer=0,detVerify=0,detWait=0,detLast=null,origFilter={};
