@@ -294,7 +294,7 @@ html.th-glass .fl-mk{background:rgba(255,255,255,.04);border-color:rgba(255,255,
 #evchip{position:absolute;z-index:3;left:max(12px,env(safe-area-inset-left,0px));top:48px;max-width:calc(100% - 24px);display:flex;align-items:center;gap:6px;border-left:3px solid var(--evc,var(--accent));white-space:nowrap;overflow:hidden}
 #evchip span{overflow:hidden;text-overflow:ellipsis}
 #evchip .ev-dot{width:8px;height:8px;border-radius:50%;background:var(--good);flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 30%,transparent)}
-#mapwrap.st #evchip{display:none}#mapwrap.tsb #evchip{top:90px}
+#mapwrap.st #evchip{display:none}#mapwrap.st.nolbl .maplibregl-marker{display:none!important}#mapwrap.tsb #evchip{top:90px}
 body.md-open #evchip{display:none}
 #evpop .ev-bk{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:12px}
 #evpop .ev-card{position:relative;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:16px;width:100%;max-width:400px;height:min(88vh,640px);display:flex;flex-direction:column;box-shadow:0 18px 40px rgba(0,0,0,.35);outline:none;overflow:hidden}
@@ -453,7 +453,7 @@ html.th-ledger #dcard>div{border-radius:2px;box-shadow:6px 6px 0 rgba(31,26,20,.
     <div id="ticker"></div>
     <canvas id="amb"></canvas>
     <canvas id="wx" hidden></canvas>
-    <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button><button id="st3dt" class="chip" title="Light or dark map">☾ Dark</button><button id="stob" class="chip" aria-pressed="true" title="Show or hide other players' businesses in this city">👥 Others' shops</button><button class="chip" data-stf="mb" aria-pressed="true" title="Show or hide your shops">🏬 Shops</button><button class="chip" data-stf="mw" aria-pressed="true" title="Show or hide your depots">📦 Depots</button><button class="chip" data-stf="mf" aria-pressed="true" title="Show or hide your factories">🏭 Factories</button></div>
+    <div id="stbar" hidden><button id="stback" class="chip">← Globe</button><button id="stcityb" class="chip"><span id="stcity"></span> · open</button><button id="st3dt" class="chip" title="Light or dark map">☾ Dark</button><button id="stob" class="chip" aria-pressed="true" title="Show or hide other players' businesses in this city">👥 Others' shops</button><button class="chip" data-stf="mb" aria-pressed="true" title="Show or hide your shops">🏬 Shops</button><button class="chip" data-stf="mw" aria-pressed="true" title="Show or hide your depots">📦 Depots</button><button class="chip" data-stf="mf" aria-pressed="true" title="Show or hide your factories">🏭 Factories</button><button id="stlbl" class="chip" aria-pressed="false" title="Show or hide map pins, street names and route lines in street view">🏷️ Labels (hidden)</button></div>
     <div id="placebar" hidden></div>
     <button id="tostreet" class="chip" hidden>View streets</button>
     <div id="hint">Drag to spin · scroll or pinch to zoom from the planet down to the streets · tap a city</div>
@@ -913,6 +913,7 @@ let _lpT=0,_lp={};function labelProfit(c){const n=Date.now();if(n-_lpT>1000){_lp
 function drawNow(){applyView();syncCam();const z=MM.getZoom();
   const C={sea:css("--sea"),land:css("--land"),border:css("--border"),ink:css("--ink"),own:css("--own"),acc:css("--accent"),good:css("--good"),bad:css("--bad"),muted:css("--muted"),space:css("--space"),panel:css("--panel")};C.halo=C.panel+"cc";
   ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(typeof svHide==="function"&&svHide())return;
   drawRim(ctx,z);if(typeof drawNight==="function"){const d=z<6.5&&globeDisc();ctx.save();if(d){ctx.beginPath();ctx.arc(d.o.x,d.o.y,d.R,0,7);ctx.clip()}drawNight(ctx);ctx.restore()}
   const [cx,cy]=proj.translate(),R=proj.scale();
   // shipments in transit (great-circle routes, clipped to the visible side)
@@ -2384,9 +2385,16 @@ const nearCity=(lon,lat,maxDeg)=>{let best=null,bd=1e9;for(const c of CITIES){co
 function streetSync(){const z=MM.getZoom(),on=z>=ZST||!!placing;
   if(on&&!inStreet){inStreet=true;const ce=MM.getCenter();stCity=stCity&&Math.hypot(stCity.lat-ce.lat,(stCity.lon-ce.lng)*Math.cos(ce.lat*Math.PI/180))<1.5?stCity:nearCity(ce.lng,ce.lat,2);
     stBar.hidden=false;$("#hint").hidden=true;$("#mapwrap").classList.add("st");streetSky();stLabel();renderPins();if(typeof navSync==="function")navSync()}
-  else if(!on&&inStreet){inStreet=false;streetSky();stBar.hidden=true;$("#mapwrap").classList.remove("st");if(offer)closeOffer();clearPins();if(typeof navSync==="function")navSync()}}
-function stLabel(){$("#stcity").textContent=stCity?stCity.name:"";$("#stcityb").hidden=!stCity;const ob=$("#stob");if(ob){const on=lyOn("ob");ob.setAttribute("aria-pressed",on);ob.textContent=on?"👥 Others' shops":"👥 Others' shops (hidden)"}for(const q of document.querySelectorAll("#stbar [data-stf]")){const on=lyOn(q.dataset.stf),n={mb:"🏬 Shops",mw:"📦 Depots",mf:"🏭 Factories"}[q.dataset.stf];q.setAttribute("aria-pressed",on);q.textContent=on?n:n+" (hidden)"}}
+  else if(!on&&inStreet){inStreet=false;streetSky();stBar.hidden=true;$("#mapwrap").classList.remove("st");if(offer)closeOffer();clearPins();svApply();if(typeof navSync==="function")navSync()}}
+/* street-view label filter: pins, street names and route lines are hidden in street view unless the Labels chip is on (S.set.svl=1) */
+const svHide=()=>inStreet&&!(S.set&&S.set.svl===1);let _svSym=null;
+function svApply(){const h=svHide();$("#mapwrap").classList.toggle("nolbl",h);try{if(h){_svSym=_svSym||{};for(const l of MM.getStyle().layers)if(l.type==="symbol"){if(!(l.id in _svSym))_svSym[l.id]=MM.getLayoutProperty(l.id,"visibility")||"visible";MM.setLayoutProperty(l.id,"visibility","none")}}
+  else if(_svSym){for(const id in _svSym)if(MM.getLayer(id))MM.setLayoutProperty(id,"visibility",_svSym[id]);_svSym=null}}catch(e){}
+  const b=$("#stlbl");if(b){const on=!h;b.setAttribute("aria-pressed",on);b.textContent=on?"🏷️ Labels":"🏷️ Labels (hidden)"}try{draw()}catch(e){}}
+MM.on("style.load",()=>{_svSym=null;setTimeout(svApply,50)});
+function stLabel(){svApply();$("#stcity").textContent=stCity?stCity.name:"";$("#stcityb").hidden=!stCity;const ob=$("#stob");if(ob){const on=lyOn("ob");ob.setAttribute("aria-pressed",on);ob.textContent=on?"👥 Others' shops":"👥 Others' shops (hidden)"}for(const q of document.querySelectorAll("#stbar [data-stf]")){const on=lyOn(q.dataset.stf),n={mb:"🏬 Shops",mw:"📦 Depots",mf:"🏭 Factories"}[q.dataset.stf];q.setAttribute("aria-pressed",on);q.textContent=on?n:n+" (hidden)"}}
 for(const q of document.querySelectorAll("#stbar [data-stf]"))q.addEventListener("click",()=>{const k=q.dataset.stf;S.set=S.set||{};S.set[k]=S.set[k]===0?1:0;stLabel();if(typeof satChip==="function")satChip();renderPins();save()});
+$("#stlbl").addEventListener("click",()=>{S.set=S.set||{};S.set.svl=S.set.svl===1?0:1;svApply();save()});
 $("#stob").addEventListener("click",()=>{S.set=S.set||{};S.set.ob=S.set.ob===0?1:0;stLabel();if(typeof satChip==="function")satChip();renderPins();save()});
 MM.on("move",streetSync);
 MM.on("moveend",()=>{if(!inStreet)return;const ce=MM.getCenter(),best=nearCity(ce.lng,ce.lat,.6);if(best&&best!==stCity){stCity=best;stLabel();renderPins()}});
