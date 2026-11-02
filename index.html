@@ -13886,6 +13886,9 @@ function frBuyCost(x){const b=BIZ.find(y=>y.k===x.k),c=CITIES[x.c];return b&&c?M
 function frBuyout(id){const f=FRAN(),i=f.l.findIndex(x=>x.id===id);if(i<0)return"Not found";const x=f.l[i],b=BIZ.find(y=>y.k===x.k),c=CITIES[x.c],p=spDevSafe()?0:frBuyCost(x);if(S.cash<p)return`Need ${fmt(p)}`;
   if(b.co&&typeof hasHQ==="function"&&!hasHQ(c))return"Company-only business: you need an HQ there";
   S.cash-=p;f.l.splice(i,1);(S.own[c.id]=S.own[c.id]||{})[x.k]=Math.max(1,S.own[c.id][x.k]||0);f.log.unshift({t:Date.now(),m:`Bought out ${x.op}'s ${b.n} in ${c.name}`});return""}
+function frSellVal(x){const h=Math.max(0,(x.e-Date.now())/3600000);return Math.round(frRoy(x)*h*1.15)} // remaining royalties on the deal + 15% profit
+function frSell(id){const f=FRAN(),i=f.l.findIndex(x=>x.id===id);if(i<0)return"Not found";const x=f.l[i],v=frSellVal(x);if(v<=0)return"Nothing left to sell";
+  f.l.splice(i,1);S.cash+=v;f.tot+=v;S.earned=(S.earned||0)+v;f.log.unshift({t:Date.now(),m:`Sold ${x.op}'s franchise in ${CITIES[x.c].name} (+${fmt(v)})`});f.log.length=Math.min(f.log.length,20);return""}
 function frEnd(id){const f=FRAN(),i=f.l.findIndex(x=>x.id===id);if(i<0)return;const x=f.l.splice(i,1)[0];f.log.unshift({t:Date.now(),m:`Ended ${x.op}'s franchise in ${CITIES[x.c].name}`})}
 function frTick(now){if(!S.fran)return;const f=FRAN();now=now||Date.now();
   for(const x of f.l.slice()){if(x.e<=now){f.l.splice(f.l.indexOf(x),1);f.log.unshift({t:now,m:`${x.op}'s franchise in ${CITIES[x.c].name} expired`})}}
@@ -13895,7 +13898,7 @@ function fchHtml(c){const o=S.own[c.id]||{},f=S.fran?FRAN():null,mine=BIZ.filter
   const here=f?f.l.filter(x=>x.c===c.id):[];if(!mine.length&&!here.length)return"";
   h+=`<div class="sec">Franchising</div><div class="list">`;
   for(const x of here){const b=BIZ.find(y=>y.k===x.k);h+=`<div class="row"><div class="n">${b.n} <span class="tag boom">Franchise</span></div><div class="d">Run by ${x.op} · ${(x.r*100).toFixed(1)}% royalty · <b>${fmt(frRoy(x))}</b>/hr · ends in ${fmtDur(x.e-Date.now())}</div>
-    <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-fr="buy" data-id="${x.id}" data-fixed="1">Buy out ${fmt(frBuyCost(x))}</button><button class="buy up" data-fr="end" data-id="${x.id}" data-fixed="1">End deal</button></span></div>`}
+    <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-fr="buy" data-id="${x.id}" data-fixed="1">Buy out ${fmt(frBuyCost(x))}</button><button class="buy" data-fr="sell" data-id="${x.id}" data-fixed="1" title="Get the royalties left on this deal now, plus 15% profit">Sell ${fmt(frSellVal(x))}</button><button class="buy up" data-fr="end" data-id="${x.id}" data-fixed="1">End deal</button></span></div>`}
   for(const b of mine){const n=frCities(b.k).length;
     if(!f||!f.p[b.k]){h+=`<div class="row"><div class="n">Franchise ${b.n}</div><div class="d">${n<FRC.need?`Run it in ${FRC.need} cities to license it to AI operators (${n}/${FRC.need}).`:`License your ${b.n.toLowerCase()} brand to operators in other cities: they pay a signing fee and 5–8% of their gross every hour.`}</div>
       <button class="buy" data-fr="start" data-k="${b.k}" data-fixed="1" ${n<FRC.need||S.cash<frSetup(b)?"disabled":""}>Start program ${fmt(frSetup(b))}</button></div>`;continue}
@@ -13905,8 +13908,8 @@ function fchHtml(c){const o=S.own[c.id]||{},f=S.fran?FRAN():null,mine=BIZ.filter
       <button class="buy" data-fr="sign" data-k="${b.k}" data-c="${of.c}" data-fixed="1">Sign</button></div>`}
   return h+`</div>`}
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-fr]");if(!b||!sel)return;const a=b.dataset.fr;let r="";
-  if(a==="start")r=frStart(b.dataset.k);else if(a==="sign")r=frSign(b.dataset.k,+b.dataset.c);else if(a==="buy")r=frBuyout(+b.dataset.id);else if(a==="end")frEnd(+b.dataset.id);
-  toast(r||({start:"Franchise program launched",sign:"Franchise deal signed",buy:"Franchise bought out: it's yours now",end:"Franchise deal ended"}[a]));save();hud();renderSheet()});
+  if(a==="start")r=frStart(b.dataset.k);else if(a==="sign")r=frSign(b.dataset.k,+b.dataset.c);else if(a==="buy")r=frBuyout(+b.dataset.id);else if(a==="sell")r=frSell(+b.dataset.id);else if(a==="end")frEnd(+b.dataset.id);
+  toast(r||({start:"Franchise program launched",sign:"Franchise deal signed",buy:"Franchise bought out: it's yours now",sell:"Franchise sold",end:"Franchise deal ended"}[a]));save();hud();renderSheet()});
 setInterval(()=>{try{frTick()}catch(e){}},10000);
 /* ===== Mars base (v1): an interactive Mars surface where player governments place space buildings =====
    S.mb={b:[{id,k,x,y,c,at}],seq,sel}. Local to the save for now (shared online placement is a later step).
