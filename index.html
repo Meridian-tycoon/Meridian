@@ -7814,7 +7814,7 @@ function intDash(){const hd=`<div class="mdx-hd"><h2>Intelligence Agency <span>�
   return hd+`<div class="mdx-kpis">${kp("Operations",x.n,`${x.n?Math.round(x.ok/x.n*100):0}% success`,"#e0e7ff","#4338ca","🕵️")}${kp("Spy networks",nets.length,`${nets.reduce((a,c)=>a+x.net[c],0)} asset levels`,"#dcfce7","#16a34a","🕴️")}${kp("Counter-intel",intCiOn()?"On":"Off",intCiOn()?fmtDur(x.ci-now)+" left":"home unshielded","#fef3c7","#d97706","🛡️")}${kp("Intel files",files,files?"active dossiers":"none open","#fee2e2","#dc2626","📁")}</div>
   <div class="mdx-grid"><div class="mdx-col mdx-c1">${dossier}</div><div class="mdx-col mdx-c2">${opsCard}${logCard}</div><div class="mdx-col mdx-c3">${threat}${netCard}</div></div>`}
 /* dashboard pages: any page added later goes into DXPAGES; the Industrial Shop is always appended last, so it is always the right-most tab */
-const DXPAGES=[["fin","Finance"],["mny","Money"],["off","Office"],["log","Logistics"],["truck","Trucking"],["air","Airline"]],DXLAST=["ind","Industrial Shop"];
+const DXPAGES=[["fin","Finance"],["mny","Money"],["off","Office"],["frn","Franchises"],["log","Logistics"],["truck","Trucking"],["air","Airline"]],DXLAST=["ind","Industrial Shop"];
 const dxPageList=()=>DXPAGES.filter(p=>p[0]!==DXLAST[0]).concat([DXLAST]);
 const dxPageOk=v=>dxPageList().some(p=>p[0]===v);
 function dxPageBtns(){return dxPageList().map(p=>`<button data-lx="page" data-v="${p[0]}" class="${(dxPageOk(DX.page)?DX.page:"fin")===p[0]?"on":""}">${p[1]}</button>`).join("")}
@@ -7868,7 +7868,7 @@ function dxTipShow(el){const box=DX.el&&DX.el.querySelector("#mdx-bars");if(!box
   const br=box.getBoundingClientRect(),r=el.getBoundingClientRect(),w=t.offsetWidth;let x=r.right-br.left+6;if(x+w>br.width)x=r.left-br.left-w-6;if(x<0)x=Math.max(0,Math.min(br.width-w,r.left-br.left+r.width/2-w/2));t.style.left=x+"px"}
 const dxAgo=t=>{const s=Math.max(0,(Date.now()-t)/1000);return s<60?"just now":s<3600?Math.round(s/60)+" min ago":(s/3600).toFixed(1)+" days ago"};
 const dxIn=ms=>ms<=0?"now":ms<60000?Math.ceil(ms/1000)+"s":ms<DAYMS?Math.ceil(ms/60000)+" min":(ms/DAYMS).toFixed(1)+" days";
-function dxRender(){if(!DX.open||!DX.el)return;if(DX.page==="log"){lxRender();return}if(DX.page==="truck"){txRender();return}if(DX.page==="air"){axRender();return}if(DX.page==="off"){ofRender();return}if(DX.page==="mny"){mnyRender();return}if(DX.page==="ind"){isRender();return}const reg=!!DX.reg,T=dxData(reg),main=DX.el.querySelector("#mdx-main");if(!main)return;
+function dxRender(){if(!DX.open||!DX.el)return;if(DX.page==="log"){lxRender();return}if(DX.page==="truck"){txRender();return}if(DX.page==="air"){axRender();return}if(DX.page==="off"){ofRender();return}if(DX.page==="mny"){mnyRender();return}if(DX.page==="frn"){frnRender();return}if(DX.page==="ind"){isRender();return}const reg=!!DX.reg,T=dxData(reg),main=DX.el.querySelector("#mdx-main");if(!main)return;
   const dt=DX.el.querySelector("#mdx-dt");if(dt)dt.textContent=`Day ${S.day||1} · next day in ${dxIn((S.hour+1)*DAYMS-Date.now())}`;
   DX.el.querySelectorAll("[data-dx=reg]").forEach(b=>b.classList.toggle("on",(b.dataset.v==="1")===reg));
   if(!T.n){if(main.dataset.mode!=="empty"){main.dataset.mode="empty";DX.sig=null}const any=dxData(false).n;
@@ -13912,6 +13912,29 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-fr]");if(!b||
   if(a==="start")r=frStart(b.dataset.k);else if(a==="sign")r=frSign(b.dataset.k,+b.dataset.c);else if(a==="buy")r=frBuyout(+b.dataset.id);else if(a==="sell")r=frSell(+b.dataset.id);else if(a==="end")frEnd(+b.dataset.id);
   toast(r||({start:"Franchise program launched",sign:"Franchise deal signed",buy:"Franchise bought out: it's yours now",sell:"Franchise sold",end:"Franchise deal ended"}[a]));save();hud();renderSheet()});
 setInterval(()=>{try{frTick()}catch(e){}},10000);
+/* HQ dashboard "Franchises" page: every franchise contract in one place (sell, buy out, end, extend, sign offers) */
+function frExtCost(x){return spDevSafe()?0:Math.round(frRoy(x)*24*3)} // ~3 real days of royalties
+function frExtend(id){const f=FRAN(),x=f.l.find(y=>y.id===id);if(!x)return"Not found";const p=frExtCost(x);if(S.cash<p)return`Need ${fmt(p)}`;S.cash-=p;x.e=Math.max(x.e,Date.now())+7*DAYMS;f.log.unshift({t:Date.now(),m:`Extended ${x.op}'s franchise in ${CITIES[x.c].name} by 7 days`});f.log.length=Math.min(f.log.length,20);return""}
+function frnPage(){const f=FRAN(),now=Date.now(),ks=[...new Set(Object.keys(f.p).filter(k=>f.p[k]).concat(BIZ.filter(b=>frCities(b.k).length).map(b=>b.k)))];
+  const tot=franIncome();let h=`<div class="mdx-card"><div class="mdx-ch"><h3>Franchise contracts</h3><small style="margin-left:auto;opacity:.6">${f.l.length} active · royalties ${fmt(tot)}/hr · lifetime fees+sales ${fmt(f.tot)}</small></div>`;
+  if(!f.l.length)h+=`<div class="mdx-empty">No active contracts. Start a program below or sign an offer.</div>`;
+  else h+=`<div class="mdx-rows">`+f.l.slice().sort((a,b)=>a.e-b.e).map(x=>{const b=BIZ.find(y=>y.k===x.k);return `<div style="flex-wrap:wrap;gap:6px"><span>${dxE(b?b.n:x.k)} · ${dxE(CITIES[x.c].name)} · ${dxE(x.op)}<br><small style="opacity:.7">${(x.r*100).toFixed(1)}% royalty · ${fmt(frRoy(x))}/hr · ends in ${fmtDur(x.e-now)}</small></span><b style="display:flex;gap:6px;flex-wrap:wrap"><button class="mdx-btn" data-frd="sell" data-id="${x.id}">Sell ${fmt(frSellVal(x))}</button><button class="mdx-btn" data-frd="ext" data-id="${x.id}">+7 days ${fmt(frExtCost(x))}</button><button class="mdx-btn" data-frd="buy" data-id="${x.id}">Buy out ${fmt(frBuyCost(x))}</button><button class="mdx-btn" data-frd="end" data-id="${x.id}">End</button></b></div>`}).join("")+`</div>`;
+  h+=`</div>`;
+  for(const k of ks){const b=BIZ.find(y=>y.k===k);if(!b)continue;const n=frCities(k).length;h+=`<div class="mdx-card" style="margin-top:16px"><div class="mdx-ch"><h3>${dxE(b.n)}</h3><small style="margin-left:auto;opacity:.6">`;
+    if(!f.p[k]){h+=`${n}/${FRC.need} cities</small></div><div class="mdx-rows"><div><span>${n<FRC.need?`Run it in ${FRC.need} cities to franchise it`:"No program yet"}</span><b><button class="mdx-btn" data-frd="start" data-k="${k}" ${n<FRC.need||S.cash<frSetup(b)?"disabled":""}>Start program ${fmt(frSetup(b))}</button></b></div></div></div>`;continue}
+    const act=f.l.filter(x=>x.k===k).length,mx=frMax(k),q=frQ(k);h+=`${act}/${mx} contracts · quality ×${q.toFixed(2)}</small></div><div class="mdx-rows">`;
+    const of=act<mx?frOffers(k):[];if(!of.length)h+=`<div><span>${act>=mx?"Contract limit reached (own it in more cities to raise it)":"No offers today"}</span><b></b></div>`;
+    for(const o of of)h+=`<div><span>${dxE(o.op)} · ${dxE(CITIES[o.c].name)}<br><small style="opacity:.7">${fmt(o.fee)} now + ${(o.r*100).toFixed(1)}% (≈${fmt(Math.round(frGross(b,CITIES[o.c])*o.r*q))}/hr) for ${o.days} days</small></span><b><button class="mdx-btn" data-frd="sign" data-k="${k}" data-c="${o.c}">Sign</button></b></div>`;
+    h+=`</div></div>`}
+  if(f.log.length)h+=`<div class="mdx-card" style="margin-top:16px"><div class="mdx-ch"><h3>Recent</h3></div><div class="mdx-rows">${f.log.slice(0,8).map(l=>`<div><span>${dxE(l.m)}</span><b></b></div>`).join("")}</div></div>`;
+  return h}
+function frnRender(){const main=DX.el&&DX.el.querySelector("#mdx-main");if(!main)return;DX.el.classList.add("lx-on");
+  DX.el.querySelectorAll("[data-lx=page]").forEach(b=>b.classList.toggle("on",b.dataset.v==="frn"));if(main.dataset.mode!=="frn"){main.dataset.mode="frn";main._lxh=""}
+  let h;try{h=frnPage()}catch(e){console.warn("frn",e);h=`<div class="mdx-card"><div class="mdx-empty">The franchise page hit a snag (${dxE(e.message)}).</div></div>`}if(h!==main._lxh){main._lxh=h;main.innerHTML=h}}
+document.addEventListener("click",e=>{const b=e.target.closest("[data-frd]");if(!b||b.disabled)return;const a=b.dataset.frd,id=+b.dataset.id;let r="";
+  if(a==="sell")r=frSell(id);else if(a==="ext")r=frExtend(id);else if(a==="buy")r=frBuyout(id);else if(a==="end")frEnd(id);else if(a==="start")r=frStart(b.dataset.k);else if(a==="sign")r=frSign(b.dataset.k,+b.dataset.c);
+  toast(r||({sell:"Franchise sold",ext:"Contract extended 7 days",buy:"Franchise bought out: it's yours now",end:"Franchise deal ended",start:"Franchise program launched",sign:"Franchise deal signed"}[a]));save();hud();try{frnRender()}catch(_){}try{if(sel)renderSheet()}catch(_){}});
+setInterval(()=>{try{if(DX.open&&DX.page==="frn")frnRender()}catch(e){}},5000);
 /* ===== Mars base (v1): an interactive Mars surface where player governments place space buildings =====
    S.mb={b:[{id,k,x,y,c,at}],seq,sel}. Local to the save for now (shared online placement is a later step).
    Only a player in office (colGov) builds; companies get in later via grant, large holding or license. */
