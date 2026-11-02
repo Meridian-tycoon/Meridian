@@ -6294,20 +6294,22 @@ const WPNCFG={ // cost per weapon, build = game days, enemy = share of enemy max
 function wpn(){const m=mil();if(!m.wpn||typeof m.wpn!=="object")m.wpn={};for(const k in WPNCFG.w)if(!(m.wpn[k]>=0))m.wpn[k]=0;if(!Array.isArray(m.wq))m.wq=[];if(!Array.isArray(m.strikes))m.strikes=[];return m}
 function wpnTick(){const m=wpn(),now=Date.now();let done=0;for(let i=m.wq.length-1;i>=0;i--){const q=m.wq[i];if(q.done<=now){if(WPNCFG.w[q.k])m.wpn[q.k]++;m.wq.splice(i,1);done++}}
   m.strikes=m.strikes.filter(s=>s.until>now);return done}
+/* Moderators (MODERATORS) and dev: instant weapon builds, no production limit, no launch countdown. Client-side only. */
+const wpnFast=()=>{try{return devGod()||(typeof ON!=="undefined"&&!!ON.user&&!!MODERATORS[ON.user.uid])}catch(e){return false}};
 function wpnBuild(k){const p=pol(),m=wpn(),W=WPNCFG.w[k];if(!W)return;if(!polLeader())return toast("Only a Leader can build weapons");
-  if(NLCK.includes(k)&&nlcNeed())return toast(nlcNeed());if(!W.ok(m))return toast(`${W.n} needs ${W.need}`);if(!devGod()&&!WPNCFG.free.includes(k)&&m.wq.filter(q=>!WPNCFG.free.includes(q.k)).length>=WPNCFG.queue)return toast(`At most ${WPNCFG.queue} nukes/ICBMs in production`);
+  if(NLCK.includes(k)&&nlcNeed())return toast(nlcNeed());if(!W.ok(m))return toast(`${W.n} needs ${W.need}`);if(!wpnFast()&&!WPNCFG.free.includes(k)&&m.wq.filter(q=>!WPNCFG.free.includes(q.k)).length>=WPNCFG.queue)return toast(`At most ${WPNCFG.queue} nukes/ICBMs in production`);
   const wc$=Math.round(W.cost*(typeof wcArms==="function"?wcArms():1));if(S.cash<wc$)return toast(`${W.n} costs ${fmt(wc$)}${wc$>W.cost?" (World council arms embargo)":""}`);S.cash-=wc$;
-  if(devGod()){m.wpn[k]++;toast(`${W.n} ready in your arsenal (developer: instant build)`);return true}
+  if(wpnFast()){m.wpn[k]++;toast(`${W.n} ready in your arsenal (${devGod()?"developer":"moderator"}: instant build)`);return true}
   m.wq.push({k,done:Date.now()+W.build*DAYMS});toast(`${W.n} in production · ready in ${fmtDur(W.build*DAYMS)}`);return true}
 // build several at once: stops at the first one that can't be built (cash, production limit) and says how many were ordered
 var _toastMute=null; // {last} while set: toast() only records the message (used by wpnBuildN)
 function wpnBuildN(k,n){const W=WPNCFG.w[k];n=Math.max(1,Math.min(99,Math.floor(+n||1)));if(n===1)return wpnBuild(k);let got=0,last="";
   try{_toastMute={last:""};for(let i=0;i<n;i++){if(wpnBuild(k)!==true)break;got++}last=_toastMute.last}finally{_toastMute=null}
-  if(got)toast(`${got} × ${W.n} ${devGod()?"ready in your arsenal (developer: instant build)":"in production · ready in "+fmtDur(W.build*DAYMS)}${got<n&&last?` · stopped at ${got} of ${n}: ${last}`:""}`);else if(last)toast(last)}
+  if(got)toast(`${got} × ${W.n} ${wpnFast()?`ready in your arsenal (${devGod()?"developer":"moderator"}: instant build)`:"in production · ready in "+fmtDur(W.build*DAYMS)}${got<n&&last?` · stopped at ${got} of ${n}: ${last}`:""}`);else if(last)toast(last)}
 /* Barrage: fire a salvo of regular missiles at one city, one after another (each is a normal missile strike) */
 const BARRAGE={n:30,gap:400};
 function wpnBarrage(id,go){const m=wpn(),c=CITIES[+id];if(!c)return;if(!polLeader())return toast("Only a Leader can order strikes");if(!m.wars[c.country]&&!wmdPeaceOk(c.country,"msl"))return toast(`You can't strike ${c.country}`);const pz=!m.wars[c.country];
-  const n=Math.min(BARRAGE.n,m.wpn.msl||0);if(n<2)return toast("A barrage needs at least 2 missiles in stock");if(!go&&govRival(c))return lnStart("msl",c.id,n);toast(`🎆 Missile barrage: ${n} missiles launched at ${c.name}`);if(!go)lnFlyPub("msl",c,n);
+  const n=Math.min(BARRAGE.n,m.wpn.msl||0);if(n<2)return toast("A barrage needs at least 2 missiles in stock");if(!go&&!wpnFast()&&govRival(c))return lnStart("msl",c.id,n);toast(`🎆 Missile barrage: ${n} missiles launched at ${c.name}`);if(!go)lnFlyPub("msl",c,n);
   for(let i=0;i<n;i++)setTimeout(()=>{if(!(m.wpn.msl>0)||(!pz&&!m.wars[c.country]))return;wpnFire("msl",c.id,1,1);if(i===n-1){save();hud()}},i*BARRAGE.gap)}
 /* Player vs player: a strike on a country another player governs waits LCFG.ms. The target player gets a warning popup with a live countdown (Firestore launch/{id}). */
 const LCFG={ms:30000};
@@ -6339,7 +6341,7 @@ function wpnFire(k,id,sure,go){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id]
   if(!m.wars[c.country]&&!wmdPeaceOk(c.country,k))return toast(k==="msl"?`You're not at war with ${c.country}`:`You can't strike ${c.country}`);
   // peacetime WMD strike (gas/nuke/ICBM): no war starts; a throwaway war record lets the usual damage, sanctions, approval and loyalty costs apply
   const w=m.wars[c.country]||(()=>{const e=milEnemy(c.country);return {front:0,enemyStr:e,enemyMax:e,weariness:0,peace:1}})();if(!m.wpn[k])return toast(`No ${W.n.toLowerCase()} in stock`);
-  if(!go&&govRival(c))return lnStart(k,c.id,1);
+  if(!go&&!wpnFast()&&govRival(c))return lnStart(k,c.id,1);
   if(!go)lnFlyPub(k,c,1);
   m.wpn[k]--;if(k==="msl"&&w.peace){wpnSanction("msl");if(!devGod())p.appr=Math.max(0,p.appr-2)}if(k!=="msl"){w.wmd=1;if(k==="nuke"||k==="hbomb"||k==="icbm")w.nk=1;if(k==="icbm")w.ic=1;wpnSanction(k);try{xrpBoomGo(p.c)}catch(e){}}const kill=Math.max(0,Math.min(w.enemyMax*W.enemy,w.enemyStr-w.enemyMax*WPNCFG.strFloor)),f0=w.front;w.enemyStr=Math.max(0,w.enemyStr-kill);w.front=Math.max(f0,Math.min(k==="nuke"||k==="hbomb"||k==="icbm"?WPNCFG.nukeCap:WPNCFG.frontCap,f0+W.front));const push=Math.round((w.front-f0)*10)/10;w.weariness=Math.min(100,w.weariness+W.wear);
   if(!devGod()){p.appr=Math.max(0,Math.min(95,p.appr+W.appr));for(const n in p.ctrl)p.ctrl[n].loy=Math.max(0,p.ctrl[n].loy+W.loy);for(const n in m.occ)m.occ[n].resist=Math.min(100,m.occ[n].resist+W.resist)}
