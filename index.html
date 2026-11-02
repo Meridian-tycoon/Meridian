@@ -3887,7 +3887,9 @@ function wlStrike(k,c){try{const f=WLSTK[k];if(!f||!c)return;let hit=0;for(const
 const wlName=()=>(S.online&&S.online.name)||"You";
 function wlRemote(w,s){const j=typeof ON!=="undefined"&&Array.isArray(ON.wj)?ON.wj:[];return j.filter(x=>x.w===wlGid(w)&&(!s||x.s===s))}
 function wlInit(w){if(w.tr&&w.tr.a>=0&&w.tr.b>=0)return;w.tr={a:wlTroops(w.a),b:wlTroops(w.b)};w.t0={a:w.tr.a,b:w.tr.b};w.fp=50;w.pu=w.att===w.b?"b":"a";w.cc={};w.ev=[];w.at={}}
-function wlSide(w,s){let v=(w.tr&&w.tr[s])||0;for(const n in w.at||{})if(w.al&&w.al[n]===s)v+=w.at[n]||0;for(const j of wlRemote(w,s))v+=Math.max(0,+j.n||0);return v}
+/* a side governed by the player fights as one army: the country's troops plus the player's own (wlPT) */
+const wlGov=(w,s)=>{const pc=dipPlayerC();return pc&&w[s]===pc&&!(w.al&&w.al[pc])?wlPT():0};
+function wlSide(w,s){let v=((w.tr&&w.tr[s])||0)+wlGov(w,s);for(const n in w.at||{})if(w.al&&w.al[n]===s)v+=w.at[n]||0;for(const j of wlRemote(w,s))v+=Math.max(0,+j.n||0);return v}
 function wlTarget(w,s){const o=s==="a"?"b":"a",cc=w.cc||{},f=bgLerp(w.a,w.b,(w.fp||50)/100);if(!f)return null;
   const own=ctyCities(w[s]).filter(c=>cc[c.id]===o),def=ctyCities(w[o]).filter(c=>cc[c.id]!==s),pool=own.length?own:def;if(!pool.length)return null;
   return pool.slice().sort((x,y)=>d3.geoDistance([x.lon,x.lat],f)-d3.geoDistance([y.lon,y.lat],f))[0]}
@@ -3900,6 +3902,7 @@ function wlDay(ws,d,quiet){const C=WLCFG,pc=dipPlayerC();
     const ea=A*Math.min(2,qa)*(.6+.8*Math.random()),eb=B*Math.min(2,qb)*(.6+.8*Math.random()),tot=Math.max(1,ea+eb);
     const la=Math.min(A*C.cap,eb*C.loss*inten),lb=Math.min(B*C.cap,ea*C.loss*inten);
     for(const [s,l,T] of [["a",la,A],["b",lb,B]]){const f=T>0?1-l/T:1,b0=w.tr[s];w.tr[s]=Math.round(w.tr[s]*f);for(const n in w.at)if(w.al[n]===s&&n!==pc)w.at[n]=Math.round(w.at[n]*f);
+      if(f<1&&wlGov(w,s)>0)try{milKill(mil(),1-f)}catch(e){} // the governing player's own army shares the side's losses
       wlLoss(w,s,b0-w.tr[s])}
     {const A2=wlSide(w,"a"),B2=wlSide(w,"b"),lo=Math.min(A2,B2),hi=Math.max(A2,B2);if(hi>=200&&lo<=Math.max(25,hi*.01)){const ws2=A2>B2?"a":"b",win=w[ws2],los=w[ws2==="a"?"b":"a"];
       const t=`🏳 ${los}'s army collapsed (${Math.round(lo)} troops left vs ${Math.round(hi)}): ${los} surrenders to ${win}`;dipSay(t,1,quiet);if(!quiet)toast(t);try{stNews(t)}catch(e){}dipConquer(win,los,quiet);return}}
@@ -3938,8 +3941,8 @@ function wlDraw(ctx,w,zs,t,anim){if(w.l<3)return false;wlInit(w);const Ac=cfCap(
     for(const o of [-.6,0,.6])for(let i=0;i<2;i++){const dd=(8+(i+ph)*10)*zs*sg,cx=fx+px*o*L+dx*dd,cy=fy+py*o*L+dy*dd,a=5*zs;ctx.globalAlpha=(1-(i+ph)/2)*.95;
       ctx.beginPath();ctx.moveTo(cx-dx*a*sg+px*a,cy-dy*a*sg+py*a);ctx.lineTo(cx,cy);ctx.lineTo(cx-dx*a*sg-px*a,cy-dy*a*sg-py*a);ctx.stroke()}
     const pc=dipPlayerC();
-    for(const s of ["a","b"]){const k=s==="a"?-1:1,ux=fx+dx*k*30*zs,uy=fy+dy*k*30*zs;let yy=uy;const h=wlUnit(ctx,ux,yy,WLCOL[s],w[s],wlK(w.tr[s]),zs);_cfHit.push({x:ux,y:uy,r:18,w});yy+=h/2+2;
-      const sub=w[s]===pc?[[pc,"★ "+wlName()+" "+wlK(wlPT())]]:[];for(const n in w.al||{})if(w.al[n]===s)sub.push([n,(n===pc?"★ "+wlName()+" ":"")+wlK((w.at||{})[n])]);for(const j of wlRemote(w,s))sub.push([j.c,"★ "+String(j.name||"Player").slice(0,14)+" "+wlK(j.n)]);
+    for(const s of ["a","b"]){const k=s==="a"?-1:1,ux=fx+dx*k*30*zs,uy=fy+dy*k*30*zs;let yy=uy;const gv=w[s]===pc,h=wlUnit(ctx,ux,yy,WLCOL[s],w[s],gv?"★ "+wlName()+" "+wlK(w.tr[s]+wlGov(w,s)):wlK(w.tr[s]),zs);_cfHit.push({x:ux,y:uy,r:18,w});yy+=h/2+2;
+      const sub=[];for(const n in w.al||{})if(w.al[n]===s)sub.push([n,(n===pc?"★ "+wlName()+" ":"")+wlK((w.at||{})[n])]);for(const j of wlRemote(w,s))sub.push([j.c,"★ "+String(j.name||"Player").slice(0,14)+" "+wlK(j.n)]);
       for(const [n,txt] of sub.slice(0,5)){const h2=wlUnit(ctx,ux,yy+7*zs,WLCOL[s],n,txt,zs,1);yy+=h2+2}}
     live=true}
   const bt=w.bt,c=bt&&CITIES[bt.c];
