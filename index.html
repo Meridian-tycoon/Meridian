@@ -14366,6 +14366,11 @@ function scyForecast(){const acc=Math.min(100,60+5*scyDaysUp());return {acc,l:CI
 function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),now=Date.now(),on=scyOn();scyFavTick();
   const B=(a,t,dis,x)=>`<button class="buy" data-scy="${a}"${x?` data-k="${x}"`:""} data-fixed="1"${dis?" disabled":""}>${t}</button>`,R=(n,d,b)=>`<div class="row"><div class="n">${n}</div><div class="d">${d}</div>${b||""}</div>`;
   let h=`<div class="sec">🛰 God's Scythe (dev government only)</div><div class="list">`;
+  if(!on&&s.landed){h+=R("🛬 Landed at base",`The Scythe is on the ground. Restock anything below, then relaunch for free with a full ${SCY.days}-day tank. Favor and upgrades are kept.`,B("relaunch","🚀 Relaunch")+" "+B("hangar","🏗 Hangar view"));
+    h+=R("🔧 Hull",`${Math.round(s.hp==null?100:s.hp)}% · landing patches up all damage.`);
+    h+=R("⚡ Quick restock",`Fills the bay (plague + black sun), flares to 3 and drones to 4 in one go${scyAllCost(s)?`: ${fmt(scyAllCost(s))}`:" (already full)"}.`,B("restockall","Restock everything",!scyAllCost(s)||S.cash<scyAllCost(s)));
+    h+=R("Restock",`Plague ${s.bay.plague?"loaded":"empty"} · Black sun ${s.bay.bs?"loaded":"empty"} · Flares ${s.flare|0} · Drones ${s.drones|0}/4 · Stealth Lvl ${s.stl|0}/5`,
+      B("bplague",`Load plague · ${fmt(SCY.plague)}`,S.cash<SCY.plague||s.bay.plague)+" "+B("bbs",`Load black sun · ${fmt(SCY.bs)}`,S.cash<SCY.bs||s.bay.bs)+" "+B("flare",`Flares · ${fmt(SCY.flare)}`,S.cash<SCY.flare)+" "+((s.drones|0)<4?B("drone",`Drone · ${fmt(SCY.drone)}`,S.cash<SCY.drone):"")+" "+((s.stl|0)<5?B("stl",`Stealth Lvl ${(s.stl|0)+1} · ${fmt(SCY.stlCost[s.stl|0])}`,S.cash<SCY.stlCost[s.stl|0]):"")+" "+(s.laser?"":B("laser",`Laser · ${fmt(SCY.laser)}`,S.cash<SCY.laser)));return h+"</div>"}
   if(!on){h+=R("Weather-control satellite",`One of a kind. Steers natural disasters across the world and carries orbital weapons. Stays in orbit ${SCY.days} days.${s.t0?" Your last Scythe has fallen out of orbit.":""}`,B("buy",`Build & launch · ${fmt(SCY.cost)}`,S.cash<SCY.cost));return h+"</div>"}
   const cd=k=>s.cd[k]>now?` (${fmtDur(s.cd[k]-now)})`:"";
   h+=R("Fuel",`Refuel adds 7 days for ${fmt(5e9)}. The Space manager can do this for you (Mission control › Colonies › Space manager › Scythe).`,B("fuel","⛽ Refuel · $5B",S.cash<5e9));
@@ -14374,6 +14379,8 @@ function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),no
   h+=R("Reap",`Send a disaster at the target city (Favor ${SCY.reap.f}, once a day).`,Object.keys(SCY.kinds).map(k=>B("reap",SCY.kinds[k]+cd("reap"),s.fav<SCY.reap.f||s.cd.reap>now,k)).join(" "));
   h+=R("Shelter",`Shield the target's country from disasters for 48h (Favor ${SCY.shel.f}).`,B("shel","Shelter",s.fav<SCY.shel.f));
   h+=R("Calm",`No natural disasters anywhere for 12h (Favor ${SCY.calm.f}).`,B("calm","Calm the world",s.fav<SCY.calm.f||s.calm>now));
+  h+=R("🔧 Hull",`${Math.round(s.hp==null?100:s.hp)}%. Landing repairs any damage.`);
+  h+=R("🛬 Land",`Bring the Scythe down to restock the bay, flares, drones and upgrades whenever you like. Relaunch is free and refills the tank to ${SCY.days} days.`,B("land","Land the Scythe"));
   h+=R("🎥 Follow cam","Locks the camera onto the Scythe as it flies around the planet. Drag the map to let go.",B("follow",SCYF.on?"Stop following":"Follow the Scythe"));
   {const f=scyForecast();h+=R("Forecast",`Most at risk (${f.acc}% accurate): ${f.l.map(c=>c.name).join(", ")}.`)}
   h+=R("🤖 Reaper AI",`Target advisor: ${scyAdvisor().map(c=>c.name).join(", ")}. Autopilot ${s.auto?"ON":"OFF"}: spends Favor to shelter ${S.pol.c} when a disaster is coming.`,B("auto",s.auto?"Autopilot off":"Autopilot on"));
@@ -14383,10 +14390,25 @@ function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),no
   const L=s.stl|0;h+=R("Defense",`Stealth level ${L}/5 (${L*20}% hidden${L===5?", untraceable":""}) · Laser ${s.laser?"fitted":"none"} · Flares ${s.flare|0} · Drones ${s.drones|0}/4`,
     (L<5?B("stl",`Stealth Lvl ${L+1} · ${fmt(SCY.stlCost[L])}`,S.cash<SCY.stlCost[L]):"")+" "+(s.laser?"":B("laser",`Laser · ${fmt(SCY.laser)}`,S.cash<SCY.laser))+" "+B("flare",`Flares · ${fmt(SCY.flare)}`,S.cash<SCY.flare)+" "+((s.drones|0)<4?B("drone",`Drone · ${fmt(SCY.drone)}`,S.cash<SCY.drone):""));
   return h+"</div>"}
+function scyRestock(a,s){if(a==="bplague"){if(!s.bay.plague&&scyPay(SCY.plague))s.bay.plague=1}
+  else if(a==="bbs"){if(!s.bay.bs&&!s.bsUsed&&scyPay(SCY.bs))s.bay.bs=1}
+  else if(a==="stl"){const L=s.stl|0;if(L<5&&scyPay(SCY.stlCost[L]))s.stl=L+1}
+  else if(a==="laser"){if(!s.laser&&scyPay(SCY.laser))s.laser=1}
+  else if(a==="flare"){if(scyPay(SCY.flare))s.flare=(s.flare|0)+1}
+  else if(a==="drone"){if((s.drones|0)<4&&scyPay(SCY.drone))s.drones=(s.drones|0)+1}}
+function scyAllCost(s){return (s.bay.plague?0:SCY.plague)+(s.bay.bs||s.bsUsed?0:SCY.bs)+Math.max(0,3-(s.flare|0))*SCY.flare+Math.max(0,4-(s.drones|0))*SCY.drone}
+function scyRestockAll(s){const x=scyAllCost(s);if(!x)return toast("The Scythe is already fully stocked");if(!scyPay(x))return;s.bay.plague=1;if(!s.bsUsed)s.bay.bs=1;s.flare=Math.max(3,s.flare|0);s.drones=4;scySay("Fully armed and ready.")}
+// capital = biggest city of the country you govern (the Scythe's launch pad)
+function scyBase(){const l=CITIES.filter(c=>S.pol&&c.country===S.pol.c).sort((a,b)=>b.size-a.size);return l[0]||null}
 function scyPay(x){if(S.cash<x){toast("Not enough cash");return false}S.cash-=x;return true}
 function scyAct(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTick();const c=scyCity();
   if(a==="buy"){if(scyOn()||!scyPay(SCY.cost))return;Object.assign(s,{on:1,t0:now,end:now+SCY.days*DAY,fav:SCY.fav0,ft:now,cd:{},shel:{},calm:0,bay:{},bsUsed:0});stNews(`🛰 ${S.pol.c} has launched the God's Scythe into orbit`);scySay(SCY.lines[0])}
+  else if(a==="hangar")return scyHangar(1);
+  else if(a==="restockall")scyRestockAll(s);
+  else if(a==="relaunch"){if(scyOn()||!s.landed)return;scyHangar(0);Object.assign(s,{on:1,landed:0,t0:now,end:now+SCY.days*DAY,ft:now,anim:{t0:now,up:1}});scyWatch();stNews(`🛰 The God's Scythe lifts off again from ${S.pol.c}`);scySay("Back in orbit, Commander.")}
+  else if(s.landed&&["bplague","bbs","flare","drone","stl","laser"].includes(a))scyRestock(a,s);
   else if(!scyOn())return;
+  else if(a==="land"){scyFollow(0);const hurt=(s.hp==null?100:s.hp)<100;Object.assign(s,{on:0,landed:1,bsUsed:0,hp:100,anim:{t0:now,up:0}});scyWatch();stNews("🛬 The God's Scythe has landed for restocking"+(hurt?" and repairs":""));scySay("Coming home to reload.")}
   else if(a==="reap"){if(!c||s.fav<SCY.reap.f||s.cd.reap>now)return;SCY_HIT=1;let ev;try{ev=dzHit(c,k)}finally{SCY_HIT=0}if(!ev)return toast(`${c.name} is still recovering from a disaster`);s.fav-=SCY.reap.f;s.cd.reap=now+SCY.reap.cd;stNews(`🛰 The Scythe falls on ${c.name}: ${SCY.kinds[k]}`);scySay("It is done.")}
   else if(a==="shel"){if(!c||s.fav<SCY.shel.f)return;s.fav-=SCY.shel.f;s.shel[c.country]=now+SCY.shel.d;scySay(`${c.country} is under my wing.`)}
   else if(a==="calm"){if(s.fav<SCY.calm.f)return;s.fav-=SCY.calm.f;s.calm=now+SCY.calm.d;stNews("🛰 The God's Scythe has calmed the world's weather");scySay("The skies are still.")}
@@ -14394,14 +14416,9 @@ function scyAct(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTick
   else if(a==="follow"){scyFollow(!SCYF.on);if(SCYF.on)try{sheet.classList.remove("open")}catch(e){}}
   else if(a==="fuel"){if(scyPay(5e9))s.end+=7*DAY}
   else if(a==="nuke"){if(!c||s.cd.nuke>now||S.cash<SCY.nuke)return;const m=wpn(),n0=m.wpn.nuke|0;m.wpn.nuke=n0+1;wpnFire("nuke",c.id,1,1);if((m.wpn.nuke|0)>n0){m.wpn.nuke=n0;return}S.cash-=SCY.nuke;s.cd.nuke=now+SCY.nukeCd;stNews(`☢️ An orbital nuke falls from the God's Scythe on ${c.name}`)}
-  else if(a==="bplague"){if((s.bay.plague|0)<1&&scyPay(SCY.plague))s.bay.plague=1}
+  else if(["bplague","bbs","flare","drone","stl","laser"].includes(a))scyRestock(a,s);
   else if(a==="plague"){if(!c||!s.bay.plague||s.cd.plague>now)return;SCY_HIT=1;let ev;try{ev=dzHit(c,"plague",0,1)}finally{SCY_HIT=0}if(!ev)return toast(`${c.name} is still recovering`);s.bay.plague=0;s.cd.plague=now+SCY.plagueCd;stNews(`🦠 A plague swarm drifts over ${c.name}`)}
-  else if(a==="bbs"){if(!s.bay.bs&&!s.bsUsed&&scyPay(SCY.bs))s.bay.bs=1}
   else if(a==="bs"){if(!c||!s.bay.bs||s.bsUsed)return;SCY_HIT=1;let n=0;try{CITIES.filter(x=>x.country===c.country).forEach(x=>{if(dzHit(x,"blacksun",0,1))n++})}finally{SCY_HIT=0}s.bay.bs=0;s.bsUsed=1;stNews(`🌑 Black sun: the sky goes dark over ${c.country}`);scySay(`${n} cities in darkness.`)}
-  else if(a==="stl"){const L=s.stl|0;if(L<5&&scyPay(SCY.stlCost[L]))s.stl=L+1}
-  else if(a==="laser"){if(!s.laser&&scyPay(SCY.laser))s.laser=1}
-  else if(a==="flare"){if(scyPay(SCY.flare))s.flare=(s.flare|0)+1}
-  else if(a==="drone"){if((s.drones|0)<4&&scyPay(SCY.drone))s.drones=(s.drones|0)+1}
   save();hud();renderSheet();try{if(SPW.open)spRender()}catch(e){}}
 /* God's Eye: Mission control tab for the Scythe (dev only). Same controls as the Gov tab panel, plus live feeds of the world and players. */
 function geTab(){const E=dxE,s=scy(),now=Date.now(),on=scyOn(),pc=S.pol&&S.pol.c;
@@ -14428,46 +14445,82 @@ document.addEventListener("change",e=>{if(e.target&&e.target.id==="scyT")SCY_TGT
 // Satellite on the map: the 3D model (same look as the design model) orbits the globe while in orbit, once every 90 minutes
 const SCYV={alt:1.6e6,sc:9e4,per:18e4};let scyL=null,scyG=null;
 function scyPos(t){const ph=(t%SCYV.per)/SCYV.per;return {lon:ph*360-180,lat:51.6*Math.sin(ph*2*Math.PI),ph}}
-function scyModel(T,s){s=s||{};const g=new T.Group(),M=(c,m,r,e)=>new T.MeshStandardMaterial({color:c,metalness:m==null?.6:m,roughness:r==null?.4:r,emissive:e||0});
-  const gold=M(0xc8962e,.9,.35),dark=M(0x22242a,.7,.5),steel=M(0x9aa0a8,.8,.3),panel=M(0x1a2c5a,.4,.3,0x050a20),red=M(0x991a10,.3,.5,0x330000),add=(geo,mat,x,y,z)=>{const o=new T.Mesh(geo,mat);o.position.set(x||0,y||0,z||0);g.add(o);return o};
+function scyModel(T,s,ghost){s=s||{};const g=new T.Group(),M=(c,m,r,e)=>new T.MeshStandardMaterial({color:c,metalness:m==null?.6:m,roughness:r==null?.4:r,emissive:e||0});
+  const gold=M(0xc8962e,.9,.35),dark=M(0x22242a,.7,.5),steel=M(0x9aa0a8,.8,.3),panel=M(0x1a2c5a,.4,.3,0x050a20),red=M(0x991a10,.3,.5,0x330000),add=(geo,mat,x,y,z)=>{const o=new T.Mesh(geo,mat);o.position.set(x||0,y||0,z||0);if(P)o.userData.part=P;g.add(o);return o};let P="hull";
   add(new T.CylinderGeometry(1.1,1.1,3,8),gold);[1.6,-1.6].forEach(y=>add(new T.CylinderGeometry(1.15,1.15,.2,8),dark,0,y));
   add(new T.TorusGeometry(1.6,.12,8,40,Math.PI*1.3),steel,0,2.6).rotation.set(Math.PI/2,0,.4);add(new T.CylinderGeometry(.08,.08,1.4),steel,0,2.2);
   add(new T.SphereGeometry(.28,16,16),red,0,-1.95);const ring=add(new T.TorusGeometry(1.5,.07,8,48),M(0x55ccff,.2,.2,0x1177aa),0,-1);ring.rotation.x=Math.PI/2;
   add(new T.IcosahedronGeometry(.35,1),M(0x33ff99,.1,.2,0x11cc66),0,.6,1.35);
   [1,-1].forEach(d=>{add(new T.CylinderGeometry(.07,.07,1.6),steel,d*1.9).rotation.z=Math.PI/2;for(let i=0;i<3;i++){add(new T.BoxGeometry(1.6,.05,2.2),panel,d*(3.4+i*1.7));add(new T.BoxGeometry(1.62,.06,.06),steel,d*(3.4+i*1.7))}});
-  if(s.laser){add(new T.SphereGeometry(.25,12,12),steel,0,0,1.5);add(new T.SphereGeometry(.07,8,8),M(0xff3322,.1,.2,0xff2200),0,.3,1.8)}
-  if(s.flare)for(let i=-1;i<=1;i++)add(new T.CylinderGeometry(.12,.12,.7,10),dark,i*.3,0,-1.5).rotation.x=Math.PI/2;
-  if(s.bay&&(s.bay.plague||s.bay.bs||s.bay===1))add(new T.BoxGeometry(1.4,.4,1.4),dark,0,-2.5);
-  for(let i=0;i<Math.min(4,s.drones|0);i++)add(new T.OctahedronGeometry(.22),steel,(i%2?1:-1)*8.6,.5,i<2?.4:-.4);
-  if((s.stl|0)>0)g.traverse(o=>{if(o.material){o.material.transparent=true;o.material.opacity=1-(s.stl|0)*.12}});
+  const gh=M(0x66ccff,.1,.5,0x113355);gh.transparent=true;gh.opacity=.28;const G=(on,m)=>on?m:gh;
+  P="laser";if(s.laser||ghost){add(new T.SphereGeometry(.25,12,12),G(s.laser,steel),0,0,1.5);add(new T.SphereGeometry(.07,8,8),G(s.laser,M(0xff3322,.1,.2,0xff2200)),0,.3,1.8)}
+  P="flare";for(let i=-1;i<=1;i++)if(i<(s.flare|0)-1||ghost)add(new T.CylinderGeometry(.12,.12,.7,10),G(i<(s.flare|0)-1,dark),i*.3,0,-1.5).rotation.x=Math.PI/2;
+  P="bay";{const f=s.bay&&(s.bay.plague||s.bay.bs||s.bay===1);if(f||ghost)add(new T.BoxGeometry(1.4,.4,1.4),G(f,dark),0,-2.5)}
+  P="drone";for(let i=0;i<(ghost?4:Math.min(4,s.drones|0));i++)add(new T.OctahedronGeometry(.22),G(i<(s.drones|0),steel),(i%2?1:-1)*8.6,.5,i<2?.4:-.4);
+  P="";if(!ghost&&(s.stl|0)>0)g.traverse(o=>{if(o.material){o.material.transparent=true;o.material.opacity=1-(s.stl|0)*.12}});
   g.userData.ring=ring;return g}
-function scyKey(){const s=S.scy||{};return [s.laser|0,s.flare?1:0,s.bay&&(s.bay.plague||s.bay.bs)?1:0,s.drones|0,s.stl|0].join()}
+function scyKey(){const s=S.scy||{};return [s.laser|0,Math.min(3,s.flare|0),s.bay&&(s.bay.plague||s.bay.bs)?1:0,s.drones|0,s.stl|0].join()}
 function scyFromKey(k){const a=String(k||"").split(",").map(x=>+x||0);return {laser:a[0],flare:a[1],bay:a[2]?1:0,drones:a[3],stl:a[4]}}
 // published on the dev profile so every player sees the Scythe orbit; Lvl 5 stealth hides it from everyone else
 function scyPub(){return scyDev()&&scyOn()?{end:Math.round(S.scy.end),k:scyKey()}:null}
-function scySeen(){const now=Date.now();if(scyDev())return scyOn()?scyKey():null;for(const p of (typeof ON!=="undefined"&&ON.players)||[]){const x=p&&p.scy;if(x&&typeof x.k==="string"&&+x.end>now&&scyFromKey(x.k).stl<5)return x.k}return null}
+function scySeen(){const now=Date.now();if(scyDev())return scyOn()||(S.scy&&S.scy.landed)?scyKey():null;for(const p of (typeof ON!=="undefined"&&ON.players)||[]){const x=p&&p.scy;if(x&&typeof x.k==="string"&&+x.end>now&&scyFromKey(x.k).stl<5)return x.k}return null}
 function scyLayer(){let T=null,ren=null,scene=null,cam=null,key="";return {id:"scythe-sat",type:"custom",renderingMode:"3d",
   onAdd(mp,gl){loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;cam=new T.Camera();scene=new T.Scene();
     scene.add(new T.AmbientLight(0x8899aa,.7));const sun=new T.DirectionalLight(0xfff1dd,1.2);sun.position.set(5,8,6);scene.add(sun);mp.triggerRepaint()}).catch(e=>console.warn("scythe 3d off",e))},
   render(gl,args){if(!T||!scene||!MM.transform.getMatrixForModel)return;const k=scySeen();if(k==null)return;if(!scyG||k!==key){if(scyG)scene.remove(scyG);scyG=scyModel(T,scyFromKey(k));scene.add(scyG);key=k}
-    const now=Date.now(),p=scyPos(now),z=MM.getZoom(),sc=SCYV.sc*Math.max(.35,Math.pow(2,1.4-z));scyG.rotation.y=now/4000;scyG.userData.ring.rotation.z=now/1000;
-    const mm=new T.Matrix4().fromArray(MM.transform.getMatrixForModel([p.lon,p.lat],SCYV.alt)).scale(new T.Vector3(sc,sc,sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
+    const now=Date.now(),p=scyWhere(now),z=MM.getZoom(),sc=SCYV.sc*Math.max(.35,Math.pow(2,1.4-z))*(p.alt<SCYV.alt?.4+.6*p.alt/SCYV.alt:1);scyG.rotation.y=p.alt<SCYV.alt?0:now/4000;scyG.userData.ring.rotation.z=now/1000;
+    const mm=new T.Matrix4().fromArray(MM.transform.getMatrixForModel([p.lon,p.lat],p.alt)).scale(new T.Vector3(sc,sc,sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
     cam.projectionMatrix=new T.Matrix4().fromArray(args.defaultProjectionData?args.defaultProjectionData.mainMatrix:args).multiply(mm);ren.resetState();ren.render(scene,cam);MM.triggerRepaint()}}}
 function scyMapTick(){try{const on=scySeen()!=null;if(S.scy&&S.scy.on&&S.scy.end<=Date.now()){S.scy.on=0;stNews("🛰 The God's Scythe has burned up on re-entry");save()}
   try{scyAutoMgr()}catch(e){}
   const has=!!MM.getLayer("scythe-sat");if(on&&!has&&MM.isStyleLoaded()){scyL=scyLayer();MM.addLayer(scyL)}else if(!on&&has){MM.removeLayer("scythe-sat");scyG=null}
   if(on&&scyDev()&&Math.random()<.0015)scySay(SCY.lines[Math.floor(Math.random()*SCY.lines.length)])}catch(e){}}
 setInterval(scyMapTick,1000);
+// Launch / landing: the Scythe drops from its orbit spot to the capital pad (or climbs back) over SCYA.dur
+const SCYA={dur:9e3,pad:3e4};
+function scyWhere(now){const p=scyPos(now),s=S.scy;if(!scyDev()||!s)return {lon:p.lon,lat:p.lat,alt:SCYV.alt};const b=scyBase(),a=s.anim;if(!b)return {lon:p.lon,lat:p.lat,alt:SCYV.alt};
+  const k=a?Math.min(1,(now-a.t0)/SCYA.dur):1;if(!a||k>=1){if(a)s.anim=null;return s.landed&&!s.on?{lon:b.lon,lat:b.lat,alt:SCYA.pad}:{lon:p.lon,lat:p.lat,alt:SCYV.alt}}
+  const e=k*k*(3-2*k),f=a.up?e:1-e,o=a.up?scyPos(a.t0+SCYA.dur):scyPos(a.t0);let dl=o.lon-b.lon;dl=((dl+540)%360)-180;
+  return {lon:b.lon+dl*f,lat:b.lat+(o.lat-b.lat)*f,alt:SCYA.pad+(SCYV.alt-SCYA.pad)*(a.up?e*e:f)}}
+// camera watches the descent / lift-off, then lets go
+function scyWatch(){try{sheet.classList.remove("open")}catch(e){}const b=scyBase();if(!b)return;MM.easeTo({center:[b.lon,b.lat],zoom:3.2,duration:1500})}
+// Hangar: while landed, the model sits on a launch pad in its own 3D view; click a part to restock it
+const SCYH={el:null,raf:0};
+function scyHangar(on){cancelAnimationFrame(SCYH.raf);if(SCYH.el){SCYH.el.remove();SCYH.el=null}if(!on||!scyDev()||!S.scy||!S.scy.landed)return;
+  const el=document.createElement("div");SCYH.el=el;el.id="scyHangar";el.style.cssText="position:fixed;inset:0;z-index:2147483000;background:radial-gradient(ellipse at 50% 70%,#1f2937,#05070d);color:#e5e7eb;font:14px system-ui,sans-serif";
+  el.innerHTML=`<canvas style="position:absolute;inset:0;width:100%;height:100%;touch-action:none"></canvas><div style="position:absolute;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:linear-gradient(#000a,#0000)"><b style="font-size:16px;color:#facc15">🏗 Scythe hangar · ${dxE(String((scyBase()||{}).name||""))}</b><span style="flex:1"></span><button data-h="all" class="buy">⚡ Restock everything</button><button data-h="launch" class="buy">🚀 Relaunch</button><button data-h="x" class="buy">✕ Close</button></div><div id="scyHInfo" style="position:absolute;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);text-align:center;text-shadow:0 1px 3px #000"></div>`;
+  document.body.appendChild(el);const cv=el.querySelector("canvas"),info=el.querySelector("#scyHInfo");
+  const say=()=>{const s=scy();info.innerHTML=`Tap a part to restock it · drag to turn<br><small>🔧 Hull ${Math.round(s.hp==null?100:s.hp)}% · Bay: plague ${s.bay.plague?"✅":"empty"}, black sun ${s.bay.bs?"✅":s.bsUsed?"used":"empty"} · Flares ${s.flare|0} · Drones ${s.drones|0}/4 · Laser ${s.laser?"✅":"none"} · Stealth ${s.stl|0}/5 · Cash ${fmt(S.cash)}</small>`};say();
+  el.addEventListener("click",ev=>{const b=ev.target.closest("[data-h]");if(!b)return;const h=b.dataset.h;if(h==="x")scyHangar(0);else if(h==="launch"){scyHangar(0);scyAct("relaunch")}else if(h==="all"){scyAct("restockall");rebuild();say()}});
+  let T,ren,scene,cam,mdl,yaw=.6,drag=null,moved=0;
+  const rebuild=()=>{if(!T)return;if(mdl)scene.remove(mdl);mdl=scyModel(T,scy(),1);mdl.position.y=2.2;scene.add(mdl)};
+  loadThree().then(t=>{if(SCYH.el!==el)return;T=t;ren=new T.WebGLRenderer({canvas:cv,antialias:true,alpha:true});ren.setPixelRatio(Math.min(2,devicePixelRatio||1));scene=new T.Scene();cam=new T.PerspectiveCamera(40,1,.1,200);
+    scene.add(new T.AmbientLight(0xaabbcc,1.3));const sun=new T.DirectionalLight(0xfff1dd,1.6);sun.position.set(5,10,6);scene.add(sun);const fill=new T.DirectionalLight(0x88aaff,.6);fill.position.set(-6,4,-5);scene.add(fill);
+    const pad=new T.Mesh(new T.CylinderGeometry(6,6.6,.5,48),new T.MeshStandardMaterial({color:0x3a3f47,metalness:.4,roughness:.7}));scene.add(pad);
+    const ringM=new T.Mesh(new T.TorusGeometry(5,.08,8,64),new T.MeshStandardMaterial({color:0xfacc15,emissive:0x664400}));ringM.rotation.x=Math.PI/2;ringM.position.y=.27;scene.add(ringM);
+    [[-4,1],[4,1]].forEach(([x])=>{const tw=new T.Mesh(new T.BoxGeometry(.4,7,.4),new T.MeshStandardMaterial({color:0xb91c1c,metalness:.5}));tw.position.set(x,3.5,-3);scene.add(tw)});
+    rebuild();const ray=new T.Raycaster(),v=new T.Vector2();
+    const pick=ev=>{const r=cv.getBoundingClientRect();v.set((ev.clientX-r.left)/r.width*2-1,-(ev.clientY-r.top)/r.height*2+1);ray.setFromCamera(v,cam);const hit=ray.intersectObjects(mdl.children,true).find(h=>h.object.userData.part);return hit&&hit.object.userData.part};
+    const ACT={laser:["laser","Laser"],flare:["flare","Flares"],drone:["drone","Drone"],bay:[null,"Weapons bay"],hull:["stl","Stealth plating"]};
+    cv.addEventListener("pointerdown",e=>{drag=e.clientX;moved=0});cv.addEventListener("pointermove",e=>{if(drag!=null){yaw+=(e.clientX-drag)*.01;moved+=Math.abs(e.clientX-drag);drag=e.clientX}});
+    cv.addEventListener("pointerup",e=>{drag=null;if(moved>6)return;const p=pick(e);if(!p)return;const s=scy();let a=ACT[p][0];if(p==="bay")a=!s.bay.plague?"bplague":(!s.bay.bs&&!s.bsUsed)?"bbs":null;
+      if(!a||(p==="drone"&&(s.drones|0)>=4)||(p==="laser"&&s.laser)||(p==="hull"&&(s.stl|0)>=5)){toast(`${ACT[p][1]}: already full`);return}
+      const c0=S.cash;scyRestock(a,s);if(S.cash<c0){toast(`🔧 ${ACT[p][1]} restocked for ${fmt(c0-S.cash)}`);save();try{hud();renderSheet()}catch(e){}rebuild()}say()});
+    const go=()=>{if(SCYH.el!==el)return;const w=cv.clientWidth,h=cv.clientHeight;if(cv.width!==Math.round(w*ren.getPixelRatio()))ren.setSize(w,h,false);cam.aspect=w/h;const d=w<h?26:17;cam.position.set(Math.sin(yaw)*d,7,Math.cos(yaw)*d);cam.lookAt(0,2.5,0);cam.updateProjectionMatrix();
+      if(drag==null&&!SCYH.still)yaw+=.002;if(mdl)mdl.userData.ring.rotation.z+=.02;ren.render(scene,cam);SCYH.raf=requestAnimationFrame(go)};go()}).catch(()=>{info.textContent="3D hangar could not load. Use the Restock buttons on the Gov tab."})}
 // Follow cam: keeps the map centred on the Scythe every frame; any drag lets go
 const SCYF={on:0,raf:0};
-function scyFollow(on){SCYF.on=on?1:0;cancelAnimationFrame(SCYF.raf);if(!on)return;try{toast("🎥 Following the God's Scythe · drag the map to stop")}catch(e){}
+function scyFollow(on){SCYF.on=on?1:0;cancelAnimationFrame(SCYF.raf);let x=document.getElementById("scyExit");
+  if(!on){if(x)x.remove();return}
+  if(!x){x=document.createElement("button");x.id="scyExit";x.textContent="✕ Exit follow cam";x.style.cssText="position:fixed;top:calc(env(safe-area-inset-top,0px) + 70px);left:50%;transform:translateX(-50%);z-index:9000;padding:10px 18px;border-radius:999px;border:1px solid #facc15;background:#1e1b4bee;color:#facc15;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 4px 18px #0008";x.onclick=()=>{scyFollow(0);try{renderSheet()}catch(e){}};document.body.appendChild(x)}try{toast("🎥 Following the God's Scythe · drag the map to stop")}catch(e){}
   if(MM.getZoom()>3)MM.easeTo({zoom:2.2,duration:800});
-  const go=()=>{if(!SCYF.on||!scyOn())return scyFollow(0);if(!MM.isEasing()){const p=scyPos(Date.now());MM.jumpTo({center:[p.lon,p.lat]})}SCYF.raf=requestAnimationFrame(go)};SCYF.raf=requestAnimationFrame(go)}
+  const go=()=>{if(!SCYF.on||!scyOn())return scyFollow(0);if(!MM.isEasing()){const p=scyWhere(Date.now());MM.jumpTo({center:[p.lon,p.lat]})}SCYF.raf=requestAnimationFrame(go)};SCYF.raf=requestAnimationFrame(go)}
 MM.on("dragstart",()=>{if(SCYF.on)scyFollow(0)});
 // Space manager duty (Mission control › Colonies › Space manager › Scythe): launch, refuel and restock. Keeps the manager's cash reserve.
 const SCYM={fuel:5e9,fuelDays:7,refuelBelow:2*DAY,every:6e4};let scyMgrT=0;
 function scyAutoMgr(){if(!scyDev())return;const now=Date.now();if(now-scyMgrT<SCYM.every)return;scyMgrT=now;const m=COLS().mgr;if(!m||!m.on||!m.scy)return;
   const s=scy(),keep=m.keep||0,can=x=>S.cash-x>=keep,buy=(x,f,txt)=>{if(!can(x))return false;S.cash-=x;f();try{colMgrLog(m,"🛰 Scythe: "+txt+" for "+fmt(x))}catch(e){}return true};let did=0;
+  if(!scyOn()&&s.landed){Object.assign(s,{on:1,landed:0,t0:now,end:now+SCY.days*DAY,ft:now});colMgrLog(m,"🛰 Scythe: relaunched after landing");did=1}
   if(!scyOn()){if(!S.pol||S.pol.r<0)return;if(buy(SCY.cost,()=>{Object.assign(s,{on:1,t0:now,end:now+SCY.days*DAY,fav:SCY.fav0,ft:now,cd:{},shel:{},calm:0,bay:{},bsUsed:0});stNews(`🛰 ${S.pol.c} has launched the God's Scythe into orbit`)},"launched"))did=1;else{colMgrLog(m,"🛰 Scythe: waiting for cash to launch");return}}
   if(s.end-now<SCYM.refuelBelow&&buy(SCYM.fuel,()=>{s.end+=SCYM.fuelDays*DAY},"refuelled (+7 days)"))did=1;
   if(!s.bay.plague&&buy(SCY.plague,()=>{s.bay.plague=1},"loaded a plague swarm"))did=1;
