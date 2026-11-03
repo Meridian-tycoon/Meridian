@@ -3585,6 +3585,7 @@ function govHtml(c){const n=c.country,g=gov(n);if(!PARTIES[g.party])g.party="lib
     {const ok=nlcOk(),w=NLC.doc&&NLC.doc.st==="p";h+=`<div class="sec">Nuclear licence</div><div class="list"><div class="row"><div class="n">World Council nuclear licence ${ok?"<b>ACTIVE</b>":w?"<b>PENDING</b>":""}</div>
     <div class="d">Uranium mining, uranium buying, nuclear plants and nuclear weapons need a licence from the World Council Leader, not from this government. ${ok?"":w?"Your application is waiting for the World Council Leader.":"Apply to the World Council (also on Military → 🌍 World council)."}</div>
     ${ok||w?"":`<button class="buy" data-gov="nlca" data-fixed="1">Apply to the World Council</button>`}</div></div>`}
+  try{if(typeof scyHtml==="function")h+=scyHtml(n)}catch(e){}
     {const has=rsPermit(n),rq=g.rReq,rcd=urqCdOn()&&g.rDen>Date.now();
       h+=`<div class="sec">Research licence</div><div class="list"><div class="row"><div class="n">Advanced research licence ${has?"<b>ACTIVE</b>":rq?"<b>PENDING</b>":""}</div>
       <div class="d">Tier IV (Government &amp; military) and Tier V (Space) research done in ${n} needs this government's approval. Fee ${fmt(RSQ.fee)}, refunded if refused. ${has?"":who}${rq?` Waiting for ${onEsc(rq.name)}.`:""}${rcd?` Refused recently: retry in ${fmtDur(g.rDen-Date.now())}.`:""}</div>
@@ -11561,7 +11562,10 @@ function achApp(){const A=S.ach||{},n=ACH.filter(a=>A[a.id]).length,pct=Math.rou
    gxDay(quiet) runs once per game day from simDay. Offline catch-up (quiet) allows at most one disaster and shows one summary pop-up via the queue. */
 const GXCFG={
   dz:{p:.05,own:.5,quietMax:1,cashCap:.25,
-    k:{quake:{n:"Earthquake",i:"🏚️",m:.5,d:5,rep:.06,w:.03},storm:{n:"Severe storm",i:"🌀",m:.65,d:3,rep:.03,w:.08},flood:{n:"Flood",i:"🌊",m:.6,d:4,rep:.04,w:.08}},
+    k:{quake:{n:"Earthquake",i:"🏚️",m:.5,d:5,rep:.06,w:.03},storm:{n:"Severe storm",i:"🌀",m:.65,d:3,rep:.03,w:.08},flood:{n:"Flood",i:"🌊",m:.6,d:4,rep:.04,w:.08},
+      // God's Scythe only (never picked by the random daily roll)
+      fire:{n:"Wildfire",i:"🔥",m:.6,d:3,rep:.03,w:0,scy:1},drought:{n:"Drought",i:"🏜️",m:.7,d:6,rep:.01,w:0,scy:1},tsunami:{n:"Tsunami",i:"🌊",m:.45,d:5,rep:.07,w:0,scy:1},
+      plague:{n:"Plague swarm",i:"🦠",m:.55,d:5,rep:0,w:0,scy:1},blacksun:{n:"Black sun",i:"🌑",m:.3,d:1,rep:0,w:0,scy:1}},
     hz:{quake:["Los Angeles","Mexico City","Lima","Santiago","Istanbul","Tokyo","Manila","Jakarta","Auckland","Anchorage","Reykjavík","Bogotá","Seoul","Taipei"],
         storm:["Miami","Houston","New York","Manila","Hong Kong","Shanghai","Tokyo","Mumbai","Sydney","Newcastle"],
         flood:["Bangkok","Jakarta","Mumbai","Lagos","Amsterdam","Shanghai","Houston","London","Delhi","São Paulo","Buenos Aires","Cairo"]},
@@ -11586,17 +11590,18 @@ function dzHaz(c,k){const K=GXCFG.dz.k,H=GXCFG.dz.hz;const f=k=>(H[k].includes(c
 function dzVal(c){const o=S.own[c.id];if(!o)return 0;let v=0;for(const b of BIZ)if(o[b.k])v+=uSum(c.id,b.k,()=>cost(b,c));return v}
 const dzPrem=c=>Math.round(dzVal(c)*GXCFG.dz.ins.rate*(.5+Math.min(1.5,dzHaz(c))));
 function dzPickW(list,w){let t=0;for(const x of list)t+=w(x);let r=Math.random()*t;for(const x of list){r-=w(x);if(r<=0)return x}return list[list.length-1]}
-function dzHit(c,k,quiet,sev){const d=gxS(),K=GXCFG.dz.k[k],C=GXCFG.dz;if(!K||!c||d.act[c.id])return null;sev=sev||(.6+Math.random()*.6);
+function dzHit(c,k,quiet,sev){const d=gxS(),K=GXCFG.dz.k[k],C=GXCFG.dz;if(!K||!c||d.act[c.id])return null;if(!SCY_HIT&&typeof scyBlocks==="function"&&scyBlocks(c))return null;sev=sev||(.6+Math.random()*.6);
   const ins=!!d.ins[c.id],own=gxHas(c.id),val=own?dzVal(c):0;let rep=Math.round(val*K.rep*sev*(ins?C.ins.repKeep:1));rep=Math.min(rep,Math.max(0,Math.round(S.cash*C.cashCap))); // never pushes you into the red
   const m=1-(1-K.m)*Math.min(1,sev)*(ins?C.ins.lossKeep:1);d.act[c.id]={k,m:+m.toFixed(3),d:K.d,left:K.d,ins:ins?1:0,day:S.day};
   if(rep>0)S.cash-=rep;const ev={k,c:c.id,rep,m:+m.toFixed(3),d:K.d,ins:ins?1:0,own:own?1:0,day:S.day};d.hist.unshift(ev);d.hist=d.hist.slice(0,12);
   gxNews(`${K.i} ${K.n} hits ${c.name}${own?`: your businesses there lose ${Math.round((1-m)*100)}% income for ${K.d} days${rep?`, repairs ${fmt(rep)}`:""}${ins?" (insured)":""}`:""}`,quiet);
   if(own){d.pend.push(ev);d.pend=d.pend.slice(-6);if(!quiet){try{sfx("boom",8)}catch(e){}gxShow()}}return ev}
+let SCY_HIT=0;
 function dzDay(quiet){const d=gxS(),C=GXCFG.dz;if(!quiet)d.qn=0;
   for(const id in d.act){const a=d.act[id];if(!(--a.left>0))delete d.act[id]}
   if(Math.random()>=C.p||(quiet&&d.qn>=C.quietMax))return;
   const mine=CITIES.filter(c=>gxHas(c.id)),pool=mine.length&&Math.random()<C.own?mine:CITIES,c=dzPickW(pool.filter(x=>!d.act[x.id]),x=>dzHaz(x));if(!c)return;
-  const k=dzPickW(Object.keys(C.k),k=>dzHaz(c,k));if(dzHit(c,k,quiet)&&quiet&&gxHas(c.id))d.qn++}
+  const k=dzPickW(Object.keys(C.k).filter(k=>!C.k[k].scy),k=>dzHaz(c,k));if(dzHit(c,k,quiet)&&quiet&&gxHas(c.id))d.qn++}
 function dzMult(c){const a=S.dsx&&S.dsx.act&&S.dsx.act[c.id];if(!a)return 1;const f=Math.max(0,Math.min(1,a.left/Math.max(1,a.d)));return 1-(1-a.m)*f}
 let gxQ=0;
 function gxShow(){const d=gxS();if(!d.pend.length||gxQ||document.getElementById("gxpop"))return;gxQ=1;mqRun(()=>{gxQ=0;const P=gxS().pend.splice(0);if(!P.length){setTimeout(mqPump,0);return}save();
@@ -14337,6 +14342,69 @@ function alPaint(){let b=document.getElementById("albell");if(!b){b=document.cre
   p.querySelectorAll("[data-al]").forEach(el=>el.onclick=()=>{if(el.dataset.al==="clr"){AL.list=[];alSave()}else AL.open=0;alPaint()})}
 document.addEventListener("click",()=>{if(AL.open){AL.open=0;alPaint()}});
 try{alPaint()}catch(e){}
+/* ===== God's Scythe: weather-control satellite. Only the dev account's government can buy it.
+   Save field S.scy = {on, t0, end, fav, ft, stl, laser, flare, drones, bay:{plague,bs}, bsUsed, shel:{country:until}, calm, cd:{reap,nuke,plague}, auto} */
+const SCY={cost:50e9,days:14,fav0:100,favDay:10,stlCost:[5e9,8e9,12e9,18e9,25e9],laser:6e9,flare:3e9,drone:2e9,nuke:8e9,plague:4e9,bs:20e9,
+  reap:{f:40,cd:864e5},shel:{f:25,d:1728e5},calm:{f:60,d:432e5},nukeCd:1728e5,plagueCd:2592e5,
+  kinds:{quake:"Earthquake",storm:"Hurricane",flood:"Flood",fire:"Wildfire",drought:"Drought",tsunami:"Tsunami"},
+  lines:["The harvest is ready, Commander.","Orbit stable. The world sleeps beneath us.","I see every storm before it is born.","Your cities are under my wing.","The scythe is sharp, Commander."]};
+const DAY=864e5;
+function scyDev(){return typeof ON!=="undefined"&&ON.user&&DEV_UIDS.includes(ON.user.uid)}
+function scy(){const s=S.scy=S.scy&&typeof S.scy==="object"?S.scy:{};if(!s.bay)s.bay={};if(!s.shel)s.shel={};if(!s.cd)s.cd={};if(s.auto==null)s.auto=1;return s}
+function scyOn(){const s=S.scy;return !!(s&&s.on&&s.end>Date.now())}
+function scyDaysUp(){return Math.max(0,Math.floor((Date.now()-scy().t0)/DAY))}
+function scyFavTick(){const s=scy();if(!scyOn())return;const now=Date.now(),rate=(SCY.favDay+Math.min(10,scyDaysUp()))/DAY;s.fav=Math.min(100,(s.fav||0)+(now-(s.ft||now))*rate);s.ft=now}
+function scySay(t){try{toast("🛰 REAPER: "+t)}catch(e){}}
+// Called by dzHit for every natural disaster: Calm stops all of them, Shelter (or Autopilot) protects one country
+function scyBlocks(c){const s=S.scy;if(!s||!scyOn())return false;const now=Date.now();if(s.calm>now)return true;if(s.shel[c.country]>now)return true;
+  const p=S.pol;if(s.auto&&p&&p.c===c.country){scyFavTick();if(s.fav>=SCY.shel.f){s.fav-=SCY.shel.f;s.shel[c.country]=now+SCY.shel.d;scySay(`A storm was coming for ${c.country}. I raised the shelter.`);return true}}return false}
+function scyCity(){const el=document.getElementById("scyT");return el?CITIES[+el.value]:null}
+function scyAdvisor(){const own=S.pol&&S.pol.c,w=(typeof wpn==="function"&&wpn().wars)||{};let l=CITIES.filter(c=>c.country!==own);const war=l.filter(c=>w[c.country]);if(war.length)l=war;return l.slice().sort((a,b)=>(b.size||0)-(a.size||0)).slice(0,3)}
+function scyForecast(){const acc=Math.min(100,60+5*scyDaysUp());return {acc,l:CITIES.slice().sort((a,b)=>dzHaz(b)-dzHaz(a)).slice(0,3)}}
+function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),now=Date.now(),on=scyOn();scyFavTick();
+  const B=(a,t,dis,x)=>`<button class="buy" data-scy="${a}"${x?` data-k="${x}"`:""} data-fixed="1"${dis?" disabled":""}>${t}</button>`,R=(n,d,b)=>`<div class="row"><div class="n">${n}</div><div class="d">${d}</div>${b||""}</div>`;
+  let h=`<div class="sec">🛰 God's Scythe (dev government only)</div><div class="list">`;
+  if(!on){h+=R("Weather-control satellite",`One of a kind. Steers natural disasters across the world and carries orbital weapons. Stays in orbit ${SCY.days} days.${s.t0?" Your last Scythe has fallen out of orbit.":""}`,B("buy",`Build & launch · ${fmt(SCY.cost)}`,S.cash<SCY.cost));return h+"</div>"}
+  const cd=k=>s.cd[k]>now?` (${fmtDur(s.cd[k]-now)})`:"";
+  h+=R(`In orbit · Favor ${Math.floor(s.fav)}/100`,`Fuel left ${fmtDur(s.end-now)} · ${scyDaysUp()} days up · Favor +${SCY.favDay+Math.min(10,scyDaysUp())}/day.${s.calm>now?` 🌤 Calm active ${fmtDur(s.calm-now)}.`:""}${Object.keys(s.shel).filter(k=>s.shel[k]>now).map(k=>` 🛡 ${k} sheltered ${fmtDur(s.shel[k]-now)}.`).join("")}`);
+  h+=`<div class="row"><div class="n">Target</div><div class="d"><select id="scyT" style="max-width:100%">${CITIES.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${c.name}, ${c.country}</option>`).join("")}</select></div></div>`;
+  h+=R("Reap",`Send a disaster at the target city (Favor ${SCY.reap.f}, once a day).`,Object.keys(SCY.kinds).map(k=>B("reap",SCY.kinds[k]+cd("reap"),s.fav<SCY.reap.f||s.cd.reap>now,k)).join(" "));
+  h+=R("Shelter",`Shield the target's country from disasters for 48h (Favor ${SCY.shel.f}).`,B("shel","Shelter",s.fav<SCY.shel.f));
+  h+=R("Calm",`No natural disasters anywhere for 12h (Favor ${SCY.calm.f}).`,B("calm","Calm the world",s.fav<SCY.calm.f||s.calm>now));
+  {const f=scyForecast();h+=R("Forecast",`Most at risk (${f.acc}% accurate): ${f.l.map(c=>c.name).join(", ")}.`)}
+  h+=R("🤖 Reaper AI",`Target advisor: ${scyAdvisor().map(c=>c.name).join(", ")}. Autopilot ${s.auto?"ON":"OFF"}: spends Favor to shelter ${S.pol.c} when a disaster is coming.`,B("auto",s.auto?"Autopilot off":"Autopilot on"));
+  h+=R("Weapons bay",`Orbital nuke uses the nuclear licence and normal strike rules (${fmt(SCY.nuke)}, 1 per 48h). Plague swarm ${s.bay.plague|0} in bay. Black sun ${s.bsUsed?"used this orbit":s.bay.bs?"loaded":"not loaded"}.`,
+    B("nuke",`☢️ Orbital nuke · ${fmt(SCY.nuke)}${cd("nuke")}`,S.cash<SCY.nuke||s.cd.nuke>now)+" "+B("bplague",`Load plague · ${fmt(SCY.plague)}`,S.cash<SCY.plague||(s.bay.plague|0)>=1)+" "+B("plague",`🦠 Release plague${cd("plague")}`,!s.bay.plague||s.cd.plague>now)+" "+
+    B("bbs",`Load black sun · ${fmt(SCY.bs)}`,S.cash<SCY.bs||s.bay.bs||s.bsUsed)+" "+B("bs","🌑 Black sun",!s.bay.bs||s.bsUsed));
+  const L=s.stl|0;h+=R("Defense",`Stealth level ${L}/5 (${L*20}% hidden${L===5?", untraceable":""}) · Laser ${s.laser?"fitted":"none"} · Flares ${s.flare|0} · Drones ${s.drones|0}/4`,
+    (L<5?B("stl",`Stealth Lvl ${L+1} · ${fmt(SCY.stlCost[L])}`,S.cash<SCY.stlCost[L]):"")+" "+(s.laser?"":B("laser",`Laser · ${fmt(SCY.laser)}`,S.cash<SCY.laser))+" "+B("flare",`Flares · ${fmt(SCY.flare)}`,S.cash<SCY.flare)+" "+((s.drones|0)<4?B("drone",`Drone · ${fmt(SCY.drone)}`,S.cash<SCY.drone):""));
+  return h+"</div>"}
+function scyPay(x){if(S.cash<x){toast("Not enough cash");return false}S.cash-=x;return true}
+function scyAct(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTick();const c=scyCity();
+  if(a==="buy"){if(scyOn()||!scyPay(SCY.cost))return;Object.assign(s,{on:1,t0:now,end:now+SCY.days*DAY,fav:SCY.fav0,ft:now,cd:{},shel:{},calm:0,bay:{},bsUsed:0});stNews(`🛰 ${S.pol.c} has launched the God's Scythe into orbit`);scySay(SCY.lines[0])}
+  else if(!scyOn())return;
+  else if(a==="reap"){if(!c||s.fav<SCY.reap.f||s.cd.reap>now)return;SCY_HIT=1;let ev;try{ev=dzHit(c,k)}finally{SCY_HIT=0}if(!ev)return toast(`${c.name} is still recovering from a disaster`);s.fav-=SCY.reap.f;s.cd.reap=now+SCY.reap.cd;stNews(`🛰 The Scythe falls on ${c.name}: ${SCY.kinds[k]}`);scySay("It is done.")}
+  else if(a==="shel"){if(!c||s.fav<SCY.shel.f)return;s.fav-=SCY.shel.f;s.shel[c.country]=now+SCY.shel.d;scySay(`${c.country} is under my wing.`)}
+  else if(a==="calm"){if(s.fav<SCY.calm.f)return;s.fav-=SCY.calm.f;s.calm=now+SCY.calm.d;stNews("🛰 The God's Scythe has calmed the world's weather");scySay("The skies are still.")}
+  else if(a==="auto")s.auto=s.auto?0:1;
+  else if(a==="nuke"){if(!c||s.cd.nuke>now||S.cash<SCY.nuke)return;const m=wpn(),n0=m.wpn.nuke|0;m.wpn.nuke=n0+1;wpnFire("nuke",c.id,1,1);if((m.wpn.nuke|0)>n0){m.wpn.nuke=n0;return}S.cash-=SCY.nuke;s.cd.nuke=now+SCY.nukeCd;stNews(`☢️ An orbital nuke falls from the God's Scythe on ${c.name}`)}
+  else if(a==="bplague"){if((s.bay.plague|0)<1&&scyPay(SCY.plague))s.bay.plague=1}
+  else if(a==="plague"){if(!c||!s.bay.plague||s.cd.plague>now)return;SCY_HIT=1;let ev;try{ev=dzHit(c,"plague",0,1)}finally{SCY_HIT=0}if(!ev)return toast(`${c.name} is still recovering`);s.bay.plague=0;s.cd.plague=now+SCY.plagueCd;stNews(`🦠 A plague swarm drifts over ${c.name}`)}
+  else if(a==="bbs"){if(!s.bay.bs&&!s.bsUsed&&scyPay(SCY.bs))s.bay.bs=1}
+  else if(a==="bs"){if(!c||!s.bay.bs||s.bsUsed)return;SCY_HIT=1;let n=0;try{CITIES.filter(x=>x.country===c.country).forEach(x=>{if(dzHit(x,"blacksun",0,1))n++})}finally{SCY_HIT=0}s.bay.bs=0;s.bsUsed=1;stNews(`🌑 Black sun: the sky goes dark over ${c.country}`);scySay(`${n} cities in darkness.`)}
+  else if(a==="stl"){const L=s.stl|0;if(L<5&&scyPay(SCY.stlCost[L]))s.stl=L+1}
+  else if(a==="laser"){if(!s.laser&&scyPay(SCY.laser))s.laser=1}
+  else if(a==="flare"){if(scyPay(SCY.flare))s.flare=(s.flare|0)+1}
+  else if(a==="drone"){if((s.drones|0)<4&&scyPay(SCY.drone))s.drones=(s.drones|0)+1}
+  save();hud();renderSheet()}
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-scy]");if(!b||b.disabled)return;e.stopPropagation();try{scyAct(b.dataset.scy,b.dataset.k)}catch(err){console.warn("scy",err)}},true);
+// Satellite on the map: only while in orbit; circles the globe once every 90 minutes
+let scyMk=null;
+function scyMapTick(){try{const on=scyOn()&&scyDev();if(!on){if(scyMk){scyMk.remove();scyMk=null}if(S.scy&&S.scy.on&&S.scy.end<=Date.now()){S.scy.on=0;stNews("🛰 The God's Scythe has burned up on re-entry");save()}return}
+  if(!scyMk){const el=document.createElement("div");el.textContent="🛰";el.title="God's Scythe";el.style.cssText="font-size:26px;filter:drop-shadow(0 0 6px #d9a441);pointer-events:none";scyMk=new maplibregl.Marker({element:el}).setLngLat([0,0]).addTo(MM)}
+  const ph=(Date.now()%54e5)/54e5,lon=ph*360-180,lat=51.6*Math.sin(ph*2*Math.PI*1.0);scyMk.setLngLat([lon,lat]);
+  if(Math.random()<.0015)scySay(SCY.lines[Math.floor(Math.random()*SCY.lines.length)])}catch(e){}}
+setInterval(scyMapTick,1000);
 resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{royTick()}catch(e){}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}try{wfTick()}catch(e){}try{cabTick()}catch(e){}},1000);
 if(!S.log.length){S.log=["You start with nothing. Tap a city, open Jobs & home, rent a room and apply for work."];hud()}
 if(!world)toast("Map outline didn't load. Cities still work.");
