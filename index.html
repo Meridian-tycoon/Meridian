@@ -13268,7 +13268,7 @@ function colPaint(){const a=partApi("colonies");if(a)return a.colPaint()}
 function colClick(a,k){if(a==="colastsel"&&AST[k]){ASTS().sel=k;save();spRender();return}if(a==="colastgo"){astLaunch(k);spRender();return}const s=COLS(),u=s.ui;if(a==="coltf"){tfFund(+k);return}
   if(a==="colp"){u.p=k;u.s=Math.min(COLP[k].sites.length-1,u.s)}else if(a==="colt")u.t=k;else if(a==="colu")u.u=k;else if(a==="colb"&&UPK[k])u.b=k;else if(a==="colx")u.x=Math.max(1,Math.min(COLCFG.asMax,+k|0));
   else if(a==="colsell"){if(k==="all")colSell();else{const [c,g]=k.split(":");colSell(+c,g)}return}
-  else if(a==="colmgr"){const m=s.mgr;if(["on","crew","supply","stock","sell"].includes(k)){m[k]=m[k]?0:1;if(k==="on"){m.last=0;m.st=m.on?"Starting…":"Off";if(m.on)try{colMgr(Date.now())}catch(e){console.warn("colMgr",e)};toast(`🤖 Space manager ${m.on?"on":"off"}`)}save()}}
+  else if(a==="colmgr"){const m=s.mgr;if(["on","crew","supply","stock","sell","scy"].includes(k)){m[k]=m[k]?0:1;if(k==="on"){m.last=0;m.st=m.on?"Starting…":"Off";if(m.on)try{colMgr(Date.now())}catch(e){console.warn("colMgr",e)};toast(`🤖 Space manager ${m.on?"on":"off"}`)}save()}}
   else if(a==="colgo"){colSend(u.p,u.s,u.t,u.from,u.u,0,u.t==="build"?u.b:u.x);return}
   else if(a==="colauto"){const x=s.list.find(y=>colId(y.p,y.s)===k);if(x&&colMine(x)){x.auto=x.auto?0:1;colPut(x,1);toast(`Auto-supply ${x.auto?"on":"off"} for ${COLP[x.p].sites[x.s][0]}`)}}
   else if(a==="colpick"){const [id,t,b]=k.split(":"),[p,i]=id.split("_");u.p=p;u.s=+i;u.t=t;if(UPK[b])u.b=b}
@@ -13364,6 +13364,7 @@ function colMgrCard(){const m=COLS().mgr,E=dxE,P=spPorts(),now=Date.now();
   <div style="display:grid;gap:10px">${row("Crew",btn("crew",m.crew,"Crew"),"Sends a crew rotation before the current crew's time runs out.")}${row("Supply",btn("supply",m.supply,"Supply"),`Flies a supply run to any colony under ${COLCFG.autoBelow} days (on top of each colony's own auto-supply).`)}
   ${row("Stock",btn("stock",m.stock,"Stock"),`Buys medicine, bread and fuel for the next ${COLCFG.mgr.minGoodsMissions} crew and supply runs per colony: market price +${Math.round(ofSpFee(COLCFG.mgr.fee)*100)}%, or +${Math.round(ofSpFee(COLCFG.mgr.far)*100)}% space freight from the nearest depot city.`)}
   ${row("Auto-sell",btn("sell",m.sell,"Auto-sell"),`Sells any ore stack over ${COLCFG.mgr.sellAt} units in a spaceport depot to the Space broker.`)}
+  ${typeof scyDev==="function"&&scyDev()?row("🛰 God's Scythe",btn("scy",m.scy,"Scythe"),"Launches the Scythe when it's down, refuels it before the fuel runs out and restocks the bay, flares and drones. Keeps the cash reserve below."):""}
   ${row("Cash reserve",`<input type="number" min="0" step="1000000" data-spc="mkeep" value="${Math.round(m.keep)}" style="${inp};width:150px">`,`Never spends below ${fmt(m.keep)}.`)}
   ${row("Preferred hub",`<select data-spc="mhub" style="${inp}"><option value="">Any spaceport</option>${P.map(p=>`<option value="${p.c.id}" ${p.c.id===m.hub?"selected":""}>${E(p.c.name)}</option>`).join("")}</select>`,"Launches and stocks from this spaceport first.")}</div>
   ${colMgrReport(m)}
@@ -14366,6 +14367,7 @@ function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),no
   let h=`<div class="sec">🛰 God's Scythe (dev government only)</div><div class="list">`;
   if(!on){h+=R("Weather-control satellite",`One of a kind. Steers natural disasters across the world and carries orbital weapons. Stays in orbit ${SCY.days} days.${s.t0?" Your last Scythe has fallen out of orbit.":""}`,B("buy",`Build & launch · ${fmt(SCY.cost)}`,S.cash<SCY.cost));return h+"</div>"}
   const cd=k=>s.cd[k]>now?` (${fmtDur(s.cd[k]-now)})`:"";
+  h+=R("Fuel",`Refuel adds 7 days for ${fmt(5e9)}. The Space manager can do this for you (Mission control › Colonies › Space manager › Scythe).`,B("fuel","⛽ Refuel · $5B",S.cash<5e9));
   h+=R(`In orbit · Favor ${Math.floor(s.fav)}/100`,`Fuel left ${fmtDur(s.end-now)} · ${scyDaysUp()} days up · Favor +${SCY.favDay+Math.min(10,scyDaysUp())}/day.${s.calm>now?` 🌤 Calm active ${fmtDur(s.calm-now)}.`:""}${Object.keys(s.shel).filter(k=>s.shel[k]>now).map(k=>` 🛡 ${k} sheltered ${fmtDur(s.shel[k]-now)}.`).join("")}`);
   h+=`<div class="row"><div class="n">Target</div><div class="d"><select id="scyT" style="max-width:100%">${CITIES.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${c.name}, ${c.country}</option>`).join("")}</select></div></div>`;
   h+=R("Reap",`Send a disaster at the target city (Favor ${SCY.reap.f}, once a day).`,Object.keys(SCY.kinds).map(k=>B("reap",SCY.kinds[k]+cd("reap"),s.fav<SCY.reap.f||s.cd.reap>now,k)).join(" "));
@@ -14387,6 +14389,7 @@ function scyAct(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTick
   else if(a==="shel"){if(!c||s.fav<SCY.shel.f)return;s.fav-=SCY.shel.f;s.shel[c.country]=now+SCY.shel.d;scySay(`${c.country} is under my wing.`)}
   else if(a==="calm"){if(s.fav<SCY.calm.f)return;s.fav-=SCY.calm.f;s.calm=now+SCY.calm.d;stNews("🛰 The God's Scythe has calmed the world's weather");scySay("The skies are still.")}
   else if(a==="auto")s.auto=s.auto?0:1;
+  else if(a==="fuel"){if(scyPay(5e9))s.end+=7*DAY}
   else if(a==="nuke"){if(!c||s.cd.nuke>now||S.cash<SCY.nuke)return;const m=wpn(),n0=m.wpn.nuke|0;m.wpn.nuke=n0+1;wpnFire("nuke",c.id,1,1);if((m.wpn.nuke|0)>n0){m.wpn.nuke=n0;return}S.cash-=SCY.nuke;s.cd.nuke=now+SCY.nukeCd;stNews(`☢️ An orbital nuke falls from the God's Scythe on ${c.name}`)}
   else if(a==="bplague"){if((s.bay.plague|0)<1&&scyPay(SCY.plague))s.bay.plague=1}
   else if(a==="plague"){if(!c||!s.bay.plague||s.cd.plague>now)return;SCY_HIT=1;let ev;try{ev=dzHit(c,"plague",0,1)}finally{SCY_HIT=0}if(!ev)return toast(`${c.name} is still recovering`);s.bay.plague=0;s.cd.plague=now+SCY.plagueCd;stNews(`🦠 A plague swarm drifts over ${c.name}`)}
@@ -14398,13 +14401,47 @@ function scyAct(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTick
   else if(a==="drone"){if((s.drones|0)<4&&scyPay(SCY.drone))s.drones=(s.drones|0)+1}
   save();hud();renderSheet()}
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-scy]");if(!b||b.disabled)return;e.stopPropagation();try{scyAct(b.dataset.scy,b.dataset.k)}catch(err){console.warn("scy",err)}},true);
-// Satellite on the map: only while in orbit; circles the globe once every 90 minutes
-let scyMk=null;
-function scyMapTick(){try{const on=scyOn()&&scyDev();if(!on){if(scyMk){scyMk.remove();scyMk=null}if(S.scy&&S.scy.on&&S.scy.end<=Date.now()){S.scy.on=0;stNews("🛰 The God's Scythe has burned up on re-entry");save()}return}
-  if(!scyMk){const el=document.createElement("div");el.textContent="🛰";el.title="God's Scythe";el.style.cssText="font-size:26px;filter:drop-shadow(0 0 6px #d9a441);pointer-events:none";scyMk=new maplibregl.Marker({element:el}).setLngLat([0,0]).addTo(MM)}
-  const ph=(Date.now()%54e5)/54e5,lon=ph*360-180,lat=51.6*Math.sin(ph*2*Math.PI*1.0);scyMk.setLngLat([lon,lat]);
-  if(Math.random()<.0015)scySay(SCY.lines[Math.floor(Math.random()*SCY.lines.length)])}catch(e){}}
+// Satellite on the map: the 3D model (same look as the design model) orbits the globe while in orbit, once every 90 minutes
+const SCYV={alt:9e5,sc:2.2e4,per:54e5};let scyL=null,scyG=null;
+function scyPos(t){const ph=(t%SCYV.per)/SCYV.per;return {lon:ph*360-180,lat:51.6*Math.sin(ph*2*Math.PI),ph}}
+function scyModel(T){const s=S.scy||{},g=new T.Group(),M=(c,m,r,e)=>new T.MeshStandardMaterial({color:c,metalness:m==null?.6:m,roughness:r==null?.4:r,emissive:e||0});
+  const gold=M(0xc8962e,.9,.35),dark=M(0x22242a,.7,.5),steel=M(0x9aa0a8,.8,.3),panel=M(0x1a2c5a,.4,.3,0x050a20),red=M(0x991a10,.3,.5,0x330000),add=(geo,mat,x,y,z)=>{const o=new T.Mesh(geo,mat);o.position.set(x||0,y||0,z||0);g.add(o);return o};
+  add(new T.CylinderGeometry(1.1,1.1,3,8),gold);[1.6,-1.6].forEach(y=>add(new T.CylinderGeometry(1.15,1.15,.2,8),dark,0,y));
+  add(new T.TorusGeometry(1.6,.12,8,40,Math.PI*1.3),steel,0,2.6).rotation.set(Math.PI/2,0,.4);add(new T.CylinderGeometry(.08,.08,1.4),steel,0,2.2);
+  add(new T.SphereGeometry(.28,16,16),red,0,-1.95);const ring=add(new T.TorusGeometry(1.5,.07,8,48),M(0x55ccff,.2,.2,0x1177aa),0,-1);ring.rotation.x=Math.PI/2;
+  add(new T.IcosahedronGeometry(.35,1),M(0x33ff99,.1,.2,0x11cc66),0,.6,1.35);
+  [1,-1].forEach(d=>{add(new T.CylinderGeometry(.07,.07,1.6),steel,d*1.9).rotation.z=Math.PI/2;for(let i=0;i<3;i++){add(new T.BoxGeometry(1.6,.05,2.2),panel,d*(3.4+i*1.7));add(new T.BoxGeometry(1.62,.06,.06),steel,d*(3.4+i*1.7))}});
+  if(s.laser){add(new T.SphereGeometry(.25,12,12),steel,0,0,1.5);add(new T.SphereGeometry(.07,8,8),M(0xff3322,.1,.2,0xff2200),0,.3,1.8)}
+  if(s.flare)for(let i=-1;i<=1;i++)add(new T.CylinderGeometry(.12,.12,.7,10),dark,i*.3,0,-1.5).rotation.x=Math.PI/2;
+  if(s.bay&&(s.bay.plague||s.bay.bs))add(new T.BoxGeometry(1.4,.4,1.4),dark,0,-2.5);
+  for(let i=0;i<Math.min(4,s.drones|0);i++)add(new T.OctahedronGeometry(.22),steel,(i%2?1:-1)*8.6,.5,i<2?.4:-.4);
+  if((s.stl|0)>0)g.traverse(o=>{if(o.material){o.material.transparent=true;o.material.opacity=1-(s.stl|0)*.12}});
+  g.userData.ring=ring;return g}
+function scyKey(){const s=S.scy||{};return [s.laser|0,s.flare?1:0,s.bay&&(s.bay.plague||s.bay.bs)?1:0,s.drones|0,s.stl|0].join()}
+function scyLayer(){let T=null,ren=null,scene=null,cam=null,key="";return {id:"scythe-sat",type:"custom",renderingMode:"3d",
+  onAdd(mp,gl){loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;cam=new T.Camera();scene=new T.Scene();
+    scene.add(new T.AmbientLight(0x8899aa,.7));const sun=new T.DirectionalLight(0xfff1dd,1.2);sun.position.set(5,8,6);scene.add(sun);mp.triggerRepaint()}).catch(e=>console.warn("scythe 3d off",e))},
+  render(gl,args){if(!T||!scene||!MM.transform.getMatrixForModel)return;const k=scyKey();if(!scyG||k!==key){if(scyG)scene.remove(scyG);scyG=scyModel(T);scene.add(scyG);key=k}
+    const now=Date.now(),p=scyPos(now),z=MM.getZoom(),sc=SCYV.sc*Math.max(.15,Math.pow(2,1.4-z));scyG.rotation.y=now/4000;scyG.userData.ring.rotation.z=now/1000;
+    const mm=new T.Matrix4().fromArray(MM.transform.getMatrixForModel([p.lon,p.lat],SCYV.alt)).scale(new T.Vector3(sc,sc,sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
+    cam.projectionMatrix=new T.Matrix4().fromArray(args.defaultProjectionData?args.defaultProjectionData.mainMatrix:args).multiply(mm);ren.resetState();ren.render(scene,cam);MM.triggerRepaint()}}}
+function scyMapTick(){try{const on=scyOn()&&scyDev();if(S.scy&&S.scy.on&&S.scy.end<=Date.now()){S.scy.on=0;stNews("🛰 The God's Scythe has burned up on re-entry");save()}
+  try{scyAutoMgr()}catch(e){}
+  const has=!!MM.getLayer("scythe-sat");if(on&&!has&&MM.isStyleLoaded()){scyL=scyLayer();MM.addLayer(scyL)}else if(!on&&has){MM.removeLayer("scythe-sat");scyG=null}
+  if(on&&Math.random()<.0015)scySay(SCY.lines[Math.floor(Math.random()*SCY.lines.length)])}catch(e){}}
 setInterval(scyMapTick,1000);
+// Space manager duty (Mission control › Colonies › Space manager › Scythe): launch, refuel and restock. Keeps the manager's cash reserve.
+const SCYM={fuel:5e9,fuelDays:7,refuelBelow:2*DAY,every:6e4};let scyMgrT=0;
+function scyAutoMgr(){if(!scyDev())return;const now=Date.now();if(now-scyMgrT<SCYM.every)return;scyMgrT=now;const m=COLS().mgr;if(!m||!m.on||!m.scy)return;
+  const s=scy(),keep=m.keep||0,can=x=>S.cash-x>=keep,buy=(x,f,txt)=>{if(!can(x))return false;S.cash-=x;f();try{colMgrLog(m,"🛰 Scythe: "+txt+" for "+fmt(x))}catch(e){}return true};let did=0;
+  if(!scyOn()){if(!S.pol||S.pol.r<0)return;if(buy(SCY.cost,()=>{Object.assign(s,{on:1,t0:now,end:now+SCY.days*DAY,fav:SCY.fav0,ft:now,cd:{},shel:{},calm:0,bay:{},bsUsed:0});stNews(`🛰 ${S.pol.c} has launched the God's Scythe into orbit`)},"launched"))did=1;else{colMgrLog(m,"🛰 Scythe: waiting for cash to launch");return}}
+  if(s.end-now<SCYM.refuelBelow&&buy(SCYM.fuel,()=>{s.end+=SCYM.fuelDays*DAY},"refuelled (+7 days)"))did=1;
+  if(!s.bay.plague&&buy(SCY.plague,()=>{s.bay.plague=1},"loaded a plague swarm"))did=1;
+  if(!s.bay.bs&&!s.bsUsed&&buy(SCY.bs,()=>{s.bay.bs=1},"loaded the black sun"))did=1;
+  if((s.flare|0)<2&&buy(SCY.flare,()=>{s.flare=(s.flare|0)+1},"restocked flares"))did=1;
+  if((s.drones|0)<4&&buy(SCY.drone,()=>{s.drones=(s.drones|0)+1},"replaced a drone"))did=1;
+  if(did){save();try{hud()}catch(e){}}}
+
 resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{royTick()}catch(e){}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}try{wfTick()}catch(e){}try{cabTick()}catch(e){}},1000);
 if(!S.log.length){S.log=["You start with nothing. Tap a city, open Jobs & home, rent a room and apply for work."];hud()}
 if(!world)toast("Map outline didn't load. Cities still work.");
