@@ -836,6 +836,8 @@ function bldPattern(){const h=["coalesce",["get","render_height"],8];return["cas
 /* view distance slider (S.set.vd): 0 = Auto (follows graphics), 1 Short … 5 Max. z = zoom where buildings start, f = fade length, R = how far out buildings are built, in metres (nearest first, in chunks), n = half the number of built buildings kept in memory; far chunks are dropped.
    Max is the real limit: the map's building data only exists from zoom 13, so buildings cannot load further out than that. */
 const VDQ=[null,{z:15,f:[.2,.6],R:300,n:600},{z:14,f:[.4,.9],R:500,n:900},{z:13,f:[.3,.8],R:900,n:1500},{z:13,f:[.1,.4],R:1800,n:3000},{z:13,f:[0,.15],R:4000,n:10000}];
+/* building shape cache cap: Low and Medium graphics keep a smaller cache (never below 3x the buildings kept, so it does not thrash); High keeps 30000 */
+function dcMax(){let q;try{q=gfx()}catch(e){}const n=(vdQ().n||0)*3;return q===GFXQ.low?Math.max(6000,n):q===GFXQ.med?Math.max(12000,n):30000}
 function vdQ(){let v=0;try{v=+(S&&S.set&&S.set.vd)||0}catch(e){}if(VDQ[v])return VDQ[v];let q;try{q=gfx()}catch(e){}return q===GFXQ.low?{z:14,f:[.4,.9],R:500,n:900}:q===GFXQ.med?{z:13,f:[.3,.8],R:700,n:1200}:VDQ[3]}
 function bldZ(){return vdQ().z}
 function bldOp(){const q=vdQ();return["interpolate",["linear"],["zoom"],q.z+q.f[0],0,q.z+q.f[1],1]}
@@ -2498,7 +2500,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
   function stats(){return Object.assign({},dT,{drawn:lastTris})}
   /* generated buildings are kept as chunks (groups of about 250 buildings) under one parent, all drawn relative to one origin; chunks are added nearest-first and dropped when far */
   function setOrigin(org){detO=org}
-  function addChunk(feats,roads,withLm){if(!T||!scene||!detO)return null;if(!det){det=new T.Group();det.visible=false;scene.add(det)}if(dcache&&dcache.size>30000)dcache=null;const g=buildChunk(feats,roads,withLm);if(g)det.add(g);return g}
+  function addChunk(feats,roads,withLm){if(!T||!scene||!detO)return null;if(!det){det=new T.Group();det.visible=false;scene.add(det)}if(dcache&&dcache.size>dcMax())dcache=null;const g=buildChunk(feats,roads,withLm);if(g)det.add(g);return g}
   const disp=g=>g.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose()});
   function removeChunk(g){if(det&&g){det.remove(g);disp(g)}}
   function resetDetail(){if(det){scene.remove(det);disp(det);det=null}detO=null;dcache=null;if(scene)atmoDrop()}
