@@ -5472,8 +5472,13 @@ const ASSETS=[
  ["RY","Royal Bank of Canada","s",170,.008,"fin"],["WMT","Walmart","s",100,.007,"retail"],["KO","Coca-Cola","s",70,.005,"retail"],["DIS","Disney","s",115,.013,"media"],
  ["XOM","ExxonMobil","s",110,.012,"energy"],["LMT","Lockheed Martin","s",470,.01,"defense"],["DAL","Delta Air Lines","s",55,.02,"travel"],
  ["BTC","Bitcoin","c",100000,.03,"bitcoin"],["ETH","Ethereum","c",3500,.038,"ethereum"],["SOL","Solana","c",180,.05,"solana"],["BNB","BNB","c",650,.03,"binancecoin"],
- ["XRP","XRP","c",2.5,.045,"ripple"],["ADA","Cardano","c",.7,.05,"cardano"],["DOGE","Dogecoin","c",.2,.06,"dogecoin"],["LTC","Litecoin","c",90,.04,"litecoin"]
-].map(a=>({s:a[0],n:a[1],t:a[2],p0:a[3],vol:a[4],sec:a[5]}));
+ ["XRP","XRP","c",2.5,.045,"ripple"],["ADA","Cardano","c",.7,.05,"cardano"],["DOGE","Dogecoin","c",.2,.06,"dogecoin"],["LTC","Litecoin","c",90,.04,"litecoin"],
+ // factory production shares (Mark, 2026-11-03): only the exchange owner invests on the open market; other players buy them from the owner's exchange stock
+ ["OILP","Meridian Oil Production","s",60,.016,"energy","oil"],["COALP","Meridian Coal Mining","s",25,.014,"energy","coal"],["FUELP","Meridian Fuel Refining","s",45,.016,"energy","fuel"],
+ ["URANP","Meridian Uranium Mining","s",120,.022,"energy","uranium"],["STLP","Meridian Steel Mills","s",80,.013,"energy","steel"],["PWRP","Meridian Power Plants","s",35,.01,"energy","power"]
+].map(a=>({s:a[0],n:a[1],t:a[2],p0:a[3],vol:a[4],sec:a[5],pr:a[6]||null}));
+/* production shares: the exchange owner (or the dev save) may buy them on the open market; everyone may sell what they hold */
+const prodBlock=a=>a&&a.pr&&!(typeof exiOwner==="function"&&exiOwner())&&!(typeof spDev==="function"&&spDev())?`${a.n} shares are sold only through the stock exchange. Buy them from the exchange's stock.`:"";
 const AK=Object.fromEntries(ASSETS.map(a=>[a.s,a]));
 function MK(){const m=S.mkt2=S.mkt2||{px:{},h:{},open:{},hold:{},t:0,live:0,realized:0};for(const a of ASSETS){if(m.px[a.s]==null){m.px[a.s]=a.p0;m.h[a.s]=[a.p0];m.open[a.s]=a.p0}if(!m.h[a.s]||m.h[a.s].length<2){const h=[];let v=m.px[a.s];for(let i=0;i<30;i++){h.unshift(v);v=v/Math.exp((Math.random()-.5)*2*(a.vol||.02)*.25)}h[h.length-1]=m.px[a.s];m.h[a.s]=h}}return m}
 function mktStep(){const m=MK(),now=Date.now();const war=typeof tension==="function"?tension()/100:0,sh=mkwFresh(now);
@@ -5605,7 +5610,7 @@ const fee=a=>S.exVia?EXFEE:PUBFEE;
 const MKT_TRADE_CAP=800e9;
 function mktCapFree(){try{const u=ON.user&&ON.user.uid;return !!u&&(devUid(u)||!!MODERATORS[u])}catch(e){return false}}
 function mktCapErr(v){return !mktCapFree()&&v>MKT_TRADE_CAP?`Trade limit is ${fmt(MKT_TRADE_CAP)} per trade`:""}
-function trade(s,q){const m=MK(),a=AK[s],p=m.px[s],h=m.hold[s]=m.hold[s]||{q:0,avg:0};{const e=mktCapErr(p*Math.min(Math.abs(q),q>0?Infinity:h.q));if(e){toast(e);return}}
+function trade(s,q){const m=MK(),a=AK[s],p=m.px[s],h=m.hold[s]=m.hold[s]||{q:0,avg:0};if(q>0&&prodBlock(a)){toast(prodBlock(a));return}{const e=mktCapErr(p*Math.min(Math.abs(q),q>0?Infinity:h.q));if(e){toast(e);return}}
   if(q>0){const cost=p*q*(1+fee(a));if(S.cash<cost){toast(`Need ${fmt(cost)}`);return}S.cash-=cost;exOnTrade(a,p*q);h.avg=(h.avg*h.q+p*q)/(h.q+q);h.q+=q;toast(`Bought ${fq(q)} ${s}`)}
   else{q=Math.min(-q,h.q);if(q<=0)return;const v=p*q*(1-fee(a));S.cash+=v;exOnTrade(a,p*q);m.realized+=(p-h.avg)*q;wevAdd("tech",(p-h.avg)*q);h.q-=q;if(h.q<1e-9)delete m.hold[s];toast(`Sold ${fq(q)} ${s} for ${fmt(v)}`)}
   save();hud();phRender()}
@@ -5717,6 +5722,7 @@ function mkdAmtTxt(){const s=MKD.sel,q=parseFloat(String(MKD.amt||"").replace(/,
 function mkdTrade(a){const m=MK(),p=m.px[a.s],hd=m.hold[a.s],f=fee(a);
   const qs=a.t==="c"?[.001,.01,.1,1].map(x=>x*Math.max(1,10**Math.floor(Math.log10(1000/p)))):[1,10,100];
   return `<div class="mdx-card" style="margin-top:12px"><h3 style="margin:0 0 6px">Trade ${a.s}</h3><div class="ph-rows" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));column-gap:24px"><div><span>Cash</span><b>${fmt(S.cash)}</b></div><div><span>You own</span><b>${hd?fq(hd.q):0}</b></div>${hd?`<div><span>Value</span><b>${fmt(hd.q*p)}</b></div><div><span>Avg cost</span><b>${fp(hd.avg)}</b></div><div><span>Gain</span><b style="color:${p>=hd.avg?"#16a34a":"#dc2626"}">${fmt((p-hd.avg)*hd.q)}</b></div>`:""}<div><span>${S.exVia?"Exchange fee":"Public market fee"}</span><b>${+(f*100).toFixed(2)}% per trade</b></div></div>
+  ${a.pr?`<div class="ph-sub" style="margin:6px 0;color:#0891b2">🏭 Factory production share: tracks ${G[a.pr]?G[a.pr][0].toLowerCase():a.pr} output and rises in wartime. ${prodBlock(a)||"As exchange owner you can invest here, then stock these shares on your exchange for players to buy."}</div>`:""}
   ${S.exVia?`<div class="ph-sub" style="margin:6px 0;color:#d97706">Public market buying is off while you trade on an exchange. <button data-md="tab" data-k="ex" style="font:inherit;font-weight:700;color:inherit;background:none;border:0;text-decoration:underline;cursor:pointer;padding:0">Buy from the exchange's stock</button></div>`:""}<div class="mkd-tr" style="grid-template-columns:repeat(${qs.length},1fr)${S.exVia?";opacity:.35;filter:grayscale(1)":""}">${qs.map(q=>`<button class="b" data-md="trade" data-q="${q}" ${S.exVia||S.cash<p*q*(1+f)?"disabled":""}>Buy ${fq(q)}</button>`).join("")}</div>
   <div class="mkd-tr" style="grid-template-columns:repeat(${qs.length},1fr)">${qs.map(q=>`<button data-md="trade" data-q="${-q}" ${!hd||hd.q<q-1e-9?"disabled":""}>Sell ${fq(q)}</button>`).join("")}</div>
   ${hd?`<div class="mkd-tr"><button data-md="trade" data-q="${-hd.q}">Sell all · ${fmt(hd.q*p*(1-f))}</button></div>`:""}
