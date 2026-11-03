@@ -10131,7 +10131,7 @@ const RB={me:"Your company",sp:2,mat:.8, // repair speed ×, materials = mat × 
   bids:[["Lean",1.15,.8],["Fair",1.35,.55],["Steep",1.7,.3]]}; // [label, pay × base value, win chance]
 function rbBase(c){return Math.round(RCN.cost*(c.size||1)*dmgLvl(c)/1e5)*1e5}
 function rbHtml(c){const now=Date.now(),e=(S.dmg||{})[c.id],l=dmgLvl(c),j=(S.rb||{})[c.id];
-  if(j)return `<div class="sec">Rebuilding contract</div><div class="list"><div class="row own"><div class="n">You are rebuilding ${c.name}</div><div class="d">Paid ${fmt(j.cost)} for materials. The city pays <b>${fmt(j.pay)}</b> when the rebuild is done in ${fmtDur(dmgLeft(c))}. A new strike before then cancels the job.</div></div></div>`;
+  if(j)return `<div class="sec">Rebuilding contract</div><div class="list"><div class="row own"><div class="n">You are rebuilding ${c.name}</div><div class="d">Paid ${fmt(j.cost)} for materials. The city pays <b>${fmt(j.pay)}</b> when the rebuild is done in ${fmtDur(dmgLeft(c))}. A new strike before then cancels the job.</div><div style="grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button class="buy up" data-rbx="${c.id}" data-fixed="1">Cancel contract</button></div></div></div>`;
   if(!e||l<.005||e.rc||rcnGov(c.country)||(+(S.unh||{})[c.id]||0)>now)return "";
   const base=rbBase(c),m=Math.round(base*RB.mat),bid=(S.rbX||{})[c.id]===e.t;
   return `<div class="sec">Rebuilding contract</div><div class="list"><div class="row"><div class="n">${c.name} is ${dmgWord(l)} ${dmgPct(l)}</div><div class="d">${bid?"Your bid lost. Another firm took the job.":`The city is taking bids to rebuild. Materials cost ${fmt(m)} up front if you win. A higher price earns more but is less likely to win. You rebuild ${RB.sp}× faster than normal.`}</div>${bid?"":`<div style="grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">`+RB.bids.map((b,i)=>`<button class="buy" data-rb="${c.id}" data-i="${i}" data-fixed="1" ${S.cash<m?"disabled":""}>${b[0]} · ${fmt(base*b[1])} · ${Math.round(b[2]*100)}% win</button>`).join("")+`</div>`}</div></div>`}
@@ -10149,6 +10149,10 @@ function rbTick(){const R=S.rb;if(!R)return;let ch=0;for(const id in R){const j=
   if(ch){save();try{renderSheet();hud()}catch(e){}}}
 setInterval(()=>{try{rbTick()}catch(e){console.warn("rb",e)}},30000);setTimeout(()=>{try{rbTick()}catch(e){}},4000);
 sheet.addEventListener("click",ev=>{const b=ev.target.closest("[data-rb]");if(b)rbBid(+b.dataset.rb,+b.dataset.i)});
+sheet.addEventListener("click",ev=>{const b=ev.target.closest("[data-rbx]");if(b)rbCancel(+b.dataset.rbx)});
+/* walk away from a rebuilding job: materials are lost, no pay; the city keeps its damage and rebuilds at normal speed */
+function rbCancel(id){const c=CITIES[id],j=(S.rb||{})[id],e=(S.dmg||{})[id];if(!c||!j)return;if(!confirm(`Cancel your contract to rebuild ${c.name}? The ${fmt(j.cost)} of materials is lost and you won't be paid.`))return;
+  delete S.rb[id];if(e&&e.rc===RB.me){const l=dmgLvl(c);S.dmg[id]={l0:Math.round(l*1e4)/1e4,t:Date.now(),own:e.own,k:e.k}}S.log.unshift(`You cancelled your contract to rebuild ${c.name}`);S.log=S.log.slice(0,3);toast(`Rebuild contract in ${c.name} cancelled`);commit()}
 // a strike lands: add its damage (stacking 1−(1−a)(1−b)), restart repairs, kill people; mine = fired by the player. Returns deaths.
 function dmgStrike(k,c,mine){const W=WPNCFG.w[k];if(!W||!c)return 0;S.dmg=S.dmg&&typeof S.dmg==="object"?S.dmg:{};const cur=dmgLvl(c),o=S.dmg[c.id],add=dmgHit(W,c)*W.struct,
   l=k==="icbm"?1:Math.min(1,1-(1-cur)*(1-add)),R=["msl","gas","nuke","icbm"],pk=o&&cur>0&&R.indexOf(o.k)>R.indexOf(k)?o.k:k;
