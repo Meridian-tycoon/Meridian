@@ -3567,7 +3567,7 @@ function govHtml(c){const n=c.country,g=gov(n);if(!PARTIES[g.party])g.party="lib
   h+=`<div class="sec">Government of ${n}</div><div class="list"><div class="row"><div class="n"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${P.col};margin-right:6px"></span>${P.n}</div>
     <div class="d">${P.d} Approval ${Math.round(g.appr)}% · next election in ${fmtDur(g.next-Date.now()).replace(/^(\d+)h/,(m,x)=>x>=48?Math.floor(x/24)+"d "+(x%24)+"h":m)}${g.favor?` · you have their ear (+${Math.round(g.favor*100)}% lobbying)`:""}</div></div></div>`;{const p=S.pol,gn=p&&p.c===n?govNotesHtml():"";if(gn)h+=`<div class="sec">Government notices</div><div class="list"><div class="row"><div class="d">${gn}</div></div></div>`}
   if(g.strike>Date.now())h+=`<p class="d" style="color:#c33;font-size:13px;margin:6px 0">⚠ General strike: businesses earn 30% less for ${fmtDur(g.strike-Date.now())}.</p>`;
-  h+=govSafe(()=>conflictHtml(n),"war")+govSafe(()=>tensHtml(n),"tensions")+govSafe(()=>dipHtml(n),"diplomacy")+govSafe(()=>rcnHtml(n),"reconstruction");
+  h+=govSafe(()=>conflictHtml(n),"war")+govSafe(()=>tensHtml(n),"tensions")+govSafe(()=>dipHtml(n),"diplomacy")+govSafe(()=>rcnHtml(n),"reconstruction")+govSafe(()=>royHtml(),"royalties");
   if(g.ctrl){h+=`<div class="sec">You control this government</div><div class="list"><div class="row"><div class="n">Puppet government</div><div class="d">Set any law for ${fmt(donUnit(n))} with no vote. Control lasts until the next election; fund the party again to keep it. Each hour there's a small chance a journalist exposes you.</div></div>
     <div class="row"><div class="n">State contract ${g.contract?"<b>ACTIVE</b>":""}</div><div class="d">Pays you ${fmt(contractPay(n))} an hour from public money, but more than doubles the exposure risk.</div><button class="buy" data-gov="contract" data-fixed="1">${g.contract?"Cancel":"Award to yourself"}</button></div></div>`}
   {const has=uranPermit(n),fee=uranFee(),q=g.uReq,o=uranGov(n),mine=uranIGov(n),cd=urqCdOn()&&g.uDen>Date.now();
@@ -3605,6 +3605,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)
   else if(a==="wlic"){if(g.wLic||g.laws.weed||S.cash<WLIC_FEE)return;S.cash-=WLIC_FEE;g.wLic=1;toast(`Cannabis licence granted in ${c.country}`)}
   else if(a==="nlca"){nlcApply()}
   else if(a==="rcn")rcnAward(+b.dataset.c,+b.dataset.i);
+  else if(a==="royx")royCancel(+b.dataset.c);
   else if(a==="rcnx")rcnCancel(+b.dataset.c);
   else if(a==="unhb")unhBuy(+b.dataset.c);
   else if(a==="upermit"){const n=c.country;if(uranPermit(n)){g.uPermit=0;toast("Permit given up")}else if(g.uReq)uranCancel(n);else uranApply(n)}
@@ -6515,9 +6516,20 @@ function unhListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubUNH)return;
     if(u>now&&u>mine+6e4){S.unh[id]=u;S.dmg=S.dmg&&typeof S.dmg==="object"?S.dmg:{};S.dmg[id]={l0:1,t:at,own:0,k:"icbm"};if(S.trip&&S.trip.to&&S.trip.to.city===id)S.trip=null;ch=1}
     else if(u===0&&mine>now&&at>mine-UNH_DAYS*DAYMS+6e4){S.unh[id]=now;if(S.dmg&&S.dmg[id])S.dmg[id].t=now;ch=1}});
   if(ch){save();if(sel&&mode==="city")renderSheet()}},()=>{})}catch(e){}}
+/* rebuild royalties (Mark, 2026-11-03): after you pay to rebuild a city, an AI-run country pays you ROY.rate of the price every game hour until you cancel the deal (Gov tab).
+   No royalty while a player governs that country (or you do). S.roy[cityId]={n,amt,t: paid up to,until}. */
+const ROY={rate:.01}; // 1% of the rebuild price every game hour, until the rebuilder cancels the deal
+function royHtml(){const R=S.roy;if(!(S.pol&&S.pol.r>=0)||!R||!Object.keys(R).length)return "";
+  return `<div class="sec">Rebuild royalties</div><div class="list">`+Object.keys(R).map(id=>{const r=R[id],c=CITIES[id];if(!c)return "";const ai=!(S.pol.c===r.n)&&!govRival(c);
+    return `<div class="row own"><div class="n">${c.name}, ${r.n}</div><div class="d">${ai?`Pays you ${fmt(r.amt*ROY.rate)} every game hour.`:"Paused: a player governs this country."}</div><div style="display:flex;gap:6px"><button class="buy up" data-gov="royx" data-c="${id}" data-fixed="1">Cancel deal</button></div></div>`}).join("")+`</div>`}
+function royCancel(id){const r=(S.roy||{})[id],c=CITIES[id];if(!r||!c)return;if(!confirm(`End the royalty deal for ${c.name}? ${r.n} stops paying you for good.`))return;delete S.roy[id];logGov(`You ended the rebuild royalty deal for ${c.name}`);toast(`Royalty deal for ${c.name} ended`);save();renderSheet()}
+function royTick(){const R=S.roy;if(!R||typeof R!=="object")return;const now=Date.now(),H=DAYMS/24;let got=0;
+  for(const id in R){const r=R[id],c=CITIES[id];if(!r||!c){delete R[id];continue}const h=Math.floor((now-r.t)/H);if(h>0){r.t+=h*H;
+      const ai=!(S.pol&&S.pol.r>=0&&S.pol.c===r.n)&&!govRival(c);if(ai){const v=Math.round(r.amt*ROY.rate*h);S.cash+=v;got+=v}}}
+  if(got>0){S.log.unshift(`Rebuild royalties: +${fmt(got)}`);S.log=S.log.slice(0,3);save();hud()}}
 const unhGov=()=>!!(S.pol&&S.pol.r>=0&&S.pol.c); // any player in government, in any country, can pay to rebuild any uninhabitable city
 function unhBuy(id){const c=CITIES[id];if(!c||!unhGov()||!unhOn(c))return;const cost=unhBuyCost(c.country),free=false; // full price for everyone, dev included (Mark, 2026-11-03)if(!free&&S.cash<cost)return toast(`You need ${fmt(cost)} to rebuild ${c.name} now`);
-  if(!free)S.cash-=cost;const now=Date.now();S.unh[c.id]=now;if(S.dmg&&S.dmg[c.id])S.dmg[c.id].t=now;unhPub(c,0);logGov(`You paid ${free?"nothing (dev)":fmt(cost)} to clear the fallout and start rebuilding ${c.name}`);toast(`🏗 ${c.name}: rebuilding starts now`);save();hud();renderSheet()}
+  if(!free)S.cash-=cost;const now=Date.now();S.unh[c.id]=now;S.roy=S.roy&&typeof S.roy==="object"?S.roy:{};S.roy[c.id]={n:c.country,amt:cost,t:now};if(S.dmg&&S.dmg[c.id])S.dmg[c.id].t=now;unhPub(c,0);logGov(`You paid ${free?"nothing (dev)":fmt(cost)} to clear the fallout and start rebuilding ${c.name}`);toast(`🏗 ${c.name}: rebuilding starts now`);save();hud();renderSheet()}
 function showGameOver(){const d=S.dead;if(!d||$("#gameover"))return;const el=document.createElement("div");el.id="gameover";
   el.style.cssText="position:fixed;inset:0;z-index:10000;background:rgba(10,0,0,.92);display:flex;align-items:center;justify-content:center;padding:16px";
   const you=d.by&&S.pol&&d.by===S.pol.c&&!d.foe,wn=(WPNCFG.w[d.k||"icbm"]||WPNCFG.w.icbm).n,an=/^[AEIOU]/.test(wn)?"An":"A";
@@ -6529,7 +6541,7 @@ function showGameOver(){const d=S.dead;if(!d||$("#gameover"))return;const el=doc
   document.body.appendChild(el);$("#gobtn").onclick=()=>startNewGame()}
 function renderUnh(c){sheet.innerHTML=`<div class="shead"><div><h2>${c.name}<span class="tag bust">UNINHABITABLE</span></h2><p>${c.country} · ICBM strike</p></div><button class="x" id="cls" aria-label="Close">×</button></div>
   <div class="meta"><div><span>Recovers in </span>${unhLeft(c)}</div><div><span>Demand </span>×0</div><div><span>Yours </span>${fmt(0)}/hr</div></div>
-  <p class="d" style="margin:10px 0;color:var(--muted)">☠ Nobody lives here any more. Your businesses, land and offices in ${c.name} earn nothing, and nothing can be bought, built or visited until the radiation clears (${UNH_DAYS} game days after the strike). Then the city rebuilds from ${Math.round(dmgLvl(c)*100)}% damage, taking about ${dmgRepDays((S.dmg||{})[c.id]&&S.dmg[c.id].l0||1)} more game days.</p>${unhGov()?(()=>{const uc=unhBuyCost(c.country);return `<p class="d" style="margin:0 0 8px">As the government of ${S.pol.c} you can pay to clear the fallout now. Rebuilding starts at once, for every player.</p><button class="buy" id="unhbuy" data-fixed="1" ${S.cash<uc?"disabled":""}>Rebuild now · ${fmt(uc)}</button>`})():""}`;
+  <p class="d" style="margin:10px 0;color:var(--muted)">☠ Nobody lives here any more. Your businesses, land and offices in ${c.name} earn nothing, and nothing can be bought, built or visited until the radiation clears (${UNH_DAYS} game days after the strike). Then the city rebuilds from ${Math.round(dmgLvl(c)*100)}% damage, taking about ${dmgRepDays((S.dmg||{})[c.id]&&S.dmg[c.id].l0||1)} more game days.</p>${unhGov()?(()=>{const uc=unhBuyCost(c.country);return `<p class="d" style="margin:0 0 8px">As the government of ${S.pol.c} you can pay to clear the fallout now. Rebuilding starts at once, for every player. If an AI government runs ${c.country}, it then pays you ${ROY.rate*100}% of the price every game hour until you cancel the deal.</p><button class="buy" id="unhbuy" data-fixed="1" ${S.cash<uc?"disabled":""}>Rebuild now · ${fmt(uc)}</button>`})():""}`;
   $("#cls").onclick=closeSheet;const ub=$("#unhbuy");if(ub)ub.onclick=()=>unhBuy(c.id)}
 // the world reacts to gas/nukes: sanctions-like hit to every city's demand for a while
 function wpnSanction(k){const m=mil(),X=WPNCFG.sanc[k];if(!X)return;if(devGod()){m.sanc=null;const t=`Developer immunity: no sanctions for your ${WPNCFG.w[k].n.toLowerCase()} strike`;logPol(t);milLog(m,t);return}const now=Date.now(),o=m.sanc&&m.sanc.until>now?m.sanc:{f:0,until:now};
@@ -14665,7 +14677,7 @@ function alPaint(){let b=document.getElementById("albell");if(!b){b=document.cre
   p.querySelectorAll("[data-al]").forEach(el=>el.onclick=()=>{if(el.dataset.al==="clr"){AL.list=[];alSave()}else AL.open=0;alPaint()})}
 document.addEventListener("click",()=>{if(AL.open){AL.open=0;alPaint()}});
 try{alPaint()}catch(e){}
-resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}try{wfTick()}catch(e){}try{cabTick()}catch(e){}},1000);
+resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{royTick()}catch(e){}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}try{wfTick()}catch(e){}try{cabTick()}catch(e){}},1000);
 if(!S.log.length){S.log=["You start with nothing. Tap a city, open Jobs & home, rent a room and apply for work."];hud()}
 if(!world)toast("Map outline didn't load. Cities still work.");
 })();
