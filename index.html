@@ -595,7 +595,7 @@ const BIGCITY=5,isBigCity=c=>c.size>=BIGCITY;
 const CASINO_CITIES=["Montréal"],bigOK=c=>isBigCity(c)||CASINO_CITIES.includes(c.name);
 /* why a business can't be opened in a city ("" if it can). Used by every buy/rent path. */
 const CARTS=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie"],isCart=k=>CARTS.includes(k);
-function bizBlock(b,c){if(unhOn(c))return `${c.name} is uninhabitable for ${unhLeft(c)} after an ICBM strike`;if(b.cx!=null&&b.cx!==c.id)return `${b.n} is your own brand from ${(CITIES[b.cx]||{}).name}; it only trades there`;
+function bizBlock(b,c){if(unhOn(c))return `${c.name} is uninhabitable for ${unhLeft(c)} after an ICBM strike`;if(typeof rbjActive==="function"&&rbjActive(c.id)){const oj=rbjOther(c.id);return c.name+" is being rebuilt"+(oj?" by "+oj.name:" by you")+": no new businesses until it's done"}if(b.cx!=null&&b.cx!==c.id)return `${b.n} is your own brand from ${(CITIES[b.cx]||{}).name}; it only trades there`;
   if(lawBan(c,b))return b.k==="dispensary"?`Cannabis is illegal in ${c.country}`:`Gambling is banned in ${c.country}`;
   if(b.k==="dispensary"&&!(gov(c.country).wLic))return `Needs a cannabis licence in ${c.country} (Government tab, ${fmt(WLIC_FEE)})`;if(b.k==="airport"&&!hasAirport(c))return `${c.name} has no airport site`;if(b.k==="port"&&c.size<3)return "Seaports need a size 3+ city";return ""}
 
@@ -4091,7 +4091,7 @@ function wwGovMirror(quiet){if(!wwShared()||!WW.gp)return;for(const n in WW.gp){
 function wjPub(w,s){try{if(!ON.ready||!ON.user)return;const gid=w.gid||(WRM?w.id:0);if(!gid)return;const r=ON.db.collection("wjoin").doc(ON.user.uid);
   if(!s)return void r.delete().catch(()=>{});
   r.set({w:gid,s,n:wlPT(),name:wlName().slice(0,20),c:String(dipPlayerC()||"").slice(0,40),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't share your troops: "+(e&&e.code||e)})}catch(e){}}
-function wwListen(){try{evListen()}catch(e){}try{g1Listen()}catch(e){}try{mkwListen()}catch(e){}try{mkhListen()}catch(e){}try{lnListen()}catch(e){}try{unhListen()}catch(e){}try{royoListen()}catch(e){}if(ON.unsubWW)return;
+function wwListen(){try{evListen()}catch(e){}try{g1Listen()}catch(e){}try{mkwListen()}catch(e){}try{mkhListen()}catch(e){}try{lnListen()}catch(e){}try{unhListen()}catch(e){}try{royoListen()}catch(e){}try{rbjListen()}catch(e){}if(ON.unsubWW)return;
   ON.unsubWW=ON.db.collection("world").doc("wars").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list))return;WW={list:v.list,ruler:v.ruler||{},tl:Array.isArray(v.tl)?v.tl:[],gp:v.gp&&typeof v.gp==="object"?v.gp:null};
     try{localStorage.setItem(WWKEY,JSON.stringify(WW))}catch(e){}if(ON.authKnown&&!WRM){wwMirror(false);draw();onRefresh()}},e=>{ON.err="Couldn't load world wars: "+(e&&e.code||e)});
   ON.unsubWJ=ON.db.collection("wjoin").onSnapshot(q=>{const a=[],old=Date.now()-3*864e5;q.forEach(x=>{const v=x.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():Date.now();if(ON.user&&x.id===ON.user.uid)return;if(at<old||!Number.isInteger(v.w)||(v.s!=="a"&&v.s!=="b"))return;a.push({uid:x.id,w:v.w,s:v.s,n:+v.n||0,name:v.name,c:v.c,at})});
@@ -10094,29 +10094,38 @@ function rcnAward(id,i){const c=CITIES[id];if(!c||!rcnGov(c.country))return;cons
 const RB={me:"Your company",sp:2,mat:.8, // repair speed ×, materials = mat × base value
   bids:[["Lean",1.15,.8],["Fair",1.35,.55],["Steep",1.7,.3]]}; // [label, pay × base value, win chance]
 function rbBase(c){return Math.round(RCN.cost*(c.size||1)*dmgLvl(c)/1e5)*1e5}
-function rbHtml(c){const now=Date.now(),e=(S.dmg||{})[c.id],l=dmgLvl(c),j=(S.rb||{})[c.id];
+/* shared rebuild jobs (Mark, 2026-11-03): a won contract is saved to rbjob/{cityId} {by,name,until,at}. Every player then sees "Being rebuilt by X",
+   gets no tender for that city, and can't open new businesses there until it's done (until) or cancelled (doc deleted). */
+const RBJ={};
+function rbjMe(){return typeof ON!=="undefined"&&ON.user&&ON.user.uid}
+function rbjOther(id){const j=RBJ[id];return j&&j.until>Date.now()&&j.by!==rbjMe()?j:null}
+function rbjActive(id){return !!rbjOther(id)||!!(S.rb||{})[id]}
+function rbjPub(c,until){try{if(!ON.ready||!ON.user)return;ON.db.collection("rbjob").doc(String(c.id)).set({by:ON.user.uid,name:String(onProf().name||"Tycoon").slice(0,20),until:Math.round(until),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't share the rebuild job: "+(e&&e.code||e)})}catch(e){}}
+function rbjDel(id){try{if(ON.ready&&ON.user)ON.db.collection("rbjob").doc(String(id)).delete().catch(()=>{})}catch(e){}}
+function rbjListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubRBJ)return;ON.unsubRBJ=ON.db.collection("rbjob").onSnapshot(q=>{for(const k in RBJ)delete RBJ[k];q.forEach(d=>{const v=d.data()||{};if(CITIES[+d.id]&&+v.until>0)RBJ[+d.id]={by:v.by,name:String(v.name||"A player"),until:+v.until}});if(sel&&mode==="city")renderSheet()},()=>{})}catch(e){}}
+function rbHtml(c){const now=Date.now(),e=(S.dmg||{})[c.id],l=dmgLvl(c),j=(S.rb||{})[c.id];const oj=!j&&rbjOther(c.id);if(oj)return `<div class="sec">Rebuilding contract</div><div class="list"><div class="row"><div class="n">Being rebuilt by ${onEsc(oj.name)}</div><div class="d">${c.name} is being rebuilt by ${onEsc(oj.name)}. Done in ${fmtDur(oj.until-now)}. No other bids and no new businesses until then.</div></div></div>`;
   if(j)return `<div class="sec">Rebuilding contract</div><div class="list"><div class="row own"><div class="n">You are rebuilding ${c.name}</div><div class="d">Paid ${fmt(j.cost)} for materials. The city pays <b>${fmt(j.pay)}</b> when the rebuild is done in ${fmtDur(dmgLeft(c))}. A new strike before then cancels the job.</div><div style="grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button class="buy up" data-rbx="${c.id}" data-fixed="1">Cancel contract</button></div></div></div>`;
   if(!e||l<.005||e.rc||rcnGov(c.country)||(+(S.unh||{})[c.id]||0)>now)return "";
   const base=rbBase(c),m=Math.round(base*RB.mat),bid=(S.rbX||{})[c.id]===e.t;
   return `<div class="sec">Rebuilding contract</div><div class="list"><div class="row"><div class="n">${c.name} is ${dmgWord(l)} ${dmgPct(l)}</div><div class="d">${bid?"Your bid lost. Another firm took the job.":`The city is taking bids to rebuild. Materials cost ${fmt(m)} up front if you win. A higher price earns more but is less likely to win. You rebuild ${RB.sp}× faster than normal.`}</div>${bid?"":`<div style="grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">`+RB.bids.map((b,i)=>`<button class="buy" data-rb="${c.id}" data-i="${i}" data-fixed="1" ${S.cash<m?"disabled":""}>${b[0]} · ${fmt(base*b[1])} · ${Math.round(b[2]*100)}% win</button>`).join("")+`</div>`}</div></div>`}
 function rbBid(id,i){const c=CITIES[id],b=RB.bids[i];if(!c||!b)return;const e=(S.dmg||{})[id],l=dmgLvl(c),now=Date.now();
-  if(!e||l<.005||e.rc||rcnGov(c.country)||(S.rb||{})[id]||(S.rbX||{})[id]===e.t||(+(S.unh||{})[id]||0)>now)return;
+  if(rbjOther(id))return toast(`${c.name} is already being rebuilt by ${rbjOther(id).name}`);if(!e||l<.005||e.rc||rcnGov(c.country)||(S.rb||{})[id]||(S.rbX||{})[id]===e.t||(+(S.unh||{})[id]||0)>now)return;
   const base=rbBase(c),m=Math.round(base*RB.mat);if(S.cash<m){toast("Not enough cash for materials");return}
   S.rbX=S.rbX||{};S.rbX[id]=e.t;
   if(Math.random()>=b[2]){S.log.unshift(`Lost the bid to rebuild ${c.name}`);S.log=S.log.slice(0,3);toast(`Your ${b[0].toLowerCase()} bid to rebuild ${c.name} lost`);commit();return}
   S.cash-=m;S.dmg[id]={l0:Math.round(l*1e4)/1e4,t:now,own:e.own,k:e.k,sp:RB.sp,rc:RB.me};
-  S.rb=S.rb||{};S.rb[id]={t:now,cost:m,pay:Math.round(base*b[1])};
+  S.rb=S.rb||{};S.rb[id]={t:now,cost:m,pay:Math.round(base*b[1])};rbjPub(c,now+dmgLeft(c));
   toast(`You won the contract to rebuild ${c.name}. Paid ${fmt(m)} for materials`);commit()}
 function rbTick(){const R=S.rb;if(!R)return;let ch=0;for(const id in R){const j=R[id],c=CITIES[id],e=(S.dmg||{})[id];
-  if(!c||!e||e.rc!==RB.me||e.t!==j.t){delete R[id];ch=1;toast(`A new strike on ${c?c.name:"a city"} cancelled your rebuilding job. Materials lost`);continue}
-  if(dmgLvl(c)<.005||dmgLeft(c)<=0){S.cash+=j.pay;delete R[id];ch=1;S.log.unshift(`Rebuilt ${c.name}: +${fmt(j.pay)}`);S.log=S.log.slice(0,3);toast(`${c.name} is rebuilt. The city paid you ${fmt(j.pay)}`)}}
+  if(!c||!e||e.rc!==RB.me||e.t!==j.t){delete R[id];rbjDel(id);ch=1;toast(`A new strike on ${c?c.name:"a city"} cancelled your rebuilding job. Materials lost`);continue}
+  if(dmgLvl(c)<.005||dmgLeft(c)<=0){S.cash+=j.pay;delete R[id];rbjDel(id);ch=1;S.log.unshift(`Rebuilt ${c.name}: +${fmt(j.pay)}`);S.log=S.log.slice(0,3);toast(`${c.name} is rebuilt. The city paid you ${fmt(j.pay)}`)}}
   if(ch){save();try{renderSheet();hud()}catch(e){}}}
 setInterval(()=>{try{rbTick()}catch(e){console.warn("rb",e)}},30000);setTimeout(()=>{try{rbTick()}catch(e){}},4000);
 sheet.addEventListener("click",ev=>{const b=ev.target.closest("[data-rb]");if(b)rbBid(+b.dataset.rb,+b.dataset.i)});
 sheet.addEventListener("click",ev=>{const b=ev.target.closest("[data-rbx]");if(b)rbCancel(+b.dataset.rbx)});
 /* walk away from a rebuilding job: materials are lost, no pay; the city keeps its damage and rebuilds at normal speed */
 function rbCancel(id){const c=CITIES[id],j=(S.rb||{})[id],e=(S.dmg||{})[id];if(!c||!j)return;if(!confirm(`Cancel your contract to rebuild ${c.name}? The ${fmt(j.cost)} of materials is lost and you won't be paid.`))return;
-  delete S.rb[id];if(e&&e.rc===RB.me){const l=dmgLvl(c);S.dmg[id]={l0:Math.round(l*1e4)/1e4,t:Date.now(),own:e.own,k:e.k}}S.log.unshift(`You cancelled your contract to rebuild ${c.name}`);S.log=S.log.slice(0,3);toast(`Rebuild contract in ${c.name} cancelled`);commit()}
+  delete S.rb[id];rbjDel(id);if(e&&e.rc===RB.me){const l=dmgLvl(c);S.dmg[id]={l0:Math.round(l*1e4)/1e4,t:Date.now(),own:e.own,k:e.k}}S.log.unshift(`You cancelled your contract to rebuild ${c.name}`);S.log=S.log.slice(0,3);toast(`Rebuild contract in ${c.name} cancelled`);commit()}
 // a strike lands: add its damage (stacking 1−(1−a)(1−b)), restart repairs, kill people; mine = fired by the player. Returns deaths.
 function dmgStrike(k,c,mine){const W=WPNCFG.w[k];if(!W||!c)return 0;S.dmg=S.dmg&&typeof S.dmg==="object"?S.dmg:{};const cur=dmgLvl(c),o=S.dmg[c.id],add=dmgHit(W,c)*W.struct,
   l=k==="icbm"?1:Math.min(1,1-(1-cur)*(1-add)),R=["msl","gas","nuke","icbm"],pk=o&&cur>0&&R.indexOf(o.k)>R.indexOf(k)?o.k:k;

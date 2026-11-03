@@ -61,6 +61,19 @@ service cloud.firestore {
     // Shared ICBM fallout: unh/{cityId}. A licensed player (nukeOk) marks a city uninhabitable for up to 181 game days (181 real hours);
     // any player in government (govAny) may set u = 0 to start rebuilding early. The country field can't change once set.
     // Ended rebuild royalty deals up for grabs: the ending player posts it; any player in government may take it (delete).
+    // Shared rebuild jobs: one player's company rebuilding a city; others can't bid until it's done or cancelled.
+    match /rbjob/{cid} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.resource.data.keys().hasOnly(['by', 'name', 'until', 'at']) && request.resource.data.keys().hasAll(['by', 'name', 'until', 'at'])
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 20
+        && request.resource.data.until is int && request.resource.data.until > request.time.toMillis()
+        && request.resource.data.until <= request.time.toMillis() + 400 * 3600000
+        && request.resource.data.at == request.time
+        && (resource == null || resource.data.by == request.auth.uid || resource.data.until < request.time.toMillis());
+      allow delete: if request.auth != null && (resource.data.by == request.auth.uid || isDev());
+    }
     match /royoffer/{cid} {
       allow read: if true;
       allow create, update: if request.auth != null
