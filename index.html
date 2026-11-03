@@ -12960,7 +12960,7 @@ function spOpen(){if(!hasTech("spaceport"))return toast("Research Launch complex
   el.style.display="flex";SPW.open=true;spRender();clearInterval(SPW.iv);SPW.iv=setInterval(()=>{if(!SPW.open)return clearInterval(SPW.iv);if(document.hidden)return;const ae=document.activeElement;if(ae&&SPW.el.contains(ae)&&/^(INPUT|SELECT)$/.test(ae.tagName))return;spRender()},5000)}
 function spClose(){SPW.open=false;clearInterval(SPW.iv);if(SPW.el)SPW.el.style.display="none"}
 function spRender(){if(!SPW.el||!SPW.open)return;const sb=SPW.el.querySelector(".mdx-body"),sy=sb?sb.scrollTop:0;try{spDraw()}finally{if(!SPW.el.querySelector(":scope>.mdx-rs"))SPW.el.insertAdjacentHTML("beforeend",'<div class="mdx-rs" aria-hidden="true"></div>');const nb=SPW.el.querySelector(".mdx-body");if(nb&&sy)nb.scrollTop=sy}}
-function spDraw(){const s=SP(),now=Date.now(),P=spPorts(),E=dxE,tabs=[["ov","Overview"],["lc","Launch control"],["fl","Fleet"],["col","Moon colony"],["mb","Mars base"],["ox","Ore exchange"],["wr","World registry"]];if(!tabs.some(t=>t[0]===s.tab))s.tab="ov";
+function spDraw(){const s=SP(),now=Date.now(),P=spPorts(),E=dxE,tabs=[["ov","Overview"],["lc","Launch control"],["fl","Fleet"],["col","Moon colony"],["mb","Mars base"],["ox","Ore exchange"],["wr","World registry"]].concat(typeof scyDev==="function"&&scyDev()?[["ge","👁 God's Eye"]]:[]);if(!tabs.some(t=>t[0]===s.tab))s.tab="ov";
   const kp=(lb,v,ft,bg,fg,ic)=>`<div class="mdx-card mdx-kpi"><span class="mdx-ic" style="background:${bg};color:${fg};font-size:20px">${ic}</span><div class="mdx-lb"><span>${lb}</span></div><div class="mdx-big">${v}</div><div class="mdx-kfoot"><small>${ft}</small></div></div>`;
   const btn=(a,k,t,dis,bg)=>`<button class="mdx-pill" data-sp="${a}" data-k="${k}" ${dis?"disabled":""} style="border:0;cursor:pointer;color:#fff;background:${bg||"#312e81"};opacity:${dis?.5:1}">${t}</button>`;
   const card=(t,inner,ex)=>`<div class="mdx-card"${ex||""}><div class="mdx-ch"><h3>${t}</h3></div>${inner}</div>`,f1=v=>(Math.round(v*10)/10).toLocaleString("en-US");
@@ -12986,7 +12986,7 @@ function spDraw(){const s=SP(),now=Date.now(),P=spPorts(),E=dxE,tabs=[["ov","Ove
       +`<div style="margin-top:16px"></div>`+card("What each type does",`<div class="mdx-rows">${Object.keys(SPT).map(t=>`<div><span>${SPT[t][1]} <b>${SPT[t][0]}</b></span><small style="text-align:right">${SPT[t][2]}</small></div>`).join("")}<div><span>Health</span><small style="text-align:right">Falls from 100% to 0% over ${SPC.life} game days. Worn-out satellites still count for demand but lose their type effect. Replace uses a launch from stock.</small></div><div><span>Deorbit</span><small style="text-align:right">Removes it (and its +0.5% demand).</small></div></div>`)}
   else if(s.tab==="col")body=colTab();
   else if(s.tab==="mb")body=mbTab();
-  else if(s.tab==="ox")body=oxTab();
+  else if(s.tab==="ox")body=oxTab();else if(s.tab==="ge")body=geTab();
   else{const pl=(typeof ON!=="undefined"&&Array.isArray(ON.players)?ON.players:[]).filter(p=>p&&+p.sats>0&&!(ON.user&&p.uid===ON.user.uid)).sort((a,b)=>b.sats-a.sats).slice(0,30),past=spFeed(now,-1,10),next=spFeed(now,1,10);
     const ev=(e,fut)=>`<tr><td>${new Date(e.t).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}<br><small>${fut?spIn(e.t):spAgo(e.t)}</small></td><td>${e.a[1]} <b>${E(e.a[0])}</b></td><td>${spy?SPT[e.ty][1]+" "+SPT[e.ty][0]:"<small>Classified</small>"}</td><td>${fut?"<small>Scheduled</small>":spy?`<b style="color:${e.ok?"#16a34a":"#dc2626"}">${e.ok?"Success":"Failed"}</b>`:"<small>Launched</small>"}</td></tr>`;
     body=card("Government & AI space programs",`<table class="mdx-tbl"><tr><th>Program</th><th>Satellites</th><th>Launch cadence</th></tr>${SPAI.map(a=>`<tr><td>${a[1]} <b>${E(a[0])}</b><br><small>${E(a[2])}</small></td><td>${spAiSats(a,now).toLocaleString("en-US")}</td><td>${f1(a[4]*.06)}/day</td></tr>`).join("")}<tr><td>🧑‍🚀 <b>You</b></td><td>${sats}</td><td>${f1(rate)}/day</td></tr></table>`)
@@ -14359,7 +14359,8 @@ function scySay(t){try{toast("🛰 REAPER: "+t)}catch(e){}}
 // Called by dzHit for every natural disaster: Calm stops all of them, Shelter (or Autopilot) protects one country
 function scyBlocks(c){const s=S.scy;if(!s||!scyOn())return false;const now=Date.now();if(s.calm>now)return true;if(s.shel[c.country]>now)return true;
   const p=S.pol;if(s.auto&&p&&p.c===c.country){scyFavTick();if(s.fav>=SCY.shel.f){s.fav-=SCY.shel.f;s.shel[c.country]=now+SCY.shel.d;scySay(`A storm was coming for ${c.country}. I raised the shelter.`);return true}}return false}
-function scyCity(){const el=document.getElementById("scyT");return el?CITIES[+el.value]:null}
+let SCY_ROOT=null,SCY_TGT=null;
+function scyCity(){const el=(SCY_ROOT&&SCY_ROOT.querySelector("#scyT"))||document.getElementById("scyT");return el?CITIES[+el.value]:null}
 function scyAdvisor(){const own=S.pol&&S.pol.c,w=(typeof wpn==="function"&&wpn().wars)||{};let l=CITIES.filter(c=>c.country!==own);const war=l.filter(c=>w[c.country]);if(war.length)l=war;return l.slice().sort((a,b)=>(b.size||0)-(a.size||0)).slice(0,3)}
 function scyForecast(){const acc=Math.min(100,60+5*scyDaysUp());return {acc,l:CITIES.slice().sort((a,b)=>dzHaz(b)-dzHaz(a)).slice(0,3)}}
 function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),now=Date.now(),on=scyOn();scyFavTick();
@@ -14369,7 +14370,7 @@ function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),no
   const cd=k=>s.cd[k]>now?` (${fmtDur(s.cd[k]-now)})`:"";
   h+=R("Fuel",`Refuel adds 7 days for ${fmt(5e9)}. The Space manager can do this for you (Mission control › Colonies › Space manager › Scythe).`,B("fuel","⛽ Refuel · $5B",S.cash<5e9));
   h+=R(`In orbit · Favor ${Math.floor(s.fav)}/100`,`Fuel left ${fmtDur(s.end-now)} · ${scyDaysUp()} days up · Favor +${SCY.favDay+Math.min(10,scyDaysUp())}/day.${s.calm>now?` 🌤 Calm active ${fmtDur(s.calm-now)}.`:""}${Object.keys(s.shel).filter(k=>s.shel[k]>now).map(k=>` 🛡 ${k} sheltered ${fmtDur(s.shel[k]-now)}.`).join("")}`);
-  h+=`<div class="row"><div class="n">Target</div><div class="d"><select id="scyT" style="max-width:100%">${CITIES.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${c.name}, ${c.country}</option>`).join("")}</select></div></div>`;
+  h+=`<div class="row"><div class="n">Target</div><div class="d"><select id="scyT" style="max-width:100%">${CITIES.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}"${c.id===SCY_TGT?" selected":""}>${c.name}, ${c.country}</option>`).join("")}</select></div></div>`;
   h+=R("Reap",`Send a disaster at the target city (Favor ${SCY.reap.f}, once a day).`,Object.keys(SCY.kinds).map(k=>B("reap",SCY.kinds[k]+cd("reap"),s.fav<SCY.reap.f||s.cd.reap>now,k)).join(" "));
   h+=R("Shelter",`Shield the target's country from disasters for 48h (Favor ${SCY.shel.f}).`,B("shel","Shelter",s.fav<SCY.shel.f));
   h+=R("Calm",`No natural disasters anywhere for 12h (Favor ${SCY.calm.f}).`,B("calm","Calm the world",s.fav<SCY.calm.f||s.calm>now));
@@ -14401,8 +14402,29 @@ function scyAct(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTick
   else if(a==="laser"){if(!s.laser&&scyPay(SCY.laser))s.laser=1}
   else if(a==="flare"){if(scyPay(SCY.flare))s.flare=(s.flare|0)+1}
   else if(a==="drone"){if((s.drones|0)<4&&scyPay(SCY.drone))s.drones=(s.drones|0)+1}
-  save();hud();renderSheet()}
-sheet.addEventListener("click",e=>{const b=e.target.closest("[data-scy]");if(!b||b.disabled)return;e.stopPropagation();try{scyAct(b.dataset.scy,b.dataset.k)}catch(err){console.warn("scy",err)}},true);
+  save();hud();renderSheet();try{if(SPW.open)spRender()}catch(e){}}
+/* God's Eye: Mission control tab for the Scythe (dev only). Same controls as the Gov tab panel, plus live feeds of the world and players. */
+function geTab(){const E=dxE,s=scy(),now=Date.now(),on=scyOn(),pc=S.pol&&S.pol.c;
+  const card=(t,inner)=>`<div class="mdx-card"><div class="mdx-ch"><h3>${t}</h3></div>${inner}</div>`,rows=l=>`<div class="mdx-rows">${l.length?l.join(""):"<div><span>Nothing right now</span><b></b></div>"}</div>`;
+  const kp=(lb,v,ft,ic)=>`<div class="mdx-card mdx-kpi"><span class="mdx-ic" style="background:#1e1b4b;color:#facc15;font-size:20px">${ic}</span><div class="mdx-lb"><span>${lb}</span></div><div class="mdx-big">${v}</div><div class="mdx-kfoot"><small>${ft}</small></div></div>`;
+  scyFavTick();const p=scyPos(now);
+  let h=`<div class="mdx-kpis">${kp("Scythe",on?"In orbit":"Grounded",on?`over ${Math.round(p.lat)}°, ${Math.round(p.lon)}°`:"launch it below","🛰")}${kp("Favor",on?Math.floor(s.fav)+"/100":"–",on?`+${SCY.favDay+Math.min(10,scyDaysUp())}/day`:"","⚡")}${kp("Fuel",on?fmtDur(s.end-now):"–","refuel: $5B = +7 days","⛽")}${kp("Stealth",`Lvl ${s.stl|0}/5`,(s.stl|0)===5?"untraceable":`${(s.stl|0)*20}% hidden`,"🫥")}</div>`;
+  h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:16px;align-items:start">`;
+  h+=card("🎛 Controls & weapons",pc?`<div class="list">${scyHtml(pc)}</div>`:`<div class="mdx-rows"><div><span>Hold office in a country to control the Scythe.</span><b></b></div></div>`);
+  // live feeds
+  const d=gxS(),act=Object.keys(d.act).map(id=>{const a=d.act[id],K=GXCFG.dz.k[a.k]||{i:"⚠️",n:"Disaster"},c=CITIES[id];return c?`<div><span>${K.i} ${K.n} · ${E(c.name)}, ${E(c.country)}</span><b>${a.left} d left</b></div>`:""}).filter(Boolean);
+  h+=card("🌍 World feed · disasters",rows(act.slice(0,10)));
+  {const f=scyForecast();h+=card("🔭 Forecast",rows(f.l.map(c=>`<div><span>${E(c.name)}, ${E(c.country)}</span><b>high risk</b></div>`).concat([`<div><span>Accuracy</span><b>${f.acc}%</b></div>`])))}
+  const P=((typeof ON!=="undefined"&&ON.players)||[]).filter(x=>x&&x.uid!==(ON.user&&ON.user.uid)).slice().sort((a,b)=>onSeen(b)-onSeen(a)).slice(0,15);
+  h+=card("👥 Players live",rows(P.map(x=>{const ago=now-onSeen(x),live=ago<5*6e4,c=x.city!=null&&CITIES[x.city];return `<div><span>${live?"🟢":"⚪"} <b>${E(String(x.name||"Player"))}</b>${x.govC?` · 🏛 ${E(String(x.govC))}`:""}${c?` · 📍 ${E(c.name)}`:""}</span><b>${fmt(+x.nw||0)} · ${live?"online":fmtDur(ago)+" ago"}</b></div>`})));
+  {const w=(typeof wpn==="function"&&wpn().wars)||{};h+=card("⚔️ Your wars",rows(Object.keys(w).map(k=>`<div><span>${E(k)}</span><b>front ${Math.round(w[k].front||0)}</b></div>`)))}
+  h+=card("📰 News feed",rows((S.news||[]).slice(0,12).map(n=>`<div><span>${E(String(n.t))}</span><b>${fmtDur(now-(n.at||now))} ago</b></div>`)));
+  h+=card("🤖 Reaper AI",rows([`<div><span>Target advisor</span><b>${scyAdvisor().map(c=>E(c.name)).join(", ")}</b></div>`,`<div><span>Autopilot</span><b>${s.auto?"ON":"OFF"}</b></div>`,`<div><span>"${E(SCY.lines[Math.floor(now/6e4)%SCY.lines.length])}"</span><b></b></div>`]));
+  return h+`</div>`}
+// keep the God's Eye feeds live while the tab is open (not while typing or picking a target)
+setInterval(()=>{try{if(SPW.open&&SP().tab==="ge"&&!(document.activeElement&&/SELECT|INPUT/.test(document.activeElement.tagName)))spRender()}catch(e){}},5000);
+document.addEventListener("click",e=>{const b=e.target.closest("[data-scy]");if(!b||b.disabled)return;e.stopPropagation();SCY_ROOT=b.closest(".mdx-body")||b.closest("#sheet")||document;try{scyAct(b.dataset.scy,b.dataset.k)}catch(err){console.warn("scy",err)}},true);
+document.addEventListener("change",e=>{if(e.target&&e.target.id==="scyT")SCY_TGT=+e.target.value});
 // Satellite on the map: the 3D model (same look as the design model) orbits the globe while in orbit, once every 90 minutes
 const SCYV={alt:1.6e6,sc:9e4,per:54e5};let scyL=null,scyG=null;
 function scyPos(t){const ph=(t%SCYV.per)/SCYV.per;return {lon:ph*360-180,lat:51.6*Math.sin(ph*2*Math.PI),ph}}
