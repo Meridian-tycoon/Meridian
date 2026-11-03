@@ -806,7 +806,7 @@ MM.on("error",e=>console.warn("map",e&&e.error&&e.error.message));
 /* a rare comet streaks across the space behind the planet (every 40-120 s; off with reduce motion or a hidden tab) */
 /* the moon drifts slowly across the sky for about 9 minutes of every 20, behind the planet */
 (function glMoon(){const P=1200000,V=.45;let m=null,last=0;
-  function step(ts){requestAnimationFrame(step);const G=gfx();if(ts-last<(G.moon||33)||document.hidden)return;last=ts;try{const g=document.getElementById("gl");if(!g)return;if(!G.moon){if(m)m.style.opacity="0";return}
+  function step(ts){requestAnimationFrame(step);const G=gfx();if(ts-last<(G.moon||33)||document.hidden||(typeof inStreet!=="undefined"&&inStreet))return;last=ts;try{const g=document.getElementById("gl");if(!g)return;if(!G.moon){if(m)m.style.opacity="0";return}
     if(!m){m=document.createElement("div");m.id="glmoon";g.insertBefore(m,g.firstChild)}
     const f=(Date.now()%P)/P,on=f<V,t=f/V,W=g.clientWidth,H=g.clientHeight,op=on&&t>.02&&t<.98?".95":"0";
     if(m.style.opacity!==op)m.style.opacity=op;
@@ -2982,8 +2982,8 @@ function drawStorms(ctx,C){const now=Date.now(),t=performance.now()/1000;
 /* keep storms animated while one is on screen */
 let wxRaf=0,wxLast=0;
 function wxLoop(t){const G=gfx();if(G.wx&&activeStorms().length&&!inStreet&&document.visibilityState==="visible"&&t-wxLast>G.wx){wxLast=t;draw()}
-  if(inStreet)drawRain(t);else if(rainOn){wctx.setTransform(1,0,0,1,0,0);wctx.clearRect(0,0,wxCv.width,wxCv.height);rainOn=false;wxCv.hidden=true}wxRaf=requestAnimationFrame(wxLoop)}
-wxRaf=requestAnimationFrame(wxLoop);
+  if(inStreet){if(t-wxSt>15){wxSt=t;drawRain(t)}}else if(rainOn){wctx.setTransform(1,0,0,1,0,0);wctx.clearRect(0,0,wxCv.width,wxCv.height);rainOn=false;wxCv.hidden=true}wxRaf=requestAnimationFrame(wxLoop)}
+let wxSt=0;wxRaf=requestAnimationFrame(wxLoop);
 /* rain over the street map when the city is under a storm */
 const wxCv=$("#wx"),wctx=wxCv.getContext("2d");let drops=[],rainOn=false,boltT=0;
 function drawRain(t){const st=stCity&&stormAt(stCity);const W2=wxCv.clientWidth,H2=wxCv.clientHeight,d=Math.min(2,devicePixelRatio||1);
@@ -3162,9 +3162,9 @@ const ROUTES=[];{const r=rng(424242);for(let i=0;i<28;i++){const a=BIG[Math.floo
 const LANES=[["New York","London"],["Los Angeles","Tokyo"],["Shanghai","Singapore"],["Singapore","Dubai"],["Dubai","Rotterdam"],["São Paulo","Lagos"],["Houston","Rotterdam"],["Sydney","Shanghai"],["Mumbai","Cairo"],["Vancouver","Shanghai"],["Buenos Aires","Johannesburg"],["Miami","Lagos"]]
   .map(([x,y],i)=>{const a=CITIES.find(c=>c.name===x)||CITIES.find(c=>c.name==="Amsterdam"),b=CITIES.find(c=>c.name===y)||CITIES.find(c=>c.name==="Amsterdam");return{a,b,per:260+i*17,ph:(i*.137)%1}});
 function drawTraffic(ctx,C){const t=Date.now()/1000;ctx.save();
-  for(const lane of LANES){const u=((t/lane.per+lane.ph)%1),ping=u<.5?u*2:2-u*2;const g=d3.geoInterpolate([lane.a.lon,lane.a.lat],[lane.b.lon,lane.b.lat])(ping);if(!visible(g[0],g[1]))continue;
+  for(const lane of LANES){const u=((t/lane.per+lane.ph)%1),ping=u<.5?u*2:2-u*2;const g=(lane._ip||=d3.geoInterpolate([lane.a.lon,lane.a.lat],[lane.b.lon,lane.b.lat]))(ping);if(!visible(g[0],g[1]))continue;
     const [x,y]=proj(g);ctx.fillStyle="rgba(30,58,95,.85)";ctx.fillRect(x-3,y-1.5,6,3);ctx.fillStyle="rgba(255,255,255,.5)";ctx.fillRect(x-4,y+1.5,8,1)}
-  for(const R of ROUTES){const u=(t/R.per+R.ph)%1;const ip=d3.geoInterpolate([R.a.lon,R.a.lat],[R.b.lon,R.b.lat]);const g=ip(u),g0=ip(Math.max(0,u-.06));
+  for(const R of ROUTES){const u=(t/R.per+R.ph)%1;const ip=R._ip||=d3.geoInterpolate([R.a.lon,R.a.lat],[R.b.lon,R.b.lat]);const g=ip(u),g0=ip(Math.max(0,u-.06));
     if(!visible(g[0],g[1]))continue;const [x,y]=proj(g);
     if(visible(g0[0],g0[1])){ctx.beginPath();path({type:"LineString",coordinates:[g0,g]});ctx.strokeStyle="rgba(255,255,255,.55)";ctx.lineWidth=1.2;ctx.stroke()}
     const p2=proj(ip(Math.min(1,u+.01))),ang=Math.atan2(p2[1]-y,p2[0]-x);ctx.translate(x,y);ctx.rotate(ang);ctx.fillStyle=C.ink;ctx.beginPath();ctx.moveTo(5,0);ctx.lineTo(-4,-3);ctx.lineTo(-2,0);ctx.lineTo(-4,3);ctx.closePath();ctx.fill();ctx.setTransform(dpr,0,0,dpr,0,0)}
@@ -3172,13 +3172,14 @@ function drawTraffic(ctx,C){const t=Date.now()/1000;ctx.save();
 /* keep the globe moving gently while it's on screen */
 let ambLast=0;
 function ambLoop(t){const G=gfx();if(G.amb&&!inStreet&&document.visibilityState==="visible"&&t-ambLast>G.amb&&!MM.isMoving()&&!sheet.classList.contains("full")){ambLast=t;draw()}
-  if(inStreet)drawStreetLife(t);else if(walkers.length||pops2.length){walkers=[];pops2=[];actx.setTransform(1,0,0,1,0,0);actx.clearRect(0,0,amb.width,amb.height)}requestAnimationFrame(ambLoop)}
-requestAnimationFrame(ambLoop);
+  if(inStreet){if(t-ambSt>15){ambSt=t;drawStreetLife(t)}}else if(walkers.length||pops2.length){walkers=[];pops2=[];actx.setTransform(1,0,0,1,0,0);actx.clearRect(0,0,amb.width,amb.height)}requestAnimationFrame(ambLoop)}
+let ambSt=0,ambClr=false;requestAnimationFrame(ambLoop);
 /* street view: customers walking into your open businesses, coins when they buy */
 const amb=$("#amb"),actx=amb.getContext("2d");let walkers=[],pops2=[],lastSpawn=0;
 function drawStreetLife(t){if(!stCity){return}const W2=amb.clientWidth,H2=amb.clientHeight,d=Math.min(2,devicePixelRatio||1);
-  if(amb.width!==W2*d||amb.height!==H2*d){amb.width=W2*d;amb.height=H2*d}actx.setTransform(d,0,0,d,0,0);actx.clearRect(0,0,W2,H2);
   const shops=[];for(const b of BIZ){const lv=(S.own[stCity.id]||{})[b.k];if(!lv)continue;const p=S.pos[`biz:${stCity.id}:${b.k}`];if(p&&opFactor(stCity,b)>.01)shops.push({b,lv,p})}
+  if(!shops.length&&!walkers.length&&!pops2.length&&ambClr&&amb.width===W2*d&&amb.height===H2*d)return;ambClr=!shops.length&&!walkers.length&&!pops2.length;
+  if(amb.width!==W2*d||amb.height!==H2*d){amb.width=W2*d;amb.height=H2*d}actx.setTransform(d,0,0,d,0,0);actx.clearRect(0,0,W2,H2);
   if(shops.length&&t-lastSpawn>420){lastSpawn=t;const sh=shops[Math.floor(Math.random()*shops.length)],pt=MM.project([sh.p.lon,sh.p.lat]),a=Math.random()*Math.PI*2,dist=60+Math.random()*90;
     walkers.push({x:pt.x+Math.cos(a)*dist,y:pt.y+Math.sin(a)*dist,sh,t0:t,dur:3500+Math.random()*2500,col:["#f472b6","#60a5fa","#fbbf24","#34d399","#e5e7eb"][Math.floor(Math.random()*5)]})}
   for(let i=walkers.length-1;i>=0;i--){const w=walkers[i],pt=MM.project([w.sh.p.lon,w.sh.p.lat]),u=(t-w.t0)/w.dur;
