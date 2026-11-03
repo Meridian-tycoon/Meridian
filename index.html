@@ -14366,6 +14366,9 @@ function scyForecast(){const acc=Math.min(100,60+5*scyDaysUp());return {acc,l:CI
 function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),now=Date.now(),on=scyOn();scyFavTick();
   const B=(a,t,dis,x)=>`<button class="buy" data-scy="${a}"${x?` data-k="${x}"`:""} data-fixed="1"${dis?" disabled":""}>${t}</button>`,R=(n,d,b)=>`<div class="row"><div class="n">${n}</div><div class="d">${d}</div>${b||""}</div>`;
   let h=`<div class="sec">🛰 God's Scythe (dev government only)</div><div class="list">`;
+  if(!on&&s.landed){h+=R("🛬 Landed at base",`The Scythe is on the ground. Restock anything below, then relaunch for free with a full ${SCY.days}-day tank. Favor and upgrades are kept.`,B("relaunch","🚀 Relaunch"));
+    h+=R("Restock",`Plague ${s.bay.plague?"loaded":"empty"} · Black sun ${s.bay.bs?"loaded":"empty"} · Flares ${s.flare|0} · Drones ${s.drones|0}/4 · Stealth Lvl ${s.stl|0}/5`,
+      B("bplague",`Load plague · ${fmt(SCY.plague)}`,S.cash<SCY.plague||s.bay.plague)+" "+B("bbs",`Load black sun · ${fmt(SCY.bs)}`,S.cash<SCY.bs||s.bay.bs)+" "+B("flare",`Flares · ${fmt(SCY.flare)}`,S.cash<SCY.flare)+" "+((s.drones|0)<4?B("drone",`Drone · ${fmt(SCY.drone)}`,S.cash<SCY.drone):"")+" "+((s.stl|0)<5?B("stl",`Stealth Lvl ${(s.stl|0)+1} · ${fmt(SCY.stlCost[s.stl|0])}`,S.cash<SCY.stlCost[s.stl|0]):"")+" "+(s.laser?"":B("laser",`Laser · ${fmt(SCY.laser)}`,S.cash<SCY.laser)));return h+"</div>"}
   if(!on){h+=R("Weather-control satellite",`One of a kind. Steers natural disasters across the world and carries orbital weapons. Stays in orbit ${SCY.days} days.${s.t0?" Your last Scythe has fallen out of orbit.":""}`,B("buy",`Build & launch · ${fmt(SCY.cost)}`,S.cash<SCY.cost));return h+"</div>"}
   const cd=k=>s.cd[k]>now?` (${fmtDur(s.cd[k]-now)})`:"";
   h+=R("Fuel",`Refuel adds 7 days for ${fmt(5e9)}. The Space manager can do this for you (Mission control › Colonies › Space manager › Scythe).`,B("fuel","⛽ Refuel · $5B",S.cash<5e9));
@@ -14374,6 +14377,7 @@ function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),no
   h+=R("Reap",`Send a disaster at the target city (Favor ${SCY.reap.f}, once a day).`,Object.keys(SCY.kinds).map(k=>B("reap",SCY.kinds[k]+cd("reap"),s.fav<SCY.reap.f||s.cd.reap>now,k)).join(" "));
   h+=R("Shelter",`Shield the target's country from disasters for 48h (Favor ${SCY.shel.f}).`,B("shel","Shelter",s.fav<SCY.shel.f));
   h+=R("Calm",`No natural disasters anywhere for 12h (Favor ${SCY.calm.f}).`,B("calm","Calm the world",s.fav<SCY.calm.f||s.calm>now));
+  h+=R("🛬 Land",`Bring the Scythe down to restock the bay, flares, drones and upgrades whenever you like. Relaunch is free and refills the tank to ${SCY.days} days.`,B("land","Land the Scythe"));
   h+=R("🎥 Follow cam","Locks the camera onto the Scythe as it flies around the planet. Drag the map to let go.",B("follow",SCYF.on?"Stop following":"Follow the Scythe"));
   {const f=scyForecast();h+=R("Forecast",`Most at risk (${f.acc}% accurate): ${f.l.map(c=>c.name).join(", ")}.`)}
   h+=R("🤖 Reaper AI",`Target advisor: ${scyAdvisor().map(c=>c.name).join(", ")}. Autopilot ${s.auto?"ON":"OFF"}: spends Favor to shelter ${S.pol.c} when a disaster is coming.`,B("auto",s.auto?"Autopilot off":"Autopilot on"));
@@ -14383,10 +14387,19 @@ function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),no
   const L=s.stl|0;h+=R("Defense",`Stealth level ${L}/5 (${L*20}% hidden${L===5?", untraceable":""}) · Laser ${s.laser?"fitted":"none"} · Flares ${s.flare|0} · Drones ${s.drones|0}/4`,
     (L<5?B("stl",`Stealth Lvl ${L+1} · ${fmt(SCY.stlCost[L])}`,S.cash<SCY.stlCost[L]):"")+" "+(s.laser?"":B("laser",`Laser · ${fmt(SCY.laser)}`,S.cash<SCY.laser))+" "+B("flare",`Flares · ${fmt(SCY.flare)}`,S.cash<SCY.flare)+" "+((s.drones|0)<4?B("drone",`Drone · ${fmt(SCY.drone)}`,S.cash<SCY.drone):""));
   return h+"</div>"}
+function scyRestock(a,s){if(a==="bplague"){if(!s.bay.plague&&scyPay(SCY.plague))s.bay.plague=1}
+  else if(a==="bbs"){if(!s.bay.bs&&!s.bsUsed&&scyPay(SCY.bs))s.bay.bs=1}
+  else if(a==="stl"){const L=s.stl|0;if(L<5&&scyPay(SCY.stlCost[L]))s.stl=L+1}
+  else if(a==="laser"){if(!s.laser&&scyPay(SCY.laser))s.laser=1}
+  else if(a==="flare"){if(scyPay(SCY.flare))s.flare=(s.flare|0)+1}
+  else if(a==="drone"){if((s.drones|0)<4&&scyPay(SCY.drone))s.drones=(s.drones|0)+1}}
 function scyPay(x){if(S.cash<x){toast("Not enough cash");return false}S.cash-=x;return true}
 function scyAct(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTick();const c=scyCity();
   if(a==="buy"){if(scyOn()||!scyPay(SCY.cost))return;Object.assign(s,{on:1,t0:now,end:now+SCY.days*DAY,fav:SCY.fav0,ft:now,cd:{},shel:{},calm:0,bay:{},bsUsed:0});stNews(`🛰 ${S.pol.c} has launched the God's Scythe into orbit`);scySay(SCY.lines[0])}
+  else if(a==="relaunch"){if(scyOn()||!s.landed)return;Object.assign(s,{on:1,landed:0,t0:now,end:now+SCY.days*DAY,ft:now});stNews(`🛰 The God's Scythe lifts off again from ${S.pol.c}`);scySay("Back in orbit, Commander.")}
+  else if(s.landed&&["bplague","bbs","flare","drone","stl","laser"].includes(a))scyRestock(a,s);
   else if(!scyOn())return;
+  else if(a==="land"){scyFollow(0);Object.assign(s,{on:0,landed:1,bsUsed:0});stNews("🛬 The God's Scythe has landed for restocking");scySay("Coming home to reload.")}
   else if(a==="reap"){if(!c||s.fav<SCY.reap.f||s.cd.reap>now)return;SCY_HIT=1;let ev;try{ev=dzHit(c,k)}finally{SCY_HIT=0}if(!ev)return toast(`${c.name} is still recovering from a disaster`);s.fav-=SCY.reap.f;s.cd.reap=now+SCY.reap.cd;stNews(`🛰 The Scythe falls on ${c.name}: ${SCY.kinds[k]}`);scySay("It is done.")}
   else if(a==="shel"){if(!c||s.fav<SCY.shel.f)return;s.fav-=SCY.shel.f;s.shel[c.country]=now+SCY.shel.d;scySay(`${c.country} is under my wing.`)}
   else if(a==="calm"){if(s.fav<SCY.calm.f)return;s.fav-=SCY.calm.f;s.calm=now+SCY.calm.d;stNews("🛰 The God's Scythe has calmed the world's weather");scySay("The skies are still.")}
@@ -14394,14 +14407,9 @@ function scyAct(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTick
   else if(a==="follow"){scyFollow(!SCYF.on);if(SCYF.on)try{sheet.classList.remove("open")}catch(e){}}
   else if(a==="fuel"){if(scyPay(5e9))s.end+=7*DAY}
   else if(a==="nuke"){if(!c||s.cd.nuke>now||S.cash<SCY.nuke)return;const m=wpn(),n0=m.wpn.nuke|0;m.wpn.nuke=n0+1;wpnFire("nuke",c.id,1,1);if((m.wpn.nuke|0)>n0){m.wpn.nuke=n0;return}S.cash-=SCY.nuke;s.cd.nuke=now+SCY.nukeCd;stNews(`☢️ An orbital nuke falls from the God's Scythe on ${c.name}`)}
-  else if(a==="bplague"){if((s.bay.plague|0)<1&&scyPay(SCY.plague))s.bay.plague=1}
+  else if(["bplague","bbs","flare","drone","stl","laser"].includes(a))scyRestock(a,s);
   else if(a==="plague"){if(!c||!s.bay.plague||s.cd.plague>now)return;SCY_HIT=1;let ev;try{ev=dzHit(c,"plague",0,1)}finally{SCY_HIT=0}if(!ev)return toast(`${c.name} is still recovering`);s.bay.plague=0;s.cd.plague=now+SCY.plagueCd;stNews(`🦠 A plague swarm drifts over ${c.name}`)}
-  else if(a==="bbs"){if(!s.bay.bs&&!s.bsUsed&&scyPay(SCY.bs))s.bay.bs=1}
   else if(a==="bs"){if(!c||!s.bay.bs||s.bsUsed)return;SCY_HIT=1;let n=0;try{CITIES.filter(x=>x.country===c.country).forEach(x=>{if(dzHit(x,"blacksun",0,1))n++})}finally{SCY_HIT=0}s.bay.bs=0;s.bsUsed=1;stNews(`🌑 Black sun: the sky goes dark over ${c.country}`);scySay(`${n} cities in darkness.`)}
-  else if(a==="stl"){const L=s.stl|0;if(L<5&&scyPay(SCY.stlCost[L]))s.stl=L+1}
-  else if(a==="laser"){if(!s.laser&&scyPay(SCY.laser))s.laser=1}
-  else if(a==="flare"){if(scyPay(SCY.flare))s.flare=(s.flare|0)+1}
-  else if(a==="drone"){if((s.drones|0)<4&&scyPay(SCY.drone))s.drones=(s.drones|0)+1}
   save();hud();renderSheet();try{if(SPW.open)spRender()}catch(e){}}
 /* God's Eye: Mission control tab for the Scythe (dev only). Same controls as the Gov tab panel, plus live feeds of the world and players. */
 function geTab(){const E=dxE,s=scy(),now=Date.now(),on=scyOn(),pc=S.pol&&S.pol.c;
@@ -14468,6 +14476,7 @@ MM.on("dragstart",()=>{if(SCYF.on)scyFollow(0)});
 const SCYM={fuel:5e9,fuelDays:7,refuelBelow:2*DAY,every:6e4};let scyMgrT=0;
 function scyAutoMgr(){if(!scyDev())return;const now=Date.now();if(now-scyMgrT<SCYM.every)return;scyMgrT=now;const m=COLS().mgr;if(!m||!m.on||!m.scy)return;
   const s=scy(),keep=m.keep||0,can=x=>S.cash-x>=keep,buy=(x,f,txt)=>{if(!can(x))return false;S.cash-=x;f();try{colMgrLog(m,"🛰 Scythe: "+txt+" for "+fmt(x))}catch(e){}return true};let did=0;
+  if(!scyOn()&&s.landed){Object.assign(s,{on:1,landed:0,t0:now,end:now+SCY.days*DAY,ft:now});colMgrLog(m,"🛰 Scythe: relaunched after landing");did=1}
   if(!scyOn()){if(!S.pol||S.pol.r<0)return;if(buy(SCY.cost,()=>{Object.assign(s,{on:1,t0:now,end:now+SCY.days*DAY,fav:SCY.fav0,ft:now,cd:{},shel:{},calm:0,bay:{},bsUsed:0});stNews(`🛰 ${S.pol.c} has launched the God's Scythe into orbit`)},"launched"))did=1;else{colMgrLog(m,"🛰 Scythe: waiting for cash to launch");return}}
   if(s.end-now<SCYM.refuelBelow&&buy(SCYM.fuel,()=>{s.end+=SCYM.fuelDays*DAY},"refuelled (+7 days)"))did=1;
   if(!s.bay.plague&&buy(SCY.plague,()=>{s.bay.plague=1},"loaded a plague swarm"))did=1;
