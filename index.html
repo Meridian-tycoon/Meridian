@@ -5483,7 +5483,7 @@ const AK=Object.fromEntries(ASSETS.map(a=>[a.s,a]));
 function MK(){const m=S.mkt2=S.mkt2||{px:{},h:{},open:{},hold:{},t:0,live:0,realized:0};for(const a of ASSETS){if(m.px[a.s]==null){m.px[a.s]=a.p0;m.h[a.s]=[a.p0];m.open[a.s]=a.p0}if(!m.h[a.s]||m.h[a.s].length<2){const h=[];let v=m.px[a.s];for(let i=0;i<30;i++){h.unshift(v);v=v/Math.exp((Math.random()-.5)*2*(a.vol||.02)*.25)}h[h.length-1]=m.px[a.s];m.h[a.s]=h}}return m}
 function mktStep(){const m=MK(),now=Date.now();const war=typeof tension==="function"?tension()/100:0,sh=mkwFresh(now);
   if(sh)mkwAdopt(m,now);
-  for(const a of ASSETS){if(a.t==="c"&&now-m.live<5*60000&&m.liveSet&&m.liveSet[a.s])continue;if(sh&&MKW.px[a.s]>0){m.px[a.s]=MKW.px[a.s];continue}
+  for(const a of ASSETS){if(sh&&MKW.px[a.s]>0){m.px[a.s]=MKW.px[a.s];continue}if(a.t==="c"&&now-m.live<5*60000&&m.liveSet&&m.liveSet[a.s])continue;
     let drift=.0002;if(war>.2){if(a.sec==="defense"||a.sec==="energy")drift+=.002*war;else if(a.sec==="travel")drift-=.003*war;else drift-=.0008*war}
     const shock=Math.random()<.004?(Math.random()<.5?-1:1)*a.vol*4:0;
     m.px[a.s]=Math.max(a.p0*.05,m.px[a.s]*Math.exp(drift+(Math.random()-.5)*2*a.vol*.25+shock));
@@ -5589,7 +5589,8 @@ function mkwListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubMK)return;O
   const px={};for(const a of ASSETS){const x=+v.px[a.s.replace(".","_")];if(x>0&&isFinite(x))px[a.s]=x}const ms=x=>x&&x.toMillis?x.toMillis():0;
   const pd=v.px._pand;MKW={px,btcb:+v.px._btcb||0,btcc:+v.px._btcc||0,ethb:+v.px._ethb||0,lmtb:+v.px._lmtb||0,mktc:+v.px._mktc||0,xb:ms(v.xb),at:ms(v.updated)||Date.now(),pand:pd&&typeof pd==="object"&&pd.k?{k:String(pd.k),left:+pd.left||0}:null};if(!WRM)try{pandSync()}catch(e){}if(WRM){const m=MK(),now=Date.now();if(MKW.xb&&now-MKW.xb<XRPB.dur&&!(m.xb2&&!m.xb2.end&&now-m.xb2.t0<XRPB.dur)){m.xb2={t0:MKW.xb,lf:1};S.log.unshift("Markets: XRP spikes as a government uses weapons of mass destruction");S.log=S.log.slice(0,3)}}},()=>{})}catch(e){}}
 /* real crypto prices from CoinGecko when the network allows it */
-async function mktLive(){try{const ids=ASSETS.filter(a=>a.t==="c").map(a=>a.sec).join(",");
+async function mktLive(){try{if(mkwFresh(Date.now())){const m=MK();m.liveSet={};return}  // following the shared market: its prices (with any dev boom/crash) win over live quotes
+  const ids=ASSETS.filter(a=>a.t==="c").map(a=>a.sec).join(",");
   const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);if(!r.ok)return;const j=await r.json(),m=MK();m.liveSet={};
   for(const a of ASSETS)if(a.t==="c"&&j[a.sec]&&j[a.sec].usd){m.px[a.s]=j[a.sec].usd*(a.s==="XRP"?xrpBoomF(m,Date.now()):1);if(a.s==="BTC"&&m.bb)m.bb.lf=btcBoomF(m.bb.t0,Date.now()),m.px.BTC*=m.bb.lf;if(a.s==="ETH"&&m.eb)m.eb.lf=ethBoomF(m.eb.t0,Date.now()),m.px.ETH*=m.eb.lf;if(m.mc&&m.mc.lf)m.px[a.s]*=m.mc.lf;if(m.dv&&m.dv.lf&&dvmSyms(m.dv).includes(a.s))m.px[a.s]*=m.dv.lf;m.liveSet[a.s]=1}
   m.live=Date.now()}catch(e){}}
