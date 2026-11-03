@@ -3605,6 +3605,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)
   else if(a==="wlic"){if(g.wLic||g.laws.weed||S.cash<WLIC_FEE)return;S.cash-=WLIC_FEE;g.wLic=1;toast(`Cannabis licence granted in ${c.country}`)}
   else if(a==="nlca"){nlcApply()}
   else if(a==="rcn")rcnAward(+b.dataset.c,+b.dataset.i);
+  else if(a==="rcnx")rcnCancel(+b.dataset.c);
   else if(a==="unhb")unhBuy(+b.dataset.c);
   else if(a==="upermit"){const n=c.country;if(uranPermit(n)){g.uPermit=0;toast("Permit given up")}else if(g.uReq)uranCancel(n);else uranApply(n)}
   else if(a==="uok"||a==="uno")uranRule(b.dataset.id,a==="uok")
@@ -10113,8 +10114,11 @@ function rcnHtml(n){if(!rcnGov(n))return "";const now=Date.now(),cs=ctyCities(n)
   return `<div class="sec">Reconstruction contracts</div><div class="list">`+cs.map(c=>{const e=S.dmg[c.id],l=dmgLvl(c),dead=(+(S.unh||{})[c.id]||0)>now;
     const hd=`<div class="n">${c.name} · ${dmgWord(l)} ${dmgPct(l)}${e.rc?` <span class="tag" style="border:1px solid var(--line)">${onEsc(e.rc)} ×${rcnSp(e)}</span>`:""}</div>`;
     if(dead){const uc=unhBuyCost(n);return `<div class="row">${hd}<div class="d">Uninhabitable for ${fmtDur(S.unh[c.id]-now)}. Contractors can start once the radiation clears, or you can pay to clear it now and start rebuilding.</div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="buy" data-gov="unhb" data-c="${c.id}" data-fixed="1" ${!rcnFree()&&S.cash<uc?"disabled":""}>Rebuild now · ${rcnFree()?"free (dev)":fmt(uc)}</button></div></div>`}
-    if(e.rc)return `<div class="row">${hd}<div class="d">${onEsc(e.rc)} is rebuilding at ${rcnSp(e)}× normal speed. Done in ${fmtDur(dmgLeft(c))}.</div></div>`;
+    if(e.rc)return `<div class="row">${hd}<div class="d">${onEsc(e.rc)} is rebuilding at ${rcnSp(e)}× normal speed. Done in ${fmtDur(dmgLeft(c))}.</div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="buy up" data-gov="rcnx" data-c="${c.id}" data-fixed="1">Cancel contract</button></div></div>`;
     return `<div class="row">${hd}<div class="d">Normal rebuild takes ${fmtDur(dmgLeft(c))}. Hire a contractor to rebuild faster and win approval${rcnFree()?" (free on the dev account)":""}.</div><div style="display:flex;gap:6px;flex-wrap:wrap">`+rcnBids(c).map(b=>`<button class="buy" data-gov="rcn" data-c="${c.id}" data-i="${b.i}" data-fixed="1" ${!rcnFree()&&S.cash<b.price?"disabled":""} title="${onEsc(b.firm)}">${b.lbl} ${b.sp}× · ${fmt(b.price)}</button>`).join("")+`</div></div>`}).join("")+`</div>`}
+/* cancel a reconstruction contract: no refund; the city keeps its current damage and goes back to the normal rebuild speed */
+function rcnCancel(id){const c=CITIES[id],e=(S.dmg||{})[id];if(!c||!e||!e.rc||!rcnGov(c.country))return;if(!confirm(`Cancel ${e.rc}'s contract in ${c.name}? You won't get the money back, and the city goes back to rebuilding at normal speed.`))return;
+  const l=dmgLvl(c),f=e.rc;S.dmg[id]={l0:Math.round(l*1e4)/1e4,t:Date.now(),own:e.own,k:e.k};logGov(`You cancelled ${f}'s reconstruction contract in ${c.name}`);toast(`${f} contract in ${c.name} cancelled`);save();renderSheet()}
 function rcnAward(id,i){const c=CITIES[id];if(!c||!rcnGov(c.country))return;const e=(S.dmg||{})[id],l=dmgLvl(c),now=Date.now();if(!e||l<.005||e.rc||(+(S.unh||{})[id]||0)>now)return;
   const b=rcnBids(c)[i];if(!b)return;const free=rcnFree();if(!free&&S.cash<b.price){toast("Not enough cash");return}
   if(!free)S.cash-=b.price;S.dmg[id]={l0:Math.round(l*1e4)/1e4,t:now,own:e.own,k:e.k,sp:b.sp,rc:b.firm};
