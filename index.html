@@ -3606,6 +3606,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gov]");if(!b)
   else if(a==="nlca"){nlcApply()}
   else if(a==="rcn")rcnAward(+b.dataset.c,+b.dataset.i);
   else if(a==="royx")royCancel(+b.dataset.c);
+  else if(a==="royt")royTake(+b.dataset.c);
   else if(a==="rcnx")rcnCancel(+b.dataset.c);
   else if(a==="unhb")unhBuy(+b.dataset.c);
   else if(a==="upermit"){const n=c.country;if(uranPermit(n)){g.uPermit=0;toast("Permit given up")}else if(g.uReq)uranCancel(n);else uranApply(n)}
@@ -4085,7 +4086,7 @@ function wwGovMirror(quiet){if(!wwShared()||!WW.gp)return;for(const n in WW.gp){
 function wjPub(w,s){try{if(!ON.ready||!ON.user)return;const gid=w.gid||(WRM?w.id:0);if(!gid)return;const r=ON.db.collection("wjoin").doc(ON.user.uid);
   if(!s)return void r.delete().catch(()=>{});
   r.set({w:gid,s,n:wlPT(),name:wlName().slice(0,20),c:String(dipPlayerC()||"").slice(0,40),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't share your troops: "+(e&&e.code||e)})}catch(e){}}
-function wwListen(){try{evListen()}catch(e){}try{g1Listen()}catch(e){}try{mkwListen()}catch(e){}try{mkhListen()}catch(e){}try{lnListen()}catch(e){}try{unhListen()}catch(e){}if(ON.unsubWW)return;
+function wwListen(){try{evListen()}catch(e){}try{g1Listen()}catch(e){}try{mkwListen()}catch(e){}try{mkhListen()}catch(e){}try{lnListen()}catch(e){}try{unhListen()}catch(e){}try{royoListen()}catch(e){}if(ON.unsubWW)return;
   ON.unsubWW=ON.db.collection("world").doc("wars").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list))return;WW={list:v.list,ruler:v.ruler||{},tl:Array.isArray(v.tl)?v.tl:[],gp:v.gp&&typeof v.gp==="object"?v.gp:null};
     try{localStorage.setItem(WWKEY,JSON.stringify(WW))}catch(e){}if(ON.authKnown&&!WRM){wwMirror(false);draw();onRefresh()}},e=>{ON.err="Couldn't load world wars: "+(e&&e.code||e)});
   ON.unsubWJ=ON.db.collection("wjoin").onSnapshot(q=>{const a=[],old=Date.now()-3*864e5;q.forEach(x=>{const v=x.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():Date.now();if(ON.user&&x.id===ON.user.uid)return;if(at<old||!Number.isInteger(v.w)||(v.s!=="a"&&v.s!=="b"))return;a.push({uid:x.id,w:v.w,s:v.s,n:+v.n||0,name:v.name,c:v.c,at})});
@@ -6519,10 +6520,20 @@ function unhListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubUNH)return;
 /* rebuild royalties (Mark, 2026-11-03): after you pay to rebuild a city, an AI-run country pays you ROY.rate of the price every game hour until you cancel the deal (Gov tab).
    No royalty while a player governs that country (or you do). S.roy[cityId]={n,amt,t: paid up to,until}. */
 const ROY={rate:.01}; // 1% of the rebuild price every game hour, until the rebuilder cancels the deal
-function royHtml(){const R=S.roy;if(!(S.pol&&S.pol.r>=0)||!R||!Object.keys(R).length)return "";
-  return `<div class="sec">Rebuild royalties</div><div class="list">`+Object.keys(R).map(id=>{const r=R[id],c=CITIES[id];if(!c)return "";const ai=!(S.pol.c===r.n)&&!govRival(c);
+/* ended royalty deals go up for grabs (Mark, 2026-11-03): royoffer/{cityId} {n,amt,by,name,at}. Any other player in government can take the deal over
+   for the same price; the take deletes the offer in a transaction so only one player gets it. */
+const ROYO={list:[]};
+function royOfferPub(id,r){try{if(typeof ON==="undefined"||!ON.ready||!ON.user)return;ON.db.collection("royoffer").doc(String(id)).set({n:String(r.n).slice(0,40),amt:Math.round(r.amt),by:ON.user.uid,name:String(onProf().name||"Tycoon").slice(0,20),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't offer the royalty deal: "+(e&&e.code||e)})}catch(e){}}
+function royoListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubROYO)return;ON.unsubROYO=ON.db.collection("royoffer").onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(CITIES[+d.id]&&+v.amt>0)a.push(Object.assign({id:+d.id},v))});ROYO.list=a;if(sel&&mode==="city"&&tab==="gov")renderSheet()},()=>{})}catch(e){}}
+function royoOpen(){const me=typeof ON!=="undefined"&&ON.user&&ON.user.uid;return ROYO.list.filter(o=>o.by!==me&&!(S.roy||{})[o.id])}
+function royTake(id){const o=ROYO.list.find(x=>x.id===id),c=CITIES[id];if(!o||!c||!(S.pol&&S.pol.r>=0)||!ON.user)return;if(S.cash<o.amt)return toast(`You need ${fmt(o.amt)} to take this deal`);
+  if(!confirm(`Take over the royalty deal for ${c.name} for ${fmt(o.amt)}? ${o.n} will pay you ${fmt(o.amt*ROY.rate)} every game hour while an AI governs it.`))return;
+  const ref=ON.db.collection("royoffer").doc(String(id));ON.db.runTransaction(t=>t.get(ref).then(d=>{if(!d.exists)throw new Error("gone");t.delete(ref)})).then(()=>{if(S.cash<o.amt)return;S.cash-=o.amt;S.roy=S.roy&&typeof S.roy==="object"?S.roy:{};S.roy[id]={n:o.n,amt:o.amt,t:Date.now()};
+    logGov(`You took over the rebuild royalty deal for ${c.name} for ${fmt(o.amt)}`);toast(`Royalty deal for ${c.name} is yours`);save();hud();renderSheet()}).catch(()=>toast("Someone else took that deal first"))}
+function royHtml(){const R=S.roy||{};if(!(S.pol&&S.pol.r>=0))return "";const op=royoOpen();if(!Object.keys(R).length&&!op.length)return "";
+  return `<div class="sec">Rebuild royalties</div><div class="list">`+op.map(o=>{const c=CITIES[o.id];return `<div class="row"><div class="n">${c.name}, ${onEsc(o.n)} · up for grabs</div><div class="d">${onEsc(o.name||"A player")} ended this deal. Take it over for ${fmt(o.amt)} and get ${fmt(o.amt*ROY.rate)} every game hour while an AI governs ${onEsc(o.n)}.</div><div style="display:flex;gap:6px"><button class="buy" data-gov="royt" data-c="${o.id}" data-fixed="1" ${S.cash<o.amt?"disabled":""}>Take deal · ${fmt(o.amt)}</button></div></div>`}).join("")+Object.keys(R).map(id=>{const r=R[id],c=CITIES[id];if(!c)return "";const ai=!(S.pol.c===r.n)&&!govRival(c);
     return `<div class="row own"><div class="n">${c.name}, ${r.n}</div><div class="d">${ai?`Pays you ${fmt(r.amt*ROY.rate)} every game hour.`:"Paused: a player governs this country."}</div><div style="display:flex;gap:6px"><button class="buy up" data-gov="royx" data-c="${id}" data-fixed="1">Cancel deal</button></div></div>`}).join("")+`</div>`}
-function royCancel(id){const r=(S.roy||{})[id],c=CITIES[id];if(!r||!c)return;if(!confirm(`End the royalty deal for ${c.name}? ${r.n} stops paying you for good.`))return;delete S.roy[id];logGov(`You ended the rebuild royalty deal for ${c.name}`);toast(`Royalty deal for ${c.name} ended`);save();renderSheet()}
+function royCancel(id){const r=(S.roy||{})[id],c=CITIES[id];if(!r||!c)return;if(!confirm(`End the royalty deal for ${c.name}? ${r.n} stops paying you for good.`))return;delete S.roy[id];royOfferPub(id,r);logGov(`You ended the rebuild royalty deal for ${c.name}; other governments can now take it over for ${fmt(r.amt)}`);toast(`Royalty deal for ${c.name} ended`);save();renderSheet()}
 function royTick(){const R=S.roy;if(!R||typeof R!=="object")return;const now=Date.now(),H=DAYMS/24;let got=0;
   for(const id in R){const r=R[id],c=CITIES[id];if(!r||!c){delete R[id];continue}const h=Math.floor((now-r.t)/H);if(h>0){r.t+=h*H;
       const ai=!(S.pol&&S.pol.r>=0&&S.pol.c===r.n)&&!govRival(c);if(ai){const v=Math.round(r.amt*ROY.rate*h);S.cash+=v;got+=v}}}
