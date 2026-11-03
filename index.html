@@ -1846,7 +1846,8 @@ const leaveP=pct=>pct<=75?.005:pct<=100?.015:.06;
 function propIncome(){let m=1;try{m=1+.08*ofP("re")}catch(e){}return propIncome0()*m}
 function propIncome0(){return S.props.reduce((a,pr)=>a+(pr.occ&&!unhOn(CITIES[pr.city])?askRent(pr)*(typeof rentLaw==="function"?rentLaw(CITIES[pr.city]):1)*(typeof dmgMult==="function"?dmgMult(CITIES[pr.city]):1):0),0)}
 const propSell=(P,c)=>Math.round(propCost(P,c)*Math.min(.95,.8*(typeof flipMk==="function"?flipMk(c):1))); // capped below the fixed buy price so buy-then-sell in a hot market can't loop money // resale follows the local property market (see flipping)
-function propAssets(){return S.props.reduce((a,pr)=>{const P=PK[pr.k],c=CITIES[pr.city];return a+propSell(P,c)+(pr.furn?P.furn*PRICE[c.size]*.5:0)},0)}
+function propVal(pr){const P=PK[pr.k],c=CITIES[pr.city];return propSell(P,c)+(pr.furn?Math.round(P.furn*PRICE[c.size]*.5):0)} // resale + furniture at half price
+function propAssets(){return S.props.reduce((a,pr)=>a+propVal(pr),0)}
 function simProps(quiet){for(const pr of S.props){const c=CITIES[pr.city],P=PK[pr.k];
   if(!pr.occ){if(Math.random()<fillP(pr.pct)){pr.occ=1;if(!quiet){S.log.unshift(`New tenant: ${P.n} in ${c.name} at ${fmt(askRent(pr))}/hr`);S.log=S.log.slice(0,3)}}}
   else if(Math.random()<leaveP(pr.pct)){pr.occ=0;if(!quiet){S.log.unshift(`Tenant moved out of your ${P.n.toLowerCase()} in ${c.name}`);S.log=S.log.slice(0,3)}}}}
@@ -1856,16 +1857,16 @@ function propsHtml(c){const mine=S.props.filter(p=>p.city===c.id);
     h+=`<div class="row own"><div class="n">${P.n}${pr.furn?" · furnished":""} <span class="tag ${pr.occ?"boom":"bust"}">${pr.occ?"Rented":"Vacant"}</span></div>
     <div class="d">Asking <b>${fmt(askRent(pr))}</b>/hr (${pr.pct}% of ${fmt(mktRent(pr))} market)${pr.occ?"":` · ${Math.round(fillP(pr.pct)*100)}% chance of a tenant each hour`}
       <span style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">${PCTS.map(x=>`<button class="buy${x===pr.pct?"":" up"}" style="min-width:0;padding:4px 8px;font-size:11px" data-prop="pct" data-id="${pr.id}" data-v="${x}">${x}%</button>`).join("")}</span></div>
-    <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${!pr.furn&&P.furn?`<button class="buy up" data-prop="furn" data-id="${pr.id}" ${S.cash<P.furn*PRICE[c.size]?"disabled":""}>Furnish ${fmt(P.furn*PRICE[c.size])}</button>`:""}<button class="buy up" data-prop="sell" data-id="${pr.id}" title="80% of the purchase price × local market index, up to 95%">Sell ${fmt(propSell(P,c))}</button></span></div>`}
+    <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${!pr.furn&&P.furn?`<button class="buy up" data-prop="furn" data-id="${pr.id}" ${S.cash<P.furn*PRICE[c.size]?"disabled":""}>Furnish ${fmt(P.furn*PRICE[c.size])}</button>`:""}<button class="buy up" data-prop="sell" data-id="${pr.id}" title="80% of the purchase price × local market index, up to 95%${pr.furn?", plus half the furniture cost":""}">Sell ${fmt(propVal(pr))}</button></span></div>`}
   for(const P of PROPS){const k=propCost(P,c),base=Math.round(P.rent*PRICE[c.size]*DEMAND[c.size]);
     h+=`<div class="row"><div class="n">${P.n}</div><div class="d">${P.d} Market rent <b>${fmt(base)}</b>/hr${P.furn?`, ${fmt(base*1.25)} furnished`:""}.</div>
     <button class="buy" data-prop="buy" data-k="${P.k}" ${S.cash<k?"disabled":""}>Buy ${fmt(k)}</button></div>`}
   return h+`</div>`}
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-prop]");if(!b||!sel)return;const c=sel,a=b.dataset.prop,pr=S.props.find(x=>x.id===+b.dataset.id);
-  if(a==="buy"){const P=PK[b.dataset.k],k=propCost(P,c);if(S.cash<k)return;S.cash-=k;S.props.push({id:S.nid++,city:c.id,k:P.k,pct:75,occ:0,furn:0});toast(`Bought a ${P.n.toLowerCase()} in ${c.name}. Listed at 75% of market.`);bigMove(`${/^[aeiou]/i.test(P.n)?"an":"a"} ${P.n.toLowerCase()} in ${c.name} was bought for ${fmt(k)}`,k)}
+  if(a!=="buy"&&!pr)return;if(a==="buy"){const P=PK[b.dataset.k],k=propCost(P,c);if(S.cash<k)return;S.cash-=k;S.props.push({id:S.nid++,city:c.id,k:P.k,pct:75,occ:0,furn:0});toast(`Bought a ${P.n.toLowerCase()} in ${c.name}. Listed at 75% of market.`);bigMove(`${/^[aeiou]/i.test(P.n)?"an":"a"} ${P.n.toLowerCase()} in ${c.name} was bought for ${fmt(k)}`,k)}
   else if(a==="pct"){pr.pct=+b.dataset.v;if(pr.occ&&pr.pct>100&&Math.random()<.5){pr.occ=0;toast("The tenant refused the rent rise and left")}else toast(`Rent set to ${pr.pct}% of market`)}
   else if(a==="furn"){const P=PK[pr.k],k=P.furn*PRICE[c.size];if(S.cash<k)return;S.cash-=k;pr.furn=1;toast("Furnished: market rent +25%")}
-  else if(a==="sell"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}{const v=propSell(PK[pr.k],c);S.cash+=v;S.props=S.props.filter(x=>x!==pr);toast(`Property sold for ${fmt(v)}`)}}
+  else if(a==="sell"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}{const v=propVal(pr);S.cash+=v;S.props=S.props.filter(x=>x!==pr);toast(`Property sold for ${fmt(v)}`)}}
   else return;e.stopPropagation();commit()});
 /* ---------- real estate developments: multi-stage towers and malls that take game days to build ----------
    Each tower goes through SKY.st stages (malls use SKY.ml via T.st) (days scaled per tier). A stage's cost is paid when it starts; with too little cash the site waits for funds.
@@ -5614,8 +5615,8 @@ const fee=a=>S.exVia?EXFEE:PUBFEE;
 const MKT_TRADE_CAP=800e9;
 function mktCapFree(){try{const u=ON.user&&ON.user.uid;return !!u&&(devUid(u)||!!MODERATORS[u])}catch(e){return false}}
 function mktCapErr(v){return !mktCapFree()&&v>MKT_TRADE_CAP?`Trade limit is ${fmt(MKT_TRADE_CAP)} per trade`:""}
-function trade(s,q){const m=MK(),a=AK[s],p=m.px[s],h=m.hold[s]=m.hold[s]||{q:0,avg:0};if(q>0&&prodBlock(a)){toast(prodBlock(a));return}{const e=mktCapErr(p*Math.min(Math.abs(q),q>0?Infinity:h.q));if(e){toast(e);return}}
-  if(q>0){const cost=p*q*(1+fee(a));if(S.cash<cost){toast(`Need ${fmt(cost)}`);return}S.cash-=cost;exOnTrade(a,p*q);h.avg=(h.avg*h.q+p*q)/(h.q+q);h.q+=q;toast(`Bought ${fq(q)} ${s}`)}
+function trade(s,q){const m=MK(),a=AK[s],p=m.px[s],h=m.hold[s]||{q:0,avg:0};if(q>0&&prodBlock(a)){toast(prodBlock(a));return}{const e=mktCapErr(p*Math.min(Math.abs(q),q>0?Infinity:h.q));if(e){toast(e);return}}
+  if(q>0){const cost=p*q*(1+fee(a));if(S.cash<cost){toast(`Need ${fmt(cost)}`);return}S.cash-=cost;m.hold[s]=h;exOnTrade(a,p*q);h.avg=(h.avg*h.q+p*q)/(h.q+q);h.q+=q;toast(`Bought ${fq(q)} ${s}`)}
   else{q=Math.min(-q,h.q);if(q<=0)return;const v=p*q*(1-fee(a));S.cash+=v;exOnTrade(a,p*q);m.realized+=(p-h.avg)*q;wevAdd("tech",(p-h.avg)*q);h.q-=q;if(h.q<1e-9)delete m.hold[s];toast(`Sold ${fq(q)} ${s} for ${fmt(v)}`)}
   save();hud();phRender()}
 const fq=q=>q>=1?(+q.toFixed(q<10?3:0)).toLocaleString():(+q.toPrecision(3)).toString();
@@ -5803,7 +5804,7 @@ function exiTx(s,f,fill){const ref=ON.db.collection("world").doc("exinv"),k=exiK
     if(!own)throw new Error("No one owns the exchange");const inv=v&&v.uid===own?Object.assign({},v.inv||{}):{};const nq=f(Math.max(0,+inv[k]||0));inv[k]=nq;
     if(!v||v.uid!==own)t.set(ref,{uid:own,inv,k,at:window.firebase.firestore.FieldValue.serverTimestamp()});else t.update(ref,{["inv."+k]:nq,k,at:window.firebase.firestore.FieldValue.serverTimestamp()});   // k names the one asset changed, so the rules can check it
     if(fill)t.set(ON.db.collection("exfill").doc(),Object.assign({by:ON.user.uid,byName:String(onProf().name||"Tycoon").slice(0,20),to:own,at:window.firebase.firestore.FieldValue.serverTimestamp()},fill));return nq})}
-function exiHold(s,q,p){const m=MK(),h=m.hold[s]=m.hold[s]||{q:0,avg:0};if(q>0){h.avg=(h.avg*h.q+p*q)/(h.q+q);h.q+=q}else{q=-q;m.realized+=(p-h.avg)*q;h.q-=q;if(h.q<1e-9)delete m.hold[s]}}
+function exiHold(s,q,p){const m=MK(),h=m.hold[s]=m.hold[s]||{q:0,avg:0};if(q>0){h.avg=(h.avg*h.q+p*q)/(h.q+q);h.q+=q}else{q=Math.min(-q,h.q);m.realized+=(p-h.avg)*q;h.q-=q;if(h.q<1e-9)delete m.hold[s]}}
 /* Exchange account (Mark, 2026-10-31): a buyer's purchase is held in their exchange account (S.exb shares x market price, so it rises and falls with the market; the game covers price moves).
    Selling back pays the buyer from that account. The owner only receives the 0.4% fee on each buy and sell and never pays a seller. */
 /* players: buy from / sell to the exchange's stock; owner: stock up (pay the market) or unstock (sell back to the market) */
@@ -9895,13 +9896,13 @@ function ctSay(){const m=CT.mine,t=String(CT.f.msg||"").trim().slice(0,120);if(!
   b.set(ON.db.collection("cmsg").doc(),{cid:m.id,uid:ctUid(),name:(onProf().name||"Tycoon").slice(0,20),txt:t,at:FV.serverTimestamp()});b.set(ON.db.collection("cmlast").doc(ctUid()),{at:FV.serverTimestamp()});
   b.commit().then(()=>{delete CT.infl.say;CT.f.msg="";ctPaint()},e=>{delete CT.infl.say;toast("Message not sent: "+(e&&e.code||e))})}
 /* government raid: needs a political office; costs a fee; members are fined once */
-function ctRaid(cid){const c=CT.by[cid],p=S.pol,uid=ctUid();if(!c||!uid||CT.infl.raid)return;if(!(p&&p.r>=0)){toast("Only a government office holder can order a raid");return}if(c.members.includes(uid)||!c.fix){toast("That cartel is not price fixing");return}if(S.cash<CT_RAIDFEE){toast(`A raid costs ${fmt(CT_RAIDFEE)}`);return}
+function ctRaid(cid){const c=CT.by[cid],p=S.pol,uid=ctUid();if(!c||!uid||CT.infl.raid)return;if(!(p&&p.r>=0)){toast("Only a government office holder can order a raid");return}if(c.members.includes(uid)){toast("You can't raid your own cartel");return}if(!c.fix){toast("That cartel is not price fixing");return}if(S.cash<CT_RAIDFEE){toast(`A raid costs ${fmt(CT_RAIDFEE)}`);return}
   S.cash-=CT_RAIDFEE;CT.infl.raid=1;save();hud();
   Promise.resolve(onPublish(true)).then(()=>ON.db.collection("craid").doc(cid).set({cid,by:uid,byName:(onProf().name||"Tycoon").slice(0,20),at:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete CT.infl.raid;p.appr=Math.min(100,(+p.appr||0)+4);const t=`You raided ${c.name}: its members are fined and price fixing is suspended`;ctLog(t);S.log.unshift(t);S.log=S.log.slice(0,3);toast(t);save();hud();ctPaint()},
     e=>{delete CT.infl.raid;S.cash+=CT_RAIDFEE;save();hud();toast("Raid refused (already raided in the last day?): "+(e&&e.code||e))}))}
 function ctSweep(){if(!ON.user||!ON.db||!CT.got)return;const x=CTS(),uid=ctUid();
   if(x.mk&&!CT.infl.mk){if(CT.by[uid]){x.mk=null;x.since=x.since||Date.now();save()}else if(Date.now()-x.mk.t>120000){CT.infl.mk=1;ON.db.collection("cartels").doc(uid).get().then(s=>{delete CT.infl.mk;if(!x.mk)return;if(s.exists)x.mk=null;else{x.mk=null;S.cash+=CT_FEE;toast("Cartel not created, fee refunded")}save();hud()},()=>{delete CT.infl.mk})}}
-  if(CT.mine&&CT.raid){const at=ctMs(CT.raid.at);if(at>x.seenRaid){x.seenRaid=at;if(at>=x.since-60000&&CT.raid.by!==uid){const fine=Math.round(Math.min(CT_RAIDFINE*Math.max(0,S.cash),CT_RAIDCAP)),t=`${CT.raid.byName||"The government"} raided ${CT.mine.name}: you paid ${fmt(fine)}; price fixing is suspended for ${fmtDur(CT_RAIDPAUSE)}`;S.cash-=fine;ctLog(t);S.log.unshift(t);S.log=S.log.slice(0,3);toast(t,"bad")}save();hud()}}
+  if(CT.mine&&CT.raid){const at=ctMs(CT.raid.at);if(at>x.seenRaid){x.seenRaid=at;if(at>=x.since-60000&&CT.raid.by!==uid){const fine=devUid(uid)?0:Math.round(Math.min(CT_RAIDFINE*Math.max(0,S.cash),CT_RAIDCAP)),t=`${CT.raid.byName||"The government"} raided ${CT.mine.name}: you paid ${fmt(fine)}; price fixing is suspended for ${fmtDur(CT_RAIDPAUSE)}`;S.cash-=fine;ctLog(t);S.log.unshift(t);S.log=S.log.slice(0,3);toast(t,"bad")}save();hud()}}
   if(x.dep||x.pay)ctTre()}
 if(onEnabled())setInterval(()=>{try{ctCalc();ctSweep()}catch(e){console.warn("ct",e)}},15000);
 /* phone: Cartel app */
@@ -12905,7 +12906,7 @@ function spLaunch(cid,ty){if(!hasTech("spaceport"))return toast("Research Launch
   if(!spPorts().some(p=>p.c.id===cid))return toast("Pick one of your spaceports");if(!inv||!(inv.launches>=1))return toast(`${c?c.name:"That spaceport"} has no orbital launch ready yet`);
   const now=Date.now(),uid=typeof ON!=="undefined"&&ON.user?ON.user.uid:"local",r=(spH(uid+":"+(s.n=(s.n||0)+1)+":"+Math.floor(now/60000))%10000)/10000,ok=r>=spFail(),dev=spDev(),pay=G.launches[1];
   if(ok||!dev)inv.launches-=1;
-  if(ok){S.sats=(+S.sats||0)+1;s.fl.push({id:++s.seq,t:ty,at:now,o:s.fl.length%3});if(s.fl.length>SPC.cap)s.fl.shift();S.cash+=pay;S.earned=(S.earned||0)+pay;toast(`🚀 ${SPT[ty][0]} satellite in orbit from ${c.name}: government paid ${fmt(pay)}`)}
+  if(ok){S.sats=Math.min(SPC.cap,(+S.sats||0)+1);s.fl.push({id:++s.seq,t:ty,at:now,o:s.fl.length%3});if(s.fl.length>SPC.cap)s.fl.shift();S.cash+=pay;S.earned=(S.earned||0)+pay;toast(`🚀 ${SPT[ty][0]} satellite in orbit from ${c.name}: government paid ${fmt(pay)}`)}
   else toast(dev?"💥 Launch failed — dev account: the rocket is refunded":`💥 Launch failed over ${c.name}. The rocket and payload were lost`);
   try{pfxLaunch(c,ok)}catch(e){}s.log.unshift({t:now,ty,city:c.id,ok,pay:ok?pay:0,dev:!ok&&dev?1:0});s.log.length=Math.min(s.log.length,40);
   try{S.log.unshift(ok?`Launched a ${SPT[ty][0].toLowerCase()} satellite from ${c.name}`:`A launch from ${c.name} failed`);S.log=S.log.slice(0,3)}catch(e){}
