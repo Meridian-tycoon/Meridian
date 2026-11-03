@@ -14373,6 +14373,7 @@ function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),no
   h+=R("Reap",`Send a disaster at the target city (Favor ${SCY.reap.f}, once a day).`,Object.keys(SCY.kinds).map(k=>B("reap",SCY.kinds[k]+cd("reap"),s.fav<SCY.reap.f||s.cd.reap>now,k)).join(" "));
   h+=R("Shelter",`Shield the target's country from disasters for 48h (Favor ${SCY.shel.f}).`,B("shel","Shelter",s.fav<SCY.shel.f));
   h+=R("Calm",`No natural disasters anywhere for 12h (Favor ${SCY.calm.f}).`,B("calm","Calm the world",s.fav<SCY.calm.f||s.calm>now));
+  h+=R("🎥 Follow cam","Locks the camera onto the Scythe as it flies around the planet. Drag the map to let go.",B("follow",SCYF.on?"Stop following":"Follow the Scythe"));
   {const f=scyForecast();h+=R("Forecast",`Most at risk (${f.acc}% accurate): ${f.l.map(c=>c.name).join(", ")}.`)}
   h+=R("🤖 Reaper AI",`Target advisor: ${scyAdvisor().map(c=>c.name).join(", ")}. Autopilot ${s.auto?"ON":"OFF"}: spends Favor to shelter ${S.pol.c} when a disaster is coming.`,B("auto",s.auto?"Autopilot off":"Autopilot on"));
   h+=R("Weapons bay",`Orbital nuke uses the nuclear licence and normal strike rules (${fmt(SCY.nuke)}, 1 per 48h). Plague swarm ${s.bay.plague|0} in bay. Black sun ${s.bsUsed?"used this orbit":s.bay.bs?"loaded":"not loaded"}.`,
@@ -14389,6 +14390,7 @@ function scyAct(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTick
   else if(a==="shel"){if(!c||s.fav<SCY.shel.f)return;s.fav-=SCY.shel.f;s.shel[c.country]=now+SCY.shel.d;scySay(`${c.country} is under my wing.`)}
   else if(a==="calm"){if(s.fav<SCY.calm.f)return;s.fav-=SCY.calm.f;s.calm=now+SCY.calm.d;stNews("🛰 The God's Scythe has calmed the world's weather");scySay("The skies are still.")}
   else if(a==="auto")s.auto=s.auto?0:1;
+  else if(a==="follow"){scyFollow(!SCYF.on);if(SCYF.on)try{sheet.classList.remove("open")}catch(e){}}
   else if(a==="fuel"){if(scyPay(5e9))s.end+=7*DAY}
   else if(a==="nuke"){if(!c||s.cd.nuke>now||S.cash<SCY.nuke)return;const m=wpn(),n0=m.wpn.nuke|0;m.wpn.nuke=n0+1;wpnFire("nuke",c.id,1,1);if((m.wpn.nuke|0)>n0){m.wpn.nuke=n0;return}S.cash-=SCY.nuke;s.cd.nuke=now+SCY.nukeCd;stNews(`☢️ An orbital nuke falls from the God's Scythe on ${c.name}`)}
   else if(a==="bplague"){if((s.bay.plague|0)<1&&scyPay(SCY.plague))s.bay.plague=1}
@@ -14430,6 +14432,12 @@ function scyMapTick(){try{const on=scyOn()&&scyDev();if(S.scy&&S.scy.on&&S.scy.e
   const has=!!MM.getLayer("scythe-sat");if(on&&!has&&MM.isStyleLoaded()){scyL=scyLayer();MM.addLayer(scyL)}else if(!on&&has){MM.removeLayer("scythe-sat");scyG=null}
   if(on&&Math.random()<.0015)scySay(SCY.lines[Math.floor(Math.random()*SCY.lines.length)])}catch(e){}}
 setInterval(scyMapTick,1000);
+// Follow cam: keeps the map centred on the Scythe every frame; any drag lets go
+const SCYF={on:0,raf:0};
+function scyFollow(on){SCYF.on=on?1:0;cancelAnimationFrame(SCYF.raf);if(!on)return;try{toast("🎥 Following the God's Scythe · drag the map to stop")}catch(e){}
+  if(MM.getZoom()>3)MM.easeTo({zoom:2.2,duration:800});
+  const go=()=>{if(!SCYF.on||!scyOn())return scyFollow(0);if(!MM.isEasing()){const p=scyPos(Date.now());MM.jumpTo({center:[p.lon,p.lat]})}SCYF.raf=requestAnimationFrame(go)};SCYF.raf=requestAnimationFrame(go)}
+MM.on("dragstart",()=>{if(SCYF.on)scyFollow(0)});
 // Space manager duty (Mission control › Colonies › Space manager › Scythe): launch, refuel and restock. Keeps the manager's cash reserve.
 const SCYM={fuel:5e9,fuelDays:7,refuelBelow:2*DAY,every:6e4};let scyMgrT=0;
 function scyAutoMgr(){if(!scyDev())return;const now=Date.now();if(now-scyMgrT<SCYM.every)return;scyMgrT=now;const m=COLS().mgr;if(!m||!m.on||!m.scy)return;
