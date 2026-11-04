@@ -1367,7 +1367,8 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
   h+=`<div class="meta"><div><span>Land </span>${fmt(hp)}/ha</div><div><span>Deposits </span>${d.length?d.map(g=>G[g][0]).join(", "):"none"}</div></div>${S.iev[c.id]?`<div class="welcome" style="background:${IEV[S.iev[c.id].t].m>1?"var(--good)":"var(--bad)"}">${IEV[S.iev[c.id].t].n}: ${IEV[S.iev[c.id].t].cats.join(" & ").toLowerCase()} output ×${IEV[S.iev[c.id].t].m} for ${S.iev[c.id].d}h</div>`:""}`+tabsHtml();
   if(tab==="ind"){
     h+=`<div class="tabs fl-sw" role="tablist">${[["plots","🌾 Plots"],["flip",`🏚→🏡 Flip${(()=>{const n=flipS().own.filter(p=>p.city===c.id).length;return n?" · "+n:""})()}`]].map(([k,n])=>`<button role="tab" data-flt="${k}" aria-selected="${flipTab===k}">${n}</button>`).join("")}</div>`;
-    if(flipTab==="flip")h+=flipHtml(c);else{
+    if(flipTab!=="flip")h+=`<button class="buy" data-pd="tog" style="width:100%;margin:8px 0;padding:10px">${pdOn?"← Back to land list":`📊 Production dashboard · ${c.name}`}</button>`;
+    if(flipTab==="flip")h+=flipHtml(c);else{if(pdOn)h+=pdHtml(c,mySites);else{
     h+=`<div class="sec">Your land here</div><div class="list">`;
     if(!mySites.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">No land yet. ${c.size<=2?"Land is cheap here, good for farms and mines.":"Land is pricey in big cities. Factories fit here; farms pay better in small towns."}</p>`;
     for(const s of mySites){const o=siteOp(s),ha=LAND[s.size][1];
@@ -1381,7 +1382,7 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
         ${["Farm","Ranch","Mine","Factory"].map(cat=>{const l=opts.filter(o=>o.cat===cat);return l.length?`<optgroup label="${cat}">${l.map(o=>`<option value="${o.k}">${o.n} · ${fmt(o.build*ha)} · ${opLabel(o)}${o.rp?` · costs ${fmt(o.up*ha)}/day crewed, makes ${RPX*o.rp*ha} RP/day`:""}${o.gate?(uranNeed(c.country)?" · LOCKED":" · permit ok"):""}</option>`).join("")}</optgroup>`:""}).join("")}</select>${opts.some(o=>o.gate)&&uranNeed(c.country)?`<div style="font-size:12px;color:var(--bad);margin-top:4px">Uranium mine: ${uranNeed(c.country)}</div>`:""}</div>
         <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-act="build" data-id="${s.id}">Build</button>
         <button class="buy up" data-act="sellland" data-id="${s.id}">${s.lease?"End lease":"Sell land"}</button></span></div>`}}
-    h+=`</div>`;
+    h+=`</div>`}
     for(const z in ZONE){const Z=ZONE[z];if(z==="mine"&&!d.length){h+=`<div class="sec">Buy ${Z.n.toLowerCase()}</div><p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">No deposits under ${c.name}. Try a mining town like Kalgoorlie, Sudbury or Kiruna.</p>`;continue}
       h+=`<div class="sec">Buy ${Z.n.toLowerCase()} · ${fmt(haPrice(c)*Z.pm)}/ha</div><p class="d" style="color:var(--muted);font-size:12px;margin:0 0 4px">${Z.d}${z==="mine"?" Deposits here: "+d.map(g=>G[g][0].toLowerCase()).join(", ")+".":""}</p><div class="list">`;
       for(const k in LAND){const [n,ha]=LAND[k],p=plotPrice(c,z,k);
@@ -2025,6 +2026,27 @@ function flipDay(quiet){const f=flipS();
   for(const id in f.pv)if(!f.list[id]&&!f.own.some(h=>h.city==id))delete f.pv[id];
   for(const id of new Set([...Object.keys(f.list),...f.own.map(h=>h.city)]))if(CITIES[id])f.pv[id]=+flipMk(CITIES[id]).toFixed(4)}
 let flipTab="plots";
+/* per-city production dashboard (Land tab button): every farm, mine and factory in this city with hire / upgrade / pause in one place */
+let pdOn=0,pdF="all";
+function pdHtml(c,sites){const kind=s=>{const o=siteOp(s);return !o?"empty":o.cat==="Mine"?"mine":o.cat==="Factory"?"fact":"farm"},bad=s=>!siteOp(s)||!s.crew||s.paused||!!s.why;
+  const n=k=>sites.filter(s=>kind(s)===k).length,val=sites.reduce((a,s)=>a+(s.paused?0:siteEst(s)||0),0),upk=sites.reduce((a,s)=>a+indUpkeepOf(s),0),att=sites.filter(bad).length,miss=sites.filter(s=>siteOp(s)&&!s.crew);
+  const kp=(t,v,d,col)=>`<div style="background:var(--card,rgba(127,127,127,.08));border:1px solid var(--line);border-radius:12px;padding:8px 10px"><div style="font-size:11px;color:var(--muted);font-weight:600">${t}</div><div style="font-size:18px;font-weight:700${col?";color:"+col:""}">${v}</div><div style="font-size:11px;color:var(--muted)">${d}</div></div>`;
+  let h=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 8px">${kp("Sites",sites.length,`${n("farm")} farms · ${n("mine")} mines · ${n("fact")} factories`)}${kp("Output value",fmt(val)+"/hr","estimated, at local prices")}${kp("Upkeep",fmt(upk)+"/hr","crews and land")}${kp("Need attention",att,"no crew, paused or stopped",att?"var(--bad)":"")}</div>`;
+  h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">${[["all","All"],["farm","🌾 Farms"],["mine","⛏️ Mines"],["fact","🏭 Factories"],["att","⚠️ Needs attention"]].map(([k,t])=>`<button class="buy${pdF===k?"":" up"}" data-pd="f" data-v="${k}">${t}</button>`).join("")}</div>`;
+  if(miss.length)h+=`<button class="buy" data-pd="hireall" style="width:100%;margin-bottom:6px">Hire all missing crews (${miss.length})</button>`;
+  const ls=sites.filter(s=>pdF==="all"||(pdF==="att"?bad(s):kind(s)===pdF));
+  h+=`<div class="list">`;if(!ls.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">${sites.length?"Nothing matches this filter.":`No land in ${c.name} yet. Buy a plot below.`}</p>`;
+  for(const s of ls){const o=siteOp(s),ha=LAND[s.size][1],ic={farm:"🌾",mine:"⛏️",fact:"🏭",empty:"🟫"}[kind(s)];
+    const st=!o?"Empty plot":s.paused?"Paused":s.why?s.why:!s.crew?"No crew":"Running",ok=st==="Running";
+    h+=`<div class="row own"><div class="n">${ic} ${o?o.n:(ZONE[zoneOf(s)]||{n:"Land"}).n} <span class="tag ${ok?"boom":"bust"}">${st}</span></div>
+    <div class="d">${o?`<b>${(EQ[o.cat]||[])[slv(s)-1]||"Mk "+slv(s)}</b> · `:""}${ha} ha${s.lease?" · rented":""}${o?` · ≈${fmt(s.paused?0:siteEst(s)||0)}/hr · crew ${s.crew?siteStaff(s):0}/${siteStaff(s)}`:" · pick what to run in the land list"}</div>
+    <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${o?`<button class="buy${s.crew?" up":""}" data-crew="${s.id}">${s.crew?"Let crew go":`Hire crew (${siteStaff(s)})`}</button>${slv(s)<4&&s.reg?`<button class="buy" data-act="slv" data-id="${s.id}" ${S.cash<supCost(s)?"disabled":""}>${(EQ[o.cat]||[])[slv(s)]||"Mk "+(slv(s)+1)} ${fmt(supCost(s))}</button>`:slv(s)>=4?`<button class="buy up" disabled>Maxed</button>`:""}<button class="buy up" data-pause="${s.id}">${s.paused?"Resume":"Pause"}</button>`:`<button class="buy up" data-pd="tog">Set up</button>`}</span></div>`}
+  h+=`</div><div class="sec">Build new here</div><p class="d" style="color:var(--muted);font-size:12px;margin:0 0 4px">Pick a plot type, then choose what it makes from the land list.</p>`;
+  return h}
+sheet.addEventListener("click",e=>{const b=e.target.closest("[data-pd]");if(!b||!sel)return;e.stopPropagation();const a=b.dataset.pd;
+  if(a==="tog"){pdOn=pdOn?0:1;pdF="all"}else if(a==="f")pdF=b.dataset.v;
+  else if(a==="hireall"){let k=0;for(const s of S.sites)if(s.city===sel.id&&siteOp(s)&&!s.crew){s.crew=true;k++}toast(k?`Crews hired at ${k} site${k>1?"s":""}. Wages start now.`:"Every site has a crew");commit();return}
+  renderSheet()});
 const flipLeft=ms=>{const m=Math.max(1,Math.ceil(ms/60000));return m>=60?`${Math.floor(m/60)}h ${m%60}m left`:`${m}m left`};
 function flipHtml(c){const f=flipS();flipTick();const m=flipMk(c),[hn,hc]=flipHeat(m),pv=+f.pv[c.id]||m,tr=m-pv,why=flipWhy(c),mine=f.own.filter(h=>h.city===c.id),list=flipList(c),now=Date.now();
   const pc=v=>(v>0?"+":"")+Math.round(v*100)+"%",z=(()=>{try{return wzInfo(c)}catch(e){return null}})(),risky=z&&(z.wl>=3||z.dl>=.05||z.hit);
