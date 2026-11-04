@@ -6495,6 +6495,7 @@ function wmdPeaceOk(n,k){const p=pol(),m=mil();return !!WPNCFG.w[k]&&COUNTRIES.i
 let _wmdC="";
 function wpnFire(k,id,sure,go){const p=pol(),m=wpn(),W=WPNCFG.w[k],c=CITIES[+id],now=Date.now();if(!W||!c)return;if(!polLeader())return toast("Only a Leader can order strikes");if(NLCK.includes(k)&&nlcNeed())return toast(nlcNeed());if((k==="nuke"||k==="hbomb"||k==="icbm")&&typeof wcOn==="function"&&wcOn("nuke"))return toast("☢️ The World council nuclear ban is in force this season: no nuclear strikes");
   if((k==="icbm"||k==="nuke"||k==="hbomb")&&present(c)&&!bunkInside(c)&&!sure)return toast(`You are in ${c.name}: a ${W.n.toLowerCase()} here would kill you`);
+  if(typeof scyGuard==="function"&&scyGuard(c.country))return toast(`🛰 The God's Scythe is parked over ${c.country}: strikes there are blocked`);
   if(!m.wars[c.country]&&!wmdPeaceOk(c.country,k))return toast(k==="msl"?`You're not at war with ${c.country}`:`You can't strike ${c.country}`);
   // peacetime WMD strike (gas/nuke/ICBM): no war starts; a throwaway war record lets the usual damage, sanctions, approval and loyalty costs apply
   const w=m.wars[c.country]||(()=>{const e=milEnemy(c.country);return {front:0,enemyStr:e,enemyMax:e,weariness:0,peace:1}})();if(!m.wpn[k])return toast(`No ${W.n.toLowerCase()} in stock`);
@@ -6580,7 +6581,7 @@ function wpnRetal(n,w,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,now=Date.now();i
 // an enemy strike lands on city cid (n = attacker). Air defense may shoot a missile down first.
 function wpnLand(n,k,cid,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,W=WPNCFG.w[k],E=C.hit[k],c=CITIES[cid],now=Date.now();if(!W||!E||!c)return;const w=m.wars[n];
   if(bunkIntercept(k,null,c)){if(!quiet)sfPost(k,n,c.id,1);if(!Array.isArray(m.icpt))m.icpt=[];m.icpt=m.icpt.filter(x=>now-x.t<WPNCFG.animMs).concat([{city:c.id,t:now}]);
-    const t=`🛡 ${W.n} intercepted over ${c.name}${ironDome(c)?" by Iron Dome":""}`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);if(!quiet){toast(t);if(typeof wpnAnim==="function")wpnAnim()}return {icpt:1}}
+    const t=`🛡 ${W.n} intercepted over ${c.name}${ironDome(c)?" by Iron Dome":typeof scyGuard==="function"&&scyGuard(c.country)?" by the God's Scythe":""}`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);if(!quiet){toast(t);if(typeof wpnAnim==="function")wpnAnim()}return {icpt:1}}
   m.strikes=m.strikes.filter(s=>!(s.city===c.id&&s.k===k));m.strikes.push({city:c.id,k,t:now,until:now+W.days*DAYMS,dmg:W.city*E.city,from:n,foe:1});if(!quiet)sfPost(k,n,c.id,0);
   const dead=dmgStrike(k,c,0);if(k==="icbm"){if(w)w.rcd=now+C.cd.icbm*DAYMS;unhStrike(c,n)}if(w)w.front=Math.max(0,w.front-E.front);p.appr=Math.max(0,p.appr+E.appr);if(p.ctrl[c.country])p.ctrl[c.country].loy=Math.max(0,p.ctrl[c.country].loy+E.loy);
   const mine=S.own[c.id]&&Object.keys(S.own[c.id]).length,t=`${W.ico} ${n} struck ${c.name} with a ${W.n.toLowerCase()}: ${fmtPop(dead)} killed${w?`, front −${E.front}`:""}, approval ${E.appr}${mine?" · your businesses there are hit":""}`;
@@ -6617,7 +6618,7 @@ function bunkCheck(ev,rnd){const c=CITIES[ev.city];if(!c||!present(c))return {he
   return {here:1,inside:inside?1:0,cover:surv>0?1:0,surv,alive:r<surv?1:0}}
 /* Iron Dome: dev account only. While on, every missile and WMD aimed at a city of the country the dev governs is intercepted (100%). */
 const ironDome=c=>{try{const p=S.pol;return devGod()&&S.dome!==0&&!!c&&!!p&&p.r>=0&&!!p.c&&c.country===p.c}catch(e){return false}};
-function bunkIntercept(k,rnd,c){if(ironDome(c))return true;return !!(BUNKCFG.ad.k.includes(k)&&bunkAD()&&(rnd!=null?rnd:Math.random())<BUNKCFG.ad.p)}
+function bunkIntercept(k,rnd,c){if(ironDome(c))return true;if(c&&typeof scyGuard==="function"&&scyGuard(c.country))return true;return !!(BUNKCFG.ad.k.includes(k)&&bunkAD()&&(rnd!=null?rnd:Math.random())<BUNKCFG.ad.p)}
 // apply a landed strike to the player (call after the city damage); returns the bunkCheck result
 function bunkPlayer(k,c,by,quiet,mine){if(!mine&&devGod()&&S.dome!==0){if(!quiet)toast(`🛡 Iron Dome shielded you from the ${(WPNCFG.w[k]||{n:"strike"}).n.toLowerCase()} on ${c.name}`);return {here:0,dome:1}}if(typeof evLand==="function"&&evLand(k,c)){save();return {here:0,evac:1}}const r=bunkCheck({k,city:c.id}),W=WPNCFG.w[k];if(!r.here)return r;const say=t=>{S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);if(!quiet)toast(t)};
   if(r.alive){say(`🛡 You survived the ${W.n.toLowerCase()} in your bunker in ${c.name}${r.cover?": your cash is safe":""}`);return r}
@@ -14537,6 +14538,7 @@ function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),no
   if(s.cam)h+=R("📷 Spy camera",`See who is based in the target city or runs its country, and their net worth (Favor ${SCY.spyF}).${s.spy?`<br><b>${dxE(s.spy.c)}</b> · ${fmtDur(now-s.spy.at)} ago<br>`+s.spy.l.map(dxE).join("<br>"):""}`,B("spy","Spy",s.fav<SCY.spyF));
   if(s.mirror)h+=R("☀️ Solar mirror",`Scorch the target with a drought, or bless it: ends its disaster and shields its country for 24h (Favor ${SCY.sunF}, once a day${cd("sun")}).`,B("scorch","Scorch",s.fav<SCY.sunF||s.cd.sun>now)+" "+B("bless","Bless",s.fav<SCY.sunF||s.cd.sun>now));
   if(s.thr)h+=R("🚀 Ion thrusters",`Park the orbit over the target's country. Reap there has half the cooldown.${s.thrC?` Now over ${s.thrC}.`:""}`,B("thrgo","Move orbit here"));
+  h+=R("🛰 Defend a country",s.pk?`Parked over <b>${dxE(s.pk)}</b>: every strike on it is blocked, and all players see the Scythe guarding it.`:"Park the Scythe over the target's country. While parked, no strike can hit it, and every online player sees the Scythe defending it.",B("park",s.pk?"Park over target instead":"Park here")+(s.pk?" "+B("unpark","Resume orbit"):""));
   if(s.shield)h+=R("🛡 Shield","Charged. Blocks one anti-satellite hit, then recharges for free when you land.");}
   return h+"</div>"}
 function scyRestock(a,s){if(a==="bplague"){if(!s.bay.plague&&scyPay(SCY.plague))s.bay.plague=1}
@@ -14586,6 +14588,8 @@ function scyAct0(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTic
   else if(["bplague","bbs","flare","drone","stl","laser","cam","shield","mirror","thr"].includes(a))scyRestock(a,s);
   else if(a==="spy"){if(!s.cam||!c||s.fav<SCY.spyF)return;s.fav-=SCY.spyF;s.spy=scySpy(c);scySay(`Eyes on ${c.name}.`)}
   else if(a==="scorch"||a==="bless"){if(!s.mirror||!c||s.fav<SCY.sunF||s.cd.sun>now)return;if(a==="scorch"){if(scyMine(c))return toast(`${c.name} is one of your cities: the Scythe won't strike it`);let ev=scyStrike(c,"drought");if(!ev)return toast(`${c.name} is still recovering`);stNews(`☀️ The Scythe's mirror scorches ${c.name}`)}else{const d=gxS();delete d.act[c.id];s.shel[c.country]=Math.max(s.shel[c.country]||0,now+DAY);stNews(`☀️ Golden sunlight blesses ${c.name}`)}s.fav-=SCY.sunF;s.cd.sun=now+SCY.sunCd}
+  else if(a==="park"){if(!c)return;s.pk=c.country;scySay(`Holding position over ${c.country}. Nothing gets through.`);stNews(`🛰 The God's Scythe is now guarding ${c.country}`)}
+  else if(a==="unpark"){s.pk=null;scySay("Back to orbit.")}
   else if(a==="thrgo"){if(!s.thr||!c)return;s.thrC=c.country;scySay(`Shifting orbit over ${c.country}.`)}
   else if(a==="plague"){if(!c||!s.bay.plague||s.cd.plague>now)return;if(scyMine(c))return toast(`${c.name} is one of your cities: the Scythe won't strike it`);let ev=scyStrike(c,"plague",1);if(!ev)return toast(`${c.name} is still recovering`);s.bay.plague=0;s.cd.plague=now+SCY.plagueCd;stNews(`🦠 A plague swarm drifts over ${c.name}`)}
   else if(a==="bs"){if(!c||!s.bay.bs||s.bsUsed)return;if(scyMine(c))return toast(`${c.country} holds your cities: the Scythe won't strike it`);const n=scyBlackSun(c.country);scyPost("blacksun",c);s.bay.bs=0;s.bsUsed=1;stNews(`🌑 Black sun: the sky goes dark over ${c.country}`);scySay(`${n} cities in darkness.`)}
@@ -14688,7 +14692,11 @@ function scyModel(T,s,ghost){s=s||{};const g=new T.Group(),M=(c,m,r,e)=>new T.Me
 function scyKey(){const s=S.scy||{};return [s.laser|0,Math.min(3,s.flare|0),s.bay&&(s.bay.plague||s.bay.bs)?1:0,s.drones|0,s.stl|0,s.cam|0,s.shield|0,s.mirror|0,s.thr|0].join()}
 function scyFromKey(k){const a=String(k||"").split(",").map(x=>+x||0);return {laser:a[0],flare:a[1],bay:a[2]?1:0,drones:a[3],stl:a[4],cam:a[5],shield:a[6],mirror:a[7],thr:a[8]}}
 // published on the dev profile so every player sees the Scythe orbit; Lvl 5 stealth only hides it from weapons, players still see it
-function scyPub(){return scyDev()&&scyOn()?{end:Math.round(S.scy.end),k:scyKey()}:null}
+function scyPub(){return scyDev()&&scyOn()?{end:Math.round(S.scy.end),k:scyKey(),...(S.scy.pk?{pk:String(S.scy.pk).slice(0,60)}:{})}:null}
+// Parked Scythe: hovers over one country and blocks every strike on it. Shared through the player feed so everyone sees it.
+function scyPark(){const now=Date.now();if(scyDev())return scyOn()&&S.scy.pk?S.scy.pk:null;for(const p of (typeof ON!=="undefined"&&ON.players)||[]){const x=p&&p.scy;if(x&&typeof x.pk==="string"&&+x.end>now)return x.pk}return null}
+function scyGuard(n){return !!n&&scyPark()===n}
+let scyCtrC={};function scyCtr(n){if(scyCtrC[n])return scyCtrC[n];const l=CITIES.filter(c=>c.country===n);if(!l.length)return null;let w=0,x=0,y=0;for(const c of l){const k=Math.max(1,c.size||1);w+=k;x+=c.lon*k;y+=c.lat*k}return scyCtrC[n]={lon:x/w,lat:y/w}}
 function scySeen(){const now=Date.now();if(scyDev())return scyOn()||(S.scy&&S.scy.landed)?scyKey():null;for(const p of (typeof ON!=="undefined"&&ON.players)||[]){const x=p&&p.scy;if(x&&typeof x.k==="string"&&+x.end>now)return x.k}return null}
 function scyLayer(){let T=null,ren=null,scene=null,cam=null,key="";return {id:"scythe-sat",type:"custom",renderingMode:"3d",
   onAdd(mp,gl){loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;cam=new T.Camera();scene=new T.Scene();
@@ -14704,7 +14712,7 @@ function scyMapTick(){try{const on=scySeen()!=null;if(S.scy&&S.scy.on&&S.scy.end
 setInterval(scyMapTick,1000);
 // Launch / landing: the Scythe drops from its orbit spot to the capital pad (or climbs back) over SCYA.dur
 const SCYA={dur:9e3,pad:3e4};
-function scyWhere(now){const p=scyPos(now),s=S.scy;if(!scyDev()||!s)return {lon:p.lon,lat:p.lat,alt:SCYV.alt};const b=scyBase(),a=s.anim;if(!b)return {lon:p.lon,lat:p.lat,alt:SCYV.alt};
+function scyWhere(now){const pk=scyPark(),pc=pk&&scyCtr(pk);const p=pc?{lon:pc.lon,lat:pc.lat}:scyPos(now),s=S.scy;if(!scyDev()||!s)return {lon:p.lon,lat:p.lat,alt:SCYV.alt};const b=scyBase(),a=s.anim;if(!b)return {lon:p.lon,lat:p.lat,alt:SCYV.alt};
   const k=a?Math.min(1,(now-a.t0)/SCYA.dur):1;if(!a||k>=1){if(a)s.anim=null;return s.landed&&!s.on?{lon:b.lon,lat:b.lat,alt:SCYA.pad}:{lon:p.lon,lat:p.lat,alt:SCYV.alt}}
   const e=k*k*(3-2*k),f=a.up?e:1-e,o=a.up?scyPos(a.t0+SCYA.dur):scyPos(a.t0);let dl=o.lon-b.lon;dl=((dl+540)%360)-180;
   return {lon:b.lon+dl*f,lat:b.lat+(o.lat-b.lat)*f,alt:SCYA.pad+(SCYV.alt-SCYA.pad)*(a.up?e*e:f)}}
