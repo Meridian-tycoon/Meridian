@@ -14276,6 +14276,12 @@ PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||
   if(a==="tvtab"){tvTab=b.dataset.k;phRender()}
   else if(a==="antland"){antLand();phRender()}
   else if(a==="antin"){antBunker()}
+  else if(a==="aftab"){afTab=b.dataset.k;phRender()}
+  else if(a==="afbuy"){const [kd,k]=String(b.dataset.k).split(":");afBuy(kd,k);phRender()}
+  else if(a==="afstrike"){const q=id=>PH.el.querySelector("#"+id);if(q("afc"))afSel.c=q("afc").value===""?null:+q("afc").value;if(q("afk"))afSel.k=q("afk").value;if(q("afn"))afSel.n=+q("afn").value;afStrike();phRender()}
+  else if(a==="afspy"){const e=PH.el.querySelector("#afspy");afSpy(e&&e.value);phRender()}
+  else if(a==="aflift"||a==="afdrop"){const e=PH.el.querySelector("#aflc"),v=e&&e.value!==""?+e.value:null;if(v==null)toast("Pick a city");else if(a==="aflift")afLift(v);else afDrop(v);phRender()}
+  else if(a==="afback"){if(!AF().pl.c130)toast("Buy the C-130 first");else{const go=()=>{S.ant.on=1;S.ant.n=(S.ant.n||0)+1;save();draw();try{rotateTo(ANT,3.5)}catch(e){}toast(`✈ C-130 landed at ${ANT.n}. No flight was tracked.`)};if(AF().up.tank)go();else{toast("✈ C-130 airborne to "+ANT.n+" · 20 s, no flight line");setTimeout(go,20000)}}phRender()}
   else if(a==="antleave"){if(S.ant)S.ant.on=0;save();toast(`🛫 You left ${ANT.n}`);phRender()}
   else if(a==="tvpick"){tvDest=+b.dataset.c;phRender()}
   else if(a==="tvclr"){tvQ="";phRender();const i=PH.el.querySelector("#tvq");if(i)i.focus()}
@@ -14371,22 +14377,23 @@ const DAY=864e5;
 function scyPC(x){if(!x)return null;const ok=v=>Number.isInteger(+v)&&v!==null&&v!==""&&CITIES[+v]?+v:null;let c=ok(x.loc);if(c==null)c=ok(x.home);if(c==null&&Array.isArray(x.hq))c=ok(x.hq[0]);if(c==null&&Array.isArray(x.biz))c=ok(x.biz[0]);if(c==null&&x.govC){const l=CITIES.filter(k=>k.country===x.govC).sort((a,b)=>b.size-a.size);if(l[0])c=l[0].id}return c}
 /* ---------- Antarctica secret facility (Station Aurora) ---------- */
 /* flight: ANT_FLY ms from your city to the station; you can only enter the bunker once you're on site */
-const ANT_FLY=60000;
+const ANT_FLY=60000,antFlyMs=()=>{try{return AF().pl.sr71?10000:ANT_FLY}catch(e){return ANT_FLY}};
+const antDur=ms=>ms<60000?Math.ceil(ms/1000)+" s":fmtDur(ms);
 const antFly=()=>{const f=S.ant&&S.ant.fly;return f&&f.arr>Date.now()?f:null};
-function drawAnt(ctx){const f=antFly();if(f){const u=Math.min(1,(Date.now()-f.dep)/(f.arr-f.dep)),ip=d3.geoInterpolate([f.lon,f.lat],[ANT.lon,ANT.lat]),g=ip(u);ctx.save();ctx.beginPath();path({type:"LineString",coordinates:[[f.lon,f.lat],[ANT.lon,ANT.lat]]});ctx.setLineDash([3,5]);ctx.strokeStyle="#67e8f9";ctx.lineWidth=1.5;ctx.stroke();ctx.setLineDash([]);
+function drawAnt(ctx){const f=antFly();if(f){const u=Math.min(1,(Date.now()-f.dep)/(f.arr-f.dep)),ip=d3.geoInterpolate([f.lon,f.lat],[ANT.lon,ANT.lat]),g=ip(u);ctx.save();
     if(visible(g[0],g[1])){const [px,py]=proj(g);ctx.font="14px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("✈",px,py)}ctx.restore();draw()}
   if(!visible(ANT.lon,ANT.lat))return;const [x,y]=proj([ANT.lon,ANT.lat]),ok=antOk(),on=ok&&S.ant&&S.ant.on;ctx.save();ctx.textAlign="center";ctx.textBaseline="middle";
   ctx.beginPath();ctx.arc(x,y,12,0,7);ctx.fillStyle="rgba(12,74,110,.9)";ctx.fill();ctx.lineWidth=on?3:2;ctx.strokeStyle=on?"#be185d":ok?"#67e8f9":"#94a3b8";ctx.setLineDash(ok?[]:[3,2]);ctx.stroke();ctx.setLineDash([]);
-  ctx.font="13px system-ui,sans-serif";ctx.fillText(ok?"❄":"🔒",x,y+1);ctx.font="bold 10px system-ui,sans-serif";ctx.fillStyle=ok?"#a5f3fc":"#cbd5e1";ctx.fillText(ok?ANT.n+(on?" · YOU":""):"Restricted facility",x,y+22);ctx.restore()}
+  if(ok){ctx.save();ctx.translate(x+22,y+6);ctx.rotate(-.5);ctx.fillStyle="#334155";ctx.fillRect(-12,-2.5,24,5);ctx.fillStyle="#fde68a";for(let i=-9;i<=9;i+=6)ctx.fillRect(i,-.5,3,1);ctx.restore()}ctx.font="13px system-ui,sans-serif";ctx.fillText(ok?"❄":"🔒",x,y+1);ctx.font="bold 10px system-ui,sans-serif";ctx.fillStyle=ok?"#a5f3fc":"#cbd5e1";ctx.fillText(ok?ANT.n+(on?" · YOU":""):"Restricted facility",x,y+22);ctx.restore()}
 function antTap(x,y){if(!visible(ANT.lon,ANT.lat))return false;const [px,py]=proj([ANT.lon,ANT.lat]);if((px-x)**2+(py-y)**2>18*18)return false;
   if(!antOk()){toast("🔒 Restricted airspace: only moderators can land at this facility");antAlarm();return true}
   PH.open=true;PH.app="ant";phSave();phRender();return true}
 /* a normal player tapping the facility trips the alarm the moderators see (at most once a minute per player) */
 function antAlarm(){try{if(typeof ON==="undefined"||!ON.db||!ON.user||antOk())return;const n=Date.now();if(n-(antAlarm.t||0)<60000)return;antAlarm.t=n;
   ON.db.collection("balarm").add({by:ON.user.uid,name:String(S.name||"Player").slice(0,20),at:firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{})}catch(e){}}
-function antLand(){if(!antOk())return toast("🔒 Landing denied: moderator clearance required");if(S.ant&&S.ant.on)return antBunker();if(antFly())return toast(`✈ Already on the way · lands in ${fmtDur(S.ant.fly.arr-Date.now())}`);
+function antLand(){if(!antOk())return toast("🔒 Landing denied: moderator clearance required");if(S.ant&&S.ant.on)return antBunker();if(antFly())return toast(`✈ Already on the way · lands in ${antDur(S.ant.fly.arr-Date.now())}`);
   if(typeof traveling==="function"&&traveling())return toast("Finish your trip first");if(jailed())return toast("You can't fly from prison");
-  const c=here();S.ant=S.ant||{};S.ant.fly={dep:Date.now(),arr:Date.now()+ANT_FLY,lon:c.lon,lat:c.lat};save();try{rotateTo({lon:(c.lon+ANT.lon)/2,lat:(c.lat+ANT.lat)/2},1.3)}catch(e){}toast(`✈ Classified flight to ${ANT.n} · lands in ${fmtDur(ANT_FLY)}`);draw()}
+  const c=here();S.ant=S.ant||{};S.ant.fly={dep:Date.now(),arr:Date.now()+antFlyMs(),lon:c.lon,lat:c.lat};save();try{rotateTo({lon:(c.lon+ANT.lon)/2,lat:(c.lat+ANT.lat)/2},1.3)}catch(e){}toast(`✈ Classified flight to ${ANT.n} · lands in ${antDur(antFlyMs())}`);draw()}
 function antArrive(){const a=S.ant;if(!a||!a.fly||a.fly.arr>Date.now())return;a.fly=null;a.on=1;a.n=(a.n||0)+1;a.at=Date.now();save();toast(`❄️ Landed at ${ANT.n}, Antarctica`);try{rotateTo(ANT,3.5)}catch(e){}draw();if(PH.open&&PH.app==="ant")phRender();if(antOk())antBunker()}
 function antBunker(){if(!antOk())return toast("🔒 Moderator clearance required");if(!(S.ant&&S.ant.on))return toast(`Fly to ${ANT.n} first`);partLoad("bunker").then(api=>api.open()).catch(()=>toast("The bunker didn't load. Try again."))}
 /* background watcher: warnings sent to you by a moderator (everyone); meeting calls and intruder alarms (cleared accounts only) */
@@ -14397,13 +14404,68 @@ function antWatch(){try{antArrive()}catch(e){}try{if(typeof ON==="undefined"||!O
   ANTW.un.push(db.collection("bchat").orderBy("at","desc").limit(1).onSnapshot(q=>q.docChanges().forEach(c=>{const v=c.doc.data()||{};if(c.type!=="added"||v.k!=="c"||v.by===u||ts(v.at)<ANTW.t0)return;toast(`📣 ${v.name||"A moderator"} called a meeting in ${ANT.n}`);try{if("Notification" in window&&Notification.permission==="granted"&&document.hidden)new Notification(`Meeting in ${ANT.n}`,{body:`${v.name||"A moderator"} called a meeting`})}catch(e){}}),()=>{}));
   ANTW.un.push(db.collection("balarm").orderBy("at","desc").limit(1).onSnapshot(q=>q.docChanges().forEach(c=>{const v=c.doc.data()||{};if(c.type!=="added"||ts(v.at)<ANTW.t0)return;toast(`🚨 Intruder alert: ${v.name||"A player"} tried to reach ${ANT.n}`)}),()=>{}))}catch(e){console.warn("antWatch",e)}}
 setInterval(antWatch,3000);
+/* ---------- Aurora airfield: secret hangar at Station Aurora (cleared accounts only). No flight paths are ever drawn for these planes. ----------
+   SR-71 (Jetfire): Mach 3 recon. Cuts the flight to the station to 10 s and runs spy flights over any country.
+   C-130: hidden airlift. Flies you from the station to any city (or back) with no trip line on the map, and airdrops relief to a damaged city.
+   B-2: stealth bomber. Drops Aurora warheads on any city with no launch warning, no trajectory, no sanctions or approval cost; other players only see "unknown origin". */
+const AIRF={pl:{sr71:{n:"SR-71 (Jetfire)",ico:"🛩",cost:25e9,d:"Mach 3 recon: 10 s flights to Aurora, spy flights over any country"},
+  c130:{n:"C-130 Hercules",ico:"✈",cost:5e9,d:"Hidden airlift to any city with no trip line, relief airdrops"},
+  b2:{n:"B-2 Spirit",ico:"🦇",cost:80e9,d:"Stealth bomber: untraceable strikes with Aurora warheads"}},
+  wh:{conv:{n:"Stealth bunker buster",k:"msl",cost:50e6},nuke:{n:"Untraceable nuclear warhead",k:"nuke",cost:2e9},hbomb:{n:"Untraceable thermonuclear warhead",k:"hbomb",cost:150e9}},
+  up:{crew:{n:"Hangar crew",cost:3e9,d:"All airfield cooldowns halved"},coat:{n:"Radar-absorbent coating",cost:10e9,d:"B-2 can carry 3 warheads per sortie"},tank:{n:"Aerial refuelling tanker",cost:4e9,d:"C-130 airlift is instant (no 20 s flight)"}},
+  cd:{b2:600000,spy:300000,drop:900000}};
+const AF=()=>{S.ant=S.ant||{};const a=S.ant;const f=a.af=a.af&&typeof a.af==="object"?a.af:{};f.pl=f.pl||{};f.wh=f.wh||{};f.up=f.up||{};f.cd=f.cd||{};return f};
+const afCd=k=>Math.max(0,(AF().cd[k]||0)-Date.now());
+const afSet=k=>{AF().cd[k]=Date.now()+AIRF.cd[k]*(AF().up.crew?.5:1)};
+let afTab="hangar",afSel={c:null,k:"nuke",n:1,spy:null};
+function afBuy(kind,k){if(!antOk())return;const A=AF(),T=AIRF[kind][k];if(!T)return;const n=kind==="wh"?1:1;
+  if(kind!=="wh"&&(kind==="pl"?A.pl[k]:A.up[k]))return toast("Already owned");if(S.cash<T.cost)return toast(`${T.n} costs ${fmt(T.cost)}`);
+  S.cash-=T.cost;if(kind==="pl")A.pl[k]=1;else if(kind==="up")A.up[k]=1;else A.wh[k]=(A.wh[k]||0)+n;save();hud();toast(`${kind==="pl"?AIRF.pl[k].ico:"✅"} ${T.n} ${kind==="wh"?"added to the Aurora armory":"is ready at Station Aurora"}`)}
+/* B-2 sortie: city damage like the normal weapon, but no war needed, no sanctions, no approval, no launch warning, no trajectory, shown to others as unknown */
+function afStrike(){const A=AF(),c=CITIES[afSel.c],W=AIRF.wh[afSel.k];if(!antOk()||!A.pl.b2)return toast("Buy the B-2 first");if(!(S.ant&&S.ant.on))return toast(`The B-2 flies from ${ANT.n}: fly there first`);
+  if(!c||!W)return toast("Pick a target city");const cd=afCd("b2");if(cd)return toast(`B-2 is refuelling · ready in ${fmtDur(cd)}`);const max=A.up.coat?3:1,n=Math.max(1,Math.min(max,afSel.n|0,A.wh[afSel.k]||0));if(!(A.wh[afSel.k]>0))return toast(`No ${W.n.toLowerCase()} in the armory`);
+  const k=W.k,WW=WPNCFG.w[k];if((k==="nuke"||k==="hbomb")&&present(c)&&!bunkInside(c))return toast(`You are in ${c.name}: that would kill you`);
+  let dead=0;for(let i=0;i<n;i++)dead+=dmgStrike(k,c,1)||0;A.wh[afSel.k]-=n;afSet("b2");
+  try{if(typeof sfBE==="function"&&sfBE())sfBE().collection("strikes").add({uid:ON.user.uid,nm:"Unknown",k,f:"an unknown origin",c:c.id,i:0,at:window.firebase.firestore.FieldValue.serverTimestamp()}).then(r=>{SF.seen[r.id]=1},()=>{})}catch(e){}
+  try{SF.fx.push({c:c.id,k,i:0,t:Date.now()+WPNCFG.animMs})}catch(e){}
+  const dl=dmgLvl(c),t=`🦇 B-2 ${n>1?n+"× ":""}${WW.ico} ${W.n} on ${c.name}, ${c.country}: ${fmtPop(dead)} killed, city ${dmgWord(dl)} ${dmgPct(dl)} · untraceable`;try{logPol(t)}catch(e){}toast(t);save();hud();draw()}
+/* SR-71 spy flight: enemy strength, wars and damage of one country */
+function afSpy(country){const A=AF();if(!A.pl.sr71)return toast("Buy the SR-71 (Jetfire) first");const cd=afCd("spy");if(cd)return toast(`Jetfire is refuelling · ready in ${fmtDur(cd)}`);if(!country)return;afSet("spy");
+  let str=0;try{str=Math.round(milEnemy(country))}catch(e){}const cs=CITIES.filter(c=>c.country===country),dm=cs.map(c=>({n:c.name,d:dmgLvl(c)})).filter(x=>x.d>.01);
+  let gov="";try{const L=(typeof ON!=="undefined"&&ON.lb)||[];const g=L.find(x=>x.govC===country);if(g)gov=g.name}catch(e){}
+  afSel.spy={c:country,t:Date.now(),str,cities:cs.length,gov,dm:dm.map(x=>`${x.n} ${dmgPct(x.d)}`).slice(0,6)};save();toast(`🛩 Jetfire overflight of ${country} complete`)}
+/* C-130 hidden airlift: you appear in the target city (or back at Aurora) with no trip line */
+function afLift(cid){const A=AF();if(!A.pl.c130)return toast("Buy the C-130 first");if(typeof traveling==="function"&&traveling())return toast("Finish your trip first");if(jailed())return toast("You can't fly from prison");
+  const c=CITIES[cid];if(!c)return;if(unhOn(c))return toast(`${c.name} is uninhabitable`);const go=()=>{S.loc={city:c.id,lat:c.lat,lon:c.lon};if(S.ant)S.ant.on=0;try{onLocPub()}catch(e){}save();hud();draw();try{rotateTo(c,3)}catch(e){}toast(`✈ C-130 landed in ${c.name}. No flight was tracked.`)};
+  if(A.up.tank)go();else{toast(`✈ C-130 airborne to ${c.name} · 20 s, no flight line`);setTimeout(go,20000)}}
+function afDrop(cid){const A=AF(),c=CITIES[cid];if(!A.pl.c130)return toast("Buy the C-130 first");const cd=afCd("drop");if(cd)return toast(`C-130 is loading · ready in ${fmtDur(cd)}`);if(!c)return;const o=S.dmg&&S.dmg[c.id];if(!o||!(dmgLvl(c)>.01))return toast(`${c.name} has no damage to repair`);
+  afSet("drop");o.l0=Math.round(dmgLvl(c)*.5*1e4)/1e4;o.t=Date.now();save();draw();toast(`📦 Relief airdrop over ${c.name}: damage halved`)}
+function afHtml(){const A=AF(),onSite=!!(S.ant&&S.ant.on),b=(a,v,t,dis,bg)=>`<button class="buy" data-ph="${a}" data-k="${v}" ${dis?"disabled":""} style="min-width:0;color:#fff;background:${bg||"#0e7490"}!important;border-color:#67e8f9">${t}</button>`;
+  let h=`<div class="ph-seg">${[["hangar","Hangar"],["arm","Armory"],["ops","Operations"]].map(([k,n])=>`<button data-ph="aftab" data-k="${k}" aria-pressed="${afTab===k}">${n}</button>`).join("")}</div>`;
+  const cityOpts=sel=>CITIES.slice().sort((x,y)=>x.name.localeCompare(y.name)).map(c=>`<option value="${c.id}" ${sel===c.id?"selected":""}>${c.name}, ${c.country}</option>`).join("");
+  if(afTab==="hangar"){h+=Object.entries(AIRF.pl).map(([k,P])=>`<div class="ph-card"><b>${P.ico} ${P.n}</b><span>${P.d}</span><div style="margin-top:6px">${A.pl[k]?`<b style="color:#4ade80">✓ In the hangar</b>`:b("afbuy","pl:"+k,"Buy · "+fmt(P.cost),S.cash<P.cost)}</div></div>`).join("")
+    +`<div class="ph-card"><b>Upgrades</b>${Object.entries(AIRF.up).map(([k,U])=>`<div class="ph-rows" style="margin-top:6px"><div><span>${U.n}<br><small>${U.d}</small></span><b>${A.up[k]?"✓":b("afbuy","up:"+k,fmt(U.cost),S.cash<U.cost)}</b></div></div>`).join("")}</div>`}
+  else if(afTab==="arm"){h+=`<div class="ph-card"><b>☢ Aurora armory</b><span>Warheads for the B-2. They never show up in your government arsenal.</span>${Object.entries(AIRF.wh).map(([k,W])=>`<div class="ph-rows" style="margin-top:6px"><div><span>${W.n}<br><small>${A.wh[k]||0} in stock</small></span><b>${b("afbuy","wh:"+k,"+1 · "+fmt(W.cost),S.cash<W.cost)}</b></div></div>`).join("")}</div>`}
+  else{const cdB=afCd("b2"),cdS=afCd("spy"),cdD=afCd("drop");
+    h+=`<div class="ph-card"><b>🦇 B-2 stealth strike</b>${!A.pl.b2?`<span>Buy the B-2 in the Hangar first.</span>`:`<span>${onSite?"Launches from the Aurora airfield":"You must be at "+ANT.n+" to launch"} · no warning, no trajectory, no sanctions${cdB?` · ready in ${antDur(cdB)}`:""}</span>
+      <select class="ph-calc" id="afc" style="font-size:13px"><option value="">Target city…</option>${cityOpts(afSel.c)}</select>
+      <select class="ph-calc" id="afk" style="font-size:13px">${Object.entries(AIRF.wh).map(([k,W])=>`<option value="${k}" ${afSel.k===k?"selected":""}>${W.n} (${A.wh[k]||0})</option>`).join("")}</select>
+      ${A.up.coat?`<select class="ph-calc" id="afn" style="font-size:13px">${[1,2,3].map(n=>`<option value="${n}" ${afSel.n===n?"selected":""}>${n} per sortie</option>`).join("")}</select>`:""}
+      <div style="margin-top:6px">${b("afstrike","", "Launch sortie",!onSite||!!cdB,"#7f1d1d")}</div>`}</div>
+    <div class="ph-card"><b>🛩 Jetfire spy flight</b>${!A.pl.sr71?`<span>Buy the SR-71 (Jetfire) first.</span>`:`<span>Overfly a country at Mach 3${cdS?` · ready in ${fmtDur(cdS)}`:""}</span><select class="ph-calc" id="afspy" style="font-size:13px"><option value="">Country…</option>${[...new Set(CITIES.map(c=>c.country))].sort().map(n=>`<option>${n}</option>`).join("")}</select><div style="margin-top:6px">${b("afspy","", "Fly over",!!cdS)}</div>
+      ${afSel.spy?`<div class="ph-rows" style="margin-top:6px"><div><span>${afSel.spy.c}</span><b>${ago0(afSel.spy.t)}</b></div><div><span>Army strength</span><b>${afSel.spy.str}</b></div><div><span>Cities</span><b>${afSel.spy.cities}</b></div><div><span>Player government</span><b>${afSel.spy.gov||"none"}</b></div><div><span>Damaged</span><b>${afSel.spy.dm.join(", ")||"none"}</b></div></div>`:""}`}</div>
+    <div class="ph-card"><b>✈ C-130 airlift</b>${!A.pl.c130?`<span>Buy the C-130 first.</span>`:`<span>Hidden flight, no trip line${A.up.tank?" · instant":" · 20 s"}${cdD?` · airdrop ready in ${fmtDur(cdD)}`:""}</span><select class="ph-calc" id="aflc" style="font-size:13px"><option value="">City…</option>${cityOpts(null)}</select>
+      <div style="display:flex;gap:6px;margin-top:6px">${b("aflift","", "Fly me there")}${b("afdrop","", "Relief airdrop",!!cdD,"#15803d")}</div>${!onSite?`<div style="margin-top:6px">${b("afback","", "Fly back to "+ANT.n)}</div>`:""}`}</div>`}
+  return h}
+const ago0=t=>{const m=Math.round((Date.now()-t)/60000);return m<1?"just now":m+" min ago"};
 function antApp(){if(!antOk())return `<div class="ph-card"><b>🔒 ${ANT.n}</b><span>A classified facility deep in the Antarctic interior. You can see it on the map, but only moderators have clearance to land or open this tab.</span></div><p class="ph-sub">Access is granted by the developer only.</p>`;
   const a=S.ant||{},on=!!a.on,f=antFly(),mods=Object.keys(MODERATORS).length;
   return `<div class="ph-card storm"><b>❄️ ${ANT.n}</b><span>Classified · ${Math.abs(ANT.lat).toFixed(1)}°S ${ANT.lon.toFixed(1)}°E · ${devGod()?"Developer":"Moderator"} clearance</span></div>
   <div class="ph-card"><b>Status</b><div class="ph-rows"><div><span>You</span><b>${on?"On site":f?"In the air":"Not on site"}</b></div><div><span>Visits</span><b>${a.n||0}</b></div><div><span>Cleared staff</span><b>${mods+DEV_UIDS.length}</b></div></div>
-  ${f?`<div class="bar" style="height:6px;margin-top:6px"><i style="width:${Math.min(100,(Date.now()-f.dep)/(f.arr-f.dep)*100)}%;background:#67e8f9"></i></div><span>Lands in ${fmtDur(f.arr-Date.now())}</span>`:""}</div>
+  ${f?`<div class="bar" style="height:6px;margin-top:6px"><i style="width:${Math.min(100,(Date.now()-f.dep)/(f.arr-f.dep)*100)}%;background:#67e8f9"></i></div><span>Lands in ${antDur(f.arr-Date.now())}</span>`:""}</div>
   ${on?`<button class="ph-item" data-ph="antin"><span>Enter the bunker<small>Lift down · mission board · computers · conference desk · mod chat</small></span><b>🚪</b></button>
-  <button class="ph-item" data-ph="antleave"><span>Leave the facility<small>Fly back to ${here().name}</small></span><b>🛫</b></button>`:f?"":`<button class="ph-item" data-ph="antland"><span>Fly to ${ANT.n}<small>Classified flight · ${fmtDur(ANT_FLY)} · moderators and developer only</small></span><b>✈</b></button>`}`}
+  <button class="ph-item" data-ph="antleave"><span>Leave the facility<small>Fly back to ${here().name}</small></span><b>🛫</b></button>`:f?"":`<button class="ph-item" data-ph="antland"><span>Fly to ${ANT.n}<small>Classified flight · ${antDur(antFlyMs())} · moderators and developer only</small></span><b>✈</b></button>`}
+  <h4 style="margin:12px 0 4px;color:#a5f3fc">🛬 Aurora airfield</h4>${afHtml()}`}
 function scyDev(){return typeof ON!=="undefined"&&ON.user&&DEV_UIDS.includes(ON.user.uid)}
 function scy(){const s=S.scy=S.scy&&typeof S.scy==="object"?S.scy:{};if(!s.bay)s.bay={};if(!s.shel)s.shel={};if(!s.cd)s.cd={};if(s.auto==null)s.auto=1;return s}
 function scyOn(){const s=S.scy;return !!(s&&s.on&&s.end>Date.now())}

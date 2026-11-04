@@ -11,6 +11,7 @@ const ST=[
  {k:"pc",n:"Computer 1",x0:-13,x1:-11.9,z0:-6.5,z1:-5.1},{k:"pc",n:"Computer 2",x0:-13,x1:-11.9,z0:-3.5,z1:-2.1},{k:"pc",n:"Computer 3",x0:-13,x1:-11.9,z0:-.5,z1:.9},
  {k:"pc",n:"Computer 4",x0:11.9,x1:13,z0:-6.5,z1:-5.1},{k:"pc",n:"Computer 5",x0:11.9,x1:13,z0:-3.5,z1:-2.1},{k:"pc",n:"Computer 6",x0:11.9,x1:13,z0:-.5,z1:.9},
  {k:"rack",n:"Server racks",x0:-13,x1:-11.8,z0:3,z1:7},{k:"rack",n:"Server racks",x0:11.8,x1:13,z0:3,z1:7},
+ {k:"af",n:"Airfield control",x0:9.4,x1:11.6,z0:8.3,z1:9},
  {k:"exit",n:"Exit hatch",x0:-1.2,x1:1.2,z0:8.6,z1:9,walk:1}];
 /* desk chairs you can sit in: [x, z, facing] */
 const CHAIRS=[];for(let i=0;i<5;i++){CHAIRS.push([-3.6+i*1.8,-3.65,Math.PI],[-3.6+i*1.8,.65,0])}CHAIRS.push([-5.1,-1.5,-Math.PI/2],[5.1,-1.5,Math.PI/2]);
@@ -108,6 +109,9 @@ function build(T){B.T=T;const el=B.el;let ren;try{ren=new T.WebGLRenderer({antia
   // two windows in the front wall looking out at the Antarctic storm (animated canvas texture)
   {const cv2=document.createElement("canvas");cv2.width=256;cv2.height=128;B.snowC=cv2;B.flakes=[];for(let i=0;i<90;i++)B.flakes.push({x:Math.random()*256,y:Math.random()*128,v:20+Math.random()*50,r:.6+Math.random()*1.6});B.snowT=new T.CanvasTexture(cv2);
     for(const x of [-6.5,6.5]){ofBox(T,room,4.4,1.9,.3,0x1f2937,x,1.25,RD/2-.05,{m:.5});const w=new T.Mesh(new T.PlaneGeometry(4,1.5),new T.MeshBasicMaterial({map:B.snowT}));w.position.set(x,2.2,RD/2-.21);w.rotation.y=Math.PI;room.add(w)}}
+  // airfield control desk by the front wall: radar screen + sign
+  {const g=new T.Group();ofBox(T,g,2.2,.9,.7,0x1e293b,0,0,0);ofBox(T,g,2,.04,.6,0x334155,0,.9,0);const sc2=ofScreenTex(T,"AIRFIELD",["SR-71 · C-130 · B-2","Press E"]);const m=new T.Mesh(new T.PlaneGeometry(1.4,.8),new T.MeshBasicMaterial({map:sc2}));m.position.set(0,1.45,-.2);g.add(m);
+    g.position.set(10.5,0,8.65);g.rotation.y=Math.PI;room.add(g);const l=label(T,"AIRFIELD","#fde68a",2);l.position.set(10.5,2.6,8.7);room.add(l)}
   // me
   const av=person(T,devGod()?0x854d0e:0x1e3a8a);sc.add(av);B.av=av;B.legs=av.userData.legs;
   cv.addEventListener("pointerdown",e=>{B.drag={x:e.clientX,id:e.pointerId};cv.focus()});cv.addEventListener("pointermove",e=>{if(B.drag&&B.drag.id===e.pointerId){B.p.yaw-=(e.clientX-B.drag.x)*.006;B.drag.x=e.clientX}});
@@ -141,7 +145,7 @@ function others(dt){const T=B.T,seen={};for(const o of BP.others){seen[o.uid]=1;
   const dx=o.x-g.position.x,dz=o.z-g.position.z,mv=Math.hypot(dx,dz)>.03;g.position.x+=dx*Math.min(1,dt*8);g.position.z+=dz*Math.min(1,dt*8);g.rotation.y=o.r;
   g.userData.wt=mv?g.userData.wt+dt*10:0;const sw=Math.sin(g.userData.wt)*.5;g.userData.legs[0].rotation.x=sw;g.userData.legs[1].rotation.x=-sw}
   for(const u in B.others)if(!seen[u]){B.scene.remove(B.others[u]);delete B.others[u]}}
-function use(){const n=B.near;if(!n)return;if(n.k==="exit"){close();return}if(n.k==="chair"){B.sit=n.c;B.p.x=n.c[0];B.p.z=n.c[1];B.near=null;return}if(n.k==="stand"){stand();B.near=null;return}panel(n.k)}
+function use(){const n=B.near;if(!n)return;if(n.k==="exit"){close();return}if(n.k==="af"){close();afTab="hangar";PH.open=true;PH.app="ant";phSave();phRender();return}if(n.k==="chair"){B.sit=n.c;B.p.x=n.c[0];B.p.z=n.c[1];B.near=null;return}if(n.k==="stand"){stand();B.near=null;return}panel(n.k)}
 function stand(){if(!B.sit)return;const c=B.sit,dx=c[0],dz=c[1]+1.5,m=Math.hypot(dx,dz)||1;B.sit=null;B.p.x=c[0]+dx/m*.7;B.p.z=c[1]+dz/m*.7;B.legs[0].rotation.x=B.legs[1].rotation.x=0}
 function panel(k){if(B.panel&&B.panel.parentNode)B.panel.remove();B.panel=null;if(!k){if(B.cv)B.cv.focus();return}const p=B.panel=document.createElement("div");p.className="bk-pan";B.el.appendChild(p);fill(k)}
 function refreshBoard(){try{if(B.boardM){B.boardM.map.dispose();B.boardM.map=boardTex(B.T);B.boardM.needsUpdate=true}}catch(e){}}
