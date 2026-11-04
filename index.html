@@ -5785,7 +5785,7 @@ const exiK=s=>s.replace(".","_");
 const exiOwner=()=>!!(exOk()&&EX.ny&&EX.ny.uid===ON.user.uid&&exOwn());
 const exiQty=s=>EXI.uid&&EX.ny&&EXI.uid===EX.ny.uid?Math.max(0,+EXI.inv[exiK(s)]||0):0;
 /* Buy max: fill in the most shares the player can afford (owner stock-up has no fee; buyers pay the fee and are capped by the exchange's stock) */
-function exiMax(){const a=AK[EXI.sel];if(!a)return toast("Pick a stock");const p=MK().px[a.s];if(!(p>0))return;const own=exiOwner();
+function exiMax(){const a=AK[EXI.sel];if(!a)return toast("Pick a stock");const own=exiOwner(),p=own?MK().px[a.s]:exiPx(a.s);if(!(p>0))return;
   let q=exiRound(a,Math.max(0,S.cash)/(p*(own?1:1+EXFEE)));if(!own)q=Math.min(q,exiRound(a,exiQty(a.s)));
   while(q>0&&p*q*(own?1:1+EXFEE)>S.cash)q=exiRound(a,a.t==="c"?q-1e-6:q-1);
   if(!(q>0))return toast(own?"You can't afford any "+a.s:exiQty(a.s)>0?"You can't afford any "+a.s:"The exchange has no "+a.s);
@@ -5832,9 +5832,13 @@ function exiHold(s,q,p){const m=MK(),h=m.hold[s]=m.hold[s]||{q:0,avg:0};if(q>0){
 /* Exchange account (Mark, 2026-10-31): a buyer's purchase is held in their exchange account (S.exb shares x market price, so it rises and falls with the market; the game covers price moves).
    Selling back pays the buyer from that account. The owner only receives the 0.4% fee on each buy and sell and never pays a seller. */
 /* players: buy from / sell to the exchange's stock; owner: stock up (pay the market) or unstock (sell back to the market) */
+/* exchange trades are checked by the rules against the shared world/mkt price, so players trade at that price.
+   When the master save is closed, a player's local price drifts away from it (energy shares rise fast in wartime) and the trade was refused. */
+function exiPx(s){const w=typeof MKW!=="undefined"&&MKW&&MKW.px&&MKW.px[s];return w>0?w:MK().px[s]}
 function exiDo(kind){if(!exOk())return toast("Sign in to trade with the exchange");if(!EX.ny||!EX.ny.uid)return toast("No one owns the exchange yet");if(EXI.busy.t)return;
   const s=EXI.sel,a=AK[s];if(!a)return toast("Pick a stock");let q=exiRound(a,Number(String(EXI.amt).replace(/,/g,"").trim()));if(!(q>0)||!isFinite(q))return toast(a.t==="c"?"Enter an amount above 0":"Enter a whole number of shares");
-  const m=MK(),p=m.px[s],f=EXFEE,own=exiOwner(),hd=m.hold[s],k=exiK(s);
+  const m=MK(),own=exiOwner(),p=own?m.px[s]:exiPx(s),f=EXFEE,hd=m.hold[s],k=exiK(s);
+  if(!own&&(kind==="buy"||kind==="sell")&&!(typeof MKW!=="undefined"&&MKW&&MKW.px&&MKW.px[s]>0))return toast(`${s} has no shared market price yet. Try again once the exchange owner is online.`);
   if(!own&&EX.ny.uid===ON.user.uid)return toast("Open your exchange to stock it");
   let run,ok;
   if((kind==="buy"||kind==="sell")&&!own){const e=mktCapErr(p*q);if(e)return toast(e)}
@@ -5854,7 +5858,7 @@ function exiDo(kind){if(!exOk())return toast("Sign in to trade with the exchange
 function exiHtml(){const m=MK(),own=exiOwner(),ny=EX.ny;if(!own&&!EXI.pub&&exOk()&&S.exb&&Object.keys(S.exb).length){EXI.pub=1;exiAcctPub()}
   if(!exOk())return `<div class="mdx-card" style="margin-top:12px"><p class="ph-sub">Sign in to see the exchange's stock.</p></div>`;
   if(!ny||!ny.uid)return `<div class="mdx-card" style="margin-top:12px"><p class="ph-sub">No one owns the New York Stock Exchange yet. Open it in ${EXC.city} to stock it.</p></div>`;
-  const rows=ASSETS.map(a=>({a,q:exiQty(a.s)})),tot=rows.reduce((t,r)=>t+r.q*m.px[r.a.s],0),held=rows.filter(r=>r.q>0),sa=AK[EXI.sel]||AK.AAPL,sq=exiQty(sa.s),p=m.px[sa.s],f=EXFEE,hd=m.hold[sa.s];
+  const rows=ASSETS.map(a=>({a,q:exiQty(a.s)})),tot=rows.reduce((t,r)=>t+r.q*m.px[r.a.s],0),held=rows.filter(r=>r.q>0),sa=AK[EXI.sel]||AK.AAPL,sq=exiQty(sa.s),p=own?m.px[sa.s]:exiPx(sa.s),f=EXFEE,hd=m.hold[sa.s];
   const q=exiRound(sa,Number(String(EXI.amt).replace(/,/g,""))),qv=q>0&&isFinite(q)?q:0;
   const btn=(k,t,b,dis)=>`<button data-md="exi" data-k="${k}"${b?' class="b"':""} ${dis||EXI.busy.t?"disabled":""}>${t}</button>`;
   return `<div class="mdx-card" style="margin-top:12px"><h3 style="margin:0">🏛 ${devEsc(ny.name||"Stock exchange")}</h3><div class="ph-sub" style="margin:4px 0 10px">Owned by ${devEsc(own?"you":ny.own||"a player")} · holding ${held.length} assets worth ${fmt(tot)} at market prices${own?" · players buy from this stock and sell back from their exchange account; you earn the 0.4% fee on every trade":" · buy from what the exchange holds, or sell your shares to it, at the market price"}</div>
@@ -5865,7 +5869,7 @@ function exiHtml(){const m=MK(),own=exiOwner(),ny=EX.ny;if(!own&&!EXI.pub&&exOk(
   <div class="mkd-tr" style="grid-template-columns:${own?"1fr auto auto auto auto":"1fr auto auto auto"};margin-top:8px"><input id="exi-amt" type="text" inputmode="decimal" autocomplete="off" placeholder="${sa.t==="c"?"Amount of "+sa.s:"Number of shares"}" value="${devEsc(EXI.amt)}">${btn("max","Buy max",0,0)}${own?btn("stock","Stock up",1,!qv||S.cash<p*qv)+btn("movein","Move my shares in",0,!qv||!hd||hd.q<qv-1e-9)+btn("unstock","Unstock",0,!qv||sq<qv-1e-9):btn("buy","Buy",1,!qv||sq<qv-1e-9||S.cash<p*qv*(1+f))+btn("sell","Sell",0,!qv||!hd||hd.q<qv-1e-9||exiSellable(sa.s)<qv-1e-9)}</div>
   <div id="exi-amtt" class="ph-sub" style="margin-top:4px">${exiAmtTxt()}</div>${own&&EXI.fills.length?`<p class="ph-sub">Collecting ${EXI.fills.length} trade${EXI.fills.length>1?"s":""}…</p>`:""}</div>${own?exiAcctHtml():""}`}
 function exiAmtTxt(){const a=AK[EXI.sel];if(!a)return"";const q=exiRound(a,Number(String(EXI.amt).replace(/,/g,"")));if(!(q>0)||!isFinite(q))return exiOwner()?"Stock up buys new shares at the market price (no fee). Move my shares in moves shares you own into the exchange (no fee). Unstock moves exchange shares back into your portfolio.":"Pick an asset, type an amount, then buy or sell.";
-  const p=MK().px[a.s],f=EXFEE;return exiOwner()?`Stock up costs ${fmt(p*q)} (no fee) · moving shares in or out is free`:`Buy costs ${fmt(p*q*(1+f))} · sell pays ${fmt(p*q*(1-f))} (fee ${f*100}%)`}
+  const p=exiOwner()?MK().px[a.s]:exiPx(a.s),f=EXFEE;return exiOwner()?`Stock up costs ${fmt(p*q)} (no fee) · moving shares in or out is free`:`Buy costs ${fmt(p*q*(1+f))} · sell pays ${fmt(p*q*(1-f))} (fee ${f*100}%)`}
 /* ---------- playtest progress reports: opt-in, sent to a Google Form (config: PLAYTEST near the state section) ---------- */
 const ptOK=()=>!!PLAYTEST.form;
 const ptEsc=t=>String(t).replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
