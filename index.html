@@ -9336,8 +9336,8 @@ function pinsPub(){const out=[];for(const key in S.pos){if(!key.startsWith("biz:
 function obPins(p,c){const out=[];for(const s of Array.isArray(p.pins)?p.pins:[]){if(typeof s!=="string")continue;const [id,k,la,lo]=s.split(":");if(+id!==c.id)continue;const b=BIZ.find(x=>x.k===k),lat=+la,lon=+lo;if(!b||!isFinite(lat)||!isFinite(lon)||Math.abs(lat-c.lat)>.5||Math.abs(lon-c.lon)>.5)continue;out.push({b,lat,lon})}return out}
 function onLocPub(){try{if(!ON.ready||!ON.user)return;const l=S.loc&&S.loc.city;if(l!==ON.lastLoc){ON.lastLoc=l;onPublish(true)}}catch(e){}}
 function onPublish(force){if(!ON.ready||!ON.user||ON.deleting)return;const d=onPubData(),sig=JSON.stringify(d),n=Date.now();
-  if(!force&&!(n-ON.lastPub>=60000||(sig!==ON.lastSig&&n-ON.lastPub>=60000)))return;
-  if(!force&&sig===ON.lastSig&&n-ON.lastPub<300000)return;
+  if(!force&&n-ON.lastPub<ONPUB.min)return;
+  if(!force&&sig===ON.lastSig&&n-ON.lastPub<ONPUB.max)return;
   ON.lastPub=n;ON.lastSig=sig;d.lastSeen=window.firebase.firestore.FieldValue.serverTimestamp();
   return ON.db.collection("players").doc(ON.user.uid).set(d).catch(e=>{ON.err="Couldn't publish: "+(e&&e.code||e)})}
 /* shared leaderboard: master publishes world/rivals; everyone's profile is published on save (throttled by onPublish) and every 15 s tick */
@@ -9347,6 +9347,12 @@ function wrPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;co
   ON.wrPub=n;ON.wrSig=sig;d.updated=window.firebase.firestore.FieldValue.serverTimestamp();
   ON.db.collection("world").doc("rivals").set(d).catch(e=>{ON.err="Couldn't publish world rivals: "+(e&&e.code||e)})}
 function onSaved(){if(!ON.ready||!ON.user)return;onPublish(false);wrPublish(false);wwPublish(false)}
+/* ---- Firestore read saver: pause every live feed while the game is hidden for a minute, resume (and catch up) when it is back ---- */
+const NETCFG={idle:60000};const NET={t:0,off:false};
+function netPause(){NET.t=0;try{if(ON.db&&!NET.off&&document.visibilityState==="hidden"){NET.off=true;ON.db.disableNetwork().catch(()=>{NET.off=false})}}catch(e){}}
+function netResume(){if(NET.t){clearTimeout(NET.t);NET.t=0}try{if(ON.db&&NET.off){NET.off=false;ON.db.enableNetwork().catch(()=>{})}}catch(e){}}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"){if(!NET.t)NET.t=setTimeout(netPause,NETCFG.idle)}else netResume()});
+const ONPUB={min:180000,max:300000};// profile publish: at most every 3 min, at least every 5 min
 const LBKEY="meridian-lb-players";
 function lbCache(a){try{localStorage.setItem(LBKEY,JSON.stringify(a.slice(0,200).map(p=>({uid:p.uid,name:String(p.name||"Player").slice(0,20),col:p.col,nw:+p.nw||0,nb:p.nb,nc:p.nc,biz:Array.isArray(p.biz)?p.biz:[],pins:Array.isArray(p.pins)?p.pins.slice(0,300):undefined,home:p.home,hq:p.hq,cid:p.cid,govC:p.govC,govR:p.govR,govS:p.govS,govO:Array.isArray(p.govO)?p.govO.slice(0,20):undefined,tk:/^[A-Z]{3,5}$/.test(p.tk||"")?p.tk:undefined,bot:p.bot?true:undefined,trucks:p.bot?(p.trucks|0):undefined,seen:onSeen(p)}))))}catch(e){}}
 function lbPlayers(){if(ON.gotPlayers)return ON.players;try{const a=JSON.parse(localStorage.getItem(LBKEY)||"[]");const me=ON.user?ON.user.uid:null;return Array.isArray(a)?a.filter(p=>p&&p.uid!==me):[]}catch(e){return[]}}
