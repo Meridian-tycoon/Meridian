@@ -1033,6 +1033,46 @@ service cloud.firestore {
       allow delete: if bunkerOk() && request.auth.uid == uid;
     }
 
+    // Station Aurora team data: missions, briefing notes and mod chat (bmis, bnote, bchat), entry log (blog). Cleared accounts only.
+    function bkMine(d, ks) {
+      return d.keys().hasOnly(ks) && d.by == request.auth.uid
+        && d.name is string && d.name.size() <= 20 && d.at == request.time;
+    }
+    match /bmis/{id} {
+      allow read, delete: if bunkerOk();
+      allow create: if bunkerOk() && bkMine(request.resource.data, ['t', 'p', 'done', 'by', 'name', 'at'])
+        && request.resource.data.t is string && request.resource.data.t.size() > 0 && request.resource.data.t.size() <= 80
+        && request.resource.data.p in ['normal', 'high'] && request.resource.data.done is bool;
+      allow update: if bunkerOk() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['done'])
+        && request.resource.data.done is bool;
+    }
+    match /bnote/{id} {
+      allow read, delete: if bunkerOk();
+      allow create: if bunkerOk() && bkMine(request.resource.data, ['t', 'by', 'name', 'at'])
+        && request.resource.data.t is string && request.resource.data.t.size() > 0 && request.resource.data.t.size() <= 300;
+    }
+    match /bchat/{id} {
+      allow read: if bunkerOk();
+      allow create: if bunkerOk() && bkMine(request.resource.data, ['t', 'k', 'by', 'name', 'at'])
+        && request.resource.data.k in ['m', 'c'] && request.resource.data.t is string && request.resource.data.t.size() <= 200;
+      allow delete: if bunkerOk() && resource.data.by == request.auth.uid;
+    }
+    match /blog/{id} {
+      allow read: if bunkerOk();
+      allow create: if bunkerOk() && bkMine(request.resource.data, ['by', 'name', 'at']);
+    }
+    // Intruder alarm: any signed-in player who taps the restricted facility posts one (own uid); only cleared accounts read or clear them.
+    match /balarm/{id} {
+      allow read, delete: if bunkerOk();
+      allow create: if request.auth != null && bkMine(request.resource.data, ['by', 'name', 'at']);
+    }
+    // Moderator warning to one player: bwarn/{player uid}. Cleared accounts write it; the player reads it and deletes it once shown.
+    match /bwarn/{uid} {
+      allow read, delete: if request.auth != null && (request.auth.uid == uid || bunkerOk());
+      allow create, update: if bunkerOk() && bkMine(request.resource.data, ['t', 'by', 'name', 'at'])
+        && request.resource.data.t is string && request.resource.data.t.size() > 0 && request.resource.data.t.size() <= 160;
+    }
+
     match /marsb/{uid} {
       allow read: if request.auth != null;
       allow create, update: if request.auth != null && request.auth.uid == uid
