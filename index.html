@@ -9586,7 +9586,7 @@ if(onEnabled()){setInterval(()=>{if(ON.user&&!document.hidden&&Date.now()-CS.las
   window.addEventListener("pagehide",()=>{if(ON.user&&Date.now()-CS.last>=20000)csUpload(false)});
   document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"&&ON.user&&Date.now()-CS.last>=20000)csUpload(false)})}
 /* ---------- money transfers between online players (bank phone app). Firestore transfers/{id}; recipient claims & deletes ---------- */
-const XF_MIN=1,XF_CAP=5e11,XF={q:"",to:null,amt:"",n:"",busy:false,unsub:null,uid:null};
+const XF_MIN=1,XF_CAP=5e11,XF_DEV_CAP=1e14,XF={q:"",to:null,amt:"",n:"",busy:false,unsub:null,uid:null};
 function xfS(){S.xfer=S.xfer||{};const x=S.xfer;if(!Array.isArray(x.hist))x.hist=[];if(!Array.isArray(x.seen))x.seen=[];return x}
 function xfLog(e){const x=xfS();x.hist.unshift(e);x.hist=x.hist.slice(0,10)}
 const xfName=p=>String(p&&p.name||"Player").slice(0,20);
@@ -9594,11 +9594,13 @@ function xfListen(u){if(XF.unsub){try{XF.unsub()}catch(_){}XF.unsub=null}XF.uid=
   XF.unsub=ON.db.collection("transfers").where("to","==",u.uid).onSnapshot(q=>q.forEach(d=>xfClaim(d)),e=>{ON.err="Couldn't check transfers: "+(e&&e.code||e)})}
 function xfClaim(d){const id=d.id,v=d.data()||{},x=xfS();
   if(!x.seen.includes(id)){const amt=Math.round(+v.amt||0);
-    if(v.to===XF.uid&&amt>=XF_MIN&&amt<=XF_CAP){x.seen.unshift(id);x.seen=x.seen.slice(0,300);S.cash+=amt;xfLog({d:"in",n:String(v.fromName||"Player").slice(0,20),u:typeof v.from==="string"?v.from:"",a:amt,t:Date.now(),note:typeof v.note==="string"?v.note.slice(0,40):""});
+    if(v.to===XF.uid&&amt>=XF_MIN&&amt<=(devUid(v.from)?XF_DEV_CAP:XF_CAP)){x.seen.unshift(id);x.seen=x.seen.slice(0,300);S.cash+=amt;xfLog({d:"in",n:String(v.fromName||"Player").slice(0,20),u:typeof v.from==="string"?v.from:"",a:amt,t:Date.now(),note:typeof v.note==="string"?v.note.slice(0,40):""});
       toast(`Received ${fmt(amt)} from ${String(v.fromName||"a player").slice(0,20)}`);save();hud();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)&&document.activeElement.tagName==="INPUT"))phRender()}}
   d.ref.delete().catch(()=>{})}
+function xfDev(){return !!(ON.user&&devUid(ON.user.uid))}
 function xfSend(){if(XF.busy||!ON.user||!ON.db)return;const p=ON.players.find(y=>y.uid===XF.to),amt=Math.floor(+XF.amt||0),nt=XF.n||"";
-  if(!p){toast("Pick who to send to");return}if(amt<XF_MIN){toast(`Minimum transfer is ${fmt(XF_MIN)}`);return}if(amt>XF_CAP){toast(`Maximum per transfer is ${fmt(XF_CAP)}`);return}
+  if(!p){toast("Pick who to send to");return}
+  if(xfDev()){if(amt>XF_DEV_CAP){toast(`Dev account: max ${fmt(XF_DEV_CAP)} per transfer`);return}}if(amt<XF_MIN){toast(`Minimum transfer is ${fmt(XF_MIN)}`);return}if(!xfDev()&&amt>XF_CAP){toast(`Maximum per transfer is ${fmt(XF_CAP)}`);return}
   if(amt>S.cash){toast(`You only have ${fmt(Math.max(0,S.cash))} in cash`);return}
   const me=onProf(),doc={from:ON.user.uid,fromName:(me.name||"Tycoon").slice(0,20),to:p.uid,amt,at:window.firebase.firestore.FieldValue.serverTimestamp()},note=String(nt).trim().slice(0,40);if(note)doc.note=note;
   S.cash-=amt;XF.busy=true;const ent={d:"out",n:xfName(p),u:p.uid,a:amt,t:Date.now(),note};xfLog(ent);save();hud();
@@ -9607,9 +9609,9 @@ function xfSend(){if(XF.busy||!ON.user||!ON.db)return;const p=ON.players.find(y=
 function xfList(){const q=XF.q.trim().toLowerCase(),a=ON.players.filter(p=>!q||xfName(p).toLowerCase().includes(q)).slice(0,8);
   return a.map(p=>`<button data-ph="xfto" data-k="${onEsc(p.uid)}" style="color:#fff${XF.to===p.uid?";outline:2px solid #3b82f6":""}"><b>${gnHtml(xfName(p),devUid(p.uid))}</b> · ${p.rank?"Rank #"+(+p.rank||"?")+" · ":""}${fmt(+p.nw||0)}</button>`).join("")||"<div>No players found</div>"}
 function xfHtml(){if(!onEnabled()||!ON.user)return"";const x=xfS(),p=ON.players.find(y=>y.uid===XF.to),ip="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border-radius:10px;border:1px solid #ffffff44;background:#0003;color:#fff;font:inherit;font-size:16px";
-  let h=`<p class="ph-sub" style="margin-top:12px">Send money · ${fmt(XF_MIN)}–${fmt(XF_CAP)} per transfer</p>
+  let h=`<p class="ph-sub" style="margin-top:12px">Send money · ${fmt(XF_MIN)}–${fmt(xfDev()?XF_DEV_CAP:XF_CAP)} per transfer</p>
     <input id="xfq" type="search" placeholder="Search players" autocomplete="off" value="${onEsc(XF.q)}" style="${ip}"><div class="ph-list" id="xflist" style="margin-top:6px">${xfList()}</div>
-    <input id="xfa" type="number" inputmode="numeric" min="${XF_MIN}" max="${XF_CAP}" step="1" placeholder="Amount ($)" value="${onEsc(XF.amt)}" style="${ip}">
+    <input id="xfa" type="number" inputmode="numeric" min="${XF_MIN}" max="${xfDev()?XF_DEV_CAP:XF_CAP}" step="1" placeholder="Amount ($)" value="${onEsc(XF.amt)}" style="${ip}">
     <input id="xfn" maxlength="40" placeholder="Note (optional)" autocomplete="off" value="${onEsc(XF.n)}" style="${ip}">
     <button class="buy" data-ph="xfsend" style="width:100%;margin-top:8px;background:#1e3a8a!important;color:#fff;border-color:#3b82f6" ${XF.busy?"disabled":""}>${XF.busy?"Sending…":p?"Send to "+gnHtml(xfName(p),devUid(p.uid)):"Send"}</button>`;
   if(x.hist.length)h+=`<p class="ph-sub" style="margin-top:12px">Recent transfers</p><div class="ph-list">${x.hist.map(e=>`<div><b style="color:${e.fail?"#f87171":e.d==="in"?"#4ade80":"#fff"}">${e.d==="in"?"+":"−"}${fmt(e.a)} ${e.d==="in"?"from":"to"} ${gnHtml(e.n,devUid(e.u))}${e.fail?" · failed":""}</b>${fmtDur(Date.now()-e.t)} ago${e.note?" · "+onEsc(e.note):""}</div>`).join("")}</div>`;
