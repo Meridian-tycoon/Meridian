@@ -13,10 +13,10 @@ function rxOpen(){if(!document.getElementById("mdx-css")){const st=document.crea
       if(a==="tkbuy"){const s=el.querySelector(`[data-rxtk="${k}"]`);if(s){rigTkBuy(+s.value,b.dataset.v);save();hud()}rxRender();return}
       if(a==="tksell"){rigTkSell(k,+b.dataset.v);save();hud();rxRender();return}
       if(a==="ship"){const s=el.querySelector(`[data-rxto="${k}"]`);if(s){rigShip(k,+s.value);save();hud()}rxRender();return}
-      if(a==="go"){const r=rigs().find(x=>x.id===k);if(r){rxClose();MM.flyTo({center:[r.lon,r.lat],zoom:4})}return}})}
+      if(a==="go"){const r=rigs().find(x=>x.id===k);if(r){rxClose();MM.flyTo({center:[r.lon,r.lat],zoom:4})}return}});mdxMove(el,RX)}
   if(!RX.el._fo){RX.el._fo=1;const up=e=>{const t=e.target.closest&&e.target.closest("[data-fo]");if(!t)return;const k=t.dataset.fo;if(k==="ask"){fx().ask=+t.value||1;FO.last=0;save()}else FO.f[k]=t.value};RX.el.addEventListener("change",up);RX.el.addEventListener("input",up)}
   const vw=innerWidth,vh=innerHeight,el=RX.el;if(vw<560){el.classList.add("mdx-full");Object.assign(el.style,{left:"0px",top:"0px",width:vw+"px",height:vh+"px"})}
-  else{el.classList.remove("mdx-full");const w=Math.min(1100,vw-48),h=Math.min(780,vh-48);Object.assign(el.style,{left:(vw-w)/2+"px",top:(vh-h)/2+"px",width:w+"px",height:h+"px"})}
+  else{el.classList.remove("mdx-full");const w=Math.min(1100,vw-48),h=Math.min(780,vh-48);Object.assign(el.style,mdxAt(RX,w,h),{width:w+"px",height:h+"px"})}
   el.style.display="flex";RX.open=true;rxRender();clearInterval(RX.iv);RX.iv=setInterval(()=>{if(!RX.open)return clearInterval(RX.iv);if(RX.el.contains(document.activeElement)&&/^(SELECT|INPUT)$/.test(document.activeElement.tagName))return;rxRender()},2000)}
 function rxClose(){RX.open=false;clearInterval(RX.iv);if(RX.el)RX.el.style.display="none"}
 function rxRender(){if(!RX.el)return;const sb=RX.el.querySelector(".mdx-body"),sy=sb?sb.scrollTop:0;try{rxDraw()}finally{const nb=RX.el.querySelector(".mdx-body");if(nb&&sy)nb.scrollTop=sy}}

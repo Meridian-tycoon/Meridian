@@ -5696,6 +5696,14 @@ function mkdStats(K){const h=K.map(k=>k.c),N=h.length-1,o=h[0],c=h[N],ch=c-o,ret
   const rw=(a,b)=>`<div><span>${a}</span><b>${b}</b></div>`;
   return `<div class="ph-rows" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));column-gap:24px;margin-top:10px">${rw(`Start (${dn(0)} close)`,fp(o))}${rw("Last",fp(c))}${rw("Change",`<span style="color:${ch>=0?"#16a34a":"#dc2626"}">${ch>=0?"+":"−"}${fp(Math.abs(ch))} (${pc(c/o-1)})</span>`)}${rw("Average close",fp(avg))}${rw(`High (${dn(hi)})`,fp(hs[hi]))}${rw(`Low (${dn(lo)})`,fp(ls[lo]))}${rw("Range",`${fp(hs[hi]-ls[lo])} (${((hs[hi]/ls[lo]-1)*100).toFixed(1)}%)`)}${rw("Daily swing (volatility)",vol.toFixed(2)+"%")}${rw("Up days",`${up} of ${rets.length}`)}${rw(`Best day (${dn(bd.i+1)})`,pc(bd.x))}${rw(`Worst day (${dn(wd.i+1)})`,pc(wd.x))}</div>
   <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:600">Day-by-day prices</summary><table class="mkd-t" style="margin-top:6px"><tr><th>Day</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Change</th></tr>${K.map((k,i)=>({k,i})).reverse().map(({k,i})=>{const r=i?k.c/K[i-1].c-1:k.c/k.o-1;return `<tr><td>${k.now?"Today":mkdDay(N-i)}</td>${[k.o,k.h,k.l,k.c].map(v=>`<td style="font-family:var(--mono)">${fp(v)}</td>`).join("")}<td style="color:${r>=0?"#16a34a":"#dc2626"}">${pc(r)}</td></tr>`}).join("")}</table></details>`}
+/* movable dashboard window: drag by the title bar (like Military/HQ); spot kept in st.pos for this session */
+function mdxMove(el,st){let g=null;el.addEventListener("pointerdown",e=>{if(el.classList.contains("mdx-full")||!e.target.closest(".mdx-bar")||e.target.closest("button,input,select,a"))return;
+    const r=el.getBoundingClientRect();g={x:e.clientX,y:e.clientY,l:r.left,t:r.top,w:r.width,h:r.height,id:e.pointerId};try{el.setPointerCapture(e.pointerId)}catch(_){}e.preventDefault()});
+  el.addEventListener("pointermove",e=>{if(!g||e.pointerId!==g.id)return;const vw=innerWidth,vh=innerHeight;
+    el.style.left=Math.max(0,Math.min(vw-g.w,g.l+e.clientX-g.x))+"px";el.style.top=Math.max(0,Math.min(vh-g.h,g.t+e.clientY-g.y))+"px";st.pos={x:parseFloat(el.style.left),y:parseFloat(el.style.top)}});
+  const de=e=>{if(g&&e.pointerId===g.id)g=null};el.addEventListener("pointerup",de);el.addEventListener("pointercancel",de)}
+/* open spot: last dragged spot (kept on screen) or centred */
+function mdxAt(st,w,h){const vw=innerWidth,vh=innerHeight,P=st.pos;return{left:(P?Math.max(0,Math.min(vw-w,P.x)):(vw-w)/2)+"px",top:(P?Math.max(0,Math.min(vh-h,P.y)):(vh-h)/2)+"px"}}
 function mkdOpen(){if(!document.getElementById("mdx-css")){const st=document.createElement("style");st.id="mdx-css";st.textContent=DXCSS;document.head.appendChild(st)}
   bxdCss();
   if(!document.getElementById("mkd-css")){const st=document.createElement("style");st.id="mkd-css";st.textContent=`.mkd-rg{display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 4px}.mkd-rg button{padding:7px 14px;border-radius:999px;border:1px solid #94a3b855;background:transparent;color:inherit;font:inherit;font-size:13px;cursor:pointer}.mkd-rg button[aria-pressed=true]{background:#16a34a;border-color:#16a34a;color:#fff;font-weight:700}
@@ -5715,9 +5723,9 @@ function mkdOpen(){if(!document.getElementById("mdx-css")){const st=document.cre
       else if(k==="sel"){MKD.sel=MKD.sel===v?null:v;MKD.amt="";MKD.hi=null;const b=MKD.el.querySelector(".mdx-body");if(b&&MKD.sel)b.scrollTop=0}
       else if(k==="trade")trade(MKD.sel,+x.dataset.q);else if(k==="tab"){MKD.tab=v}else if(k==="exsel"){EXI.sel=v;EXI.amt=""}else if(k==="exi"){if(v==="max"){exiMax();return}exiDo(v);return}else if(k==="exp"){exiPool(v);return}
       else if(k==="amt"){const q=parseFloat(String(MKD.amt).replace(/,/g,""));if(!(q>0)){toast("Type an amount first");return}trade(MKD.sel,+x.dataset.q*q)}
-      mkdRender()})}
+      mkdRender()});mdxMove(el,MKD)}
   const vw=innerWidth,vh=innerHeight,el=MKD.el;if(vw<560){el.classList.add("mdx-full");el.classList.remove("bxd-wide");Object.assign(el.style,{left:"0px",top:"0px",width:vw+"px",height:vh+"px"})}
-  else{el.classList.remove("mdx-full");el.classList.toggle("bxd-wide",vw>=900);const w=Math.min(1100,vw-48),h=Math.min(800,vh-48);Object.assign(el.style,{left:(vw-w)/2+"px",top:(vh-h)/2+"px",width:w+"px",height:h+"px"})}
+  else{el.classList.remove("mdx-full");el.classList.toggle("bxd-wide",vw>=900);const w=Math.min(1100,vw-48),h=Math.min(800,vh-48);Object.assign(el.style,mdxAt(MKD,w,h),{width:w+"px",height:h+"px"})}
   if(MKD.sel==null&&mkSel)MKD.sel=mkSel;
   el.style.display="flex";MKD.open=true;mkdRender();clearInterval(MKD.iv);
   /* live refresh every 2 s, paused while typing or while a finger is on the chart; the picked day on the chart is kept */
