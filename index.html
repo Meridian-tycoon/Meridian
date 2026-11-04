@@ -14431,7 +14431,7 @@ setInterval(antWatch,3000);
    C-130: hidden airlift. Flies you from the station to any city (or back) with no trip line on the map, and airdrops relief to a damaged city.
    B-2: stealth bomber. Drops Aurora warheads on any city with no launch warning, no trajectory, no sanctions or approval cost; other players only see "unknown origin". */
 const AIRF={pl:{sr71:{n:"SR-71 (Jetfire)",ico:"🛩",cost:25e9,d:"Mach 3 recon: 10 s flights to Aurora, spy flights over any country"},
-  c130:{n:"C-130 Hercules",ico:"✈",cost:5e9,d:"Hidden airlift to any city with no trip line, relief airdrops"},
+  c130:{n:"C-130 Hercules",ico:"✈",cost:5e9,d:"Hidden airlift to any city with no trip line, relief airdrops that rebuild 65% of a damaged city"},
   b2:{n:"B-2 Spirit",ico:"🦇",cost:80e9,d:"Stealth bomber: untraceable strikes with Aurora warheads"}},
   wh:{conv:{n:"Stealth bunker buster",k:"msl",cost:50e6},nuke:{n:"Untraceable nuclear warhead",k:"nuke",cost:2e9},hbomb:{n:"Untraceable thermonuclear warhead",k:"hbomb",cost:150e9}},
   up:{crew:{n:"Hangar crew",cost:3e9,d:"All airfield cooldowns halved"},coat:{n:"Radar-absorbent coating",cost:10e9,d:"B-2 can carry 3 warheads per sortie"},tank:{n:"Aerial refuelling tanker",cost:4e9,d:"C-130 airlift is instant (no 20 s flight)"}},
@@ -14461,7 +14461,8 @@ function afLift(cid){const A=AF();if(!A.pl.c130)return toast("Buy the C-130 firs
   const c=CITIES[cid];if(!c)return;if(unhOn(c))return toast(`${c.name} is uninhabitable`);const go=()=>{S.loc={city:c.id,lat:c.lat,lon:c.lon};if(S.ant)S.ant.on=0;try{onLocPub()}catch(e){}save();hud();draw();try{rotateTo(c,3)}catch(e){}toast(`✈ C-130 landed in ${c.name}. No flight was tracked.`)};
   if(A.up.tank)go();else{toast(`✈ C-130 airborne to ${c.name} · 20 s, no flight line`);setTimeout(go,20000)}}
 function afDrop(cid){const A=AF(),c=CITIES[cid];if(!A.pl.c130)return toast("Buy the C-130 first");const cd=afCd("drop");if(cd)return toast(`C-130 is loading · ready in ${fmtDur(cd)}`);if(!c)return;const o=S.dmg&&S.dmg[c.id];if(!o||!(dmgLvl(c)>.01))return toast(`${c.name} has no damage to repair`);
-  afSet("drop");o.l0=Math.round(dmgLvl(c)*.5*1e4)/1e4;o.t=Date.now();save();draw();toast(`📦 Relief airdrop over ${c.name}: damage halved`)}
+  afSet("drop");o.l0=Math.round(dmgLvl(c)*(1-AF_DROP)*1e4)/1e4;o.t=Date.now();save();draw();toast(`📦 Relief airdrop over ${c.name}: ${Math.round(AF_DROP*100)}% of the damage rebuilt`)}
+const AF_DROP=.65; /* share of a city's current damage a C-130 relief airdrop rebuilds at once */
 function afHtml(){const A=AF(),onSite=!!(S.ant&&S.ant.on),b=(a,v,t,dis,bg)=>`<button class="buy" data-ph="${a}" data-k="${v}" ${dis?"disabled":""} style="min-width:0;color:#fff;background:${bg||"#0e7490"}!important;border-color:#67e8f9">${t}</button>`;
   let h=`<div class="ph-seg">${[["hangar","Hangar"],["arm","Armory"],["ops","Operations"]].map(([k,n])=>`<button data-ph="aftab" data-k="${k}" aria-pressed="${afTab===k}">${n}</button>`).join("")}</div>`;
   const cityOpts=sel=>CITIES.slice().sort((x,y)=>x.name.localeCompare(y.name)).map(c=>`<option value="${c.id}" ${sel===c.id?"selected":""}>${c.name}, ${c.country}</option>`).join("");
@@ -14477,7 +14478,7 @@ function afHtml(){const A=AF(),onSite=!!(S.ant&&S.ant.on),b=(a,v,t,dis,bg)=>`<bu
     <div class="ph-card"><b>🛩 Jetfire spy flight</b>${!A.pl.sr71?`<span>Buy the SR-71 (Jetfire) first.</span>`:`<span>Overfly a country at Mach 3${cdS?` · ready in ${fmtDur(cdS)}`:""}</span><select class="ph-calc" id="afspy" style="font-size:13px"><option value="">Country…</option>${[...new Set(CITIES.map(c=>c.country))].sort().map(n=>`<option>${n}</option>`).join("")}</select><div style="margin-top:6px">${b("afspy","", "Fly over",!!cdS)}</div>
       ${afSel.spy?`<div class="ph-rows" style="margin-top:6px"><div><span>${afSel.spy.c}</span><b>${ago0(afSel.spy.t)}</b></div><div><span>Army strength</span><b>${afSel.spy.str}</b></div><div><span>Cities</span><b>${afSel.spy.cities}</b></div><div><span>Player government</span><b>${afSel.spy.gov||"none"}</b></div><div><span>Damaged</span><b>${afSel.spy.dm.join(", ")||"none"}</b></div></div>`:""}`}</div>
     <div class="ph-card"><b>✈ C-130 airlift</b>${!A.pl.c130?`<span>Buy the C-130 first.</span>`:`<span>Hidden flight, no trip line${A.up.tank?" · instant":" · 20 s"}${cdD?` · airdrop ready in ${fmtDur(cdD)}`:""}</span><select class="ph-calc" id="aflc" style="font-size:13px"><option value="">City…</option>${cityOpts(null)}</select>
-      <div style="display:flex;gap:6px;margin-top:6px">${b("aflift","", "Fly me there")}${b("afdrop","", "Relief airdrop",!!cdD,"#15803d")}</div>${!onSite?`<div style="margin-top:6px">${b("afback","", "Fly back to "+ANT.n)}</div>`:""}`}</div>`}
+      <div style="display:flex;gap:6px;margin-top:6px">${b("aflift","", "Fly me there")}${b("afdrop","", "Relief airdrop · rebuild 65%",!!cdD,"#15803d")}</div>${!onSite?`<div style="margin-top:6px">${b("afback","", "Fly back to "+ANT.n)}</div>`:""}`}</div>`}
   return h}
 const ago0=t=>{const m=Math.round((Date.now()-t)/60000);return m<1?"just now":m+" min ago"};
 function antApp(){if(!antOk())return `<div class="ph-card"><b>🔒 ${ANT.n}</b><span>A classified facility deep in the Antarctic interior. You can see it on the map, but only moderators have clearance to land or open this tab.</span></div><p class="ph-sub">Access is granted by the developer only.</p>`;
