@@ -484,6 +484,27 @@ service cloud.firestore {
         && request.resource.data.updated == request.time;
     }
     // Shared wars (living wars on the map): only the developer's save (the master world) writes world/wars, everyone reads it.
+    // Shared GDP: only the developer's save (master world) writes world/gdp {g, gr, updated}; everyone reads it.
+    match /world/gdp {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1'
+        && request.resource.data.keys().hasOnly(['g', 'gr', 'updated'])
+        && request.resource.data.g is map && request.resource.data.g.size() <= 300
+        && request.resource.data.gr is map && request.resource.data.gr.size() <= 300
+        && request.resource.data.updated == request.time;
+    }
+    // A player government shares its own country's GDP: gdpc/{uid} {c, g, gr, at}, written only by that player.
+    match /gdpc/{uid} {
+      allow read: if true;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['c', 'g', 'gr', 'at'])
+        && request.resource.data.c is string && request.resource.data.c.size() <= 40
+        && request.resource.data.g is number && request.resource.data.g > 0 && request.resource.data.g <= 2000000000
+        && request.resource.data.gr is number && request.resource.data.gr > -1 && request.resource.data.gr < 1
+        && request.resource.data.at == request.time;
+    }
     match /world/wars {
       allow read: if true;
       allow create, update: if request.auth != null

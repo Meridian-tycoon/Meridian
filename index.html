@@ -4102,12 +4102,37 @@ function wwGovMirror(quiet){if(!wwShared()||!WW.gp)return;for(const n in WW.gp){
 function wjPub(w,s){try{if(!ON.ready||!ON.user)return;const gid=w.gid||(WRM?w.id:0);if(!gid)return;const r=ON.db.collection("wjoin").doc(ON.user.uid);
   if(!s)return void r.delete().catch(()=>{});
   r.set({w:gid,s,n:wlPT(),name:wlName().slice(0,20),c:String(dipPlayerC()||"").slice(0,40),at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't share your troops: "+(e&&e.code||e)})}catch(e){}}
-function wwListen(){try{evListen()}catch(e){}try{g1Listen()}catch(e){}try{mkwListen()}catch(e){}try{mkhListen()}catch(e){}try{lnListen()}catch(e){}try{unhListen()}catch(e){}try{royoListen()}catch(e){}try{rbjListen()}catch(e){}if(ON.unsubWW)return;
+function wwListen(){try{evListen()}catch(e){}try{gdListen()}catch(e){}try{g1Listen()}catch(e){}try{mkwListen()}catch(e){}try{mkhListen()}catch(e){}try{lnListen()}catch(e){}try{unhListen()}catch(e){}try{royoListen()}catch(e){}try{rbjListen()}catch(e){}if(ON.unsubWW)return;
   ON.unsubWW=ON.db.collection("world").doc("wars").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list))return;WW={list:v.list,ruler:v.ruler||{},tl:Array.isArray(v.tl)?v.tl:[],gp:v.gp&&typeof v.gp==="object"?v.gp:null};
     try{localStorage.setItem(WWKEY,JSON.stringify(WW))}catch(e){}if(ON.authKnown&&!WRM){wwMirror(false);draw();onRefresh()}},e=>{ON.err="Couldn't load world wars: "+(e&&e.code||e)});
   ON.unsubWJ=ON.db.collection("wjoin").onSnapshot(q=>{const a=[],old=Date.now()-3*864e5;q.forEach(x=>{const v=x.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():Date.now();if(ON.user&&x.id===ON.user.uid)return;if(at<old||!Number.isInteger(v.w)||(v.s!=="a"&&v.s!=="b"))return;a.push({uid:x.id,w:v.w,s:v.s,n:+v.n||0,name:v.name,c:v.c,at})});
     const seen=new Set((ON.wj||[]).map(j=>j.uid+":"+j.w));ON.wj=a;for(const j of a)if(!seen.has(j.uid+":"+j.w)&&ON.wjGot){const w=(S.wars||[]).find(x=>wlGid(x)===j.w);if(w&&COUNTRIES.includes(j.c))wlMarch(w,j.c,j.s)}ON.wjGot=true;draw()},e=>{ON.err="Couldn't load war joins: "+(e&&e.code||e)})}
 try{wwMirror(true)}catch(e){}
+/* shared GDP: every save used to grow country GDP on its own (dipGrow + local intel, investments, deals), so players saw different figures.
+   The master world (DEV_UIDS) publishes world/gdp {g:{country:$bn},gr:{country:daily rate},updated}; every other save mirrors it into dip().gdp/gr.
+   A player government publishes its own country's figure to gdpc/{uid} {c,g,gr,at}; everyone, the master too, takes that country from it (newest wins, 3 days max),
+   so a player president's investments show for all. Your own country stays as your save has it. */
+const GDKEY="meridian-world-gdp";let GD=null;const GDC={};
+try{const c=JSON.parse(localStorage.getItem(GDKEY)||"null");if(c&&c.g&&typeof c.g==="object")GD=c}catch(e){}
+const gdOk=v=>typeof v==="number"&&isFinite(v)&&v>0&&v<=GDPMAX;
+function gdApply(){if(typeof ON==="undefined")return;const d=dip(),pc=dipPlayerC(),uid=ON.user&&ON.user.uid;
+  if(GD&&!WRM)for(const n in GD.g){if(n===pc||!COUNTRIES.includes(n))continue;if(gdOk(GD.g[n]))d.gdp[n]=GD.g[n];if(GD.gr&&isFinite(GD.gr[n]))d.gr[n]=+GD.gr[n]}
+  for(const n in GDC){const x=GDC[n];if(n===pc||x.uid===uid||!COUNTRIES.includes(n))continue;d.gdp[n]=x.g;if(isFinite(x.gr))d.gr[n]=x.gr}}
+function gdPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;const d=dip(),g={},gr={};
+  for(const n of COUNTRIES){g[n]=Math.round(d.gdp[n]*100)/100;gr[n]=Math.round((+d.gr[n]||0)*1e6)/1e6}
+  const sig=JSON.stringify(g),t=Date.now();if(!force&&(t-(ON.gdPub||0)<60000||(sig===ON.gdSig&&t-(ON.gdPub||0)<300000)))return;
+  ON.gdPub=t;ON.gdSig=sig;ON.db.collection("world").doc("gdp").set({g,gr,updated:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't publish world GDP: "+(e&&e.code||e)})}
+function gdcPublish(force){if(!ON.ready||!ON.user)return;const pc=dipPlayerC(),r=ON.db.collection("gdpc").doc(ON.user.uid),t=Date.now();
+  if(!pc){if(ON.gdcSig){ON.gdcSig="";r.delete().catch(()=>{})}return}
+  const d=dip(),g=Math.round(Math.min(GDPMAX,d.gdp[pc])*100)/100,gr=Math.round((+d.gr[pc]||0)*1e6)/1e6,sig=pc+":"+g;
+  if(!(g>0)||(!force&&(t-(ON.gdcPub||0)<60000||(sig===ON.gdcSig&&t-(ON.gdcPub||0)<600000))))return;
+  ON.gdcPub=t;ON.gdcSig=sig;r.set({c:pc,g,gr,at:window.firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>{ON.err="Couldn't share your country's GDP: "+(e&&e.code||e)})}
+function gdListen(){if(ON.unsubGD)return;
+  ON.unsubGD=ON.db.collection("world").doc("gdp").onSnapshot(x=>{const v=x.exists?x.data()||{}:null;if(!v||!v.g||typeof v.g!=="object")return;GD={g:v.g,gr:v.gr&&typeof v.gr==="object"?v.gr:{}};
+    try{localStorage.setItem(GDKEY,JSON.stringify(GD))}catch(e){}if(ON.authKnown&&!WRM){gdApply();onRefresh()}},e=>{ON.err="Couldn't load world GDP: "+(e&&e.code||e)});
+  ON.unsubGDC=ON.db.collection("gdpc").onSnapshot(q=>{const old=Date.now()-3*864e5;for(const k in GDC)delete GDC[k];
+    q.forEach(x=>{const v=x.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():Date.now();if(at<old||!COUNTRIES.includes(v.c)||!gdOk(v.g))return;const o=GDC[v.c];if(!o||at>o.at)GDC[v.c]={g:v.g,gr:+v.gr||0,at,uid:x.id}});
+    if(ON.authKnown){gdApply();onRefresh()}},e=>{ON.err="Couldn't load player GDPs: "+(e&&e.code||e)})}
 /* ---------- Anonymous War Funding (Military dashboard → "Anonymous War Funding" page) ----------
    Companies (players and the AI rivals) send money anonymously to a government: for an active war (level 3+, a living war with troops)
    or against a rival it isn't at war with yet, which raises that pair's escalation meter (0..100, cools down every hour; 100 = war).
@@ -4544,7 +4569,7 @@ function allyPeace(quiet){const pc=dipPlayerC(),al=allySet();if(!pc||!al.size)re
   for(const w of ws)if(w&&w.al&&w.al[pc]){for(const n in w.al)if(al.has(n)&&w.al[n]!==w.al[pc])delete w.al[n];const en=w.al[pc]==="a"?w.b:w.a;if(al.has(en))delete w.al[pc]}
   try{const T=wf().tens;for(const n of al){const k=wfPair(pc,n);if(T[k]&&T[k].v>0&&!T[k].pf){delete T[k];wf().dirty=1}}}catch(e){}}
 function dipDay(quiet){const C=S.wwar?Object.assign({},DIPCFG,{startP:DIPCFG.startP*2,maxWars:Math.max(DIPCFG.maxWars,WWCFG.maxWars)}):DIPCFG,d=dip();d.day++;S.wars=S.wars||[];const ws=S.wars,p=S.pol;
-  for(const n of COUNTRIES)dipGrow(n,d,C);
+  for(const n of COUNTRIES)dipGrow(n,d,C);try{gdApply()}catch(e){}
   // liberation, and countries you took back from a ruler are free again
   for(const n in d.ruler){const by=d.ruler[n];
     if(p&&((p.ctrl&&p.ctrl[n])||(p.mil&&p.mil.occ&&p.mil.occ[n]))){delete d.ruler[n];dipSay(`You free ${n} from ${by}`,1,quiet);continue}
@@ -9338,7 +9363,7 @@ function onScript(u){return new Promise((ok,no)=>{const s=document.createElement
 async function onInit(){if(!onEnabled()||ON.ready||ON.loading)return;ON.loading=true;
   try{if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${ONV}/firebase-`;for(const m of["app","auth","firestore"])await onScript(b+m+"-compat.js")}
     const fb=window.firebase;if(!fb.apps.length)fb.initializeApp(FIREBASE_CONFIG);ON.auth=fb.auth();ON.db=fb.firestore();ON.ready=true;
-    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;try{if(u)localStorage.setItem("mer_uid",u.uid);else localStorage.removeItem("mer_uid")}catch(e){}if(u){setGuest(false);WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM){wrPublish(true);wwPublish(true)}else{wrMirror(true);try{wwMirror(true)}catch(e){}if(WRL)WRG=true}onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{WRG=false;CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);pmListen(u);tkListen(u);baListen(u);gaListen(u);gateSync();onRefresh()});
+    ON.auth.onAuthStateChanged(u=>{ON.user=u;ON.authKnown=true;try{if(u)localStorage.setItem("mer_uid",u.uid);else localStorage.removeItem("mer_uid")}catch(e){}if(u){setGuest(false);WRM=devUid(u.uid);try{localStorage.setItem(WRMKEY,WRM?"1":"0")}catch(e){}if(WRM){wrPublish(true);wwPublish(true);try{gdPublish(true)}catch(e){}}else{wrMirror(true);try{wwMirror(true)}catch(e){}try{gdApply()}catch(e){}if(WRL)WRG=true}onProf();if(!S.online.name&&u.displayName)S.online.name=u.displayName.slice(0,20);onPublish(true);csCheck()}else{WRG=false;CS.checked=false;CS.pending=null;CS.last=0;CS.lastStr="";const o=document.getElementById("csask");if(o)o.remove()}xfListen(u);botListen(u);frListen(u);ctListen(u);pmListen(u);tkListen(u);baListen(u);gaListen(u);gateSync();onRefresh()});
     ON.unsubB=ON.db.collection("world").doc("bot").onSnapshot(d=>{if(WRM&&ON.user&&devUid(ON.user.uid))return;const v=d.exists?botClean(d.data()):null;if(!v)return;ON.bot=v;try{localStorage.setItem(BOTKEY,JSON.stringify(v))}catch(e){}draw();onRefresh();if(PH.open&&PH.app==="bank"&&!(document.activeElement&&PH.el.contains(document.activeElement)))phRender()},e=>{ON.err="Couldn't load the bot company: "+(e&&e.code||e)});
     ON.unsub=ON.db.collection("players").orderBy("lastSeen","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(!ON.user||d.id!==ON.user.uid)a.push(Object.assign({uid:d.id},v))});ON.players=a;ON.gotPlayers=true;lbCache(a);try{ctCalc()}catch(e){}try{cabCheck()}catch(e){}draw();onRefresh()},e=>{ON.err="Couldn't load players: "+(e&&e.code||e)});
     try{wwListen()}catch(e){}ON.unsubW=ON.db.collection("world").doc("rivals").onSnapshot(d=>{const v=d.exists?d.data()||{}:null;if(!v||!Array.isArray(v.list)||v.list.length!==RIVALS.length)return;
@@ -9364,7 +9389,7 @@ function wrPublish(force){if(!ON.ready||!ON.user||!devUid(ON.user.uid))return;co
   if(!force&&(n-(ON.wrPub||0)<60000||(sig===ON.wrSig&&n-(ON.wrPub||0)<300000)))return;
   ON.wrPub=n;ON.wrSig=sig;d.updated=window.firebase.firestore.FieldValue.serverTimestamp();
   ON.db.collection("world").doc("rivals").set(d).catch(e=>{ON.err="Couldn't publish world rivals: "+(e&&e.code||e)})}
-function onSaved(){if(!ON.ready||!ON.user)return;onPublish(false);wrPublish(false);wwPublish(false)}
+function onSaved(){if(!ON.ready||!ON.user)return;onPublish(false);wrPublish(false);wwPublish(false);try{gdPublish(false);gdcPublish(false)}catch(e){}}
 /* ---- Firestore read saver: pause every live feed while the game is hidden for a minute, resume (and catch up) when it is back ---- */
 const NETCFG={idle:60000};const NET={t:0,off:false};
 function netPause(){NET.t=0;try{if(ON.db&&!NET.off&&document.visibilityState==="hidden"){NET.off=true;ON.db.disableNetwork().catch(()=>{NET.off=false})}}catch(e){}}
