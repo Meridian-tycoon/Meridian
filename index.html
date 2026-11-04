@@ -14354,7 +14354,7 @@ try{alPaint()}catch(e){}
 /* ===== God's Scythe: weather-control satellite. Only the dev account's government can buy it.
    Save field S.scy = {on, t0, end, fav, ft, stl, laser, flare, drones, bay:{plague,bs}, bsUsed, shel:{country:until}, calm, cd:{reap,nuke,plague}, auto} */
 const SCY={cost:50e9,days:14,fav0:100,favDay:10,stlCost:[5e9,8e9,12e9,18e9,25e9],laser:6e9,flare:3e9,drone:2e9,nuke:8e9,plague:4e9,bs:20e9,
-  reap:{f:40,cd:864e5},gear:{cam:4e9,shield:6e9,mirror:5e9,thr:7e9},spyF:10,sunF:20,sunCd:864e5,shel:{f:25,d:1728e5},calm:{f:60,d:432e5},nukeCd:1728e5,plagueCd:2592e5,
+  inf:1,reap:{f:40,cd:864e5},gear:{cam:4e9,shield:6e9,mirror:5e9,thr:7e9},spyF:10,sunF:20,sunCd:864e5,shel:{f:25,d:1728e5},calm:{f:60,d:432e5},nukeCd:1728e5,plagueCd:2592e5,
   kinds:{quake:"Earthquake",storm:"Hurricane",flood:"Flood",fire:"Wildfire",drought:"Drought",tsunami:"Tsunami"},
   lines:["The harvest is ready, Commander.","Orbit stable. The world sleeps beneath us.","I see every storm before it is born.","Your cities are under my wing.","The scythe is sharp, Commander."]};
 const DAY=864e5;
@@ -14362,7 +14362,7 @@ function scyDev(){return typeof ON!=="undefined"&&ON.user&&DEV_UIDS.includes(ON.
 function scy(){const s=S.scy=S.scy&&typeof S.scy==="object"?S.scy:{};if(!s.bay)s.bay={};if(!s.shel)s.shel={};if(!s.cd)s.cd={};if(s.auto==null)s.auto=1;return s}
 function scyOn(){const s=S.scy;return !!(s&&s.on&&s.end>Date.now())}
 function scyDaysUp(){return Math.max(0,Math.floor((Date.now()-scy().t0)/DAY))}
-function scyFavTick(){const s=scy();if(!scyOn())return;const now=Date.now(),rate=(SCY.favDay+Math.min(10,scyDaysUp()))/DAY;s.fav=Math.min(100,(s.fav||0)+(now-(s.ft||now))*rate);s.ft=now}
+function scyFavTick(){const s=scy();if(scyInf()){scyRefill(s);return}if(!scyOn())return;const now=Date.now(),rate=(SCY.favDay+Math.min(10,scyDaysUp()))/DAY;s.fav=Math.min(100,(s.fav||0)+(now-(s.ft||now))*rate);s.ft=now}
 function scySay(t){try{toast("🛰 REAPER: "+t)}catch(e){}}
 // Called by dzHit for every natural disaster: Calm stops all of them, Shelter (or Autopilot) protects one country
 function scyBlocks(c){const s=S.scy;if(!s||!scyOn())return false;const now=Date.now();if(s.calm>now)return true;if(s.shel[c.country]>now)return true;
@@ -14386,7 +14386,7 @@ function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),no
   h+=`<div class="row"><div class="n">Target</div><div class="d"><select id="scyT" style="max-width:100%">${CITIES.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}"${c.id===SCY_TGT?" selected":""}>${c.name}, ${c.country}</option>`).join("")}</select></div></div>`;
   h+=R("Reap",`Send a disaster at the target city (Favor ${SCY.reap.f}, once a day).`,Object.keys(SCY.kinds).map(k=>B("reap",SCY.kinds[k]+cd("reap"),s.fav<SCY.reap.f||s.cd.reap>now,k)).join(" "));
   h+=R("Shelter",`Shield the target's country from disasters for 48h (Favor ${SCY.shel.f}).`,B("shel","Shelter",s.fav<SCY.shel.f));
-  h+=R("Calm",`No natural disasters anywhere for 12h (Favor ${SCY.calm.f}).`,B("calm","Calm the world",s.fav<SCY.calm.f||s.calm>now));
+  h+=R("Calm",`No natural disasters anywhere for 12h (Favor ${SCY.calm.f}).`,B("calm","Calm the world",s.fav<SCY.calm.f||(!scyInf()&&s.calm>now)));
   h+=R("🔧 Hull",`${Math.round(s.hp==null?100:s.hp)}%. Landing repairs any damage.`);
   h+=R("🛬 Land",`Bring the Scythe down to restock the bay, flares, drones and upgrades whenever you like. Relaunch is free and refills the tank to ${SCY.days} days.`,B("land","Land the Scythe"));
   h+=R("🎥 Follow cam","Locks the camera onto the Scythe as it flies around the planet. Drag the map to let go.",B("follow",SCYF.on?"Stop following":"Follow the Scythe"));
@@ -14459,9 +14459,12 @@ function scyAct0(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTic
 // Strike log, watch list, scheduler: wraps scyAct0 so every fired power is logged with the city and its players' net worth at that moment
 const SCYK={reap:"🌪 Reap",nuke:"☢️ Orbital nuke",plague:"🦠 Plague",bs:"🌑 Black sun",scorch:"☀️ Scorch",bless:"✨ Bless",spy:"📷 Spy",shel:"🛡 Shelter",calm:"🌤 Calm"};
 function scyNwAt(co){return ((typeof ON!=="undefined"&&ON.players)||[]).filter(x=>x&&(x.govC===co||(x.city!=null&&CITIES[x.city]&&CITIES[x.city].country===co))).reduce((a,x)=>a+(+x.nw||0),0)}
-function scyAct(a,k){const s=scy(),snap=JSON.stringify([s.cd,s.bay,s.bsUsed,s.spy&&s.spy.at,s.shel,s.calm]),c=scyCity();scyAct0(a,k);
+// Infinite uses (Mark's request 2026-11-04): on the dev Scythe, Favor stays full, no cooldowns, bay and black sun refill after every use
+function scyInf(){return SCY.inf&&scyDev()}
+function scyRefill(s){s.fav=100;s.ft=Date.now();s.cd={};s.bay=s.bay||{};s.bay.plague=1;s.bay.bs=1;s.bsUsed=0;s.flare=Math.max(3,s.flare|0);s.drones=Math.max(4,s.drones|0)}
+function scyAct(a,k){if(scyInf())scyRefill(scy());const s=scy(),snap=JSON.stringify([s.cd,s.bay,s.bsUsed,s.spy&&s.spy.at,s.shel,s.calm]),c=scyCity();scyAct0(a,k);
   if(!SCYK[a]||!scyDev())return;const s2=scy();if(JSON.stringify([s2.cd,s2.bay,s2.bsUsed,s2.spy&&s2.spy.at,s2.shel,s2.calm])===snap)return;
-  s2.log=s2.log||[];s2.log.unshift({a,k:k||"",c:c?c.id:null,co:c?c.country:"",at:Date.now(),nw:c?scyNwAt(c.country):0});s2.log.length=Math.min(s2.log.length,60);save()}
+  if(scyInf())scyRefill(s2);s2.log=s2.log||[];s2.log.unshift({a,k:k||"",c:c?c.id:null,co:c?c.country:"",at:Date.now(),nw:c?scyNwAt(c.country):0});s2.log.length=Math.min(s2.log.length,60);save()}
 function scyWatchT(uid){const s=scy();s.watch=s.watch||[];const i=s.watch.indexOf(uid);if(i>=0)s.watch.splice(i,1);else if(s.watch.length<12)s.watch.push(uid);save();try{spRender()}catch(e){}}
 function scySpyP(uid){const x=((typeof ON!=="undefined"&&ON.players)||[]).find(p=>p&&p.uid===uid);if(!x||x.city==null||!CITIES[x.city])return toast("No city known for that player");SCY_FORCE=x.city;try{scyAct("spy")}finally{SCY_FORCE=null}}
 // scheduler: queued powers fire at their time (or as soon as ready) and give up after 48h
