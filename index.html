@@ -13537,7 +13537,7 @@ function sfTick(){try{const db=sfBE();
   if(db&&!SF.unsub){const since=window.firebase.firestore.Timestamp.fromMillis(Date.now()-SFCFG.keep);
     SF.unsub=db.collection("strikes").where("at",">",since).orderBy("at","desc").limit(SFCFG.max).onSnapshot(q=>{const now=Date.now();
       q.docChanges().forEach(ch=>{if(ch.type!=="added")return;const d=ch.doc.data()||{},at=d.at&&d.at.toMillis?d.at.toMillis():now;
-        if(d.uid===ON.user.uid||now-at>SFCFG.show||at<SF.t0-60000){SF.seen[ch.doc.id]=1;return}sfShow(ch.doc.id,{c:+d.c|0,k:String(d.k||""),i:d.i?1:0,f:String(d.f||"").slice(0,40),nm:String(d.nm||"").slice(0,40)})})},()=>{})}
+        if(d.uid===ON.user.uid||now-at>SFCFG.show||at<SF.t0-60000){SF.seen[ch.doc.id]=1;return}if(String(d.k||"").startsWith("scy_")){if(typeof scyRecv==="function")scyRecv(ch.doc.id,{c:+d.c|0,k:String(d.k)});return}sfShow(ch.doc.id,{c:+d.c|0,k:String(d.k||""),i:d.i?1:0,f:String(d.f||"").slice(0,40),nm:String(d.nm||"").slice(0,40)})})},()=>{})}
   if(!db&&SF.unsub){try{SF.unsub()}catch(e){}SF.unsub=null}}catch(e){console.warn("sfTick",e)}}
 function sfDraw(ctx,now,zs){SF.fx=SF.fx.filter(x=>now-x.t<SFCFG.fx);for(const x of SF.fx){const c=CITIES[x.c];if(!c||now<x.t||!visible(c.lon,c.lat))continue;const u=(now-x.t)/SFCFG.fx,[ix,iy]=proj([c.lon,c.lat]),R=16*zs,col=x.i?"#38bdf8":"#ef4444";
   ctx.beginPath();ctx.arc(ix,iy,R*(.4+2*u),0,7);ctx.strokeStyle=col;ctx.globalAlpha=1-u;ctx.lineWidth=3;ctx.stroke();ctx.font="bold 11px system-ui, sans-serif";ctx.textAlign="center";ctx.fillStyle=col;ctx.fillText(x.i?"🛡 INTERCEPTED":"💥 STRIKE",ix,iy-R*1.6);ctx.textAlign="start";ctx.globalAlpha=1}}
@@ -14410,6 +14410,17 @@ function scyRestockAll(s){const x=scyAllCost(s);if(!x)return toast("The Scythe i
 // capital = biggest city of the country you govern (the Scythe's launch pad)
 function scyBase(){const l=CITIES.filter(c=>S.pol&&c.country===S.pol.c).sort((a,b)=>b.size-a.size);return l[0]||null}
 function scyPay(x){if(S.cash<x){toast("Not enough cash");return false}S.cash-=x;return true}
+// Scythe strikes are server wide: hit locally, then post to the shared "strikes" feed so every player's game applies the same disaster.
+// Mark's own cities (any business there, or the country he governs) can never be targeted.
+function scyMine(c){if(!c)return false;if(S.pol&&S.pol.c===c.country)return true;if(typeof gxHas==="function"&&gxHas(c.id))return true;return false}
+function scyHitLocal(c,k,sev){SCY_HIT=1;try{return dzHit(c,k,0,sev)}finally{SCY_HIT=0}}
+function scyBlackSun(co){let n=0;CITIES.filter(x=>x.country===co).forEach(x=>{if(!(scyDev()&&scyMine(x))&&scyHitLocal(x,"blacksun",1))n++});return n}
+function scyStrike(c,k,sev){const ev=scyHitLocal(c,k,sev);if(ev)scyPost(k,c);return ev}
+function scyPost(k,c){try{const db=sfBE();if(!db||!scyDev())return;db.collection("strikes").add({uid:ON.user.uid,nm:String(S.name||"Player").slice(0,40),k:"scy_"+k,f:"God's Scythe",c:c.id,i:0,at:window.firebase.firestore.FieldValue.serverTimestamp()}).then(r=>{SF.seen[r.id]=1},()=>{})}catch(e){}}
+// another player's game receiving a Scythe strike
+function scyRecv(id,d){if(SF.seen[id])return;SF.seen[id]=1;const k=d.k.slice(4),c=CITIES[d.c],K=GXCFG.dz.k[k];if(!c||!K)return;
+  if(k==="blacksun")scyBlackSun(c.country);else scyHitLocal(c,k,k==="plague"?1:undefined);
+  const t=`🛰 The God's Scythe strikes ${k==="blacksun"?c.country:c.name}: ${K.i} ${K.n}`;try{stNews(t)}catch(e){}try{toast(t)}catch(e){}}
 function scyAct0(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTick();const c=scyCity();
   if(a==="buy"){if(scyOn()||!scyPay(SCY.cost))return;Object.assign(s,{on:1,t0:now,end:now+SCY.days*DAY,fav:SCY.fav0,ft:now,cd:{},shel:{},calm:0,bay:{},bsUsed:0});stNews(`🛰 ${S.pol.c} has launched the God's Scythe into orbit`);scySay(SCY.lines[0])}
   else if(a==="hangar")return scyHangar(1);
@@ -14422,7 +14433,7 @@ function scyAct0(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTic
   else if(s.landed&&["bplague","bbs","flare","drone","stl","laser","cam","shield","mirror","thr"].includes(a))scyRestock(a,s);
   else if(!scyOn())return;
   else if(a==="land"){scyFollow(0);const hurt=(s.hp==null?100:s.hp)<100;Object.assign(s,{on:0,landed:1,bsUsed:0,hp:100,shield:s.shieldOwn?1:0,anim:{t0:now,up:0}});scyWatch();stNews("🛬 The God's Scythe has landed for restocking"+(hurt?" and repairs":""));scySay("Coming home to reload.")}
-  else if(a==="reap"){if(!c||s.fav<SCY.reap.f||s.cd.reap>now)return;SCY_HIT=1;let ev;try{ev=dzHit(c,k)}finally{SCY_HIT=0}if(!ev)return toast(`${c.name} is still recovering from a disaster`);s.fav-=SCY.reap.f;s.cd.reap=now+SCY.reap.cd*(s.thr&&s.thrC===c.country?.5:1);stNews(`🛰 The Scythe falls on ${c.name}: ${SCY.kinds[k]}`);scySay("It is done.")}
+  else if(a==="reap"){if(!c||s.fav<SCY.reap.f||s.cd.reap>now)return;if(scyMine(c))return toast(`${c.name} is one of your cities: the Scythe won't strike it`);let ev=scyStrike(c,k);if(!ev)return toast(`${c.name} is still recovering from a disaster`);s.fav-=SCY.reap.f;s.cd.reap=now+SCY.reap.cd*(s.thr&&s.thrC===c.country?.5:1);stNews(`🛰 The Scythe falls on ${c.name}: ${SCY.kinds[k]}`);scySay("It is done.")}
   else if(a==="shel"){if(!c||s.fav<SCY.shel.f)return;s.fav-=SCY.shel.f;s.shel[c.country]=now+SCY.shel.d;scySay(`${c.country} is under my wing.`)}
   else if(a==="calm"){if(s.fav<SCY.calm.f)return;s.fav-=SCY.calm.f;s.calm=now+SCY.calm.d;stNews("🛰 The God's Scythe has calmed the world's weather");scySay("The skies are still.")}
   else if(a==="auto")s.auto=s.auto?0:1;
@@ -14431,17 +14442,17 @@ function scyAct0(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTic
   else if(a==="nuke"){if(!c||s.cd.nuke>now||S.cash<SCY.nuke)return;const m=wpn(),n0=m.wpn.nuke|0;m.wpn.nuke=n0+1;wpnFire("nuke",c.id,1,1);if((m.wpn.nuke|0)>n0){m.wpn.nuke=n0;return}S.cash-=SCY.nuke;s.cd.nuke=now+SCY.nukeCd;stNews(`☢️ An orbital nuke falls from the God's Scythe on ${c.name}`)}
   else if(["bplague","bbs","flare","drone","stl","laser","cam","shield","mirror","thr"].includes(a))scyRestock(a,s);
   else if(a==="spy"){if(!s.cam||!c||s.fav<SCY.spyF)return;s.fav-=SCY.spyF;s.spy=scySpy(c);scySay(`Eyes on ${c.name}.`)}
-  else if(a==="scorch"||a==="bless"){if(!s.mirror||!c||s.fav<SCY.sunF||s.cd.sun>now)return;if(a==="scorch"){SCY_HIT=1;let ev;try{ev=dzHit(c,"drought")}finally{SCY_HIT=0}if(!ev)return toast(`${c.name} is still recovering`);stNews(`☀️ The Scythe's mirror scorches ${c.name}`)}else{const d=gxS();delete d.act[c.id];s.shel[c.country]=Math.max(s.shel[c.country]||0,now+DAY);stNews(`☀️ Golden sunlight blesses ${c.name}`)}s.fav-=SCY.sunF;s.cd.sun=now+SCY.sunCd}
+  else if(a==="scorch"||a==="bless"){if(!s.mirror||!c||s.fav<SCY.sunF||s.cd.sun>now)return;if(a==="scorch"){if(scyMine(c))return toast(`${c.name} is one of your cities: the Scythe won't strike it`);let ev=scyStrike(c,"drought");if(!ev)return toast(`${c.name} is still recovering`);stNews(`☀️ The Scythe's mirror scorches ${c.name}`)}else{const d=gxS();delete d.act[c.id];s.shel[c.country]=Math.max(s.shel[c.country]||0,now+DAY);stNews(`☀️ Golden sunlight blesses ${c.name}`)}s.fav-=SCY.sunF;s.cd.sun=now+SCY.sunCd}
   else if(a==="thrgo"){if(!s.thr||!c)return;s.thrC=c.country;scySay(`Shifting orbit over ${c.country}.`)}
-  else if(a==="plague"){if(!c||!s.bay.plague||s.cd.plague>now)return;SCY_HIT=1;let ev;try{ev=dzHit(c,"plague",0,1)}finally{SCY_HIT=0}if(!ev)return toast(`${c.name} is still recovering`);s.bay.plague=0;s.cd.plague=now+SCY.plagueCd;stNews(`🦠 A plague swarm drifts over ${c.name}`)}
-  else if(a==="bs"){if(!c||!s.bay.bs||s.bsUsed)return;SCY_HIT=1;let n=0;try{CITIES.filter(x=>x.country===c.country).forEach(x=>{if(dzHit(x,"blacksun",0,1))n++})}finally{SCY_HIT=0}s.bay.bs=0;s.bsUsed=1;stNews(`🌑 Black sun: the sky goes dark over ${c.country}`);scySay(`${n} cities in darkness.`)}
+  else if(a==="plague"){if(!c||!s.bay.plague||s.cd.plague>now)return;if(scyMine(c))return toast(`${c.name} is one of your cities: the Scythe won't strike it`);let ev=scyStrike(c,"plague",1);if(!ev)return toast(`${c.name} is still recovering`);s.bay.plague=0;s.cd.plague=now+SCY.plagueCd;stNews(`🦠 A plague swarm drifts over ${c.name}`)}
+  else if(a==="bs"){if(!c||!s.bay.bs||s.bsUsed)return;if(scyMine(c))return toast(`${c.country} holds your cities: the Scythe won't strike it`);const n=scyBlackSun(c.country);scyPost("blacksun",c);s.bay.bs=0;s.bsUsed=1;stNews(`🌑 Black sun: the sky goes dark over ${c.country}`);scySay(`${n} cities in darkness.`)}
   save();hud();renderSheet();try{if(SPW.open)spRender()}catch(e){}}
 /* God's Eye: Mission control tab for the Scythe (dev only). Same controls as the Gov tab panel, plus live feeds of the world and players. */
 // Strike log, watch list, scheduler: wraps scyAct0 so every fired power is logged with the city and its players' net worth at that moment
 const SCYK={reap:"🌪 Reap",nuke:"☢️ Orbital nuke",plague:"🦠 Plague",bs:"🌑 Black sun",scorch:"☀️ Scorch",bless:"✨ Bless",spy:"📷 Spy",shel:"🛡 Shelter",calm:"🌤 Calm"};
 function scyNwAt(co){return ((typeof ON!=="undefined"&&ON.players)||[]).filter(x=>x&&(x.govC===co||(x.city!=null&&CITIES[x.city]&&CITIES[x.city].country===co))).reduce((a,x)=>a+(+x.nw||0),0)}
-function scyAct(a,k){const s=scy(),snap=JSON.stringify([s.fav|0,s.cd,s.bay,s.bsUsed,s.spy&&s.spy.at]),c=scyCity();scyAct0(a,k);
-  if(!SCYK[a]||!scyDev())return;const s2=scy();if(JSON.stringify([s2.fav|0,s2.cd,s2.bay,s2.bsUsed,s2.spy&&s2.spy.at])===snap)return;
+function scyAct(a,k){const s=scy(),snap=JSON.stringify([s.cd,s.bay,s.bsUsed,s.spy&&s.spy.at,s.shel,s.calm]),c=scyCity();scyAct0(a,k);
+  if(!SCYK[a]||!scyDev())return;const s2=scy();if(JSON.stringify([s2.cd,s2.bay,s2.bsUsed,s2.spy&&s2.spy.at,s2.shel,s2.calm])===snap)return;
   s2.log=s2.log||[];s2.log.unshift({a,k:k||"",c:c?c.id:null,co:c?c.country:"",at:Date.now(),nw:c?scyNwAt(c.country):0});s2.log.length=Math.min(s2.log.length,60);save()}
 function scyWatchT(uid){const s=scy();s.watch=s.watch||[];const i=s.watch.indexOf(uid);if(i>=0)s.watch.splice(i,1);else if(s.watch.length<12)s.watch.push(uid);save();try{spRender()}catch(e){}}
 function scySpyP(uid){const x=((typeof ON!=="undefined"&&ON.players)||[]).find(p=>p&&p.uid===uid);if(!x||x.city==null||!CITIES[x.city])return toast("No city known for that player");SCY_FORCE=x.city;try{scyAct("spy")}finally{SCY_FORCE=null}}
