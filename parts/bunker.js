@@ -12,6 +12,9 @@ const ST=[
  {k:"pc",n:"Computer 4",x0:11.9,x1:13,z0:-6.5,z1:-5.1},{k:"pc",n:"Computer 5",x0:11.9,x1:13,z0:-3.5,z1:-2.1},{k:"pc",n:"Computer 6",x0:11.9,x1:13,z0:-.5,z1:.9},
  {k:"rack",n:"Server racks",x0:-13,x1:-11.8,z0:3,z1:7},{k:"rack",n:"Server racks",x0:11.8,x1:13,z0:3,z1:7},
  {k:"exit",n:"Exit hatch",x0:-1.2,x1:1.2,z0:8.6,z1:9,walk:1}];
+/* desk chairs you can sit in: [x, z, facing] */
+const CHAIRS=[];for(let i=0;i<5;i++){CHAIRS.push([-3.6+i*1.8,-3.65,Math.PI],[-3.6+i*1.8,.65,0])}CHAIRS.push([-5.1,-1.5,-Math.PI/2],[5.1,-1.5,Math.PI/2]);
+const SITN={k:"stand",n:"Stand up"};
 const CRATES=[[-8,7.5,1.4],[-6.4,7.8,1.1],[7.5,7.5,1.4]];
 const B={el:null,on:false,T:null,ren:null,scene:null,cam:null,av:null,legs:null,walkT:0,p:{x:0,z:5.5,yaw:0},keys:{},joy:null,drag:null,near:null,panel:null,raf:0,last:0,others:{},ldr:[]};
 /* live presence: bunker/{uid} docs {uid,name,x,y,d,at} (x,y = position + 13/9 so they stay positive); only cleared accounts can read or write them (firestore.rules) */
@@ -30,6 +33,7 @@ function css(){if(document.getElementById("bk-css"))return;const s=document.crea
 .bk-top div{flex:1;pointer-events:none;text-shadow:0 1px 3px #000}.bk-top b{display:block;color:#67e8f9;letter-spacing:.06em;font-size:15px}.bk-top small{color:#94a3b8;font:600 12px ui-monospace,monospace}
 .bk-btn{appearance:none;background:#0e7490;color:#fff;border:0;border-radius:999px;padding:9px 14px;font:600 13px system-ui;cursor:pointer}
 .bk-help{position:absolute;left:10px;top:58px;font-size:11px;color:#cbd5e1cc;text-shadow:0 1px 3px #000;pointer-events:none}
+.bk-lift{position:absolute;inset:0;display:grid;place-items:center;background:#000;transition:opacity .9s;font:700 18px ui-monospace,monospace;color:#67e8f9;text-shadow:0 2px 8px #000;letter-spacing:.08em;pointer-events:none}
 .bk-load{position:absolute;inset:0;display:grid;place-items:center;font-size:15px;color:#67e8f9}
 .bk-joy{position:absolute;left:22px;bottom:26px;width:112px;height:112px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35);touch-action:none;display:none}
 .bk-joy i{position:absolute;left:36px;top:36px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.8);pointer-events:none}.bk-win.touch .bk-joy{display:block}.bk-win.touch .bk-help{display:none}
@@ -43,7 +47,7 @@ function css(){if(document.getElementById("bk-css"))return;const s=document.crea
 @media (max-width:560px){.bk-pan{top:auto;bottom:10px;max-height:50%}}`;document.head.appendChild(s)}
 function open(){if(B.on)return;css();B.on=true;const el=B.el=document.createElement("div");el.className="bk-win";el.setAttribute("role","dialog");el.setAttribute("aria-label",ANT.n+" bunker");
   if(matchMedia("(pointer:coarse)").matches||"ontouchstart" in window)el.classList.add("touch");
-  el.innerHTML=`<div class="bk-load">Loading the bunker…</div><div class="bk-top"><div><b>❄ ${esc(ANT.n.toUpperCase())}</b><small id="bk-sub">Classified bunker · ${devGod()?"Developer":"Moderator"} clearance</small></div><button class="bk-btn" data-bk="close">Exit</button></div>
+  el.innerHTML=`<div class="bk-load">Loading the bunker…</div><div class="bk-top"><div><b>❄ ${esc(ANT.n.toUpperCase())}</b><small id="bk-sub">Classified bunker · ${devGod()?"Developer":"Moderator"} clearance</small></div><button class="bk-btn" data-bk="snd" aria-label="Bunker sound on/off" title="Bunker sound">${st().snd?"🔊":"🔇"}</button><button class="bk-btn" data-bk="close">Exit</button></div><div class="bk-lift" hidden><span>⬇ Lift descending to level −3</span></div>
   <div class="bk-help">W/S forward/back · A/D strafe · ←/→ or drag to turn · E use · Esc exit</div><div class="bk-joy"><i></i></div><div class="bk-act"><button class="bk-btn" data-bk="use" hidden></button></div>`;
   document.body.appendChild(el);B.btn=el.querySelector('[data-bk="use"]');B.p={x:0,z:5.5,yaw:0};B.keys={};B.joy=null;B.near=null;B.panel=null;
   const joy=el.querySelector(".bk-joy"),kn=joy.firstChild,jr=56;let jid=null;
@@ -53,8 +57,8 @@ function open(){if(B.on)return;css();B.on=true;const el=B.el=document.createElem
   el.addEventListener("keydown",e=>{if(e.target.closest("input,textarea,select"))return;const k=e.key.toLowerCase();if(k==="e"||k==="enter"){use();e.preventDefault();return}if(k==="escape"){if(B.panel)panel(null);else close();return}B.keys[k]=1;if(k.startsWith("arrow")||k===" ")e.preventDefault()});
   el.addEventListener("keyup",e=>{B.keys[e.key.toLowerCase()]=0});
   el.addEventListener("click",e=>{const b=e.target.closest("[data-bk]");if(!b)return;act(b.dataset.bk,b.dataset.v,b)});
-  loadThree().then(T=>{if(!B.on||B.el!==el)return;build(T);bpListen();bpSend(1)}).catch(()=>{close();toast("Couldn't load the 3D bunker. Check your connection and try again.")})}
-function close(){if(!B.on)return;B.on=false;cancelAnimationFrame(B.raf);B.raf=0;bpStop();
+  loadThree().then(T=>{if(!B.on||B.el!==el)return;build(T);bpListen();bpSend(1);shListen();logEntry();B.liftEnd=performance.now()+2600;B.lift=1;const lf=el.querySelector(".bk-lift");if(lf){lf.hidden=false;lf.style.opacity=1}if(st().snd)hum(true)}).catch(()=>{close();toast("Couldn't load the 3D bunker. Check your connection and try again.")})}
+function close(){if(!B.on)return;B.on=false;cancelAnimationFrame(B.raf);B.raf=0;bpStop();shStop();if(B.ac){try{B.ac.close()}catch(e){}B.ac=null}B.sit=null;
   if(B.scene)B.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();const m=o.material;if(m)(Array.isArray(m)?m:[m]).forEach(x=>{if(x.map)x.map.dispose();x.dispose()})});
   if(B.ren){B.ren.dispose();try{B.ren.forceContextLoss()}catch(e){}}B.ren=B.scene=B.cam=B.av=null;B.others={};if(B.el)B.el.remove();B.el=null;save()}
 /* text label as a sprite (names over players, signs) */
@@ -63,7 +67,7 @@ function label(T,txt,col,w){const cv=document.createElement("canvas");cv.width=5
 function person(T,suit,skin){const g=new T.Group();const l=ofBox(T,g,.13,.5,.15,0x111827,-.1,0,0),r=ofBox(T,g,.13,.5,.15,0x111827,.1,0,0);ofBox(T,g,.42,.55,.26,suit,0,.5,0);ofBox(T,g,.1,.3,.02,0xffffff,0,.72,-.13);ofSph(T,g,.17,skin||0xf1c27d,0,1.22,0);ofBox(T,g,.36,.07,.36,0x1f2937,0,1.32,.02);
   const sh=new T.Mesh(new T.CircleGeometry(.34,16),new T.MeshBasicMaterial({color:0,transparent:true,opacity:.25}));sh.rotation.x=-Math.PI/2;sh.position.y=.012;g.add(sh);g.userData.legs=[l,r];return g}
 function boardTex(T){const cv=document.createElement("canvas");cv.width=1024;cv.height=320;const g=cv.getContext("2d");g.fillStyle="#04151d";g.fillRect(0,0,1024,320);g.strokeStyle="#0e7490";g.lineWidth=6;g.strokeRect(3,3,1018,314);
-  g.fillStyle="#67e8f9";g.font="bold 44px monospace";g.fillText("MISSION BOARD",28,58);const ms=st().ms.filter(m=>!m.done);g.fillStyle="#94a3b8";g.font="26px monospace";g.fillText(ms.length+" OPEN",820,58);
+  g.fillStyle="#67e8f9";g.font="bold 44px monospace";g.fillText("MISSION BOARD",28,58);const ms=missions().filter(m=>!m.done);g.fillStyle="#94a3b8";g.font="26px monospace";g.fillText(ms.length+" OPEN",820,58);
   g.font="30px monospace";ms.slice(0,5).forEach((m,i)=>{g.fillStyle=m.p==="high"?"#fca5a5":"#e2e8f0";g.fillText((m.p==="high"?"! ":"- ")+m.t.slice(0,52),28,112+i*44)});if(!ms.length){g.fillStyle="#64748b";g.fillText("No open missions",28,120)}
   const t=new T.CanvasTexture(cv);return t}
 function build(T){B.T=T;const el=B.el;let ren;try{ren=new T.WebGLRenderer({antialias:(devicePixelRatio||1)<1.5,powerPreference:"low-power"})}catch(e){close();toast("3D isn't available on this device.");return}
@@ -101,6 +105,9 @@ function build(T){B.T=T;const el=B.el;let ren;try{ren=new T.WebGLRenderer({antia
   // signs over the zones
   for(const [t,x,z,ry] of [["COMPUTERS",-12.7,-3,Math.PI/2],["COMPUTERS",12.7,-3,-Math.PI/2],["SERVERS",-12.7,5,Math.PI/2],["SERVERS",12.7,5,-Math.PI/2]]){const s=label(T,t,"#67e8f9",2.4);s.position.set(x+(x<0?.3:-.3),3.2,z);room.add(s)}
   {const s=label(T,ANT.n.toUpperCase(),"#a5f3fc",3.2);s.position.set(0,3.25,RD/2-.3);room.add(s)}
+  // two windows in the front wall looking out at the Antarctic storm (animated canvas texture)
+  {const cv2=document.createElement("canvas");cv2.width=256;cv2.height=128;B.snowC=cv2;B.flakes=[];for(let i=0;i<90;i++)B.flakes.push({x:Math.random()*256,y:Math.random()*128,v:20+Math.random()*50,r:.6+Math.random()*1.6});B.snowT=new T.CanvasTexture(cv2);
+    for(const x of [-6.5,6.5]){ofBox(T,room,4.4,1.9,.3,0x1f2937,x,1.25,RD/2-.05,{m:.5});const w=new T.Mesh(new T.PlaneGeometry(4,1.5),new T.MeshBasicMaterial({map:B.snowT}));w.position.set(x,2.2,RD/2-.21);w.rotation.y=Math.PI;room.add(w)}}
   // me
   const av=person(T,devGod()?0x854d0e:0x1e3a8a);sc.add(av);B.av=av;B.legs=av.userData.legs;
   cv.addEventListener("pointerdown",e=>{B.drag={x:e.clientX,id:e.pointerId};cv.focus()});cv.addEventListener("pointermove",e=>{if(B.drag&&B.drag.id===e.pointerId){B.p.yaw-=(e.clientX-B.drag.x)*.006;B.drag.x=e.clientX}});
@@ -108,19 +115,24 @@ function build(T){B.T=T;const el=B.el;let ren;try{ren=new T.WebGLRenderer({antia
   B.last=performance.now();B.raf=requestAnimationFrame(loop);setTimeout(()=>cv.focus(),30)}
 function blocked(x,z){const r=.3;if(x<-RW/2+r||x>RW/2-r||z<-RD/2+r||z>RD/2-r)return true;for(const s of ST)if(!s.walk&&x>s.x0-r&&x<s.x1+r&&z>s.z0-r&&z<s.z1+r)return true;
   for(const [cx,cz,w] of CRATES)if(Math.abs(x-cx)<w/2+r&&Math.abs(z-cz)<w/2+r)return true;return false}
-function nearest(){const P=B.p;let best=null,bd=1.4;for(const s of ST){const cx=Math.max(s.x0,Math.min(P.x,s.x1)),cz=Math.max(s.z0,Math.min(P.z,s.z1)),d=Math.hypot(P.x-cx,P.z-cz);if(d<bd){bd=d;best=s}}return best}
+function nearest(){const P=B.p;if(B.sit)return SITN;let best=null,bd=1.4;for(const s of ST){const cx=Math.max(s.x0,Math.min(P.x,s.x1)),cz=Math.max(s.z0,Math.min(P.z,s.z1)),d=Math.hypot(P.x-cx,P.z-cz);if(d<bd){bd=d;best=s}}
+  for(const c of CHAIRS){const d=Math.hypot(P.x-c[0],P.z-c[1]);if(d<.75&&d<bd){bd=d;best={k:"chair",n:"Sit down",c}}}return best}
 function loop(t){if(!B.on||!B.ren){B.raf=0;return}B.raf=requestAnimationFrame(loop);if(document.hidden)return;const dt=Math.min(.05,Math.max(0,(t-B.last)/1000));B.last=t;step(dt,t);
   const w=B.el.clientWidth,h=B.el.clientHeight;if(B.cv.width!==Math.round(w*B.ren.getPixelRatio())||B._h!==h){B.ren.setSize(w,h,false);B.cam.aspect=w/h;B.cam.updateProjectionMatrix();B._h=h}B.ren.render(B.scene,B.cam)}
 function step(dt,t){const P=B.p,k=B.keys,T=B.T,busy=!!B.panel&&document.activeElement&&document.activeElement.closest&&document.activeElement.closest(".bk-pan");
   let f=0,s=0,turn=0;if(!busy){if(k.w||k.arrowup)f+=1;if(k.s||k.arrowdown)f-=1;if(k.d)s+=1;if(k.a)s-=1;if(k.arrowleft)turn+=1;if(k.arrowright)turn-=1;if(B.joy){f-=B.joy.y;s+=B.joy.x}}
-  P.yaw+=turn*2.2*dt;const m=Math.hypot(f,s);let moving=false;
+  if(B.lift>0){B.lift=Math.max(0,(B.liftEnd-performance.now())/2600);f=s=0;const lf=B.el.querySelector(".bk-lift");if(lf&&B.lift<.4)lf.style.opacity=B.lift/.4;if(!B.lift&&lf)lf.hidden=true}
+  if(B.sit&&(Math.abs(f)+Math.abs(s)>.3))stand();
+  P.yaw+=turn*2.2*dt;const m=B.sit?0:Math.hypot(f,s);let moving=false;
   if(m>.05){const sp=(k.shift?6:3.6)*Math.min(1,m)*dt/m,fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw),rx=Math.cos(P.yaw),rz=-Math.sin(P.yaw);const dx=(fx*f+rx*s)*sp,dz=(fz*f+rz*s)*sp;
     if(!blocked(P.x+dx,P.z))P.x+=dx;if(!blocked(P.x,P.z+dz))P.z+=dz;moving=true;B.av.rotation.y=Math.atan2(-(fx*f+rx*s),-(fz*f+rz*s))}
-  B.walkT=moving?B.walkT+dt*10:0;const sw=Math.sin(B.walkT)*.5;B.legs[0].rotation.x=sw;B.legs[1].rotation.x=-sw;B.av.position.set(P.x,moving?Math.abs(Math.sin(B.walkT))*.04:0,P.z);
-  const D=4.8;let cx=P.x+Math.sin(P.yaw)*D,cz=P.z+Math.cos(P.yaw)*D;cx=Math.max(-RW/2+.3,Math.min(RW/2-.3,cx));cz=Math.max(-RD/2+.3,Math.min(RD/2-.3,cz));B.cam.position.set(cx,2.9,cz);B.cam.lookAt(P.x-Math.sin(P.yaw)*1.2,.9,P.z-Math.cos(P.yaw)*1.2);
+  B.walkT=moving?B.walkT+dt*10:0;const sw=Math.sin(B.walkT)*.5;B.legs[0].rotation.x=sw;B.legs[1].rotation.x=-sw;B.av.position.set(P.x,moving?Math.abs(Math.sin(B.walkT))*.04:0,P.z);if(B.sit){B.av.position.y=.2;B.av.rotation.y=B.sit[2];B.legs[0].rotation.x=B.legs[1].rotation.x=-1.4}
+  const D=4.8;let cx=P.x+Math.sin(P.yaw)*D,cz=P.z+Math.cos(P.yaw)*D;cx=Math.max(-RW/2+.3,Math.min(RW/2-.3,cx));cz=Math.max(-RD/2+.3,Math.min(RD/2-.3,cz));B.cam.position.set(cx,2.9+(B.lift||0)*.8,cz);B.cam.lookAt(P.x-Math.sin(P.yaw)*1.2,.9,P.z-Math.cos(P.yaw)*1.2);
   if(B.holo){B.holo.rotation.y+=dt*.8;B.holo.material.opacity=.45+.15*Math.sin(t/400)}
   if(B.leds&&((t/250)|0)!==B._lt){B._lt=(t/250)|0;B.leds.forEach((l,i)=>{const on=((i*7+B._lt)%5)!==0,c=((i+B._lt)%11)?0x22c55e:0xef4444;l.material.color.setHex(on?c:0x111827);l.material.emissive.setHex(on?c:0)})}
-  others(dt);const n=nearest();if(n!==B.near){B.near=n;B.btn.hidden=!n;if(n)B.btn.textContent=n.k==="exit"?"🛫 Exit hatch (E)":`Use ${n.n} (E)`}
+  if(B.snowC&&(B._st=(B._st||0)+dt)>.06){const g=B.snowC.getContext("2d"),gr=g.createLinearGradient(0,0,0,128);gr.addColorStop(0,"#8fa6bd");gr.addColorStop(.7,"#d9e4ee");gr.addColorStop(1,"#f4f8fb");g.fillStyle=gr;g.fillRect(0,0,256,128);
+    g.fillStyle="#fff";for(const f2 of B.flakes){f2.y+=f2.v*B._st;f2.x+=(30+Math.sin(t/900+f2.r)*20)*B._st;if(f2.y>128){f2.y=-2;f2.x=Math.random()*256}if(f2.x>256)f2.x-=256;g.beginPath();g.arc(f2.x,f2.y,f2.r,0,7);g.fill()}B._st=0;B.snowT.needsUpdate=true}
+  others(dt);const n=nearest();if(n!==B.near){B.near=n;B.btn.hidden=!n;if(n)B.btn.textContent=n.k==="exit"?"🛫 Exit hatch (E)":n.k==="chair"||n.k==="stand"?`${n.n} (E)`:`Use ${n.n} (E)`}
   if((B._sub=(B._sub||0)+dt)>1){B._sub=0;const e=document.getElementById("bk-sub");if(e)e.textContent=`Classified bunker · ${devGod()?"Developer":"Moderator"} clearance · ${onl()?BP.others.length+1+" inside":"offline: sign in to see others"}`}
   bpSend()}
 /* other cleared players: one figure + name tag each, eased toward their last sent spot */
@@ -129,32 +141,64 @@ function others(dt){const T=B.T,seen={};for(const o of BP.others){seen[o.uid]=1;
   const dx=o.x-g.position.x,dz=o.z-g.position.z,mv=Math.hypot(dx,dz)>.03;g.position.x+=dx*Math.min(1,dt*8);g.position.z+=dz*Math.min(1,dt*8);g.rotation.y=o.r;
   g.userData.wt=mv?g.userData.wt+dt*10:0;const sw=Math.sin(g.userData.wt)*.5;g.userData.legs[0].rotation.x=sw;g.userData.legs[1].rotation.x=-sw}
   for(const u in B.others)if(!seen[u]){B.scene.remove(B.others[u]);delete B.others[u]}}
-function use(){const n=B.near;if(!n)return;if(n.k==="exit"){close();return}panel(n.k)}
+function use(){const n=B.near;if(!n)return;if(n.k==="exit"){close();return}if(n.k==="chair"){B.sit=n.c;B.p.x=n.c[0];B.p.z=n.c[1];B.near=null;return}if(n.k==="stand"){stand();B.near=null;return}panel(n.k)}
+function stand(){if(!B.sit)return;const c=B.sit,dx=c[0],dz=c[1]+1.5,m=Math.hypot(dx,dz)||1;B.sit=null;B.p.x=c[0]+dx/m*.7;B.p.z=c[1]+dz/m*.7;B.legs[0].rotation.x=B.legs[1].rotation.x=0}
 function panel(k){if(B.panel&&B.panel.parentNode)B.panel.remove();B.panel=null;if(!k){if(B.cv)B.cv.focus();return}const p=B.panel=document.createElement("div");p.className="bk-pan";B.el.appendChild(p);fill(k)}
 function refreshBoard(){try{if(B.boardM){B.boardM.map.dispose();B.boardM.map=boardTex(B.T);B.boardM.needsUpdate=true}}catch(e){}}
-function fill(k){const p=B.panel;if(!p)return;p.dataset.k=k;const a=st(),h3=t=>`<h3>${t}<button data-bk="pclose" aria-label="Close">×</button></h3>`;
-  if(k==="board"){p.innerHTML=h3("📋 Mission board")+`<input id="bkmt" placeholder="New mission…" maxlength="80"><div style="display:flex;gap:6px"><select id="bkmp" style="flex:1"><option value="normal">Normal</option><option value="high">High priority</option></select><button class="bk-btn" data-bk="madd">Post</button></div>`
-    +(a.ms.length?a.ms.map(m=>`<div class="bk-row"><span class="${m.done?"bk-done":""}">${esc(m.t)}</span><span class="bk-tag ${m.p}" style="flex:0">${m.p==="high"?"HIGH":"NORMAL"}</span><button class="bk-btn" data-bk="mdone" data-v="${m.id}">${m.done?"Reopen":"Done"}</button><button class="bk-btn" style="background:#7f1d1d" data-bk="mdel" data-v="${m.id}" aria-label="Delete">✕</button></div>`).join(""):`<p>No missions yet.</p>`)
-    +`<p style="color:#94a3b8;font-size:11px">Missions are saved on this device for now.</p>`}
-  else if(k==="pc"){const cs=CITIES.length;let rich="";try{const L=(typeof ON!=="undefined"&&ON.lb)||[];rich=L.slice(0,5).map((x,i)=>`${i+1}. ${x.name||"?"}  ${fmt(x.nw||0)}`).join("\n")}catch(e){}
-    let wars=0;try{wars=Object.keys((S.pol&&S.pol.mil&&S.pol.mil.wars)||{}).length}catch(e){}
-    p.innerHTML=h3("🖥 Aurora terminal")+`<pre class="bk-mono">&gt; AURORA OS v1.0  [${devGod()?"DEV":"MOD"}]
-&gt; uplink ......... OK
-&gt; cities tracked .. ${cs}
-&gt; your wars ....... ${wars}
-&gt; your cash ....... ${fmt(S.cash)}
-&gt; moderators ...... ${Object.keys(MODERATORS).length}
-${rich?"&gt; top players\n"+esc(rich):"&gt; leaderboard ..... offline"}</pre><p style="color:#94a3b8;font-size:11px">More terminal tools come next.</p>`}
-  else if(k==="desk"){p.innerHTML=h3("🪑 Conference desk")+`<p style="margin:0 0 6px;color:#cbd5e1">Briefing notes for the moderator team.</p><textarea id="bkn" rows="3" maxlength="300" placeholder="Write a briefing note…"></textarea><button class="bk-btn" data-bk="nadd">Add note</button>`
-    +(a.notes.length?a.notes.slice().reverse().map(n=>`<div class="bk-row"><span>${esc(n.t)}<small>${new Date(n.at).toLocaleString()}</small></span><button class="bk-btn" style="background:#7f1d1d" data-bk="ndel" data-v="${n.at}" aria-label="Delete">✕</button></div>`).join(""):`<p style="color:#94a3b8">No notes yet.</p>`)
-    +`<p style="color:#94a3b8;font-size:11px">Notes are saved on this device for now.</p>`}
-  else if(k==="rack"){p.innerHTML=h3("🗄 Server racks")+`<pre class="bk-mono">ALL SYSTEMS NOMINAL\nTEMP  -41°C outside · 19°C inside\nPOWER geothermal 100%</pre>`}}
-function act(a,v,b){const s=st();
-  if(a==="close"){close();return}if(a==="use"){use();return}if(a==="pclose"){panel(null);return}
-  if(a==="madd"){const i=B.panel.querySelector("#bkmt"),t=i.value.trim();if(!t)return;s.ms.push({id:s.ms.reduce((m,x)=>Math.max(m,x.id),0)+1,t,p:B.panel.querySelector("#bkmp").value,done:0});save();fill("board");refreshBoard();return}
-  if(a==="mdone"){const m=s.ms.find(x=>x.id===+v);if(m)m.done=m.done?0:1;save();fill("board");refreshBoard();return}
-  if(a==="mdel"){s.ms=s.ms.filter(x=>x.id!==+v);save();fill("board");refreshBoard();return}
-  if(a==="nadd"){const t=B.panel.querySelector("#bkn").value.trim();if(!t)return;s.notes.push({t,at:Date.now()});if(s.notes.length>50)s.notes.shift();save();fill("desk");return}
-  if(a==="ndel"){s.notes=s.notes.filter(n=>n.at!==+v);save();fill("desk");return}}
-return {open,close,others:()=>BP.others};
+/* ---------- shared team data (Firestore, cleared accounts only; see bunkerOk() in firestore.rules) ----------
+   bmis missions, bnote briefing notes, bchat mod chat (k "m" message, "c" meeting call), blog entry log, balarm intruder alarms, bwarn/{uid} warnings to a player.
+   Offline (not signed in) the board and notes fall back to this device's save. */
+const SH={un:[],ms:null,notes:null,chat:[],log:[],alarm:[],look:null,lookQ:"",pctab:"intel",seen:0};
+const tsm=v=>v&&v.toMillis?v.toMillis():(+v||0);
+const me=()=>({by:ON.user.uid,name:String(S.name||"Player").slice(0,20)});
+const now0=()=>firebase.firestore.FieldValue.serverTimestamp();
+function shListen(){if(!onl()||SH.un.length)return;const db=ON.db,L=(c,lim,f)=>{try{SH.un.push(db.collection(c).orderBy("at","desc").limit(lim).onSnapshot(q=>{f(q.docs.map(d=>({id:d.id,...d.data()})));if(B.panel)fill(B.panel.dataset.k)},e=>console.warn(c,e)))}catch(e){}};
+  L("bmis",60,a=>{SH.ms=a;refreshBoard()});L("bnote",50,a=>{SH.notes=a});L("bchat",60,a=>{SH.chat=a.reverse()});L("blog",40,a=>{SH.log=a});L("balarm",30,a=>{SH.alarm=a})}
+function shStop(){SH.un.forEach(u=>{try{u()}catch(e){}});SH.un=[];SH.ms=SH.notes=null}
+const missions=()=>SH.ms?SH.ms.map(m=>({id:m.id,t:m.t,p:m.p,done:m.done?1:0,name:m.name})):st().ms;
+const notes=()=>SH.notes?SH.notes.map(n=>({id:n.id,t:n.t,at:tsm(n.at),name:n.name})):st().notes.slice().reverse().map(n=>({id:n.at,t:n.t,at:n.at}));
+function logEntry(){if(!onl())return;try{ON.db.collection("blog").add({...me(),at:now0()}).catch(()=>{})}catch(e){}}
+const ago=t=>{const s=Math.max(0,(Date.now()-t)/1000);return s<60?"just now":s<3600?Math.floor(s/60)+" min ago":s<86400?Math.floor(s/3600)+" h ago":new Date(t).toLocaleDateString()};
+const note=t=>`<p style="color:#94a3b8;font-size:11px">${t}</p>`;
+function fill(k){const p=B.panel;if(!p)return;const foc=document.activeElement,keep=foc&&p.contains(foc)&&foc.id?{id:foc.id,v:foc.value,s:foc.selectionStart}:null;p.dataset.k=k;
+  const h3=t=>`<h3>${t}<button data-bk="pclose" aria-label="Close">×</button></h3>`,shared=onl()?"Shared live with every cleared moderator.":"Offline: saved on this device only. Sign in to share with the team.";
+  if(k==="board"){const ms=missions();p.innerHTML=h3("📋 Mission board")+`<input id="bkmt" placeholder="New mission…" maxlength="80"><div style="display:flex;gap:6px"><select id="bkmp" style="flex:1"><option value="normal">Normal</option><option value="high">High priority</option></select><button class="bk-btn" data-bk="madd">Post</button></div>`
+    +(ms.length?ms.map(m=>`<div class="bk-row"><span class="${m.done?"bk-done":""}">${esc(m.t)}${m.name?`<small>by ${esc(m.name)}</small>`:""}</span><span class="bk-tag ${m.p}" style="flex:0">${m.p==="high"?"HIGH":"NORMAL"}</span><button class="bk-btn" data-bk="mdone" data-v="${esc(m.id)}">${m.done?"Reopen":"Done"}</button><button class="bk-btn" style="background:#7f1d1d" data-bk="mdel" data-v="${esc(m.id)}" aria-label="Delete">✕</button></div>`).join(""):`<p>No missions yet.</p>`)+note(shared)}
+  else if(k==="desk"){const ns=notes(),ch=SH.chat;p.innerHTML=h3("🪑 Conference desk")
+    +(onl()?`<div style="display:flex;gap:6px;margin-bottom:6px"><button class="bk-btn" data-bk="call" style="background:#b45309">📣 Call a meeting</button></div>
+    <div class="bk-mono" id="bkchat" style="color:#e2e8f0;max-height:180px;overflow:auto">${ch.length?ch.map(c=>c.k==="c"?`<div style="color:#fbbf24">📣 ${esc(c.name)} called a meeting · ${ago(tsm(c.at))}</div>`:`<div><b style="color:${devUid(c.by)?"#fde047":"#67e8f9"}">${esc(c.name)}</b> ${esc(c.t)}</div>`).join(""):"No messages yet."}</div>
+    <div style="display:flex;gap:6px"><input id="bkcm" placeholder="Message the mod team…" maxlength="200"><button class="bk-btn" data-bk="csend">Send</button></div>`:note("Sign in to use the moderator chat."))
+    +`<p style="margin:10px 0 4px;color:#cbd5e1">Briefing notes</p><textarea id="bkn" rows="2" maxlength="300" placeholder="Write a briefing note…"></textarea><button class="bk-btn" data-bk="nadd">Add note</button>`
+    +(ns.length?ns.map(n=>`<div class="bk-row"><span>${esc(n.t)}<small>${n.name?esc(n.name)+" · ":""}${ago(n.at)}</small></span><button class="bk-btn" style="background:#7f1d1d" data-bk="ndel" data-v="${esc(n.id)}" aria-label="Delete">✕</button></div>`).join(""):`<p style="color:#94a3b8">No notes yet.</p>`)+note(shared);
+    const cb=p.querySelector("#bkchat");if(cb)cb.scrollTop=cb.scrollHeight}
+  else if(k==="pc"){const tb=SH.pctab,tabs=[["intel","Intel"],["look","Player lookup"],["log","Security log"]];let h=h3("🖥 Aurora terminal")+`<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">${tabs.map(([x,n])=>`<button class="bk-btn" data-bk="pctab" data-v="${x}" style="${tb===x?"":"background:#1e293b"}">${n}</button>`).join("")}</div>`;
+    if(tb==="intel"){let rich="";try{const L=(typeof ON!=="undefined"&&ON.lb)||[];rich=L.slice(0,5).map((x,i)=>`${i+1}. ${x.name||"?"}  ${fmt(x.nw||0)}`).join("\n")}catch(e){}
+      h+=`<pre class="bk-mono">&gt; AURORA OS v2.0  [${devGod()?"DEV":"MOD"}]\n&gt; uplink ......... ${onl()?"OK":"OFFLINE"}\n&gt; inside now ..... ${BP.others.length+1}\n&gt; open missions .. ${missions().filter(m=>!m.done).length}\n&gt; intruder alerts  ${SH.alarm.length}\n&gt; moderators ..... ${Object.keys(MODERATORS).length}\n${rich?"&gt; top players\n"+esc(rich):""}</pre>`}
+    else if(tb==="look"){h+=onl()?`<div style="display:flex;gap:6px"><input id="bklq" placeholder="Exact player name" maxlength="20" value="${esc(SH.lookQ)}"><button class="bk-btn" data-bk="look">Search</button></div>`
+      +(SH.look==null?note("Search by exact name (case-sensitive)."):SH.look.length?SH.look.map(x=>`<div class="bk-row"><span><b>${esc(x.name)}</b><small>Worth ${fmt(+x.nw||0)}${x.rank?` · rank #${x.rank}`:""}${x.govC?` · governs ${esc(x.govC)}`:""}${x.lastSeen?` · seen ${ago(tsm(x.lastSeen))}`:""}</small></span></div>
+        <div style="display:flex;gap:6px"><input id="bkw_${esc(x.id)}" placeholder="Warning message…" maxlength="160"><button class="bk-btn" style="background:#b91c1c" data-bk="warn" data-v="${esc(x.id)}">⚠ Warn</button></div>`).join(""):`<p>No player with that name.</p>`)
+      +note("A warning pops up on that player's screen the next time they're online."):note("Sign in to look players up.")}
+    else{const ev=[...SH.log.map(x=>({t:tsm(x.at),h:`🚪 <b>${esc(x.name)}</b> entered`})),...SH.alarm.map(x=>({t:tsm(x.at),h:`🚨 <b style="color:#fca5a5">${esc(x.name)}</b> tried to reach the facility`}))].sort((a,b)=>b.t-a.t).slice(0,40);
+      h+=onl()?(ev.length?ev.map(e=>`<div class="bk-row"><span>${e.h}<small>${ago(e.t)}</small></span></div>`).join(""):`<p>No entries yet.</p>`):note("Sign in to see the security log.")}
+    p.innerHTML=h}
+  else if(k==="rack"){p.innerHTML=h3("🗄 Server racks")+`<pre class="bk-mono">ALL SYSTEMS NOMINAL\nTEMP  -41°C outside · 19°C inside\nPOWER geothermal 100%\nUPLINK ${onl()?"ENCRYPTED":"OFFLINE"}</pre>`}
+  if(keep){const e=p.querySelector("#"+keep.id);if(e){e.value=keep.v;e.focus();try{e.setSelectionRange(keep.s,keep.s)}catch(x){}}}}
+function act(a,v,b){const s=st(),db=onl()?ON.db:null,val=id=>{const e=B.panel&&B.panel.querySelector("#"+id);return e?e.value.trim():""},err=e=>{console.warn("bunker",e);toast("Couldn't save. Check that the latest Firestore rules are published.")};
+  if(a==="close"){close();return}if(a==="use"){use();return}if(a==="pclose"){panel(null);return}if(a==="snd"){hum(!B.snd);return}
+  if(a==="pctab"){SH.pctab=v;fill("pc");return}
+  if(a==="madd"){const t=val("bkmt"),p=B.panel.querySelector("#bkmp").value;if(!t)return;if(db)db.collection("bmis").add({t,p,done:false,...me(),at:now0()}).catch(err);else{s.ms.push({id:s.ms.reduce((m,x)=>Math.max(m,x.id),0)+1,t,p,done:0});save();fill("board");refreshBoard()}B.panel.querySelector("#bkmt").value="";return}
+  if(a==="mdone"){if(db){const m=SH.ms.find(x=>x.id===v);if(m)db.collection("bmis").doc(v).update({done:!m.done}).catch(err)}else{const m=s.ms.find(x=>x.id===+v);if(m)m.done=m.done?0:1;save();fill("board");refreshBoard()}return}
+  if(a==="mdel"){if(db)db.collection("bmis").doc(v).delete().catch(err);else{s.ms=s.ms.filter(x=>x.id!==+v);save();fill("board");refreshBoard()}return}
+  if(a==="nadd"){const t=val("bkn");if(!t)return;if(db)db.collection("bnote").add({t,...me(),at:now0()}).catch(err);else{s.notes.push({t,at:Date.now()});if(s.notes.length>50)s.notes.shift();save();fill("desk")}B.panel.querySelector("#bkn").value="";return}
+  if(a==="ndel"){if(db)db.collection("bnote").doc(v).delete().catch(err);else{s.notes=s.notes.filter(n=>n.at!==+v);save();fill("desk")}return}
+  if(a==="csend"){const t=val("bkcm");if(!t||!db)return;db.collection("bchat").add({t,k:"m",...me(),at:now0()}).catch(err);B.panel.querySelector("#bkcm").value="";return}
+  if(a==="call"){if(!db)return;if(Date.now()-(SH.lastCall||0)<60000)return toast("You just called a meeting");SH.lastCall=Date.now();db.collection("bchat").add({t:"",k:"c",...me(),at:now0()}).then(()=>toast("📣 Meeting called: every cleared moderator gets pinged")).catch(err);return}
+  if(a==="look"){const q=val("bklq");SH.lookQ=q;if(!q||!db)return;db.collection("players").where("name","==",q).limit(5).get().then(r=>{SH.look=r.docs.map(d=>({id:d.id,...d.data()}));fill("pc")}).catch(e=>{SH.look=[];fill("pc");console.warn(e)});return}
+  if(a==="warn"){const t=val("bkw_"+v);if(!t||!db)return;db.collection("bwarn").doc(v).set({t,...me(),at:now0()}).then(()=>toast("⚠ Warning sent")).catch(err);return}}
+/* low bunker hum (WebAudio, no files): off by default, the 🔊 button toggles it */
+function hum(on){B.snd=on;const bt=B.el&&B.el.querySelector('[data-bk="snd"]');if(bt)bt.textContent=on?"🔊":"🔇";try{S.ant.snd=on?1:0}catch(e){}
+  if(!on){if(B.ac){try{B.ac.close()}catch(e){}B.ac=null}return}if(B.ac)return;try{const ac=B.ac=new (window.AudioContext||window.webkitAudioContext)(),g=ac.createGain();g.gain.value=.05;g.connect(ac.destination);
+    const o=ac.createOscillator();o.type="sine";o.frequency.value=55;o.connect(g);o.start();const o2=ac.createOscillator(),g2=ac.createGain();o2.type="triangle";o2.frequency.value=110.5;g2.gain.value=.25;o2.connect(g2);g2.connect(g);o2.start();
+    const n=ac.createBuffer(1,ac.sampleRate*2,ac.sampleRate),d=n.getChannelData(0);let l=0;for(let i=0;i<d.length;i++){l=(l+.02*(Math.random()*2-1))/1.02;d[i]=l*3}const ns=ac.createBufferSource(),lp=ac.createBiquadFilter();ns.buffer=n;ns.loop=true;lp.type="lowpass";lp.frequency.value=300;ns.connect(lp);lp.connect(g);ns.start()}catch(e){B.ac=null}}
+return {open,close,others:()=>BP.others,_b:()=>B};
 })()
