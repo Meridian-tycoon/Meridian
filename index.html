@@ -5657,8 +5657,9 @@ function mkLive(){const el=PH.el,s=mkSel;if(!s||!AK[s])return;const m=MK(),p=m.p
   const t=el.querySelector("#mkcqt");if(t){const x=mkCQTxt(s);if(t.textContent!==x)t.textContent=x}
   const big=el.querySelector(".ph-big");if(big&&big.textContent!==fp(p))big.textContent=fp(p)}
 function mktApp(){const m=MK();
-  let h=`<div class="ph-seg mk-seg">${[["s","Stocks"],["c","Crypto"],["f","Futures"],["y","Players"],["i","My IPO"],["p","Portfolio"]].map(([k,n])=>`<button data-ph="mkt" data-k="${k}" aria-pressed="${mkTab===k}">${n}</button>`).join("")}</div>`;
+  let h=`<div class="ph-seg mk-seg">${[["s","Stocks"],["c","Crypto"],["f","Futures"],["y","Players"],["i","My IPO"],["p","Portfolio"],["x","Exchange"]].map(([k,n])=>`<button data-ph="mkt" data-k="${k}" aria-pressed="${mkTab===k}">${n}</button>`).join("")}</div>`;
   if(!MKD.inner)h+=`<button class="buy" data-ph="mkdash" style="width:100%;margin-top:8px;color:#fff;background:#15803d!important;border-color:#22c55e">📊 Open market dashboard</button>`;
+  if(mkTab==="x")return h+exApp();   // Exchange merged into Stocks (Mark, 2026-11-04): same exApp(), same buy/sell/withdraw paths
   h+=exViaHtml();
   if(mkTab==="f")return h+futHtml();if(mkTab==="i")return h+ipoMineHtml();if(mkTab==="y")return h+(IPO.sel?ipoDetHtml(IPO.sel):ipoListHtml());
   if(mkSel){const a=AK[mkSel],p=m.px[a.s],ch=(p/m.open[a.s]-1)*100,hd=m.hold[a.s],col=ch>=0?"#22c55e":"#ef4444";
@@ -12854,7 +12855,7 @@ function exEnsure(){if(!exOk()){if(EX.on){for(const k in EX.sub)try{EX.sub[k]()}
     EX.sub.l=ON.db.collection("exch").orderBy("at","desc").limit(30).onSnapshot(q=>{EX.list=arr(q).filter(x=>x.id!==uid&&typeof x.name==="string");exRefresh()},er("exchanges"));
     EX.sub.n=ON.db.collection("world").doc("nyse").onSnapshot(d=>{EX.ny=d.exists?d.data():null;EX.nyOk=1;if(!EX.ny&&exOwn())exClaim(S.exch.name).catch(()=>{});
       if(EX.ny&&EX.ny.uid&&EX.ny.uid!==uid&&exOwn()){const n=S.exch.name;S.exch=null;S.exVia="";ON.db.collection("exch").doc(uid).delete().catch(()=>{});toast(`🏛 ${n} now belongs to ${EX.ny.own||"another player"}`);try{S.log.unshift(`Sold the ${n} stock exchange`);S.log=S.log.slice(0,3)}catch(e){}save();hud()}
-      if(EX.ny&&EX.ny.to===uid&&EX.offerSeen!==EX.ny.price){EX.offerSeen=EX.ny.price;toast(`🏛 ${EX.ny.own||"A player"} offers you ${EX.ny.name} for ${fmt(EX.ny.price)}. Open the Exchange app to buy it`)}
+      if(EX.ny&&EX.ny.to===uid&&EX.offerSeen!==EX.ny.price){EX.offerSeen=EX.ny.price;toast(`🏛 ${EX.ny.own||"A player"} offers you ${EX.ny.name} for ${fmt(EX.ny.price)}. Open Stocks › Exchange to buy it`)}
       exRefresh()},er("exchange owner"));
     EX.sub.p=ON.db.collection("exsale").doc(uid).onSnapshot(d=>{if(d.exists)exPaid()},()=>{});
     try{exiListen(uid)}catch(e){}
@@ -12864,7 +12865,7 @@ function exEnsure(){if(!exOk()){if(EX.on){for(const k in EX.sub)try{EX.sub[k]()}
 function exCollect(quiet){const x=exFix();if(!x||!exOk())return;for(const o of EX.inb){if(EX.busy[o.id])continue;EX.busy[o.id]=1;const ref=ON.db.collection("excom").doc(o.id);
   ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)throw new Error("gone");const v=Math.max(0,Math.min(50000000,Math.floor(+d.data().amt||0)));t.delete(ref);return{v,vol:+d.data().vol||0,k:d.data().k||"",tk:d.data().tk||""}})
     .then(r=>{delete EX.busy[o.id];const x2=exDay();if(x2){x2.d.com+=r.v;x2.d.vol+=r.vol;x2.d.n++;x2.tot+=r.v;x2.cap+=r.v;if(r.k==="ipo"){x2.lfee=(x2.lfee||0)+r.v;x2.lst=[{tk:r.tk,t:Date.now(),v:r.v,by:o.byName||"a player"}].concat(x2.lst||[]).slice(0,8)}}S.earned=(S.earned||0)+r.v;if(!quiet)toast(`🏛 ${fmt(r.v)} commission added to the exchange account from ${o.byName||"a trader"}`);save();hud();exRefresh()},()=>{delete EX.busy[o.id]})}}
-function exRefresh(){if(EXW.open)exRender();if(PH&&PH.open&&(PH.app==="exch"))phRender()}
+function exRefresh(){if(EXW.open)exRender();if(PH&&PH.open&&(PH.app==="exch"||(PH.app==="stocks"&&mkTab==="x")))phRender()}
 function exTick(){const now=Date.now(),x=exDay(now);if(x){const dt=Math.max(0,Math.min(now-(x.t||now),48*DAYMS));x.t=now;const g=exGross()*dt/DAYMS,ai=exAiVol()*dt/DAYMS,gb=g-ai*EXC.com;x.d.fee+=g;x.d.vol+=gb/EXC.take+ai;x.d.ai=(x.d.ai||0)+ai;x.tot+=g;x.cap+=exIncome()*dt/DAYMS;
     if(ai>0)exAiTrades(x,ai,now)}
   if(S.exVia&&S.exVia!=="me"&&!EX.list.some(e=>e.id===S.exVia)&&EX.on&&EX.list.length)S.exVia="";if(S.exVia==="me"&&!exOwn())S.exVia="";try{exEnsure()}catch(e){}}
@@ -12909,7 +12910,7 @@ function exPhone(a,k){if(a==="exdash"){exOpen();return 1}if(a==="exaccept"){exAc
 /* city sheet row (New York only) */
 function exRow(c){if(!c||c.name!==EXC.city)return"";const x=exFix();
   if(x)return `<div class="sec">Stock exchange</div><div class="list"><div class="row own"><div class="n">🏛 ${devEsc(x.name)} <span class="tag boom">Yours</span></div><div class="d">Earns about <b>${fmt(exIncome())}</b>/hr in trading fees. Today ${fmt(x.d.vol)} traded.</div><button class="buy" id="ex-dash">Dashboard</button></div></div>`;
-  if(exTaken())return `<div class="sec">Stock exchange · one on the server</div><div class="list"><div class="row"><div class="n">🏛 ${devEsc(EX.ny.name||"Stock exchange")} <span class="tag">Taken</span></div><div class="d">Owned by <b>${devEsc(EX.ny.own||"another player")}</b>. There is only one stock exchange on the server. You can still trade through it from the Exchange app.</div></div></div>`;
+  if(exTaken())return `<div class="sec">Stock exchange · one on the server</div><div class="list"><div class="row"><div class="n">🏛 ${devEsc(EX.ny.name||"Stock exchange")} <span class="tag">Taken</span></div><div class="d">Owned by <b>${devEsc(EX.ny.own||"another player")}</b>. There is only one stock exchange on the server. You can still trade through it from Stocks › Exchange.</div></div></div>`;
   return `<div class="sec">Stock exchange · only one on the server</div><div class="list"><div class="row"><div class="n">🏛 Stock trading office</div>
     <div class="d">Open your own exchange on Wall Street. About <b>${fmt(EXC.base)}</b>/hr in trading fees (more on busy market days), a phone dashboard, and other players can trade on it (0.1% commission to you).<br>
     <input id="ex-nm" maxlength="30" placeholder="Name your exchange" aria-label="Exchange name" autocomplete="off" style="margin-top:6px;width:100%;max-width:260px;box-sizing:border-box"></div>
@@ -14044,7 +14045,7 @@ const ICO={ant:`<path d="M12 2v20 M3.3 7l17.4 10 M3.3 17l17.4-10 M9 3.5l3 2 3-2 
  settings:'<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
  story:'<path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z M17 7h2v13 M8 8h6 M8 11h6 M8 14h4"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["props","Properties","#166534"],["pop","Population","#0369a1"],["trophy","Trophies","#a16207"],["story","Story","#6d28d9"],["lotto","Lottery","#9333ea"],["club","Sports","#16a34a"],["auction","Auction","#7c2d12"],["events","Events","#b91c1c"],["exch","Exchange","#1e40af"],["spy","Spy","#1f2937"],["space","Space","#312e81"],["ant","Antarctica","#0c4a6e"]];
+const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["props","Properties","#166534"],["pop","Population","#0369a1"],["trophy","Trophies","#a16207"],["story","Story","#6d28d9"],["lotto","Lottery","#9333ea"],["club","Sports","#16a34a"],["auction","Auction","#7c2d12"],["events","Events","#b91c1c"],["spy","Spy","#1f2937"],["space","Space","#312e81"],["ant","Antarctica","#0c4a6e"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 /* side gutter for floating widgets: 12px or the safe-area inset, whichever is larger (measured from a hidden probe) */
 let _gutEl=null;function gutLR(){if(!_gutEl){_gutEl=document.createElement("div");_gutEl.setAttribute("aria-hidden","true");_gutEl.style.cssText="position:fixed;visibility:hidden;pointer-events:none;top:0;height:0;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px))";document.body.appendChild(_gutEl)}const r=_gutEl.getBoundingClientRect();return[r.left||12,Math.max(12,innerWidth-r.right)||12]}
@@ -14054,6 +14055,7 @@ function phPlace(){const el=PH.el,dk=document.body.classList.contains("ofc-desk"
   if(PH.x==null){PH.x=W-w-12;PH.y=Math.round(H*.35)}
   {const [gl,gr]=gutLR();PH.x=Math.max(gl,Math.min(W-w-gr,PH.x))}PH.y=Math.max(4,Math.min(H-h-4,PH.y));el.style.left=PH.x/sc+"px";el.style.top=PH.y/sc+"px"}
 function phRender(){const el=PH.el;const _sc=[...el.querySelectorAll(".ph-screen,.ph-app")].map(x=>x.scrollTop),_app=PH._ra;
+  if(PH.app==="exch"){PH.app="stocks";mkTab="x";mkSel=null}   // the Exchange app now lives in Stocks › Exchange
   if(PH.app!=="stocks")mkCQ="";const _fa=document.activeElement,_fk=_fa&&_fa.id==="mkcq",_ss=_fk?_fa.selectionStart:0,_se=_fk?_fa.selectionEnd:0;phRender0();
   if(_fk){const n=el.querySelector("#mkcq");if(n){n.focus();try{n.setSelectionRange(_ss,_se)}catch(e){}}}
   /* keep scroll only when re-rendering the same app; a newly opened app (or home) starts at the top */
@@ -14076,7 +14078,7 @@ function appHtml(k){const {inc,nw}=totals();
   if(k==="settings")return setApp();
   if(k==="ug")return ugApp();
   if(k==="stocks")return mktApp();
-  if(k==="exch")return exApp();
+  if(k==="exch"){mkTab="x";return mktApp()}
   if(k==="space")return spaceApp();
   if(k==="ant")return antApp();
   if(k==="shop")return shopApp();
