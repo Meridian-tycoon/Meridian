@@ -14418,7 +14418,7 @@ function scySpy(c){const P=((typeof ON!=="undefined"&&ON.players)||[]).filter(x=
 function scyAllCost(s){return (s.bay.plague?0:SCY.plague)+(s.bay.bs||s.bsUsed?0:SCY.bs)+Math.max(0,3-(s.flare|0))*SCY.flare+Math.max(0,4-(s.drones|0))*SCY.drone}
 function scyRestockAll(s){const x=scyAllCost(s);if(!x)return toast("The Scythe is already fully stocked");if(!scyPay(x))return;s.bay.plague=1;if(!s.bsUsed)s.bay.bs=1;s.flare=Math.max(3,s.flare|0);s.drones=4;scySay("Fully armed and ready.")}
 // capital = biggest city of the country you govern (the Scythe's launch pad)
-function scyBase(){const l=CITIES.filter(c=>S.pol&&c.country===S.pol.c).sort((a,b)=>b.size-a.size);return l[0]||null}
+let scyBaseC={k:null,v:null};function scyBase(){const k=S.pol&&S.pol.c;if(scyBaseC.k===k)return scyBaseC.v;const l=CITIES.filter(c=>k&&c.country===k).sort((a,b)=>b.size-a.size);scyBaseC={k,v:l[0]||null};return scyBaseC.v}
 function scyPay(x){if(S.cash<x){toast("Not enough cash");return false}S.cash-=x;return true}
 // Scythe strikes are server wide: hit locally, then post to the shared "strikes" feed so every player's game applies the same disaster.
 // Mark's own cities (any business there, or the country he governs) can never be targeted.
@@ -14561,7 +14561,7 @@ function scyLayer(){let T=null,ren=null,scene=null,cam=null,key="";return {id:"s
   onAdd(mp,gl){loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;cam=new T.Camera();scene=new T.Scene();
     scene.add(new T.AmbientLight(0x8899aa,.7));const sun=new T.DirectionalLight(0xfff1dd,1.2);sun.position.set(5,8,6);scene.add(sun);mp.triggerRepaint()}).catch(e=>console.warn("scythe 3d off",e))},
   render(gl,args){if(!T||!scene||!MM.transform.getMatrixForModel)return;const k=scySeen();if(k==null)return;if(!scyG||k!==key){if(scyG)scene.remove(scyG);scyG=scyModel(T,scyFromKey(k));scene.add(scyG);key=k}
-    const now=Date.now(),p=scyWhere(now),z=MM.getZoom(),sc=SCYV.sc*Math.max(.35,Math.pow(2,1.4-z))*(p.alt<SCYV.alt?.4+.6*p.alt/SCYV.alt:1);scyG.rotation.y=p.alt<SCYV.alt?0:now/4000;scyG.userData.ring.rotation.z=now/1000;
+    const now=SCYF.on&&SCYF.t?SCYF.t:Date.now(),p=scyWhere(now),z=MM.getZoom(),sc=SCYV.sc*Math.max(.35,Math.pow(2,1.4-z))*(p.alt<SCYV.alt?.4+.6*p.alt/SCYV.alt:1);scyG.rotation.y=p.alt<SCYV.alt?0:now/4000;scyG.userData.ring.rotation.z=now/1000;
     const mm=new T.Matrix4().fromArray(MM.transform.getMatrixForModel([p.lon,p.lat],p.alt)).scale(new T.Vector3(sc,sc,sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
     cam.projectionMatrix=new T.Matrix4().fromArray(args.defaultProjectionData?args.defaultProjectionData.mainMatrix:args).multiply(mm);ren.resetState();ren.render(scene,cam);MM.triggerRepaint()}}}
 function scyMapTick(){try{const on=scySeen()!=null;if(S.scy&&S.scy.on&&S.scy.end<=Date.now()){S.scy.on=0;stNews("🛰 The God's Scythe has burned up on re-entry");save()}
@@ -14607,7 +14607,7 @@ function scyFollow(on){SCYF.on=on?1:0;cancelAnimationFrame(SCYF.raf);let x=docum
   if(!on){if(x)x.remove();return}
   if(!x){x=document.createElement("button");x.id="scyExit";x.textContent="✕ Exit follow cam";x.style.cssText="position:fixed;top:calc(env(safe-area-inset-top,0px) + 70px);left:50%;transform:translateX(-50%);z-index:9000;padding:10px 18px;border-radius:999px;border:1px solid #facc15;background:#1e1b4bee;color:#facc15;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 4px 18px #0008";x.onclick=()=>{scyFollow(0);try{renderSheet()}catch(e){}};document.body.appendChild(x)}try{toast("🎥 Following the God's Scythe · drag the map to stop")}catch(e){}
   if(MM.getZoom()>3)MM.easeTo({zoom:2.2,duration:800});
-  const go=()=>{if(!SCYF.on||!scyOn())return scyFollow(0);if(!MM.isEasing()){const p=scyWhere(Date.now());MM.jumpTo({center:[p.lon,p.lat]})}SCYF.raf=requestAnimationFrame(go)};SCYF.raf=requestAnimationFrame(go)}
+  const go=()=>{if(!SCYF.on||!scyOn())return scyFollow(0);SCYF.t=Date.now();if(!MM.isEasing()){const p=scyWhere(SCYF.t);MM.jumpTo({center:[p.lon,p.lat]})}SCYF.raf=requestAnimationFrame(go)};SCYF.raf=requestAnimationFrame(go)}
 MM.on("dragstart",()=>{if(SCYF.on)scyFollow(0)});
 // Space manager duty (Mission control › Colonies › Space manager › Scythe): launch, refuel and restock. Keeps the manager's cash reserve.
 const SCYM={fuel:5e9,fuelDays:7,refuelBelow:2*DAY,every:6e4};let scyMgrT=0;
