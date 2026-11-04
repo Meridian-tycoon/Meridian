@@ -9075,7 +9075,7 @@ PCW.th={t:"Desktop Themes",ic:"🎨",r(){const th=pres().th;return `<div class="
 const CCIDS=["nuke","red","spy","eo","dip","bud","poll","ars","ad"];
 /* Air Defence (Command Center): buy interceptor batteries per city in the country you govern (and countries you control).
    Each level of a system adds its chance to shoot down the weapon kinds it covers; levels stack as independent rolls. Batteries live in pres().ad, stats in pres().ads. */
-const ADCFG={max:3,s:{pat:{n:"Patriot battery",ic:"🛡",cost:250e6,p:.35,k:["msl","clu","gas"]},thd:{n:"THAAD battery",ic:"🎯",cost:2e9,p:.3,k:["nuke","hbomb","emp"]},gmd:{n:"GMD interceptor",ic:"🛰",cost:8e9,p:.25,k:["icbm"]}}};
+const ADCFG={max:3,s:{pat:{n:"Patriot battery",ic:"🛡",cost:250e6,p:.35,k:["msl","clu"]}}}; // conventional only: WMDs (gas, nukes, H-bombs, EMP, ICBM) can't be stopped
 function adSt(){const x=pres();if(!x.ad||typeof x.ad!=="object")x.ad={};if(!x.ads||typeof x.ads!=="object")x.ads={n:0,h:0};return x}
 const adMine=c=>{try{const p=S.pol;return !!c&&!!p&&p.r>=0&&!!p.c&&(c.country===p.c||!!(p.ctrl&&p.ctrl[c.country]))}catch(e){return false}};
 function adCover(k,c){if(!adMine(c))return 0;const b=adSt().ad[c.id]||{};let q=1;for(const s in ADCFG.s){const y=ADCFG.s[s];if(y.k.includes(k)&&b[s]>0)q*=Math.pow(1-y.p,Math.min(ADCFG.max,b[s]))}return 1-q}
@@ -9083,10 +9083,10 @@ function adRoll(k,c,rnd){const p=adCover(k,c);if(!p)return false;const x=adSt(),
 function adBuy(s){const y=ADCFG.s[s],x=adSt(),c=CITIES[ADSel];if(!y||!c)return;if(!polLeader())return toast("Only a Leader can order air defence");if(!adMine(c))return toast("You can only defend cities in countries you govern or control");
   const b=x.ad[c.id]=x.ad[c.id]||{};if((b[s]||0)>=ADCFG.max)return toast(`${c.name} already has the maximum ${y.n} level`);if(S.cash<y.cost)return toast(`A ${y.n} costs ${fmt(y.cost)}`);
   S.cash-=y.cost;b[s]=(b[s]||0)+1;toast(`${y.ic} ${y.n} level ${b[s]} deployed over ${c.name}`);logGov(`${y.n} deployed over ${c.name}`);try{save()}catch(e){}}
-const ADS=["pat","thd","gmd"];
-// shared with other players: profile field ad = ["cityId:pat:thd:gmd", ...] (max 60 cities)
+const ADS=["pat"];
+// shared with other players: profile field ad = ["cityId:pat", ...] (max 60 cities)
 function adPub(){try{if(!S.pol||S.pol.r<0)return [];const a=adSt().ad;return Object.keys(a).filter(id=>adMine(CITIES[+id])&&ADS.some(s=>a[id][s]>0)).slice(0,60).map(id=>[id,...ADS.map(s=>Math.min(ADCFG.max,a[id][s]|0))].join(":"))}catch(e){return []}}
-function adParse(L){const o={};if(Array.isArray(L))for(const v of L){const q=String(v).split(":").map(n=>n|0);if(q.length===4&&CITIES[q[0]])o[q[0]]={pat:q[1],thd:q[2],gmd:q[3]}}return o}
+function adParse(L){const o={};if(Array.isArray(L))for(const v of L){const q=String(v).split(":").map(n=>n|0);if(q.length>=2&&CITIES[q[0]]&&q[1]>0)o[q[0]]={pat:q[1]}}return o}
 const adGovs=()=>{try{return lbPlayers().filter(p=>p&&p.govC&&Array.isArray(p.ad)&&p.ad.length)}catch(e){return []}};
 // another player government's batteries roll against your strike. Returns their name if it was shot down. Dev strikes are not intercepted (dev immunity).
 function adPeer(k,c){try{if(devGod())return null;const g=adGovs().find(p=>p.govC===c.country||(Array.isArray(p.govO)&&p.govO.includes(c.country)));if(!g)return null;const b=adParse(g.ad)[c.id];if(!b)return null;let q=1;for(const s of ADS){const y=ADCFG.s[s];if(y.k.includes(k)&&b[s]>0)q*=Math.pow(1-y.p,Math.min(ADCFG.max,b[s]))}return Math.random()<1-q?String(g.name||"A player").slice(0,24):null}catch(e){return null}}
@@ -9094,8 +9094,8 @@ let ADSel=null;
 PCW.ad={t:"Air Defence",ic:"🛡",r(){const p=pol(),x=adSt(),cs=CITIES.filter(adMine).sort((a,b)=>b.size-a.size);if(!cs.length)return `<p class="pw-m">Govern a country to build air defence.</p>`;
   if(ADSel==null||!cs.some(c=>c.id===ADSel))ADSel=cs[0].id;const c=CITIES[ADSel],b=x.ad[c.id]||{},lv=id=>Object.values(x.ad[id]||{}).reduce((a,v)=>a+(+v||0),0),cov=cs.filter(q=>lv(q.id)>0),pc=v=>Math.round(v*100)+"%";
   const sys=Object.keys(ADCFG.s).map(s=>{const y=ADCFG.s[s],n=b[s]||0,full=n>=ADCFG.max;return `<div class="pw-it"><div style="display:flex;justify-content:space-between;gap:6px"><b>${y.ic} ${y.n}</b><b>${"■".repeat(n)}${"□".repeat(ADCFG.max-n)}</b></div><small style="opacity:.75">Stops ${y.k.map(k=>(WPNCFG.w[k]||{n:k}).n.toLowerCase()).join(", ")} · +${pc(y.p)} per level</small><div class="pw-row">${pbtn("adbuy",full?"Max level":`Deploy · ${fmt(y.cost)}`,` data-v="${s}"`,full||S.cash<y.cost||!polLeader())}</div></div>`}).join("");
-  const ch=["msl","nuke","icbm"].filter(k=>WPNCFG.w[k]).map(k=>`${WPNCFG.w[k].n} ${pc(adCover(k,c))}`).join(" · ");
-  return `<p class="pw-m">Interceptor batteries shoot down enemy strikes before they land. Cities covered: ${cov.length}/${cs.length} · intercepts ${x.ads.h}/${x.ads.n}${x.ads.n?` (${pc(x.ads.h/x.ads.n)})`:""}</p>
+  const ch=["msl","clu"].filter(k=>WPNCFG.w[k]).map(k=>`${WPNCFG.w[k].n} ${pc(adCover(k,c))}`).join(" · ");
+  return `<p class="pw-m">Patriot batteries shoot down cruise missiles and cluster barrages before they land. Weapons of mass destruction can't be intercepted. Cities covered: ${cov.length}/${cs.length} · intercepts ${x.ads.h}/${x.ads.n}${x.ads.n?` (${pc(x.ads.h/x.ads.n)})`:""}</p>
   <div class="pw-it"><b>City</b> <select data-adc="1">${cs.map(q=>`<option value="${q.id}"${q.id===ADSel?" selected":""}>${lv(q.id)?"🛡 ":""}${wfE(q.name)}${q.country!==p.c?" ("+wfE(q.country)+")":""}</option>`).join("")}</select><div><small>Intercept chance over ${wfE(c.name)}: ${ch}</small></div></div>${sys}${(()=>{const G=adGovs();return `<div class="pw-it"><b>Other player governments</b>${G.length?G.map(g=>{const o=adParse(g.ad),n=Object.keys(o).length;return `<div style="display:flex;justify-content:space-between;gap:6px"><span>${wfE(String(g.name||"Player").slice(0,24))} · ${wfE(g.govC)}</span><small>🛡 ${n} cit${n===1?"y":"ies"} defended</small></div>`}).join(""):`<div><small>No other player government has air defence yet.</small></div>`}<small style="opacity:.7">Their batteries can shoot down your strikes on their cities, and yours stop theirs.</small></div>`})()}`},
   a(a,b){if(a==="adbuy")adBuy(b.dataset.v)},c(t){if(t.dataset.adc)ADSel=+t.value}};
 PCW.ars={t:"Arsenal & WMD",ic:"🚀",r(){try{bxdCss()}catch(e){}const sb=(a,k,t,bg,dis)=>`<button class="buy" data-ph="${a}" data-k="${k}" style="color:#fff;background:${bg}!important;border-color:#f59e0b;padding:4px 8px" ${dis?"disabled":""}>${t}</button>`,
