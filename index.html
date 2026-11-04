@@ -3894,12 +3894,13 @@ const DIPCFG={gdpK:10,g0:.0004,apprG:.0003,taxG:.0001,warG:-.0006,revert:.0002,r
 const _dsc={},_dcen={};
 const dipScale=n=>_dsc[n]||(_dsc[n]=Math.max(1,ctyScale(n)));
 const dipBase=n=>DIPCFG.gdpK*dipScale(n);
+const GDPMAX=2e9; // hard cap on any country GDP: 2e9 $bn = $2 quintillion, for every player
 function dip(){const d=S.dip=S.dip&&typeof S.dip==="object"?S.dip:{};if(!(d.day>=0))d.day=0;
   for(const k of ["gdp","ph","phc","gr","ruler","rsince","pcd"])if(!d[k]||typeof d[k]!=="object")d[k]={};
   if(!Array.isArray(d.news))d.news=[];if(!(d.cd>=0))d.cd=0;if(!(d.ccd>=0))d.ccd=0;if(d.inv===undefined)d.inv=null;
   for(const n in d.ruler){const r=d.ruler[n];if(!COUNTRIES.includes(n)||!COUNTRIES.includes(r)||r===n||d.ruler[r]===n)delete d.ruler[n];else if(!(d.rsince[n]>=0))d.rsince[n]=d.day} // odd saves: unknown countries, self-rule, 2-cycles
   for(const n in d.ph){const ph=d.ph[n];if(!ph||!isFinite(ph.g)||!(ph.left>0))delete d.ph[n]} // drop corrupt phases from odd saves
-  for(const n of COUNTRIES)if(!(d.gdp[n]>0))d.gdp[n]=dipBase(n)*(.85+hashS(n+"g")%30/100);
+  for(const n of COUNTRIES){if(!(d.gdp[n]>0))d.gdp[n]=dipBase(n)*(.85+hashS(n+"g")%30/100);else if(!(d.gdp[n]<=GDPMAX))d.gdp[n]=GDPMAX}
   return d}
 const dipRuler=n=>S.dip&&S.dip.ruler&&S.dip.ruler[n]||null;
 const dipMult=c=>dipRuler(c.country)?DIPCFG.occMult:1;
@@ -4503,7 +4504,7 @@ function dipGrow(n,d,C){const g=gov(n),base=dipBase(n);let ph=d.ph[n];
   if(ph){r+=ph.g;g.appr=Math.max(5,Math.min(95,g.appr+(ph.g<0?-.15:.1)));if(--ph.left<=0){delete d.ph[n];d.phc[n]=d.day+C.phCd}}
   else if(d.day>=(d.phc[n]||0)&&Math.random()<C.phP*(g.appr>60?1.3:g.appr<35?.8:1)){const rec=Math.random()<(warLvl(n)>=3||g.appr<35?.7:g.appr>60?.3:.5);
     d.ph[n]={g:rec?C.rec:C.boom,left:C.phMin+Math.floor(Math.random()*C.phVar)};if(dipRel(n,n))dipSay(rec?`${n} slides into recession`:`${n} economy booms`,0,0)}
-  d.gr[n]=r;d.gdp[n]=Math.max(base*.4,Math.min(base*6,d.gdp[n]*(1+r)))}
+  d.gr[n]=r;d.gdp[n]=Math.min(GDPMAX,Math.max(base*.4,Math.min(base*6,d.gdp[n]*(1+r))))}
 function dipConquer(a,b,quiet){const d=dip(),p=S.pol,pc=dipPlayerC(),pw=pc&&(S.wars||[]).find(w=>((w.a===a&&w.b===b)||(w.a===b&&w.b===a))&&w.al&&w.al[pc]);
   if(pw&&p){const won=pw[pw.al[pc]]===a;p.appr=Math.max(0,Math.min(95,p.appr+(won?ALLYCFG.win:-ALLYCFG.lose)));const t=won?`Victory: ${a}, backed by your troops, conquers ${b}. Approval +${ALLYCFG.win}`:`Defeat: ${b}, the side you backed, falls to ${a}. Approval −${ALLYCFG.lose}`;logGov(t);if(!quiet)toast(t)}d.ruler[b]=a;d.rsince[b]=d.day;d.ccd=d.day+DIPCFG.conqCd;
   S.wars=(S.wars||[]).filter(w=>w.a!==b&&w.b!==b);d.gdp[b]*=.8;d.ph[b]={g:-.001,left:10};delete d.phc[b];
