@@ -501,6 +501,9 @@ const GOV_IMMUNE=["BRGRStgYLlbkVbrBTagBrDbpVyg1"];
    While listed and in office in that country: 100% approval, can't be voted out, challenged, collapsed or arrested. Example: {"<player ID>":"France"}; "*" = whichever country they govern */
 const MODERATORS={"fOnn3ZUURnN05ioR5GTyNOnKOyo1":"*","K7vvoLK3xHZXTo0iVsVVBNQQfF22":"*"}; // both: every country they govern (Mark, 2026-11-03)
 const isMod=(u,c)=>!!u&&!!MODERATORS[u]&&(c==null||MODERATORS[u]==="*"||MODERATORS[u]===c);
+/* Antarctica secret facility: everyone sees it on the map, only Mark (DEV_UIDS) and MODERATORS can land and open its tab. Client-side only. */
+const ANT={n:"Station Aurora",lon:106.8,lat:-78.5};
+const antOk=()=>{try{const u=typeof ON!=="undefined"&&ON.user&&ON.user.uid;return !!u&&(devUid(u)||!!MODERATORS[u])}catch(e){return false}};
 const GOV_IMMUNE_C={"dJzljxPTWeNou9GVv85qmxHbIIG2":"USA"};
 /* Uses the last signed-in uid until sign-in finishes, so offline catch-up on load can't remove an immune player. */
 function lastUid(){try{return localStorage.getItem("mer_uid")}catch(e){return null}}
@@ -946,6 +949,7 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   if(typeof pfxDraw==="function"&&z<11)try{pfxDraw(ctx,now,z)}catch(e){}
   if(typeof satDraw==="function"&&z<11)try{satDraw(ctx,now)}catch(e){}
   if(typeof drawRigs==="function")try{drawRigs(ctx)}catch(e){}
+  if(typeof drawAnt==="function"&&z<11)try{drawAnt(ctx)}catch(e){}
   if(typeof drawTens==="function"&&z<11)try{drawTens(ctx)}catch(e){}if(typeof drawConflicts==="function"&&z<11)drawConflicts(ctx);if(z<11)try{drawAllies(ctx)}catch(e){}if(typeof drawPlWars==="function"&&z<11)try{drawPlWars(ctx)}catch(e){}if(typeof colOvDraw==="function"&&z<11)try{colOvDraw(ctx)}catch(e){}ctx.restore()}
   const dotA=1-smooth01(10.5,12,z),labA=1-smooth01(8.5,9.6,z);   // our city dots hand over to the real map as you get close
   if(dotA>0.02){ctx.globalAlpha=dotA;
@@ -981,6 +985,7 @@ MM.on("click",e=>{const x=e.point.x,y=e.point.y;
   if(typeof _rigPick!=="undefined"&&_rigPick){rigPlace([e.lngLat.lng,e.lngLat.lat]);return}
   if(typeof _wtPick!=="undefined"&&_wtPick){const g=[e.lngLat.lng,e.lngLat.lat];if(visible(g[0],g[1])){wtPlayer(_wtPick,g);save();hud()}return}
   if(typeof satTap==="function"&&satTap(x,y))return;
+  if(typeof antTap==="function"&&antTap(x,y))return;
   let best=null,bd=26*26;for(const c of CITIES){const d=(c.sx-x)**2+(c.sy-y)**2;if(d<bd){bd=d;best=c}}
   if(typeof cfTap==="function"&&cfTap(x,y,best,bd))return;
   if(best)openCity(best)});
@@ -13989,7 +13994,7 @@ const phScale=()=>Math.max(.5,Math.min(PH.sz,(innerWidth-8)/300,(innerHeight-8)/
 const phSave=()=>{try{localStorage.setItem("meridian-phone",JSON.stringify({open:PH.open,x:PH.x,y:PH.y}))}catch(e){}};
 let lastLog="";
 function trackNews(){const l=S.log[0];if(l&&l!==lastLog){lastLog=l;if(!S.news.length||S.news[0].t!==l){S.news.unshift({t:l,at:Date.now()});S.news=S.news.slice(0,40)}}}
-const ICO={spy:`<path d="M3 11h18 M6 11l2-6h8l2 6 M7.5 18a3 3 0 1 0 0-.01 M16.5 18a3 3 0 1 0 0-.01 M10.5 17.5h3"/>`,space:`<path d="M12 2c3 2 5 6 5 10l-2 4H9l-2-4c0-4 2-8 5-10z M12 9.5a1.5 1.5 0 1 0 0 .01 M9 16l-3 3v2l4-2 M15 16l3 3v2l-4-2 M11 19h2v3h-2z"/>`,exch:`<path d="M3 21h18 M4 10h16 M12 3l9 5H3z M6 10v8 M10 10v8 M14 10v8 M18 10v8"/>`,events:`<path d="M5 21V4 M5 4h11l-2 4 2 4H5"/>`,auction:`<path d="M14 4l6 6-3 3-6-6z M11 7l-6 6 M8 10l6 6 M4 20h9 M13 13l7 7"/>`,lotto:`<path d="M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4z M14 7v12" stroke-dasharray="2 2"/>`,club:`<circle cx="12" cy="12" r="8"/><path d="M12 8l3 2.2-1.1 3.6h-3.8L9 10.2z M12 4v4 M19.6 9.5l-4.6.7 M17 18.5l-3-4.7 M7 18.5l3-4.7 M4.4 9.5l4.6.7"/>`,trophy:`<path d="M8 4h8v5a4 4 0 0 1-8 0z M8 6H5a3 3 0 0 0 3 4 M16 6h3a3 3 0 0 1-3 4 M12 13v4 M8 20h8 M9 17h6"/>`,props:`<path d="M3 20h18 M5 20V10l4-3v3l4-3v3l4-3v13 M17 7V4h2v16"/>`,rig:`<path d="M4 20h16 M7 20l3-12h4l3 12 M9 14h6 M10 8V4h4v4 M12 4V2"/>`,hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h.01 M16 9h.01"/>`,govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M3 10l9-6 9 6z"/>`,shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
+const ICO={ant:`<path d="M12 2v20 M3.3 7l17.4 10 M3.3 17l17.4-10 M9 3.5l3 2 3-2 M9 20.5l3-2 3 2"/>`,spy:`<path d="M3 11h18 M6 11l2-6h8l2 6 M7.5 18a3 3 0 1 0 0-.01 M16.5 18a3 3 0 1 0 0-.01 M10.5 17.5h3"/>`,space:`<path d="M12 2c3 2 5 6 5 10l-2 4H9l-2-4c0-4 2-8 5-10z M12 9.5a1.5 1.5 0 1 0 0 .01 M9 16l-3 3v2l4-2 M15 16l3 3v2l-4-2 M11 19h2v3h-2z"/>`,exch:`<path d="M3 21h18 M4 10h16 M12 3l9 5H3z M6 10v8 M10 10v8 M14 10v8 M18 10v8"/>`,events:`<path d="M5 21V4 M5 4h11l-2 4 2 4H5"/>`,auction:`<path d="M14 4l6 6-3 3-6-6z M11 7l-6 6 M8 10l6 6 M4 20h9 M13 13l7 7"/>`,lotto:`<path d="M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4z M14 7v12" stroke-dasharray="2 2"/>`,club:`<circle cx="12" cy="12" r="8"/><path d="M12 8l3 2.2-1.1 3.6h-3.8L9 10.2z M12 4v4 M19.6 9.5l-4.6.7 M17 18.5l-3-4.7 M7 18.5l3-4.7 M4.4 9.5l4.6.7"/>`,trophy:`<path d="M8 4h8v5a4 4 0 0 1-8 0z M8 6H5a3 3 0 0 0 3 4 M16 6h3a3 3 0 0 1-3 4 M12 13v4 M8 20h8 M9 17h6"/>`,props:`<path d="M3 20h18 M5 20V10l4-3v3l4-3v3l4-3v13 M17 7V4h2v16"/>`,rig:`<path d="M4 20h16 M7 20l3-12h4l3 12 M9 14h6 M10 8V4h4v4 M12 4V2"/>`,hq:`<path d="M4 20V6l8-3 8 3v14 M4 20h16 M9 20v-5h6v5 M8 9h.01 M12 9h.01 M16 9h.01"/>`,govt:`<path d="M4 20h16 M5 17h14 M6 10v7 M10 10v7 M14 10v7 M18 10v7 M3 10l9-6 9 6z"/>`,shop:`<path d="M5 8h14l-1.2 12H6.2z M9 8V6a3 3 0 0 1 6 0v2"/>`,stocks:`<path d="M3 17l5-5 4 3 7-8 M14 7h5v5"/>`,ug:`<path d="M4 15c0-5 3.6-9 8-9s8 4 8 9 M3 15h18 M8 15v3 M16 15v3 M9 10.5h.01 M15 10.5h.01"/>`,gig:`<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5 M12 10V4a1.5 1.5 0 0 1 3 0v6 M15 10V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L9 14"/>`,bank:`<path d="M3 10l9-6 9 6 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18"/>`,obank:`<path d="M3 10l9-6 9 6 M3 20h18 M6 10v7 M18 10v7 M12 9.5v8 M14 11.5h-3a1.2 1.2 0 0 0 0 2.4h2a1.2 1.2 0 0 1 0 2.4h-3"/>`,
  wallet:'<path d="M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z M3 7l12-3v3 M16 13.5h2"/>',
  news:'<path d="M4 5h13v14H6a2 2 0 0 1-2-2z M17 9h3v8a2 2 0 0 1-2 2 M7 9h7 M7 12h7 M7 15h5"/>',
  needs:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -14004,7 +14009,7 @@ const ICO={spy:`<path d="M3 11h18 M6 11l2-6h8l2 6 M7.5 18a3 3 0 1 0 0-.01 M16.5 
  settings:'<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
  story:'<path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z M17 7h2v13 M8 8h6 M8 11h6 M8 14h4"/>',
  calc:'<path d="M6 3h12v18H6z M9 7h6 M9 12h.01 M12 12h.01 M15 12h.01 M9 16h.01 M12 16h.01 M15 16h.01"/>'};
-const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["props","Properties","#166534"],["pop","Population","#0369a1"],["trophy","Trophies","#a16207"],["story","Story","#6d28d9"],["lotto","Lottery","#9333ea"],["club","Sports","#16a34a"],["auction","Auction","#7c2d12"],["events","Events","#b91c1c"],["exch","Exchange","#1e40af"],["spy","Spy","#1f2937"],["space","Space","#312e81"]];
+const APPS=[["settings","Settings","#52525b"],["wallet","Wallet","#0f766e"],["hq","HQ","#0e7490"],["news","News","#c2410c"],["needs","Health","#be185d"],["food","Eats","#a16207"],["job","Work","#1d4ed8"],["weather","Weather","#475569"],["market","Market","#7c3aed"],["travel","Travel","#15803d"],["calc","Calc","#334155"],["bank","Bank","#1e3a8a"],["freight","Freight","#b45309"],["cartel","Cartel","#7f1d1d"],["obank","My Bank","#14532d"],["gig","Gigs","#b45309"],["ug","Underground","#111827"],["stocks","Stocks","#15803d"],["shop","Shop","#db2777"],["govt","Government","#7c2d12"],["rig","Oil Rigs","#0f172a"],["props","Properties","#166534"],["pop","Population","#0369a1"],["trophy","Trophies","#a16207"],["story","Story","#6d28d9"],["lotto","Lottery","#9333ea"],["club","Sports","#16a34a"],["auction","Auction","#7c2d12"],["events","Events","#b91c1c"],["exch","Exchange","#1e40af"],["spy","Spy","#1f2937"],["space","Space","#312e81"],["ant","Antarctica","#0c4a6e"]];
 const svgI=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICO[k]}</svg>`;
 /* side gutter for floating widgets: 12px or the safe-area inset, whichever is larger (measured from a hidden probe) */
 let _gutEl=null;function gutLR(){if(!_gutEl){_gutEl=document.createElement("div");_gutEl.setAttribute("aria-hidden","true");_gutEl.style.cssText="position:fixed;visibility:hidden;pointer-events:none;top:0;height:0;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px))";document.body.appendChild(_gutEl)}const r=_gutEl.getBoundingClientRect();return[r.left||12,Math.max(12,innerWidth-r.right)||12]}
@@ -14038,6 +14043,7 @@ function appHtml(k){const {inc,nw}=totals();
   if(k==="stocks")return mktApp();
   if(k==="exch")return exApp();
   if(k==="space")return spaceApp();
+  if(k==="ant")return antApp();
   if(k==="shop")return shopApp();
   if(k==="obank")return obApp();
   if(k==="govt")return govApp();
@@ -14268,6 +14274,8 @@ PH.el.addEventListener("input",e=>{if(e.target.id!=="tvq")return;tvQ=e.target.va
 PH.el.addEventListener("change",e=>{if(e.target.id==="tvsel"){tvDest=e.target.value===""?null:+e.target.value;phRender()}});
 PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;
   if(a==="tvtab"){tvTab=b.dataset.k;phRender()}
+  else if(a==="antland"){antLand();phRender()}
+  else if(a==="antleave"){if(S.ant)S.ant.on=0;save();toast(`🛫 You left ${ANT.n}`);phRender()}
   else if(a==="tvpick"){tvDest=+b.dataset.c;phRender()}
   else if(a==="tvclr"){tvQ="";phRender();const i=PH.el.querySelector("#tvq");if(i)i.focus()}
   else if(a==="book"){const d=CITIES[tvDest],{o}=cityOptions(here(),d);if(startTrip(d,o[+b.dataset.i],false)){tvDest=null;phRender()}}
@@ -14360,6 +14368,21 @@ const SCY={cost:50e9,days:14,fav0:100,favDay:10,stlCost:[5e9,8e9,12e9,18e9,25e9]
 const DAY=864e5;
 // a player's city from their public profile: where they are now, then home, HQ, first business, then the capital they govern
 function scyPC(x){if(!x)return null;const ok=v=>Number.isInteger(+v)&&v!==null&&v!==""&&CITIES[+v]?+v:null;let c=ok(x.loc);if(c==null)c=ok(x.home);if(c==null&&Array.isArray(x.hq))c=ok(x.hq[0]);if(c==null&&Array.isArray(x.biz))c=ok(x.biz[0]);if(c==null&&x.govC){const l=CITIES.filter(k=>k.country===x.govC).sort((a,b)=>b.size-a.size);if(l[0])c=l[0].id}return c}
+/* ---------- Antarctica secret facility (Station Aurora) ---------- */
+function drawAnt(ctx){if(!visible(ANT.lon,ANT.lat))return;const [x,y]=proj([ANT.lon,ANT.lat]),ok=antOk();ctx.save();ctx.textAlign="center";ctx.textBaseline="middle";
+  ctx.beginPath();ctx.arc(x,y,12,0,7);ctx.fillStyle="rgba(12,74,110,.9)";ctx.fill();ctx.lineWidth=2;ctx.strokeStyle=ok?"#67e8f9":"#94a3b8";ctx.setLineDash(ok?[]:[3,2]);ctx.stroke();ctx.setLineDash([]);
+  ctx.font="13px system-ui,sans-serif";ctx.fillText(ok?"❄":"🔒",x,y+1);ctx.font="bold 10px system-ui,sans-serif";ctx.fillStyle=ok?"#a5f3fc":"#cbd5e1";ctx.fillText(ok?ANT.n:"Restricted facility",x,y+22);ctx.restore()}
+function antTap(x,y){if(!visible(ANT.lon,ANT.lat))return false;const [px,py]=proj([ANT.lon,ANT.lat]);if((px-x)**2+(py-y)**2>18*18)return false;
+  if(!antOk()){toast("🔒 Restricted airspace: only moderators can land at this facility");return true}
+  PH.open=true;PH.app="ant";phSave();phRender();return true}
+function antLand(){if(!antOk())return toast("🔒 Landing denied: moderator clearance required");if(typeof traveling==="function"&&traveling())return toast("Finish your trip first");if(jailed())return toast("You can't fly from prison");
+  S.ant=S.ant||{};S.ant.on=1;S.ant.n=(S.ant.n||0)+1;S.ant.at=Date.now();save();try{rotateTo(ANT,3.5)}catch(e){}toast(`❄️ Landed at ${ANT.n}, Antarctica`)}
+function antApp(){if(!antOk())return `<div class="ph-card"><b>🔒 ${ANT.n}</b><span>A classified facility deep in the Antarctic interior. You can see it on the map, but only moderators have clearance to land or open this tab.</span></div><p class="ph-sub">Access is granted by the developer only.</p>`;
+  const a=S.ant||{},on=!!a.on,mods=Object.keys(MODERATORS).length;
+  return `<div class="ph-card storm"><b>❄️ ${ANT.n}</b><span>Classified · ${Math.abs(ANT.lat).toFixed(1)}°S ${ANT.lon.toFixed(1)}°E · ${devGod()?"Developer":"Moderator"} clearance</span></div>
+  <div class="ph-card"><b>Status</b><div class="ph-rows"><div><span>You</span><b>${on?"On site":"Not on site"}</b></div><div><span>Visits</span><b>${a.n||0}</b></div><div><span>Cleared staff</span><b>${mods+DEV_UIDS.length}</b></div></div></div>
+  ${on?`<button class="ph-item" data-ph="antleave"><span>Leave the facility<small>Fly back out</small></span><b>🛫</b></button>`:`<button class="ph-item" data-ph="antland"><span>Land at ${ANT.n}<small>Moderators and developer only</small></span><b>🛬</b></button>`}
+  <p class="ph-sub">Labs, vault and operations are coming next.</p>`}
 function scyDev(){return typeof ON!=="undefined"&&ON.user&&DEV_UIDS.includes(ON.user.uid)}
 function scy(){const s=S.scy=S.scy&&typeof S.scy==="object"?S.scy:{};if(!s.bay)s.bay={};if(!s.shel)s.shel={};if(!s.cd)s.cd={};if(s.auto==null)s.auto=1;return s}
 function scyOn(){const s=S.scy;return !!(s&&s.on&&s.end>Date.now())}
