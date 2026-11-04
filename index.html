@@ -499,7 +499,7 @@ const GOV_IMMUNE=["BRGRStgYLlbkVbrBTagBrDbpVyg1"];
 /* country-limited immunity: uid -> the only country where it applies (while they govern it) */
 /* Moderators: player ID -> the country they oversee. Only Mark adds or removes entries here (no in-game way to grant or strip it).
    While listed and in office in that country: 100% approval, can't be voted out, challenged, collapsed or arrested. Example: {"<player ID>":"France"}; "*" = whichever country they govern */
-const MODERATORS={"fOnn3ZUURnN05ioR5GTyNOnKOyo1":"*","K7vvoLK3xHZXTo0iVsVVBNQQfF22":"*"}; // both: every country they govern (Mark, 2026-11-03)
+const MODERATORS={"fOnn3ZUURnN05ioR5GTyNOnKOyo1":"*","K7vvoLK3xHZXTo0iVsVVBNQQfF22":"*"}; // both: every country they govern (Mark, 2026-11-03) // keep in sync with bunkerOk() in firestore.rules
 const isMod=(u,c)=>!!u&&!!MODERATORS[u]&&(c==null||MODERATORS[u]==="*"||MODERATORS[u]===c);
 /* Antarctica secret facility: everyone sees it on the map, only Mark (DEV_UIDS) and MODERATORS can land and open its tab. Client-side only. */
 const ANT={n:"Station Aurora",lon:106.8,lat:-78.5};
@@ -14275,6 +14275,7 @@ PH.el.addEventListener("change",e=>{if(e.target.id==="tvsel"){tvDest=e.target.va
 PH.el.addEventListener("click",e=>{const b=e.target.closest("[data-ph]");if(!b||PH.dragged)return;const a=b.dataset.ph;
   if(a==="tvtab"){tvTab=b.dataset.k;phRender()}
   else if(a==="antland"){antLand();phRender()}
+  else if(a==="antin"){antBunker()}
   else if(a==="antleave"){if(S.ant)S.ant.on=0;save();toast(`🛫 You left ${ANT.n}`);phRender()}
   else if(a==="tvpick"){tvDest=+b.dataset.c;phRender()}
   else if(a==="tvclr"){tvQ="";phRender();const i=PH.el.querySelector("#tvq");if(i)i.focus()}
@@ -14376,11 +14377,13 @@ function antTap(x,y){if(!visible(ANT.lon,ANT.lat))return false;const [px,py]=pro
   if(!antOk()){toast("🔒 Restricted airspace: only moderators can land at this facility");return true}
   PH.open=true;PH.app="ant";phSave();phRender();return true}
 function antLand(){if(!antOk())return toast("🔒 Landing denied: moderator clearance required");if(typeof traveling==="function"&&traveling())return toast("Finish your trip first");if(jailed())return toast("You can't fly from prison");
-  S.ant=S.ant||{};S.ant.on=1;S.ant.n=(S.ant.n||0)+1;S.ant.at=Date.now();save();try{rotateTo(ANT,3.5)}catch(e){}toast(`❄️ Landed at ${ANT.n}, Antarctica`)}
+  S.ant=S.ant||{};S.ant.on=1;S.ant.n=(S.ant.n||0)+1;S.ant.at=Date.now();save();try{rotateTo(ANT,3.5)}catch(e){}toast(`❄️ Landed at ${ANT.n}, Antarctica`);antBunker()}
+function antBunker(){if(!antOk())return toast("🔒 Moderator clearance required");partLoad("bunker").then(api=>api.open()).catch(()=>toast("The bunker didn't load. Try again."))}
 function antApp(){if(!antOk())return `<div class="ph-card"><b>🔒 ${ANT.n}</b><span>A classified facility deep in the Antarctic interior. You can see it on the map, but only moderators have clearance to land or open this tab.</span></div><p class="ph-sub">Access is granted by the developer only.</p>`;
   const a=S.ant||{},on=!!a.on,mods=Object.keys(MODERATORS).length;
   return `<div class="ph-card storm"><b>❄️ ${ANT.n}</b><span>Classified · ${Math.abs(ANT.lat).toFixed(1)}°S ${ANT.lon.toFixed(1)}°E · ${devGod()?"Developer":"Moderator"} clearance</span></div>
   <div class="ph-card"><b>Status</b><div class="ph-rows"><div><span>You</span><b>${on?"On site":"Not on site"}</b></div><div><span>Visits</span><b>${a.n||0}</b></div><div><span>Cleared staff</span><b>${mods+DEV_UIDS.length}</b></div></div></div>
+  <button class="ph-item" data-ph="antin"><span>Enter the bunker<small>Walk around · mission board · computers · conference desk</small></span><b>🚪</b></button>
   ${on?`<button class="ph-item" data-ph="antleave"><span>Leave the facility<small>Fly back out</small></span><b>🛫</b></button>`:`<button class="ph-item" data-ph="antland"><span>Land at ${ANT.n}<small>Moderators and developer only</small></span><b>🛬</b></button>`}
   <p class="ph-sub">Labs, vault and operations are coming next.</p>`}
 function scyDev(){return typeof ON!=="undefined"&&ON.user&&DEV_UIDS.includes(ON.user.uid)}
