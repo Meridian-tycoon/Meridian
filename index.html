@@ -14359,8 +14359,8 @@ function scySay(t){try{toast("🛰 REAPER: "+t)}catch(e){}}
 // Called by dzHit for every natural disaster: Calm stops all of them, Shelter (or Autopilot) protects one country
 function scyBlocks(c){const s=S.scy;if(!s||!scyOn())return false;const now=Date.now();if(s.calm>now)return true;if(s.shel[c.country]>now)return true;
   const p=S.pol;if(s.auto&&p&&p.c===c.country){scyFavTick();if(s.fav>=SCY.shel.f){s.fav-=SCY.shel.f;s.shel[c.country]=now+SCY.shel.d;scySay(`A storm was coming for ${c.country}. I raised the shelter.`);return true}}return false}
-let SCY_ROOT=null,SCY_TGT=null;
-function scyCity(){const el=(SCY_ROOT&&SCY_ROOT.querySelector("#scyT"))||document.getElementById("scyT");return el?CITIES[+el.value]:null}
+let SCY_FORCE=null,SCY_ROOT=null,SCY_TGT=null;
+function scyCity(){if(SCY_FORCE!=null)return CITIES[SCY_FORCE]||null;const el=(SCY_ROOT&&SCY_ROOT.querySelector("#scyT"))||document.getElementById("scyT");return el?CITIES[+el.value]:null}
 function scyAdvisor(){const own=S.pol&&S.pol.c,w=(typeof wpn==="function"&&wpn().wars)||{};let l=CITIES.filter(c=>c.country!==own);const war=l.filter(c=>w[c.country]);if(war.length)l=war;return l.slice().sort((a,b)=>(b.size||0)-(a.size||0)).slice(0,3)}
 function scyForecast(){const acc=Math.min(100,60+5*scyDaysUp());return {acc,l:CITIES.slice().sort((a,b)=>dzHaz(b)-dzHaz(a)).slice(0,3)}}
 function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),now=Date.now(),on=scyOn();scyFavTick();
@@ -14410,9 +14410,13 @@ function scyRestockAll(s){const x=scyAllCost(s);if(!x)return toast("The Scythe i
 // capital = biggest city of the country you govern (the Scythe's launch pad)
 function scyBase(){const l=CITIES.filter(c=>S.pol&&c.country===S.pol.c).sort((a,b)=>b.size-a.size);return l[0]||null}
 function scyPay(x){if(S.cash<x){toast("Not enough cash");return false}S.cash-=x;return true}
-function scyAct(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTick();const c=scyCity();
+function scyAct0(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTick();const c=scyCity();
   if(a==="buy"){if(scyOn()||!scyPay(SCY.cost))return;Object.assign(s,{on:1,t0:now,end:now+SCY.days*DAY,fav:SCY.fav0,ft:now,cd:{},shel:{},calm:0,bay:{},bsUsed:0});stNews(`🛰 ${S.pol.c} has launched the God's Scythe into orbit`);scySay(SCY.lines[0])}
   else if(a==="hangar")return scyHangar(1);
+  else if(a==="watch")return scyWatchT(k);
+  else if(a==="spyp")return scySpyP(k);
+  else if(a==="qadd")return scyQAdd();
+  else if(a==="qdel"){s.q=(s.q||[]).filter(j=>String(j.id)!==String(k));save();try{spRender()}catch(e){}return}
   else if(a==="restockall")scyRestockAll(s);
   else if(a==="relaunch"){if(scyOn()||!s.landed)return;scyHangar(0);Object.assign(s,{on:1,landed:0,t0:now,end:now+SCY.days*DAY,ft:now,anim:{t0:now,up:1}});scyWatch();stNews(`🛰 The God's Scythe lifts off again from ${S.pol.c}`);scySay("Back in orbit, Commander.")}
   else if(s.landed&&["bplague","bbs","flare","drone","stl","laser","cam","shield","mirror","thr"].includes(a))scyRestock(a,s);
@@ -14433,6 +14437,52 @@ function scyAct(a,k){if(!scyDev())return;const s=scy(),now=Date.now();scyFavTick
   else if(a==="bs"){if(!c||!s.bay.bs||s.bsUsed)return;SCY_HIT=1;let n=0;try{CITIES.filter(x=>x.country===c.country).forEach(x=>{if(dzHit(x,"blacksun",0,1))n++})}finally{SCY_HIT=0}s.bay.bs=0;s.bsUsed=1;stNews(`🌑 Black sun: the sky goes dark over ${c.country}`);scySay(`${n} cities in darkness.`)}
   save();hud();renderSheet();try{if(SPW.open)spRender()}catch(e){}}
 /* God's Eye: Mission control tab for the Scythe (dev only). Same controls as the Gov tab panel, plus live feeds of the world and players. */
+// Strike log, watch list, scheduler: wraps scyAct0 so every fired power is logged with the city and its players' net worth at that moment
+const SCYK={reap:"🌪 Reap",nuke:"☢️ Orbital nuke",plague:"🦠 Plague",bs:"🌑 Black sun",scorch:"☀️ Scorch",bless:"✨ Bless",spy:"📷 Spy",shel:"🛡 Shelter",calm:"🌤 Calm"};
+function scyNwAt(co){return ((typeof ON!=="undefined"&&ON.players)||[]).filter(x=>x&&(x.govC===co||(x.city!=null&&CITIES[x.city]&&CITIES[x.city].country===co))).reduce((a,x)=>a+(+x.nw||0),0)}
+function scyAct(a,k){const s=scy(),snap=JSON.stringify([s.fav|0,s.cd,s.bay,s.bsUsed,s.spy&&s.spy.at]),c=scyCity();scyAct0(a,k);
+  if(!SCYK[a]||!scyDev())return;const s2=scy();if(JSON.stringify([s2.fav|0,s2.cd,s2.bay,s2.bsUsed,s2.spy&&s2.spy.at])===snap)return;
+  s2.log=s2.log||[];s2.log.unshift({a,k:k||"",c:c?c.id:null,co:c?c.country:"",at:Date.now(),nw:c?scyNwAt(c.country):0});s2.log.length=Math.min(s2.log.length,60);save()}
+function scyWatchT(uid){const s=scy();s.watch=s.watch||[];const i=s.watch.indexOf(uid);if(i>=0)s.watch.splice(i,1);else if(s.watch.length<12)s.watch.push(uid);save();try{spRender()}catch(e){}}
+function scySpyP(uid){const x=((typeof ON!=="undefined"&&ON.players)||[]).find(p=>p&&p.uid===uid);if(!x||x.city==null||!CITIES[x.city])return toast("No city known for that player");SCY_FORCE=x.city;try{scyAct("spy")}finally{SCY_FORCE=null}}
+// scheduler: queued powers fire at their time (or as soon as ready) and give up after 48h
+function scyQAdd(){const a=document.getElementById("scyQa"),w=document.getElementById("scyQw"),c=scyCity();if(!a||!w||!c)return;const s=scy();s.q=s.q||[];if(s.q.length>=10)return toast("Queue is full (10)");
+  const [act,kk]=a.value.split(":");s.q.push({a:act,k:kk||"",c:c.id,at:Date.now()+(+w.value||0),id:Date.now()});save();toast(`⏰ Queued ${SCYK[act]||act} on ${c.name}`);try{spRender()}catch(e){}}
+function scyQTick(){if(!scyDev()||!scyOn())return;const s=scy();if(!s.q||!s.q.length)return;const now=Date.now();let ch=0;
+  s.q=s.q.filter(j=>{if(now<j.at)return true;if(now>j.at+2*DAY){ch=1;return false}const n=(s.log||[]).length,top=s.log&&s.log[0];SCY_FORCE=j.c;try{scyAct(j.a,j.k)}catch(e){}finally{SCY_FORCE=null}
+    const fired=(s.log||[]).length>n||(s.log&&s.log[0]!==top);if(fired){ch=1;stNews(`⏰ Scheduled ${SCYK[j.a]||j.a} fired on ${(CITIES[j.c]||{}).name||"target"}`)}return !fired});if(ch){save();try{if(SPW.open)spRender()}catch(e){}}}
+setInterval(()=>{try{scyQTick()}catch(e){}},15000);
+// mini-globe: orthographic SVG centred on the Scythe, with its ground track and your capital
+function geGlobe(){if(typeof d3==="undefined"||!d3.geoOrthographic)return "<div class='mdx-rows'><div><span>Globe needs the map library</span><b></b></div></div>";
+  const now=Date.now(),w=scyWhere(now),pr=d3.geoOrthographic().scale(110).translate([120,120]).rotate([-w.lon,-w.lat]).clipAngle(90),pa=d3.geoPath(pr),gr=d3.geoGraticule().step([30,30])();
+  const tr=[];for(let i=0;i<=120;i++){const q=scyPos(now+(i-60)/120*SCYV.per);tr.push([q.lon,q.lat])}const b=scyBase(),pt=x=>pr(x),bp=b&&pt([b.lon,b.lat]),sp=pt([w.lon,w.lat]);
+  let land="";try{if(typeof WORLD!=="undefined"&&WORLD&&WORLD.features)land=`<path d="${pa(WORLD)}" fill="#14532d" stroke="#166534" stroke-width=".4"/>`}catch(e){}
+  return `<svg viewBox="0 0 240 240" style="width:100%;max-width:260px;display:block;margin:auto"><circle cx="120" cy="120" r="110" fill="#0c1a3a" stroke="#38bdf8" stroke-width="1"/>${land}<path d="${pa(gr)}" fill="none" stroke="#1e3a8a" stroke-width=".6"/>
+    <path d="${pa({type:"LineString",coordinates:tr})}" fill="none" stroke="#facc15" stroke-width="1.4" stroke-dasharray="4 3"/>${bp?`<circle cx="${bp[0]}" cy="${bp[1]}" r="4" fill="#22c55e"/>`:""}${sp?`<circle cx="${sp[0]}" cy="${sp[1]}" r="6" fill="#facc15" stroke="#000"/>`:""}</svg>
+    <div class="mdx-rows"><div><span>🛰 ${Math.round(w.lat)}°, ${Math.round(w.lon)}° · ${Math.round(w.alt/1000)} km up</span><b>${scy().landed&&!scyOn()?"landed":"in orbit"}</b></div></div>`}
+function geExtra(card,rows,E,s,now,on){let h="";const B=(a,t,dis,x)=>`<button class="buy" data-scy="${a}"${x!=null?` data-k="${E(String(x))}"`:""} data-fixed="1"${dis?" disabled":""}>${t}</button>`,P=(typeof ON!=="undefined"&&ON.players)||[];
+  h+=card("🌐 Live globe",geGlobe());
+  {const hp=Math.round(s.hp==null?100:s.hp),x=scyAllCost(s),parts=[["Laser",s.laser],["Flares",s.flare|0],["Drones",(s.drones|0)+"/4"],["Stealth",(s.stl|0)+"/5"],["Spy cam",s.cam],["Mirror",s.mirror],["Thrusters",s.thr]];
+   h+=card("🔧 Satellite health",rows([`<div><span>Hull</span><b>${hp}%</b></div>`,`<div><span>Shield</span><b>${s.shield?"charged":s.shieldOwn?"spent":"none"}</b></div>`,`<div><span>Fuel</span><b>${on?fmtDur(s.end-now):s.landed?"refills on relaunch":"–"}</b></div>`,`<div><span>Favor</span><b>${Math.floor(s.fav||0)}/100</b></div>`,`<div><span>Bay</span><b>plague ${s.bay&&s.bay.plague?"✅":"–"} · black sun ${s.bay&&s.bay.bs?"✅":"–"}</b></div>`,`<div><span>${parts.map(([n,v])=>`${n} ${v===1?"✅":v?v:"–"}`).join(" · ")}</span><b></b></div>`,`<div><span>${x?"Missing stock: "+fmt(x):"Fully stocked"}</span><b>${B("restockall","⚡ Restock everything",!x||S.cash<x)}</b></div>`]))}
+  {const L=s.log||[];h+=card("📜 Strike log",rows(L.slice(0,12).map(l=>{const c=CITIES[l.c];return `<div><span>${SCYK[l.a]||l.a}${l.k&&SCY.kinds[l.k]?" ("+E(SCY.kinds[l.k])+")":""} · ${c?E(c.name):E(l.co||"–")}</span><b>${fmtDur(now-l.at)} ago</b></div>`})))
+   // 6 market impact: net worth of players in the hit country, then vs now
+   h+=card("📉 Market impact",rows(L.filter(l=>l.co&&l.a!=="spy"&&l.a!=="bless").slice(0,8).map(l=>{const n=scyNwAt(l.co),d=l.nw?((n-l.nw)/l.nw*100):0;return `<div><span>${SCYK[l.a]} · ${E(l.co)}</span><b style="color:${d<0?"#f87171":"#4ade80"}">${l.nw?(d>=0?"+":"")+d.toFixed(1)+"%":"no players"}</b></div>`}).concat(L.length?[]:[])))
+   // 5 heatmap: countries hit most this week (your strikes + active disasters) and sheltered ones
+   const wk=now-7*DAY,cnt={};L.filter(l=>l.at>wk&&l.co&&!["spy","bless","shel","calm"].includes(l.a)).forEach(l=>cnt[l.co]=(cnt[l.co]||0)+1);const d=gxS();Object.keys(d.act).forEach(id=>{const c=CITIES[id];if(c)cnt[c.country]=(cnt[c.country]||0)+1});
+   const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,8),mx=top.length?top[0][1]:1,sh=Object.keys(s.shel||{}).filter(k=>s.shel[k]>now);
+   h+=card("🔥 Disaster heatmap · 7 days",rows(top.map(([co,n])=>`<div><span>${E(co)}${sh.includes(co)?" 🛡":""}</span><b><span style="display:inline-block;width:${Math.round(80*n/mx)}px;height:8px;border-radius:4px;background:linear-gradient(90deg,#f59e0b,#dc2626);margin-right:6px"></span>${n}</b></div>`).concat(sh.filter(k=>!cnt[k]).map(k=>`<div><span>${E(k)} 🛡 sheltered</span><b>${fmtDur(s.shel[k]-now)}</b></div>`))))}
+  {const W=s.watch||[],me=ON.user&&ON.user.uid;h+=card("🎯 Rival watch list",rows(W.map(u=>{const x=P.find(p=>p&&p.uid===u),c=x&&x.city!=null&&CITIES[x.city],live=x&&now-onSeen(x)<3e5;return `<div><span>${live?"🟢":"⚪"} <b>${E(String(x?x.name||"Player":"Offline player"))}</b>${c?" · 📍 "+E(c.name):""}${x&&x.govC?" · 🏛 "+E(String(x.govC)):""} · ${x?fmt(+x.nw||0):"–"}</span><b>${s.cam?B("spyp","📷",s.fav<SCY.spyF,u):""} ${B("watch","✕",0,u)}</b></div>`}).concat([`<div><span>Pin players from the list below (📌)</span><b></b></div>`])));
+   h+=card("📌 Pin a rival",rows(P.filter(x=>x&&x.uid!==me&&!W.includes(x.uid)).slice(0,10).map(x=>`<div><span>${E(String(x.name||"Player"))} · ${fmt(+x.nw||0)}</span><b>${B("watch","📌 Watch",W.length>=12,x.uid)}</b></div>`)))}
+  {const w=(typeof wpn==="function"&&wpn().wars)||{},wars=Object.keys(w),nk=P.filter(x=>x&&x.uid!==(ON.user&&ON.user.uid)&&x.govC&&wars.includes(String(x.govC)));
+   h+=card("📡 Threat radar",rows([`<div><span>Anti-satellite missiles in the world</span><b>none yet</b></div>`,`<div><span>Your stealth</span><b>${(s.stl|0)===5?"untraceable":(s.stl|0)*20+"% hidden"}</b></div>`].concat(wars.map(k=>`<div><span>⚔️ At war with ${E(k)}</span><b>front ${Math.round(w[k].front||0)}</b></div>`),nk.map(x=>`<div><span>⚠️ ${E(String(x.name||"Player"))} leads ${E(String(x.govC))}, an enemy</span><b>${fmt(+x.nw||0)}</b></div>`))))}
+  {const rate=SCY.favDay+Math.min(10,scyDaysUp()),f=s.fav||0,eta=n=>f>=n?"ready":on?fmtDur((n-f)/rate*DAY):"–",cdv=k=>s.cd&&s.cd[k]>now?" · cooldown "+fmtDur(s.cd[k]-now):"";
+   h+=card("⚡ Favor planner",rows([`<div><span>Favor ${Math.floor(f)}/100 · +${rate}/day</span><b>full in ${f>=100?"–":on?fmtDur((100-f)/rate*DAY):"–"}</b></div>`,`<div><span>🌪 Reap (${SCY.reap.f})${cdv("reap")}</span><b>${eta(SCY.reap.f)}</b></div>`,`<div><span>🛡 Shelter (${SCY.shel.f})</span><b>${eta(SCY.shel.f)}</b></div>`,`<div><span>🌤 Calm (${SCY.calm.f})${s.calm>now?" · active "+fmtDur(s.calm-now):""}</span><b>${eta(SCY.calm.f)}</b></div>`,`<div><span>☀️ Mirror (${SCY.sunF})${cdv("sun")}</span><b>${s.mirror?eta(SCY.sunF):"not fitted"}</b></div>`,`<div><span>📷 Spy (${SCY.spyF})</span><b>${s.cam?eta(SCY.spyF):"not fitted"}</b></div>`,`<div><span>☢️ Nuke${cdv("nuke")}</span><b>${s.cd&&s.cd.nuke>now?"cooling":"ready"}</b></div>`,`<div><span>🦠 Plague${cdv("plague")}</span><b>${s.bay&&s.bay.plague?(s.cd&&s.cd.plague>now?"cooling":"ready"):"bay empty"}</b></div>`]))}
+  {const c=CITIES[SCY_TGT!=null?SCY_TGT:-1];if(c){const d=gxS().act[c.id],K=d&&GXCFG.dz.k[d.k],gov=P.find(x=>x&&x.govC===c.country),here=P.filter(x=>x&&x.city===c.id),mine=(S.sites||[]).filter(x=>x.city===c.id).length,adv=scyAdvisor().some(x=>x.id===c.id),sc=Math.round(Math.min(100,(c.size||0)*8+(adv?30:0)+((typeof wpn==="function"&&wpn().wars||{})[c.country]?25:0)));
+   h+=card("🗂 Target dossier · "+E(c.name),rows([`<div><span>Country</span><b>${E(c.country)}</b></div>`,`<div><span>City size</span><b>${c.size||"–"}</b></div>`,`<div><span>Active disaster</span><b>${K?K.i+" "+K.n+" · "+d.left+" d":"none"}</b></div>`,`<div><span>Governed by</span><b>${gov?E(String(gov.name||"Player")):"no player"}</b></div>`,`<div><span>Players based here</span><b>${here.length}${here.length?" · "+fmt(here.reduce((a,x)=>a+(+x.nw||0),0)):""}</b></div>`,`<div><span>Your sites here</span><b>${mine}</b></div>`,`<div><span>Advisor score</span><b>${sc}/100${adv?" · top pick":""}</b></div>`]))}
+   else h+=card("🗂 Target dossier",rows([`<div><span>Pick a target in the controls to see its dossier</span><b></b></div>`]))}
+  {const Q=s.q||[],opts=Object.keys(SCY.kinds).map(k=>`<option value="reap:${k}">🌪 Reap · ${E(SCY.kinds[k])}</option>`).join("")+`<option value="nuke">☢️ Orbital nuke</option><option value="plague">🦠 Plague</option><option value="scorch">☀️ Scorch</option><option value="bless">✨ Bless</option><option value="spy">📷 Spy</option><option value="shel">🛡 Shelter</option>`;
+   h+=card("⏰ Mission scheduler",`<div class="mdx-rows"><div><span>Fires on the target picked in the controls</span><b></b></div></div><div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0"><select id="scyQa">${opts}</select><select id="scyQw"><option value="0">as soon as ready</option><option value="600000">in 10 min</option><option value="3600000">in 1 hour</option><option value="21600000">in 6 hours</option><option value="86400000">in 24 hours</option></select>${B("qadd","➕ Queue")}</div>`+rows(Q.map(j=>`<div><span>${SCYK[j.a]||j.a}${j.k&&SCY.kinds[j.k]?" ("+E(SCY.kinds[j.k])+")":""} · ${E((CITIES[j.c]||{}).name||"–")}</span><b>${j.at>now?"in "+fmtDur(j.at-now):"waiting for cooldown"} ${B("qdel","✕",0,j.id)}</b></div>`)))}
+  return h}
 function geTab(){const E=dxE,s=scy(),now=Date.now(),on=scyOn(),pc=S.pol&&S.pol.c;
   const card=(t,inner)=>`<div class="mdx-card"><div class="mdx-ch"><h3>${t}</h3></div>${inner}</div>`,rows=l=>`<div class="mdx-rows">${l.length?l.join(""):"<div><span>Nothing right now</span><b></b></div>"}</div>`;
   const kp=(lb,v,ft,ic)=>`<div class="mdx-card mdx-kpi"><span class="mdx-ic" style="background:#1e1b4b;color:#facc15;font-size:20px">${ic}</span><div class="mdx-lb"><span>${lb}</span></div><div class="mdx-big">${v}</div><div class="mdx-kfoot"><small>${ft}</small></div></div>`;
@@ -14448,6 +14498,7 @@ function geTab(){const E=dxE,s=scy(),now=Date.now(),on=scyOn(),pc=S.pol&&S.pol.c
   h+=card("👥 Players live",rows(P.map(x=>{const ago=now-onSeen(x),live=ago<5*6e4,c=x.city!=null&&CITIES[x.city];return `<div><span>${live?"🟢":"⚪"} <b>${E(String(x.name||"Player"))}</b>${x.govC?` · 🏛 ${E(String(x.govC))}`:""}${c?` · 📍 ${E(c.name)}`:""}</span><b>${fmt(+x.nw||0)} · ${live?"online":fmtDur(ago)+" ago"}</b></div>`})));
   {const w=(typeof wpn==="function"&&wpn().wars)||{};h+=card("⚔️ Your wars",rows(Object.keys(w).map(k=>`<div><span>${E(k)}</span><b>front ${Math.round(w[k].front||0)}</b></div>`)))}
   h+=card("📰 News feed",rows((S.news||[]).slice(0,12).map(n=>`<div><span>${E(String(n.t))}</span><b>${fmtDur(now-(n.at||now))} ago</b></div>`)));
+  h+=geExtra(card,rows,E,s,now,on);
   h+=card("🤖 Reaper AI",rows([`<div><span>Target advisor</span><b>${scyAdvisor().map(c=>E(c.name)).join(", ")}</b></div>`,`<div><span>Autopilot</span><b>${s.auto?"ON":"OFF"}</b></div>`,`<div><span>"${E(SCY.lines[Math.floor(now/6e4)%SCY.lines.length])}"</span><b></b></div>`]));
   return h+`</div>`}
 // keep the God's Eye feeds live while the tab is open (not while typing or picking a target)
