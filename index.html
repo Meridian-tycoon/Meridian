@@ -6524,9 +6524,9 @@ function unhListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubUNH)return;
     if(u>now&&u>mine+6e4){S.unh[id]=u;S.dmg=S.dmg&&typeof S.dmg==="object"?S.dmg:{};S.dmg[id]={l0:1,t:at,own:0,k:"icbm"};if(S.trip&&S.trip.to&&S.trip.to.city===id)S.trip=null;ch=1}
     else if(u===0&&mine>now&&at>mine-UNH_DAYS*DAYMS+6e4){S.unh[id]=now;if(S.dmg&&S.dmg[id])S.dmg[id].t=now;ch=1}});
   if(ch){save();if(sel&&mode==="city")renderSheet()}},()=>{})}catch(e){}}
-/* rebuild royalties (Mark, 2026-11-03): after you pay to rebuild a city, an AI-run country pays you ROY.rate of the price every game hour until you cancel the deal (Gov tab).
+/* rebuild royalties (Mark, 2026-11-03): after you pay to rebuild a city, an AI-run country pays you ROY.rate of the price once every game day until you cancel the deal (Gov tab).
    No royalty while a player governs that country (or you do). S.roy[cityId]={n,amt,t: paid up to,until}. */
-const ROY={rate:.01}; // 1% of the rebuild price every game hour, until the rebuilder cancels the deal
+const ROY={rate:.01}; // 1% of the rebuild price once every game day (Mark, 2026-11-04), until the rebuilder cancels the deal
 /* ended royalty deals go up for grabs (Mark, 2026-11-03): royoffer/{cityId} {n,amt,by,name,at}. Any other player in government can take the deal over
    for the same price; the take deletes the offer in a transaction so only one player gets it. */
 const ROYO={list:[]};
@@ -6534,20 +6534,21 @@ function royOfferPub(id,r){try{if(typeof ON==="undefined"||!ON.ready||!ON.user)r
 function royoListen(){try{if(typeof ON==="undefined"||!ON.db||ON.unsubROYO)return;ON.unsubROYO=ON.db.collection("royoffer").onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(CITIES[+d.id]&&+v.amt>0)a.push(Object.assign({id:+d.id},v))});ROYO.list=a;if(sel&&mode==="city"&&tab==="gov")renderSheet()},()=>{})}catch(e){}}
 function royoOpen(){const me=typeof ON!=="undefined"&&ON.user&&ON.user.uid;return ROYO.list.filter(o=>o.by!==me&&!(S.roy||{})[o.id])}
 function royTake(id){const o=ROYO.list.find(x=>x.id===id),c=CITIES[id];if(!o||!c||!(S.pol&&S.pol.r>=0)||!ON.user)return;if(S.cash<o.amt)return toast(`You need ${fmt(o.amt)} to take this deal`);
-  if(!confirm(`Take over the royalty deal for ${c.name} for ${fmt(o.amt)}? ${o.n} will pay you ${fmt(o.amt*ROY.rate)} every game hour while an AI governs it.`))return;
+  if(!confirm(`Take over the royalty deal for ${c.name} for ${fmt(o.amt)}? ${o.n} will pay you ${fmt(o.amt*ROY.rate)} every game day while an AI governs it.`))return;
   const ref=ON.db.collection("royoffer").doc(String(id));ON.db.runTransaction(t=>t.get(ref).then(d=>{if(!d.exists)throw new Error("gone");t.delete(ref)})).then(()=>{if(S.cash<o.amt)return;S.cash-=o.amt;S.roy=S.roy&&typeof S.roy==="object"?S.roy:{};S.roy[id]={n:o.n,amt:o.amt,t:Date.now()};
     logGov(`You took over the rebuild royalty deal for ${c.name} for ${fmt(o.amt)}`);toast(`Royalty deal for ${c.name} is yours`);save();hud();renderSheet()}).catch(()=>toast("Someone else took that deal first"))}
 function royHtml(){const R=S.roy||{};if(!(S.pol&&S.pol.r>=0))return "";const op=royoOpen();if(!Object.keys(R).length&&!op.length)return "";
-  return `<div class="sec">Rebuild royalties</div><div class="list">`+op.map(o=>{const c=CITIES[o.id];return `<div class="row"><div class="n">${c.name}, ${onEsc(o.n)} · up for grabs</div><div class="d">${onEsc(o.name||"A player")} ended this deal. Take it over for ${fmt(o.amt)} and get ${fmt(o.amt*ROY.rate)} every game hour while an AI governs ${onEsc(o.n)}.</div><div style="display:flex;gap:6px"><button class="buy" data-gov="royt" data-c="${o.id}" data-fixed="1" ${S.cash<o.amt?"disabled":""}>Take deal · ${fmt(o.amt)}</button></div></div>`}).join("")+Object.keys(R).map(id=>{const r=R[id],c=CITIES[id];if(!c)return "";const ai=!(S.pol.c===r.n)&&!govRival(c);
-    return `<div class="row own"><div class="n">${c.name}, ${r.n}</div><div class="d">${ai?`Pays you ${fmt(r.amt*ROY.rate)} every game hour (${fmt(r.amt*ROY.rate*24)}/hr in your income).`:"Paused: a player governs this country."}</div><div style="display:flex;gap:6px"><button class="buy up" data-gov="royx" data-c="${id}" data-fixed="1">Cancel deal</button></div></div>`}).join("")+`</div>`}
+  return `<div class="sec">Rebuild royalties</div><div class="list">`+op.map(o=>{const c=CITIES[o.id];return `<div class="row"><div class="n">${c.name}, ${onEsc(o.n)} · up for grabs</div><div class="d">${onEsc(o.name||"A player")} ended this deal. Take it over for ${fmt(o.amt)} and get ${fmt(o.amt*ROY.rate)} every game day while an AI governs ${onEsc(o.n)}.</div><div style="display:flex;gap:6px"><button class="buy" data-gov="royt" data-c="${o.id}" data-fixed="1" ${S.cash<o.amt?"disabled":""}>Take deal · ${fmt(o.amt)}</button></div></div>`}).join("")+Object.keys(R).map(id=>{const r=R[id],c=CITIES[id];if(!c)return "";const ai=!(S.pol.c===r.n)&&!govRival(c);
+    return `<div class="row own"><div class="n">${c.name}, ${r.n}</div><div class="d">${ai?`Pays you ${fmt(r.amt*ROY.rate)} every game day.`:"Paused: a player governs this country."}</div><div style="display:flex;gap:6px"><button class="buy up" data-gov="royx" data-c="${id}" data-fixed="1">Cancel deal</button></div></div>`}).join("")+`</div>`}
 function royCancel(id){const r=(S.roy||{})[id],c=CITIES[id];if(!r||!c)return;if(!confirm(`End the royalty deal for ${c.name}? ${r.n} stops paying you for good.`))return;delete S.roy[id];royOfferPub(id,r);logGov(`You ended the rebuild royalty deal for ${c.name}; other governments can now take it over for ${fmt(r.amt)}`);toast(`Royalty deal for ${c.name} ended`);save();hud();renderSheet()}
 /* royalties are paid continuously through totals().inc (royIncome), so they show in income per hour; cancelling a deal removes it from S.roy and the income drops back */
 function royIncome(){const R=S.roy;if(!R||typeof R!=="object")return 0;let t=0;
-  for(const id in R){const r=R[id],c=CITIES[id];if(!r||!c||!(r.amt>0))continue;const ai=!(S.pol&&S.pol.r>=0&&S.pol.c===r.n)&&!govRival(c);if(ai)t+=r.amt*ROY.rate*24}
+  for(const id in R){const r=R[id],c=CITIES[id];if(!r||!c||!(r.amt>0))continue;const ai=!(S.pol&&S.pol.r>=0&&S.pol.c===r.n)&&!govRival(c);if(ai)t+=r.amt*ROY.rate}
   return t} // per DAYMS (one game day = 24 game hours)
 function royTick(){const R=S.roy;if(!R||typeof R!=="object")return;for(const id in R){if(!R[id]||!CITIES[id])delete R[id];else R[id].t=Date.now()}}
 const unhGov=()=>!!(S.pol&&S.pol.r>=0&&S.pol.c); // any player in government, in any country, can pay to rebuild any uninhabitable city
-function unhBuy(id){const c=CITIES[id];if(!c||!unhGov()||!unhOn(c))return;const cost=unhBuyCost(c.country),free=false; // full price for everyone, dev included (Mark, 2026-11-03)if(!free&&S.cash<cost)return toast(`You need ${fmt(cost)} to rebuild ${c.name} now`);
+function unhBuy(id){const c=CITIES[id];if(!c||!unhGov()||!unhOn(c))return;const cost=unhBuyCost(c.country),free=false; // full price for everyone, dev included (Mark, 2026-11-03)
+  if(!free&&S.cash<cost)return toast(`You need ${fmt(cost)} to rebuild ${c.name} now`);
   if(!free)S.cash-=cost;const now=Date.now();S.unh[c.id]=now;S.roy=S.roy&&typeof S.roy==="object"?S.roy:{};S.roy[c.id]={n:c.country,amt:cost,t:now};if(S.dmg&&S.dmg[c.id])S.dmg[c.id].t=now;unhPub(c,0);logGov(`You paid ${free?"nothing (dev)":fmt(cost)} to clear the fallout and start rebuilding ${c.name}`);toast(`🏗 ${c.name}: rebuilding starts now`);save();hud();renderSheet()}
 function showGameOver(){const d=S.dead;if(!d||$("#gameover"))return;const el=document.createElement("div");el.id="gameover";
   el.style.cssText="position:fixed;inset:0;z-index:10000;background:rgba(10,0,0,.92);display:flex;align-items:center;justify-content:center;padding:16px";
