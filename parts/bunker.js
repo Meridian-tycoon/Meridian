@@ -1,101 +1,137 @@
-/* Meridian: Station Aurora bunker (lazy part). The walkable inside of the Antarctica secret facility, for DEV_UIDS and MODERATORS only.
+/* Meridian: Station Aurora bunker (lazy part). The walkable 3D inside of the Antarctica secret facility, for DEV_UIDS and MODERATORS only.
+   Same three.js style and controls as the HQ office (loadThree, ofBox/ofCyl/ofSph helpers): W/S forward/back, A/D strafe, arrows or drag to turn, E use.
    Loaded the first time the bunker opens, from index.html. Run with a direct eval inside the game's main closure, so it sees every game variable.
    Keep it a single expression that returns the functions index.html calls. */
 (function(){
-/* room in tiles (1 tile = 1 m). Walls are solid; furniture boxes block walking. */
-const W=26,D=18,T=34;
-const FURN=[
- {k:"board",x:8,y:.15,w:10,d:.5,c:"#1e293b",n:"Mission board"},
- {k:"desk",x:8.5,y:6.5,w:9,d:3.2,c:"#3f2a1d",n:"Conference desk"},
- {k:"pc",x:.2,y:3,w:1.1,d:1.6,c:"#0f172a",n:"Computer 1"},{k:"pc",x:.2,y:6,w:1.1,d:1.6,c:"#0f172a",n:"Computer 2"},{k:"pc",x:.2,y:9,w:1.1,d:1.6,c:"#0f172a",n:"Computer 3"},
- {k:"pc",x:W-1.3,y:3,w:1.1,d:1.6,c:"#0f172a",n:"Computer 4"},{k:"pc",x:W-1.3,y:6,w:1.1,d:1.6,c:"#0f172a",n:"Computer 5"},{k:"pc",x:W-1.3,y:9,w:1.1,d:1.6,c:"#0f172a",n:"Computer 6"},
- {k:"rack",x:.2,y:13,w:1.4,d:3.5,c:"#111827",n:"Server racks"},{k:"rack",x:W-1.6,y:13,w:1.4,d:3.5,c:"#111827",n:"Server racks"},
- {k:"crate",x:4,y:15.5,w:1.4,d:1.4,c:"#4d5b3a"},{k:"crate",x:5.6,y:15.8,w:1.1,d:1.1,c:"#4d5b3a"},{k:"crate",x:20,y:15.5,w:1.4,d:1.4,c:"#4d5b3a"}];
-const CHAIRS=[];for(let i=0;i<5;i++){CHAIRS.push([9.4+i*1.8,5.8],[9.4+i*1.8,10.4])}CHAIRS.push([7.7,8.1],[18.3,8.1]);
-const EXIT={x:13,y:D-.4,n:"Exit hatch"};
-/* live presence: bunker/{uid} docs {uid,name,x,y,d,at}; only cleared accounts can read or write them (firestore.rules) */
-const BP={un:null,others:[],last:0,lx:0,ly:0};
+/* room: floor x -13..13, z -9..9, 4 m high. Stations are boxes the player walks up to. */
+const RW=26,RD=18,RH=4;
+const ST=[
+ {k:"board",n:"Mission board",x0:-6,x1:6,z0:-9,z1:-8.4},
+ {k:"desk",n:"Conference desk",x0:-4.5,x1:4.5,z0:-3.1,z1:.1},
+ {k:"pc",n:"Computer 1",x0:-13,x1:-11.9,z0:-6.5,z1:-5.1},{k:"pc",n:"Computer 2",x0:-13,x1:-11.9,z0:-3.5,z1:-2.1},{k:"pc",n:"Computer 3",x0:-13,x1:-11.9,z0:-.5,z1:.9},
+ {k:"pc",n:"Computer 4",x0:11.9,x1:13,z0:-6.5,z1:-5.1},{k:"pc",n:"Computer 5",x0:11.9,x1:13,z0:-3.5,z1:-2.1},{k:"pc",n:"Computer 6",x0:11.9,x1:13,z0:-.5,z1:.9},
+ {k:"rack",n:"Server racks",x0:-13,x1:-11.8,z0:3,z1:7},{k:"rack",n:"Server racks",x0:11.8,x1:13,z0:3,z1:7},
+ {k:"exit",n:"Exit hatch",x0:-1.2,x1:1.2,z0:8.6,z1:9,walk:1}];
+const CRATES=[[-8,7.5,1.4],[-6.4,7.8,1.1],[7.5,7.5,1.4]];
+const B={el:null,on:false,T:null,ren:null,scene:null,cam:null,av:null,legs:null,walkT:0,p:{x:0,z:5.5,yaw:0},keys:{},joy:null,drag:null,near:null,panel:null,raf:0,last:0,others:{},ldr:[]};
+/* live presence: bunker/{uid} docs {uid,name,x,y,d,at} (x,y = position + 13/9 so they stay positive); only cleared accounts can read or write them (firestore.rules) */
+const BP={un:null,others:[],last:0,lx:0,lz:0};
 const onl=()=>typeof ON!=="undefined"&&ON.db&&ON.user;
-function bpSend(force){if(!onl())return;const n=Date.now();if(!force&&n-BP.last<(Math.abs(B.x-BP.lx)+Math.abs(B.y-BP.ly)>.05?400:10000))return;BP.last=n;BP.lx=B.x;BP.ly=B.y;
-  try{ON.db.collection("bunker").doc(ON.user.uid).set({uid:ON.user.uid,name:String(S.name||"Player").slice(0,20),x:Math.round(B.x*100)/100,y:Math.round(B.y*100)/100,d:B.dir,at:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("bunker",e))}catch(e){}}
-function bpListen(){if(!onl()||BP.un)return;try{BP.un=ON.db.collection("bunker").limit(50).onSnapshot(q=>{const now=Date.now(),a=[];q.forEach(d=>{const v=d.data()||{};if(d.id===ON.user.uid)return;const at=v.at&&v.at.toMillis?v.at.toMillis():0;if(now-at>45000)return;const o=BP.others.find(x=>x.uid===d.id);a.push({uid:d.id,name:String(v.name||"Player"),x:+v.x||13,y:+v.y||14,d:v.d||1,dx:o?o.dx:+v.x,dy:o?o.dy:+v.y})});BP.others=a},e=>console.warn("bunker listen",e))}catch(e){}}
+function bpSend(force){if(!onl())return;const n=Date.now(),P=B.p;if(!force&&n-BP.last<(Math.abs(P.x-BP.lx)+Math.abs(P.z-BP.lz)>.05?400:10000))return;BP.last=n;BP.lx=P.x;BP.lz=P.z;
+  try{ON.db.collection("bunker").doc(ON.user.uid).set({uid:ON.user.uid,name:String(S.name||"Player").slice(0,20),x:Math.round((P.x+13)*100)/100,y:Math.round((P.z+9)*100)/100,d:Math.round(B.av?B.av.rotation.y*100:0),at:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("bunker",e))}catch(e){}}
+function bpListen(){if(!onl()||BP.un)return;try{BP.un=ON.db.collection("bunker").limit(50).onSnapshot(q=>{const now=Date.now(),a=[];q.forEach(d=>{const v=d.data()||{};if(d.id===ON.user.uid)return;const at=v.at&&v.at.toMillis?v.at.toMillis():0;if(now-at>45000)return;a.push({uid:d.id,name:String(v.name||"Player"),x:(+v.x||13)-13,z:(+v.y||14)-9,r:(+v.d||0)/100})});BP.others=a},e=>console.warn("bunker listen",e))}catch(e){}}
 function bpStop(){try{if(BP.un)BP.un();BP.un=null;BP.others=[];if(onl())ON.db.collection("bunker").doc(ON.user.uid).delete().catch(()=>{})}catch(e){}}
-const B={el:null,cv:null,x:13,y:14,dir:1,step:0,keys:{},joy:null,target:null,near:null,raf:0,panel:null,t0:0};
 const st=()=>{S.ant=S.ant||{};const a=S.ant;if(!a.ms)a.ms=[{id:1,t:"Secure the Antarctic perimeter",p:"high",done:0},{id:2,t:"Audit the top 10 player fortunes",p:"normal",done:0},{id:3,t:"Review open wars for rule breaks",p:"normal",done:0}];if(!a.notes)a.notes=[];return a};
 const esc=x=>String(x==null?"":x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function css(){if(document.getElementById("bk-css"))return;const s=document.createElement("style");s.id="bk-css";s.textContent=`
-.bk-win{position:fixed;inset:0;z-index:2147483000;background:#05080c;display:flex;flex-direction:column;font:13px system-ui,sans-serif;color:#e2e8f0}
-.bk-top{display:flex;align-items:center;gap:10px;padding:8px 14px;background:#0b1220;border-bottom:1px solid #1e3a4a}
-.bk-top b{color:#67e8f9;letter-spacing:.06em}.bk-top span{color:#94a3b8;font-size:12px;flex:1}
-.bk-top button,.bk-btn{background:#0e7490;color:#fff;border:0;border-radius:6px;padding:7px 12px;font:600 12px system-ui;cursor:pointer}
-.bk-stage{position:relative;flex:1;min-height:0}.bk-stage canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;outline:none}
-.bk-joy{position:absolute;left:14px;bottom:14px;width:96px;height:96px;border-radius:50%;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.3);touch-action:none}
-.bk-joy i{position:absolute;left:30px;top:30px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.7)}
-.bk-act{position:absolute;right:14px;bottom:14px}.bk-hint{position:absolute;left:14px;top:10px;font:600 11px ui-monospace,monospace;color:#a5f3fc;opacity:.85;pointer-events:none}
-.bk-pan{position:absolute;right:14px;top:14px;width:min(380px,calc(100% - 28px));max-height:calc(100% - 90px);overflow:auto;background:#0b1220f2;border:1px solid #155e75;border-radius:10px;padding:12px 14px;box-shadow:0 10px 40px #000a}
+.bk-win{position:fixed;inset:0;z-index:2147483000;background:#05080c;font:13px system-ui,sans-serif;color:#e2e8f0;overflow:hidden;touch-action:none;user-select:none}
+.bk-win canvas{display:block;width:100%;height:100%;outline:none}
+.bk-top{position:absolute;top:10px;left:10px;right:10px;display:flex;gap:8px;align-items:center;pointer-events:none}.bk-top>*{pointer-events:auto}
+.bk-top div{flex:1;pointer-events:none;text-shadow:0 1px 3px #000}.bk-top b{display:block;color:#67e8f9;letter-spacing:.06em;font-size:15px}.bk-top small{color:#94a3b8;font:600 12px ui-monospace,monospace}
+.bk-btn{appearance:none;background:#0e7490;color:#fff;border:0;border-radius:999px;padding:9px 14px;font:600 13px system-ui;cursor:pointer}
+.bk-help{position:absolute;left:10px;top:58px;font-size:11px;color:#cbd5e1cc;text-shadow:0 1px 3px #000;pointer-events:none}
+.bk-load{position:absolute;inset:0;display:grid;place-items:center;font-size:15px;color:#67e8f9}
+.bk-joy{position:absolute;left:22px;bottom:26px;width:112px;height:112px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35);touch-action:none;display:none}
+.bk-joy i{position:absolute;left:36px;top:36px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.8);pointer-events:none}.bk-win.touch .bk-joy{display:block}.bk-win.touch .bk-help{display:none}
+.bk-act{position:absolute;left:50%;bottom:22px;transform:translateX(-50%)}.bk-win.touch .bk-act{left:auto;right:14px;transform:none;bottom:150px}
+.bk-pan{position:absolute;right:10px;top:58px;width:min(380px,calc(100% - 20px));max-height:calc(100% - 140px);overflow:auto;background:#0b1220f2;border:1px solid #155e75;border-radius:14px;padding:12px 14px;box-shadow:0 10px 40px #000a}
 .bk-pan h3{margin:0 0 8px;color:#67e8f9;font-size:15px;display:flex;justify-content:space-between;align-items:center}.bk-pan h3 button{background:none;border:0;color:#94a3b8;font-size:18px;cursor:pointer}
 .bk-row{display:flex;gap:8px;align-items:center;padding:7px 0;border-top:1px solid #1e293b}.bk-row span{flex:1}.bk-row small{color:#94a3b8;display:block}
-.bk-pan input,.bk-pan textarea,.bk-pan select{width:100%;box-sizing:border-box;background:#020617;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:7px;font:13px system-ui;margin:4px 0}
+.bk-pan input,.bk-pan textarea,.bk-pan select{width:100%;box-sizing:border-box;background:#020617;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:7px;font:13px system-ui;margin:4px 0;user-select:text}
 .bk-tag{font:700 10px system-ui;padding:2px 6px;border-radius:4px;background:#334155}.bk-tag.high{background:#991b1b}.bk-done{opacity:.5;text-decoration:line-through}
 .bk-mono{font:12px ui-monospace,monospace;color:#86efac;white-space:pre-wrap;background:#020617;border-radius:6px;padding:8px;margin:0}
-@media (max-width:560px){.bk-pan{top:auto;bottom:120px;max-height:45%}}`;document.head.appendChild(s)}
-function open(){css();if(!B.el){const el=B.el=document.createElement("div");el.className="bk-win";el.setAttribute("role","dialog");el.setAttribute("aria-label",ANT.n+" bunker");
-  el.innerHTML=`<div class="bk-top"><b>❄ ${esc(ANT.n.toUpperCase())}</b><span>Classified bunker · ${devGod()?"Developer":"Moderator"} clearance</span><button data-bk="close">Exit</button></div>
-  <div class="bk-stage"><canvas tabindex="0" aria-label="Bunker. Walk with the arrow keys, WASD, the joystick or by tapping the floor. Press E or the button to use a station."></canvas>
-  <div class="bk-joy"><i></i></div><div class="bk-act"><button class="bk-btn" data-bk="use" hidden></button></div><div class="bk-hint">WASD / ARROWS · E TO USE · TAP TO WALK</div></div>`;
-  document.body.appendChild(el);B.cv=el.querySelector("canvas");B.btn=el.querySelector('[data-bk="use"]');B.stage=el.querySelector(".bk-stage");
-  const joy=el.querySelector(".bk-joy"),kn=joy.firstChild,jr=48;let jid=null;
-  const jm=e=>{const r=joy.getBoundingClientRect();let dx=e.clientX-(r.left+jr),dy=e.clientY-(r.top+jr);const m=Math.hypot(dx,dy);if(m>jr){dx*=jr/m;dy*=jr/m}kn.style.left=30+dx+"px";kn.style.top=30+dy+"px";B.joy={x:dx/jr,y:dy/jr};B.target=null};
-  joy.addEventListener("pointerdown",e=>{jid=e.pointerId;joy.setPointerCapture(jid);jm(e)});joy.addEventListener("pointermove",e=>{if(e.pointerId===jid)jm(e)});
-  const je=()=>{jid=null;B.joy=null;kn.style.left="30px";kn.style.top="30px"};joy.addEventListener("pointerup",je);joy.addEventListener("pointercancel",je);
-  B.cv.addEventListener("pointerdown",e=>{const r=B.cv.getBoundingClientRect(),v=view(),wx=(e.clientX-r.left-v.ox)/v.s,wy=(e.clientY-r.top-v.oy)/v.s;if(wx>=0&&wy>=0&&wx<=W&&wy<=D)B.target={x:wx,y:wy};B.cv.focus()});
-  el.addEventListener("keydown",e=>{if(e.target.closest("input,textarea,select"))return;const k=e.key.toLowerCase();if(k==="e"||k==="enter"){use();e.preventDefault();return}if(k==="escape"){if(B.panel)panel(null);else close();return}B.keys[k]=1;if(k.startsWith("arrow"))e.preventDefault()});
+@media (max-width:560px){.bk-pan{top:auto;bottom:10px;max-height:50%}}`;document.head.appendChild(s)}
+function open(){if(B.on)return;css();B.on=true;const el=B.el=document.createElement("div");el.className="bk-win";el.setAttribute("role","dialog");el.setAttribute("aria-label",ANT.n+" bunker");
+  if(matchMedia("(pointer:coarse)").matches||"ontouchstart" in window)el.classList.add("touch");
+  el.innerHTML=`<div class="bk-load">Loading the bunker…</div><div class="bk-top"><div><b>❄ ${esc(ANT.n.toUpperCase())}</b><small id="bk-sub">Classified bunker · ${devGod()?"Developer":"Moderator"} clearance</small></div><button class="bk-btn" data-bk="close">Exit</button></div>
+  <div class="bk-help">W/S forward/back · A/D strafe · ←/→ or drag to turn · E use · Esc exit</div><div class="bk-joy"><i></i></div><div class="bk-act"><button class="bk-btn" data-bk="use" hidden></button></div>`;
+  document.body.appendChild(el);B.btn=el.querySelector('[data-bk="use"]');B.p={x:0,z:5.5,yaw:0};B.keys={};B.joy=null;B.near=null;B.panel=null;
+  const joy=el.querySelector(".bk-joy"),kn=joy.firstChild,jr=56;let jid=null;
+  const jm=e=>{const r=joy.getBoundingClientRect();let dx=e.clientX-(r.left+jr),dy=e.clientY-(r.top+jr);const m=Math.hypot(dx,dy);if(m>jr){dx*=jr/m;dy*=jr/m}kn.style.left=36+dx+"px";kn.style.top=36+dy+"px";B.joy={x:dx/jr,y:dy/jr}};
+  joy.addEventListener("pointerdown",e=>{e.stopPropagation();jid=e.pointerId;joy.setPointerCapture(jid);jm(e)});joy.addEventListener("pointermove",e=>{if(e.pointerId===jid)jm(e)});
+  const je=()=>{jid=null;B.joy=null;kn.style.left="36px";kn.style.top="36px"};joy.addEventListener("pointerup",je);joy.addEventListener("pointercancel",je);
+  el.addEventListener("keydown",e=>{if(e.target.closest("input,textarea,select"))return;const k=e.key.toLowerCase();if(k==="e"||k==="enter"){use();e.preventDefault();return}if(k==="escape"){if(B.panel)panel(null);else close();return}B.keys[k]=1;if(k.startsWith("arrow")||k===" ")e.preventDefault()});
   el.addEventListener("keyup",e=>{B.keys[e.key.toLowerCase()]=0});
-  el.addEventListener("click",e=>{const b=e.target.closest("[data-bk]");if(!b)return;act(b.dataset.bk,b.dataset.v,b)})}
-  B.el.style.display="flex";B.x=13;B.y=14;B.t0=performance.now();panel(null);if(!B.raf)B.raf=requestAnimationFrame(loop);bpListen();bpSend(1);setTimeout(()=>B.cv&&B.cv.focus(),30)}
-function close(){if(B.el)B.el.style.display="none";cancelAnimationFrame(B.raf);B.raf=0;B.keys={};B.joy=null;bpStop();save()}
-function view(){const r=B.cv.getBoundingClientRect(),pad=16,s=Math.min((r.width-pad*2)/W,(r.height-pad*2)/D);return{s,ox:(r.width-W*s)/2,oy:(r.height-D*s)/2,w:r.width,h:r.height}}
-const hit=(x,y)=>{const R=.32;if(x<R+.25||y<R+.7||x>W-R-.25||y>D-R-.25)return true;for(const f of FURN)if(x>f.x-R&&x<f.x+f.w+R&&y>f.y-R&&y<f.y+f.d+R)return true;return false};
-function nearest(){let best=null,bd=1.6;for(const f of FURN){if(!f.n)continue;const cx=Math.max(f.x,Math.min(B.x,f.x+f.w)),cy=Math.max(f.y,Math.min(B.y,f.y+f.d)),d=Math.hypot(B.x-cx,B.y-cy);if(d<bd){bd=d;best=f}}
-  if(Math.hypot(B.x-EXIT.x,B.y-EXIT.y)<1.8)best=EXIT;return best}
-function loop(t){B.raf=requestAnimationFrame(loop);if(!B.el||B.el.style.display==="none")return;
-  let vx=0,vy=0;const K=B.keys;if(K.arrowleft||K.a)vx--;if(K.arrowright||K.d)vx++;if(K.arrowup||K.w)vy--;if(K.arrowdown||K.s)vy++;
-  if(B.joy){vx=B.joy.x;vy=B.joy.y}if((vx||vy)&&!B.joy)B.target=null;
-  if(B.target&&!vx&&!vy){const dx=B.target.x-B.x,dy=B.target.y-B.y,m=Math.hypot(dx,dy);if(m<.15)B.target=null;else{vx=dx/m;vy=dy/m}}
-  const m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m}const sp=.085;
-  if(m>.05){const nx=B.x+vx*sp,ny=B.y+vy*sp;let moved=false;if(!hit(nx,B.y)){B.x=nx;moved=true}if(!hit(B.x,ny)){B.y=ny;moved=true}if(!moved)B.target=null;B.step+=.2;if(Math.abs(vx)>.2)B.dir=vx>0?1:-1}
-  const n=nearest();if(n!==B.near){B.near=n;B.btn.hidden=!n;if(n)B.btn.textContent=n===EXIT?"🛫 Exit hatch":"Use "+n.n}
-  bpSend();draw(t)}
-function draw(t){const cv=B.cv,v=view(),dpr=Math.min(2,devicePixelRatio||1);if(cv.width!==Math.round(v.w*dpr)){cv.width=Math.round(v.w*dpr);cv.height=Math.round(v.h*dpr)}
-  const g=cv.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);g.fillStyle="#05080c";g.fillRect(0,0,v.w,v.h);g.save();g.translate(v.ox,v.oy);const s=v.s,R=(x,y,w,d,c)=>{g.fillStyle=c;g.fillRect(x*s,y*s,w*s,d*s)};
-  // concrete floor with grid and hazard strip
-  R(0,0,W,D,"#1c232b");g.strokeStyle="#252e38";g.lineWidth=1;for(let i=1;i<W;i++){g.beginPath();g.moveTo(i*s,0);g.lineTo(i*s,D*s);g.stroke()}for(let j=1;j<D;j++){g.beginPath();g.moveTo(0,j*s);g.lineTo(W*s,j*s);g.stroke()}
-  R(4,4.2,18,7.6,"#1a2a33");g.strokeStyle="#0e7490";g.lineWidth=2;g.strokeRect(4*s,4.2*s,18*s,7.6*s);
-  for(let i=0;i<14;i++){g.fillStyle=i%2?"#facc15":"#111";g.fillRect((EXIT.x-2.5+i*5/14)*s,(D-.9)*s,5/14*s+.5,.25*s)}
-  // walls
-  g.fillStyle="#3b4652";g.fillRect(-.25*s,-.25*s,(W+.5)*s,.6*s);g.fillRect(-.25*s,-.25*s,.5*s,(D+.5)*s);g.fillRect((W-.25)*s,-.25*s,.5*s,(D+.5)*s);g.fillRect(-.25*s,(D-.25)*s,(W+.5)*s,.5*s);
-  R(EXIT.x-1.2,D-.3,2.4,.4,"#64748b");g.fillStyle="#fde68a";g.font=`700 ${Math.max(8,s*.35)}px system-ui`;g.textAlign="center";g.fillText("EXIT",EXIT.x*s,(D-.45)*s);
-  // ceiling lights glow
-  for(const [lx,ly] of [[6,3],[13,3],[20,3],[6,13],[13,13],[20,13]]){const gr=g.createRadialGradient(lx*s,ly*s,0,lx*s,ly*s,4*s);gr.addColorStop(0,"rgba(103,232,249,.10)");gr.addColorStop(1,"rgba(103,232,249,0)");g.fillStyle=gr;g.fillRect((lx-4)*s,(ly-4)*s,8*s,8*s)}
-  // chairs
-  for(const [cx,cy] of CHAIRS){g.fillStyle="#111827";g.beginPath();g.arc(cx*s,cy*s,.42*s,0,7);g.fill();g.strokeStyle="#334155";g.stroke()}
-  const blink=Math.floor(t/500)%2;
-  for(const f of FURN){R(f.x,f.y,f.w,f.d,f.c);g.strokeStyle=B.near===f?"#67e8f9":"#00000088";g.lineWidth=B.near===f?2:1;g.strokeRect(f.x*s,f.y*s,f.w*s,f.d*s);
-    if(f.k==="desk"){R(f.x+.25,f.y+.25,f.w-.5,f.d-.5,"#5b3b26");for(let i=0;i<5;i++){R(f.x+.7+i*1.8,f.y+.35,.7,.45,"#cbd5e1");R(f.x+.7+i*1.8,f.y+f.d-.8,.7,.45,"#cbd5e1")}g.fillStyle="#67e8f9";g.globalAlpha=.25+.15*blink;g.beginPath();g.ellipse((f.x+f.w/2)*s,(f.y+f.d/2)*s,1.6*s,.8*s,0,0,7);g.fill();g.globalAlpha=1}
-    if(f.k==="board"){R(f.x+.2,f.y+.1,f.w-.4,f.d-.15,"#0f3a4a");const a=st(),ms=a.ms.filter(m=>!m.done).slice(0,4);g.fillStyle="#a5f3fc";g.font=`700 ${Math.max(7,s*.28)}px ui-monospace,monospace`;g.textAlign="left";g.fillText("MISSIONS · "+ms.length+" OPEN",(f.x+.4)*s,(f.y+.42)*s)}
-    if(f.k==="pc"){const left=f.x<W/2;R(left?f.x+.65:f.x+.1,f.y+.2,.35,f.d-.4,blink?"#22d3ee":"#0891b2");R(left?f.x+.15:f.x+.55,f.y+.5,.35,f.d-1,"#334155")}
-    if(f.k==="rack")for(let i=0;i<6;i++){g.fillStyle=(i+Math.floor(t/300))%3?"#22c55e":"#ef4444";g.fillRect((f.x+.3)*s,(f.y+.3+i*.5)*s,.2*s,.15*s)}}
-  // labels
-  g.font=`600 ${Math.max(8,s*.32)}px system-ui`;g.textAlign="center";g.fillStyle="#94a3b8";g.fillText("CONFERENCE",13*s,12.4*s);g.fillText("COMPUTERS",1.5*s,2.6*s);g.fillText("COMPUTERS",(W-1.5)*s,2.6*s);
-  // other players inside (smoothed toward their last sent spot)
-  for(const o of BP.others){o.dx+=(o.x-o.dx)*.15;o.dy+=(o.y-o.dy)*.15;g.fillStyle="#00000066";g.beginPath();g.ellipse(o.dx*s,(o.dy+.25)*s,.35*s,.15*s,0,0,7);g.fill();g.fillStyle=devUid(o.uid)?"#f59e0b":"#0891b2";g.beginPath();g.arc(o.dx*s,(o.dy-.05)*s,.32*s,0,7);g.fill();g.strokeStyle="#fff";g.lineWidth=2;g.stroke();g.fillStyle="#fff";g.font=`600 ${Math.max(8,s*.3)}px system-ui`;g.textAlign="center";g.fillText(o.name,o.dx*s,(o.dy-.55)*s)}
-  g.fillStyle="#94a3b8";g.textAlign="right";g.font=`600 ${Math.max(8,s*.3)}px system-ui`;g.fillText(onl()?`${BP.others.length+1} INSIDE`:"OFFLINE · SIGN IN TO SEE OTHERS",(W-.6)*s,(D-1.1)*s);
-  // player
-  const bob=Math.sin(B.step)*.04;g.fillStyle="#00000066";g.beginPath();g.ellipse(B.x*s,(B.y+.25)*s,.35*s,.15*s,0,0,7);g.fill();
-  g.fillStyle="#be185d";g.beginPath();g.arc(B.x*s,(B.y-.05+bob)*s,.32*s,0,7);g.fill();g.strokeStyle="#fff";g.lineWidth=2;g.stroke();g.fillStyle="#fff";g.beginPath();g.arc((B.x+B.dir*.13)*s,(B.y-.12+bob)*s,.07*s,0,7);g.fill();
-  g.restore()}
-function use(){const n=B.near;if(!n)return;if(n===EXIT){close();return}panel(n.k)}
-function panel(k){if(B.panel&&B.panel.parentNode)B.panel.remove();B.panel=null;if(!k)return;const p=B.panel=document.createElement("div");p.className="bk-pan";B.stage.appendChild(p);fill(k)}
+  el.addEventListener("click",e=>{const b=e.target.closest("[data-bk]");if(!b)return;act(b.dataset.bk,b.dataset.v,b)});
+  loadThree().then(T=>{if(!B.on||B.el!==el)return;build(T);bpListen();bpSend(1)}).catch(()=>{close();toast("Couldn't load the 3D bunker. Check your connection and try again.")})}
+function close(){if(!B.on)return;B.on=false;cancelAnimationFrame(B.raf);B.raf=0;bpStop();
+  if(B.scene)B.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();const m=o.material;if(m)(Array.isArray(m)?m:[m]).forEach(x=>{if(x.map)x.map.dispose();x.dispose()})});
+  if(B.ren){B.ren.dispose();try{B.ren.forceContextLoss()}catch(e){}}B.ren=B.scene=B.cam=B.av=null;B.others={};if(B.el)B.el.remove();B.el=null;save()}
+/* text label as a sprite (names over players, signs) */
+function label(T,txt,col,w){const cv=document.createElement("canvas");cv.width=512;cv.height=96;const g=cv.getContext("2d");g.fillStyle="rgba(2,6,23,.75)";g.fillRect(0,8,512,80);g.fillStyle=col||"#e2e8f0";g.font="bold 46px sans-serif";g.textAlign="center";g.fillText(String(txt).slice(0,18),256,64);
+  const s=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(cv),depthTest:false,transparent:true}));s.scale.set(w||1.6,(w||1.6)*96/512,1);s.renderOrder=5;return s}
+function person(T,suit,skin){const g=new T.Group();const l=ofBox(T,g,.13,.5,.15,0x111827,-.1,0,0),r=ofBox(T,g,.13,.5,.15,0x111827,.1,0,0);ofBox(T,g,.42,.55,.26,suit,0,.5,0);ofBox(T,g,.1,.3,.02,0xffffff,0,.72,-.13);ofSph(T,g,.17,skin||0xf1c27d,0,1.22,0);ofBox(T,g,.36,.07,.36,0x1f2937,0,1.32,.02);
+  const sh=new T.Mesh(new T.CircleGeometry(.34,16),new T.MeshBasicMaterial({color:0,transparent:true,opacity:.25}));sh.rotation.x=-Math.PI/2;sh.position.y=.012;g.add(sh);g.userData.legs=[l,r];return g}
+function boardTex(T){const cv=document.createElement("canvas");cv.width=1024;cv.height=320;const g=cv.getContext("2d");g.fillStyle="#04151d";g.fillRect(0,0,1024,320);g.strokeStyle="#0e7490";g.lineWidth=6;g.strokeRect(3,3,1018,314);
+  g.fillStyle="#67e8f9";g.font="bold 44px monospace";g.fillText("MISSION BOARD",28,58);const ms=st().ms.filter(m=>!m.done);g.fillStyle="#94a3b8";g.font="26px monospace";g.fillText(ms.length+" OPEN",820,58);
+  g.font="30px monospace";ms.slice(0,5).forEach((m,i)=>{g.fillStyle=m.p==="high"?"#fca5a5":"#e2e8f0";g.fillText((m.p==="high"?"! ":"- ")+m.t.slice(0,52),28,112+i*44)});if(!ms.length){g.fillStyle="#64748b";g.fillText("No open missions",28,120)}
+  const t=new T.CanvasTexture(cv);return t}
+function build(T){B.T=T;const el=B.el;let ren;try{ren=new T.WebGLRenderer({antialias:(devicePixelRatio||1)<1.5,powerPreference:"low-power"})}catch(e){close();toast("3D isn't available on this device.");return}
+  ren.setPixelRatio(Math.min(1.5,devicePixelRatio||1));B.ren=ren;const cv=ren.domElement;cv.tabIndex=0;cv.setAttribute("aria-label","3D bunker. W A S D to move, E to use.");el.insertBefore(cv,el.firstChild);B.cv=cv;const ld=el.querySelector(".bk-load");if(ld)ld.remove();
+  const sc=new T.Scene();sc.background=new T.Color(0x05080c);sc.fog=new T.Fog(0x05080c,14,34);B.scene=sc;B.cam=new T.PerspectiveCamera(60,1,.1,80);
+  sc.add(new T.HemisphereLight(0xcffafe,0x1e293b,.55));const dl=new T.DirectionalLight(0xe0f2fe,.35);dl.position.set(3,10,6);sc.add(dl);sc.add(new T.AmbientLight(0xffffff,.16));
+  const room=new T.Group();sc.add(room);
+  // concrete floor with a cyan-lined conference zone and hazard stripes at the hatch
+  ofBox(T,room,RW,.1,RD,0x2a3139,0,-.1,0,{r:.95});for(let i=-12;i<=12;i+=2)ofBox(T,room,.03,.012,RD,0x1f262d,i,0,0,{r:1});for(let j=-8;j<=8;j+=2)ofBox(T,room,RW,.012,.03,0x1f262d,0,0,j,{r:1});
+  for(const [w,d,x,z] of [[11,.06,0,-4.6],[11,.06,0,1.6],[.06,6.2,-5.5,-1.5],[.06,6.2,5.5,-1.5]])ofBox(T,room,w,.02,d,0x0e7490,x,0,z,{e:0x0891b2,ei:.8});
+  for(let i=0;i<10;i++)ofBox(T,room,.26,.015,.4,i%2?0xfacc15:0x111111,-1.3+i*.29,0,8.2,{r:1});
+  // thick concrete walls with ribs, and a steel blast hatch in the front wall
+  const wm=ofMat(T,0x46505c,{r:.95}),wall=(w,h,d,x,y,z)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),wm);m.position.set(x,y+h/2,z);room.add(m)};
+  wall(RW,RH,.4,0,0,-RD/2-.2);wall(.4,RH,RD,-RW/2-.2,0,0);wall(.4,RH,RD,RW/2+.2,0,0);wall(RW/2-1.3,RH,.4,-RW/4-.65,0,RD/2+.2);wall(RW/2-1.3,RH,.4,RW/4+.65,0,RD/2+.2);wall(2.6,RH-2.6,.4,0,2.6,RD/2+.2);
+  for(let x=-12;x<=12;x+=4){ofBox(T,room,.4,RH,.3,0x3a434e,x,0,-RD/2+.1);}for(let z=-6;z<=6;z+=4){ofBox(T,room,.3,RH,.4,0x3a434e,-RW/2+.1,0,z);ofBox(T,room,.3,RH,.4,0x3a434e,RW/2-.1,0,z)}
+  ofBox(T,room,RW,.3,RD,0x20262d,0,RH,0,{r:1});
+  ofBox(T,room,2.4,2.6,.15,0x64748b,0,0,RD/2+.05,{m:.6,r:.4});ofCyl(T,room,.35,.35,.08,0x94a3b8,0,1.2,RD/2-.05,{m:.7});ofBox(T,room,2.6,.12,.12,0xef4444,0,2.65,RD/2-.05,{e:0xef4444,ei:.9});
+  // ceiling light strips (emissive only) and cold blue wall lamps
+  for(const x of [-8,0,8])for(const z of [-5,0,5])ofBox(T,room,3,.05,.35,0xffffff,x,RH-.06,z,{e:0xe0f2fe,ei:.95});
+  // mission board on the back wall (live texture of open missions)
+  ofBox(T,room,12.2,3.2,.2,0x111827,0,.6,-RD/2+.15,{m:.4});B.boardM=new T.MeshBasicMaterial({map:boardTex(T)});const bd=new T.Mesh(new T.PlaneGeometry(11.8,3.7*.98*.95),B.boardM);bd.position.set(0,2.2,-RD/2+.27);room.add(bd);
+  // large conference desk with 12 chairs and a hologram globe
+  ofBox(T,room,9,.12,3.2,0x3f2a1d,0,.74,-1.5,{r:.6});ofBox(T,room,8.6,.7,2.8,0x2b1d14,0,0,-1.5);ofBox(T,room,8.2,.02,.5,0x0f172a,0,.86,-1.5,{e:0x0e7490,ei:.35});
+  for(let i=0;i<5;i++){const x=-3.6+i*1.8;for(const [z,rot] of [[-3.65,0],[.65,Math.PI]]){const c=new T.Group();ofCyl(T,c,.3,.3,.04,0x111827,0,.04,0,{seg:5});ofCyl(T,c,.03,.03,.38,0x9ca3af,0,.06,0);ofBox(T,c,.52,.08,.5,0x1e293b,0,.44,0);ofBox(T,c,.5,.6,.07,0x1e293b,0,.5,.24);c.position.set(x,0,z);c.rotation.y=rot;room.add(c);
+    ofBox(T,room,.5,.02,.32,0xcbd5e1,x,.86,z<0?-2.7:-.3)}}
+  for(const [x,r] of [[-5.1,-Math.PI/2],[5.1,Math.PI/2]]){const c=new T.Group();ofBox(T,c,.52,.08,.5,0x1e293b,0,.44,0);ofBox(T,c,.5,.6,.07,0x1e293b,0,.5,.24);ofCyl(T,c,.03,.03,.44,0x9ca3af,0,0,0);c.position.set(x,0,-1.5);c.rotation.y=r;room.add(c)}
+  B.holo=ofSph(T,room,.42,0x22d3ee,0,1.55,-1.5,{e:0x06b6d4,ei:.9,op:.55});ofCyl(T,room,.35,.45,.1,0x334155,0,.86,-1.5,{m:.6});
+  // computers along both side walls: desk, two glowing monitors, a chair
+  for(const s of ST)if(s.k==="pc"){const left=s.x0<0,cx=(s.x0+s.x1)/2,cz=(s.z0+s.z1)/2,g=new T.Group();ofBox(T,g,1.4,.06,1,0x334155,0,.72,0);ofBox(T,g,1.3,.7,.9,0x1e293b,0,0,0);
+    for(const dx of [-.33,.33]){ofBox(T,g,.6,.4,.04,0x0f172a,dx,.95,-.25);ofBox(T,g,.56,.36,.01,0x0891b2,dx,.97,-.225,{e:0x22d3ee,ei:.8})}ofBox(T,g,.5,.02,.16,0x475569,0,.78,.1);
+    g.position.set(cx,0,cz);g.rotation.y=left?Math.PI/2:-Math.PI/2;room.add(g)}
+  // server racks with blinking lights
+  B.leds=[];for(const s of ST)if(s.k==="rack")for(let i=0;i<3;i++){const g=new T.Group();ofBox(T,g,1.1,2.2,1.2,0x0b1120,0,0,0,{m:.4,r:.4});for(let j=0;j<9;j++)B.leds.push(ofBox(T,g,.04,.04,.02,0x22c55e,.3,.25+j*.21,.61,{e:0x22c55e,ei:1}));g.position.set((s.x0+s.x1)/2,0,s.z0+.65+i*1.3);g.rotation.y=s.x0<0?Math.PI/2:-Math.PI/2;room.add(g)}
+  for(const [x,z,w] of CRATES)ofBox(T,room,w,w*.8,w,0x4d5b3a,x,0,z,{r:.9});
+  // signs over the zones
+  for(const [t,x,z,ry] of [["COMPUTERS",-12.7,-3,Math.PI/2],["COMPUTERS",12.7,-3,-Math.PI/2],["SERVERS",-12.7,5,Math.PI/2],["SERVERS",12.7,5,-Math.PI/2]]){const s=label(T,t,"#67e8f9",2.4);s.position.set(x+(x<0?.3:-.3),3.2,z);room.add(s)}
+  {const s=label(T,ANT.n.toUpperCase(),"#a5f3fc",3.2);s.position.set(0,3.25,RD/2-.3);room.add(s)}
+  // me
+  const av=person(T,devGod()?0x854d0e:0x1e3a8a);sc.add(av);B.av=av;B.legs=av.userData.legs;
+  cv.addEventListener("pointerdown",e=>{B.drag={x:e.clientX,id:e.pointerId};cv.focus()});cv.addEventListener("pointermove",e=>{if(B.drag&&B.drag.id===e.pointerId){B.p.yaw-=(e.clientX-B.drag.x)*.006;B.drag.x=e.clientX}});
+  const de=()=>{B.drag=null};cv.addEventListener("pointerup",de);cv.addEventListener("pointercancel",de);
+  B.last=performance.now();B.raf=requestAnimationFrame(loop);setTimeout(()=>cv.focus(),30)}
+function blocked(x,z){const r=.3;if(x<-RW/2+r||x>RW/2-r||z<-RD/2+r||z>RD/2-r)return true;for(const s of ST)if(!s.walk&&x>s.x0-r&&x<s.x1+r&&z>s.z0-r&&z<s.z1+r)return true;
+  for(const [cx,cz,w] of CRATES)if(Math.abs(x-cx)<w/2+r&&Math.abs(z-cz)<w/2+r)return true;return false}
+function nearest(){const P=B.p;let best=null,bd=1.4;for(const s of ST){const cx=Math.max(s.x0,Math.min(P.x,s.x1)),cz=Math.max(s.z0,Math.min(P.z,s.z1)),d=Math.hypot(P.x-cx,P.z-cz);if(d<bd){bd=d;best=s}}return best}
+function loop(t){if(!B.on||!B.ren){B.raf=0;return}B.raf=requestAnimationFrame(loop);if(document.hidden)return;const dt=Math.min(.05,Math.max(0,(t-B.last)/1000));B.last=t;step(dt,t);
+  const w=B.el.clientWidth,h=B.el.clientHeight;if(B.cv.width!==Math.round(w*B.ren.getPixelRatio())||B._h!==h){B.ren.setSize(w,h,false);B.cam.aspect=w/h;B.cam.updateProjectionMatrix();B._h=h}B.ren.render(B.scene,B.cam)}
+function step(dt,t){const P=B.p,k=B.keys,T=B.T,busy=!!B.panel&&document.activeElement&&document.activeElement.closest&&document.activeElement.closest(".bk-pan");
+  let f=0,s=0,turn=0;if(!busy){if(k.w||k.arrowup)f+=1;if(k.s||k.arrowdown)f-=1;if(k.d)s+=1;if(k.a)s-=1;if(k.arrowleft)turn+=1;if(k.arrowright)turn-=1;if(B.joy){f-=B.joy.y;s+=B.joy.x}}
+  P.yaw+=turn*2.2*dt;const m=Math.hypot(f,s);let moving=false;
+  if(m>.05){const sp=(k.shift?6:3.6)*Math.min(1,m)*dt/m,fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw),rx=Math.cos(P.yaw),rz=-Math.sin(P.yaw);const dx=(fx*f+rx*s)*sp,dz=(fz*f+rz*s)*sp;
+    if(!blocked(P.x+dx,P.z))P.x+=dx;if(!blocked(P.x,P.z+dz))P.z+=dz;moving=true;B.av.rotation.y=Math.atan2(-(fx*f+rx*s),-(fz*f+rz*s))}
+  B.walkT=moving?B.walkT+dt*10:0;const sw=Math.sin(B.walkT)*.5;B.legs[0].rotation.x=sw;B.legs[1].rotation.x=-sw;B.av.position.set(P.x,moving?Math.abs(Math.sin(B.walkT))*.04:0,P.z);
+  const D=4.8;let cx=P.x+Math.sin(P.yaw)*D,cz=P.z+Math.cos(P.yaw)*D;cx=Math.max(-RW/2+.3,Math.min(RW/2-.3,cx));cz=Math.max(-RD/2+.3,Math.min(RD/2-.3,cz));B.cam.position.set(cx,2.9,cz);B.cam.lookAt(P.x-Math.sin(P.yaw)*1.2,.9,P.z-Math.cos(P.yaw)*1.2);
+  if(B.holo){B.holo.rotation.y+=dt*.8;B.holo.material.opacity=.45+.15*Math.sin(t/400)}
+  if(B.leds&&((t/250)|0)!==B._lt){B._lt=(t/250)|0;B.leds.forEach((l,i)=>{const on=((i*7+B._lt)%5)!==0,c=((i+B._lt)%11)?0x22c55e:0xef4444;l.material.color.setHex(on?c:0x111827);l.material.emissive.setHex(on?c:0)})}
+  others(dt);const n=nearest();if(n!==B.near){B.near=n;B.btn.hidden=!n;if(n)B.btn.textContent=n.k==="exit"?"🛫 Exit hatch (E)":`Use ${n.n} (E)`}
+  if((B._sub=(B._sub||0)+dt)>1){B._sub=0;const e=document.getElementById("bk-sub");if(e)e.textContent=`Classified bunker · ${devGod()?"Developer":"Moderator"} clearance · ${onl()?BP.others.length+1+" inside":"offline: sign in to see others"}`}
+  bpSend()}
+/* other cleared players: one figure + name tag each, eased toward their last sent spot */
+function others(dt){const T=B.T,seen={};for(const o of BP.others){seen[o.uid]=1;let g=B.others[o.uid];
+  if(!g){g=person(T,devUid(o.uid)?0x854d0e:0x0e7490,0xe0ac69);const lb=label(T,o.name,devUid(o.uid)?"#fde047":"#a5f3fc",1.4);lb.position.y=1.75;g.add(lb);g.position.set(o.x,0,o.z);g.userData.wt=0;B.scene.add(g);B.others[o.uid]=g}
+  const dx=o.x-g.position.x,dz=o.z-g.position.z,mv=Math.hypot(dx,dz)>.03;g.position.x+=dx*Math.min(1,dt*8);g.position.z+=dz*Math.min(1,dt*8);g.rotation.y=o.r;
+  g.userData.wt=mv?g.userData.wt+dt*10:0;const sw=Math.sin(g.userData.wt)*.5;g.userData.legs[0].rotation.x=sw;g.userData.legs[1].rotation.x=-sw}
+  for(const u in B.others)if(!seen[u]){B.scene.remove(B.others[u]);delete B.others[u]}}
+function use(){const n=B.near;if(!n)return;if(n.k==="exit"){close();return}panel(n.k)}
+function panel(k){if(B.panel&&B.panel.parentNode)B.panel.remove();B.panel=null;if(!k){if(B.cv)B.cv.focus();return}const p=B.panel=document.createElement("div");p.className="bk-pan";B.el.appendChild(p);fill(k)}
+function refreshBoard(){try{if(B.boardM){B.boardM.map.dispose();B.boardM.map=boardTex(B.T);B.boardM.needsUpdate=true}}catch(e){}}
 function fill(k){const p=B.panel;if(!p)return;p.dataset.k=k;const a=st(),h3=t=>`<h3>${t}<button data-bk="pclose" aria-label="Close">×</button></h3>`;
   if(k==="board"){p.innerHTML=h3("📋 Mission board")+`<input id="bkmt" placeholder="New mission…" maxlength="80"><div style="display:flex;gap:6px"><select id="bkmp" style="flex:1"><option value="normal">Normal</option><option value="high">High priority</option></select><button class="bk-btn" data-bk="madd">Post</button></div>`
     +(a.ms.length?a.ms.map(m=>`<div class="bk-row"><span class="${m.done?"bk-done":""}">${esc(m.t)}</span><span class="bk-tag ${m.p}" style="flex:0">${m.p==="high"?"HIGH":"NORMAL"}</span><button class="bk-btn" data-bk="mdone" data-v="${m.id}">${m.done?"Reopen":"Done"}</button><button class="bk-btn" style="background:#7f1d1d" data-bk="mdel" data-v="${m.id}" aria-label="Delete">✕</button></div>`).join(""):`<p>No missions yet.</p>`)
@@ -115,9 +151,9 @@ ${rich?"&gt; top players\n"+esc(rich):"&gt; leaderboard ..... offline"}</pre><p 
   else if(k==="rack"){p.innerHTML=h3("🗄 Server racks")+`<pre class="bk-mono">ALL SYSTEMS NOMINAL\nTEMP  -41°C outside · 19°C inside\nPOWER geothermal 100%</pre>`}}
 function act(a,v,b){const s=st();
   if(a==="close"){close();return}if(a==="use"){use();return}if(a==="pclose"){panel(null);return}
-  if(a==="madd"){const i=B.panel.querySelector("#bkmt"),t=i.value.trim();if(!t)return;s.ms.push({id:s.ms.reduce((m,x)=>Math.max(m,x.id),0)+1,t,p:B.panel.querySelector("#bkmp").value,done:0});save();fill("board");return}
-  if(a==="mdone"){const m=s.ms.find(x=>x.id===+v);if(m)m.done=m.done?0:1;save();fill("board");return}
-  if(a==="mdel"){s.ms=s.ms.filter(x=>x.id!==+v);save();fill("board");return}
+  if(a==="madd"){const i=B.panel.querySelector("#bkmt"),t=i.value.trim();if(!t)return;s.ms.push({id:s.ms.reduce((m,x)=>Math.max(m,x.id),0)+1,t,p:B.panel.querySelector("#bkmp").value,done:0});save();fill("board");refreshBoard();return}
+  if(a==="mdone"){const m=s.ms.find(x=>x.id===+v);if(m)m.done=m.done?0:1;save();fill("board");refreshBoard();return}
+  if(a==="mdel"){s.ms=s.ms.filter(x=>x.id!==+v);save();fill("board");refreshBoard();return}
   if(a==="nadd"){const t=B.panel.querySelector("#bkn").value.trim();if(!t)return;s.notes.push({t,at:Date.now()});if(s.notes.length>50)s.notes.shift();save();fill("desk");return}
   if(a==="ndel"){s.notes=s.notes.filter(n=>n.at!==+v);save();fill("desk");return}}
 return {open,close,others:()=>BP.others};
