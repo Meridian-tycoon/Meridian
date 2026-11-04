@@ -5182,10 +5182,19 @@ function jailHtml(){if(!jailed())return"";const J=S.jail,c=CITIES[J.city],lc=Mat
     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="buy" data-jail="bail" data-fixed="1" ${S.cash<bl?"disabled":""}>Post bail ${fmt(bl)}</button>${J.lawyer?"":`<button class="buy up" data-jail="lawyer" data-fixed="1" ${S.cash<lc?"disabled":""}>Hire lawyer ${fmt(lc)}</button>`}${devOn()?`<button class="buy" data-dev="bail" data-fixed="1">Dev: bail out</button>`:""}</div></div>`}
 /* ---------- owner-only dev tools: unlocked per device with ?dev=1, cleared with ?dev=0 ---------- */
 function devOn(){try{return localStorage.getItem("meridian-dev")==="1"}catch(e){return false}}
+/* Dev: launch a nuke from any city to any city. Normal strike: shared strike feed (banner + log for everyone online), news and log. */
+function dnkHtml(){if(!dvmOk())return "";const o=CITIES.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${c.name}, ${c.country}</option>`).join("");
+  return `<div class="row" style="grid-template-columns:minmax(0,1fr)"><div class="n">☢️ Launch nuke</div><div class="d">Fires a nuke from one city at another. Everyone online sees the usual strike banner and log.</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center"><span>From</span><select id="dnkF" style="max-width:100%">${o}</select><span>To</span><select id="dnkT" style="max-width:100%">${o}</select><button class="buy" data-dev="dnuke">☢️ Launch</button></div></div>`}
+function dnkFire(){if(!dvmOk())return toast("Sign in with the developer account to launch");const f=CITIES[+(document.getElementById("dnkF")||{}).value],t=CITIES[+(document.getElementById("dnkT")||{}).value];
+  if(!f||!t)return toast("Pick both cities");if(f.id===t.id)return toast("Pick two different cities");const W=WPNCFG.w.nuke,now=Date.now();
+  if(now-SF.last<SFCFG.gap)return toast(`Wait ${Math.ceil((SFCFG.gap-(now-SF.last))/1000)}s between launches`);
+  try{trjAdd(f.country,t,"nuke",now,WPNCFG.animMs,"dnk"+now)}catch(e){}SF.fx.push({c:t.id,k:"nuke",i:0,t:now+WPNCFG.animMs});
+  const txt=`💥 ${W.n} from ${f.name} (${f.country}) hit ${t.name} (${t.country})`;try{wmdBanner("nuke",txt,SFCFG.fx+WPNCFG.animMs)}catch(e){}
+  try{stNews("☢️ "+txt.slice(2))}catch(e){}S.log.unshift("World: "+txt);S.log=S.log.slice(0,3);sfPost("nuke",f.country,t.id,0);save();toast("☢️ Nuke launched")}
 function devHtml(){if(!devOn())return"";const dp=S.pol&&S.pol.r>=0&&S.pol.c;return `<div class="sec">Dev</div><div class="list">${devGod()?`<div class="row"><div class="n">🛡 Iron Dome</div><div class="d">${S.dome!==0?`On · intercepts 100% of missiles and WMDs aimed at ${dp?dp:"the country you govern (none right now)"}`:"Off"}</div><button class="buy" data-dev="dome">${S.dome!==0?"Turn off":"Turn on"}</button></div>`:""}<div class="row"><div class="n">Reset loans</div><div class="d">${B().loans.length} loans · ${fmt(B().loans.reduce((a,l)=>a+l.bal,0))} owed</div><button class="buy" data-dev="loans">Reset loans</button></div>
   <div class="row"><div class="n">Bail out of jail</div><div class="d">${jailed()?"In prison · "+fmtDur(S.jail.until-Date.now())+" left":"Not in prison"}</div><button class="buy" data-dev="bail" ${S.jail?"":"disabled"}>Bail out</button></div>
   <div class="row"><div class="n">Finish deliveries</div><div class="d">${S.fleet.filter(v=>v.arr).length} vehicles on the road · ${(S.hired||[]).length} hired</div><button class="buy" data-dev="fleet" ${S.fleet.some(v=>v.arr)||(S.hired||[]).length?"":"disabled"}>Finish now</button></div>
-  ${(()=>{const o=S.ipo||{},left=(+o.ban||0)+IPOC.ban-Date.now();return `<div class="row"><div class="n">Reset delisting cooldown</div><div class="d">${left>0?"Next IPO allowed in "+wevLeft(left):"No cooldown: you can start a new IPO"}</div><button class="buy" data-dev="ipoban" ${left>0?"":"disabled"}>Reset</button></div>`})()}${dvmHtml()}${mpHtml()}</div>`}
+  ${(()=>{const o=S.ipo||{},left=(+o.ban||0)+IPOC.ban-Date.now();return `<div class="row"><div class="n">Reset delisting cooldown</div><div class="d">${left>0?"Next IPO allowed in "+wevLeft(left):"No cooldown: you can start a new IPO"}</div><button class="buy" data-dev="ipoban" ${left>0?"":"disabled"}>Reset</button></div>`})()}${dvmHtml()}${mpHtml()}${dnkHtml()}</div>`}
 /* Money printer (Mark, 2026-11-02): developer account only. A collapsible dev business that prints cash while it runs, plus a one-off print. */
 const MPR=[1e9,1e12,1e14,1e15],MPU=[["second",1000],["minute",60000],["hour",3600000],["day",86400000]];
 const mpU=m=>MPU[m.u]||MPU[1];
@@ -5207,6 +5216,7 @@ function devAct(b){const k=b.dataset.dev;
     else{const e=document.getElementById("mpamt"),v=Math.round(Number(String(e?e.value:"").replace(/[,$\s]/g,"")));if(!(v>0)||!isFinite(v))return toast("Enter an amount above 0");if(k==="mpwd"){mpTick();if(v>(m.bal||0))return toast(`The vault only holds ${fmt(m.bal||0)}`);m.bal-=v;S.cash+=v;toast(`🖨 Withdrew ${fmt(v)} from the printer vault`)}else{const x=Math.min(v,1e18);m.bal=(m.bal||0)+x;m.tot=(m.tot||0)+x;toast(`🖨 Printed ${fmt(x)} into the vault`)}}
     save();hud();reSheet();return}
   if(k==="loans"){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to clear";return}const bk=B();bk.loans=[];bk.lates=[];S.debt=bankDebt();toast("Dev: all loans cleared")}
+  else if(k==="dnuke"){dnkFire()}
   else if(k==="dome"){if(!devGod())return;S.dome=S.dome!==0?0:1;toast(S.dome?"🛡 Iron Dome on":"Iron Dome off")}
   else if(k==="dvgo"||k==="dvstop"){if(!dvmOk())return toast("Sign in with the developer account to move the market");const m=MK(),now=Date.now();
     if(k==="dvstop"){dvmStop(m,now);toast("Dev: market event stopped, prices back where they were")}
