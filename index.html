@@ -6262,6 +6262,7 @@ const GOVCFG={
   prCost:.04,prGain:10, // PR campaign: share of the office's campaign cost, approval gained
   taxCd:1,taxAppr:[3,1,0,-3,-6], // leader tax change cooldown (days) and one-off approval change per tax band (10%..30%)
   annexCost:4e6,annexStep:.3, // influence cost per unit of target size; +30% per country already controlled
+  bidAppr:95,bidFund:10, // takeover elections (2026-11-05): approval needed for every race, funding = this x the office campaign cost in the target
   annexWin:.5,annexStepWin:-.04,annexCd:2,annexFailAppr:-8,annexAppr:4,
   ctrlWin:.15,      // win-chance bonus when running in a country whose government you control through party donations
   share:3000,       // income per unit of controlled country size per hour
@@ -6356,11 +6357,21 @@ function polResign(){const p=pol();if(p.r<0)return;logPol(`You stepped down as $
 function polFall(){const p=pol();if(p.c&&S.gov&&S.gov[p.c]&&S.gov[p.c].polCtrl){const g=S.gov[p.c];g.ctrl=false;g.contract=0;g.polCtrl=0}if(p.r===GOVCFG.offices.length-1){for(const n in p.ctrl)p.ctrl[n].loy=Math.min(p.ctrl[n].loy,40)}p.r=-1;p.tax=null;p.cd=Date.now()+GOVCFG.loseCd*DAYMS}
 function polSetTax(t){const p=pol(),C=GOVCFG,now=Date.now();if(!polLeader())return;if(!devGod()&&now<p.taxCd)return toast("Tax change cooldown: "+fmtDur(p.taxCd-now));t=Math.max(0,Math.min(4,t));const g=gov(p.c);if(g.laws.tax===t)return;
   g.laws.tax=t;p.tax=t;p.taxCd=devGod()?0:now+C.taxCd*DAYMS*(1-presFx("cd"));p.appr=Math.max(0,Math.min(95,p.appr+C.taxAppr[t]));logPol(`${p.c} corporate tax set to ${LAWS.tax.v[t]}`)}
+/* taking over another country (2026-11-05): no more buying it. A Leader runs that country's elections in order (Councillor, Minister, Leader);
+   each race needs 95% approval, Campaign + Marketing heads hired in the HQ office, a law firm you own there, and campaign funding. Winning the Leader race takes the country. */
+const bidLaw=n=>ctyCities(n).some(c=>hasT(S.own[c.id],"lawfirm"));
+const bidStage=n=>{const b=pol().bid;return b&&b.c===n?b.r:0};
+const bidCost=n=>Math.round(polCost(bidStage(n),n)*GOVCFG.bidFund*(1-presFx("cost")));
+const bidChance=n=>{const p=pol(),C=GOVCFG,O=C.offices[bidStage(n)];return Math.max(.1,Math.min(.85,O.win+.2+C.annexStepWin*Object.keys(p.ctrl).length+(p.appr-50)/200))};
+function bidWhy(n){const p=pol(),C=GOVCFG;if(p.appr<C.bidAppr)return `Needs ${C.bidAppr}% approval (you have ${Math.round(p.appr)}%)`;
+  if(!ofHas("camp")||!ofHas("mkt"))return "Hire Campaign and Marketing heads in your HQ office";if(!bidLaw(n))return `Own a law firm in ${n}`;
+  const c=bidCost(n);if(S.cash<c)return `Campaign funding is ${fmt(c)}`;return ""}
 function polAnnex(n){const p=pol(),C=GOVCFG,now=Date.now();if(!polLeader()||n===p.c||p.ctrl[n]||!COUNTRIES.includes(n))return;
-  if(!devGod()&&now<p.acd)return toast("Influence cooldown: "+fmtDur(p.acd-now));const cost=annexCost(n);if(S.cash<cost)return toast(`Needs ${fmt(cost)}`);
-  const ch=annexChance();S.cash-=cost;p.acd=devGod()?0:now+C.annexCd*DAYMS*(1-presFx("cd"));
-  if(Math.random()<ch){p.ctrl[n]={since:now,loy:C.loyStart};p.appr=Math.min(95,p.appr+C.annexAppr);logPol(`${n} joined your sphere of influence`);if(typeof confetti==="function")confetti(80,innerWidth/2,innerHeight/3)}
-  else{p.appr=Math.max(0,p.appr+C.annexFailAppr);logPol(`${n} rejected your influence bid (${Math.round(ch*100)}% chance)`)}}
+  if(!devGod()&&now<p.acd)return toast("Campaign cooldown: "+fmtDur(p.acd-now));const why=bidWhy(n);if(why)return toast(why);
+  if(!p.bid||p.bid.c!==n)p.bid={c:n,r:0};const r=p.bid.r,O=C.offices[r],cost=bidCost(n),ch=bidChance(n);S.cash-=cost;
+  if(Math.random()<ch){if(r<C.offices.length-1){p.bid.r=r+1;logPol(`You won the ${O.n} race in ${n}. Next: ${C.offices[r+1].n}`)}
+    else{p.bid=null;p.ctrl[n]={since:now,loy:C.loyStart};p.appr=Math.min(95,p.appr+C.annexAppr);logPol(`You won the Leader election in ${n}: it joined your sphere of influence`);if(typeof confetti==="function")confetti(80,innerWidth/2,innerHeight/3)}}
+  else{p.acd=devGod()?0:now+C.annexCd*DAYMS*(1-presFx("cd"));if(!polImmune())p.appr=Math.max(0,p.appr+C.annexFailAppr);logPol(`You lost the ${O.n} race in ${n} (${Math.round(ch*100)}% chance)`)}}
 function polLoyal(n){const p=pol(),c=p.ctrl[n];if(!c)return;const v=Math.round(annexCost(n)*GOVCFG.loyCost);if(S.cash<v)return toast(`Aid package costs ${fmt(v)}`);if(Math.round(c.loy)>=100){c.loy=100;return toast("Loyalty is maxed")};S.cash-=v;c.loy=Math.min(100,c.loy+GOVCFG.loyGain);toast(`${n} loyalty +${GOVCFG.loyGain}`)}
 function polRelease(n){const p=pol();if(p.ctrl[n]){delete p.ctrl[n];logPol(`You released ${n}`)}}
 /* COUNTRY TAKEOVER (no war): a government Leader buys another country outright. Owned countries (S.pol.own) are kept apart from the sphere of influence (S.pol.ctrl): buying never adds to the sphere, and annexing never counts as owning.
@@ -6492,8 +6503,8 @@ function govApp0(){const p=pol(),C=GOVCFG,now=Date.now(),{nw}=totals(),here=polH
   if(lead){const g=gov(p.c),tc=Math.max(0,p.taxCd-now),xc=Math.max(0,(p.exCd||0)-now);
     if(xc&&!g.ctrl)h+=`<div class="ph-rows" style="margin-top:10px"><div><span>Exposed by the press · government control returns in</span><b style="color:#f87171">${fmtDur(xc)}</b></div></div>`;
     h+=`<div class="ph-sub" style="margin-top:12px">Corporate tax in ${p.c}${tc?" · change in "+fmtDur(tc):""}</div><div class="ph-seg">${LAWS.tax.v.map((v,i)=>`<button data-ph="poltax" data-k="${i}" aria-pressed="${g.laws.tax===i}" ${tc?"disabled":""}>${v}</button>`).join("")}</div>`;
-    const acd=Math.max(0,p.acd-now),ch=annexChance(),list=COUNTRIES.filter(x=>x!==p.c&&!p.ctrl[x]).sort((a,b)=>ctyScale(a)-ctyScale(b));
-    h+=`<div class="ph-sub" style="margin-top:12px">Extend influence · ${Math.round(ch*100)}% success${acd?" · ready in "+fmtDur(acd):""}</div><div class="ph-rows">${list.map(x=>{const c=annexCost(x);return `<div><span>${x}<br><small style="opacity:.7">+${fmt(C.share*ctyScale(x))}/hr</small></span><button class="buy" data-ph="polannex" data-k="${x}" style="color:#fff;background:#7c2d12!important;border-color:#f59e0b;padding:4px 8px" ${acd||S.cash<c?"disabled":""}>${fmt(c)}</button></div>`}).join("")}</div>`}
+    const acd=Math.max(0,p.acd-now),list=COUNTRIES.filter(x=>x!==p.c&&!p.ctrl[x]).sort((a,b)=>(bidStage(b)-bidStage(a))||ctyScale(a)-ctyScale(b));
+    h+=`<div class="ph-sub" style="margin-top:12px">Take over a country by election${acd?" · next race in "+fmtDur(acd):""}</div><p class="ph-sub" style="opacity:.75">Win its Councillor, Minister and Leader races. Each needs ${C.bidAppr}% approval, Campaign + Marketing heads in your HQ office, a law firm you own there, and campaign funding.</p><div class="ph-rows">${list.map(x=>{const c=bidCost(x),st=bidStage(x),why=bidWhy(x);return `<div><span>${x} · ${C.offices[st].n} race${st?` (${st}/3 won)`:""}<br><small style="opacity:.7">${Math.round(bidChance(x)*100)}% · +${fmt(C.share*ctyScale(x))}/hr${why?` · <span style="color:#fbbf24">${why}</span>`:""}</small></span><button class="buy" data-ph="polannex" data-k="${x}" style="color:#fff;background:#7c2d12!important;border-color:#f59e0b;padding:4px 8px" ${acd||why?"disabled":""}>Run ${fmt(c)}</button></div>`}).join("")}</div>`}
   const ck=Object.keys(p.ctrl);if(ck.length)h+=`<div class="ph-sub" style="margin-top:12px">Your sphere of influence</div><div class="ph-rows">${ck.map(x=>{const c=p.ctrl[x];return `<div><span>${x} · loyalty <b style="color:${c.loy<25?"#f87171":"#4ade80"}">${Math.round(c.loy)}</b></span><span><button class="buy" data-ph="polloy" data-k="${x}" style="${Math.round(c.loy)>=100?"":"color:#fff;background:#14532d!important;"}border-color:#22c55e;padding:4px 8px" ${Math.round(c.loy)>=100?"disabled":""}>Aid ${fmt(Math.round(annexCost(x)*C.loyCost))}</button> <button class="buy" data-ph="polrel" data-k="${x}" style="color:#fff;background:#374151!important;padding:4px 8px">Release</button></span></div>`}).join("")}</div>`;
   try{h+=tkHtml()}catch(e){}
   if(p.r>=0)h+=btn("polquit","Resign",0,null,"#374151");
@@ -8302,7 +8313,7 @@ const OFC_WALLS=[["Gallery white","#f2f0eb"],["Sand","#e3d3b4"],["Sage","#b7c7b0
 const OFC_KIOSK={x:7.1,z:4.9,size:[.9,.7]}; // fixed shop terminal in the front-right corner
 /* second floor (HQ only): stairs in the front-left corner, boss office upstairs back-right, six more department desks upstairs */
 const OFC_FH=3.4,OFC_ST={x0:-7.9,x1:-6.3,z0:3.5,z1:6},OFC_BOSS={x0:2,x1:8,z0:-6,z1:-1.5,d0:4.3,d1:5.7};
-const ofStaffUp=[{x:-6,z:-5.25},{x:-3.6,z:-5.25},{x:-1.2,z:-5.25},{x:-4.8,z:-.6},{x:-2.4,z:-.6},{x:0,z:-.6},{x:1.2,z:-5.25}];
+const ofStaffUp=[{x:-6,z:-5.25},{x:-3.6,z:-5.25},{x:-1.2,z:-5.25},{x:-4.8,z:-.6},{x:-2.4,z:-.6},{x:0,z:-.6},{x:1.2,z:-5.25},{x:2.4,z:-.6}];
 const ofUpObst=()=>{const b=OFC_BOSS;return[{x0:b.x0,x1:b.d0,z0:b.z1-.06,z1:b.z1+.06},{x0:b.d1,x1:b.x1,z0:b.z1-.06,z1:b.z1+.06},{x0:b.x0-.06,x1:b.x0+.06,z0:b.z0,z1:b.z1},
   {x0:6.6,x1:7.9,z0:-3.3,z1:-1.9},{x0:2.2,x1:4.2,z0:-5.95,z1:-5.5}]}; // glass walls, sofa, bookshelf
 /* mode "hq" (default) or "pres" (presidential office, see PRESIDENTIAL OFFICE below): which item registry, room and fixtures are live */
@@ -11272,7 +11283,8 @@ const OFD=[["log","📦","Logistics","Runs your city managers' restocking.",1000
   ["re","🏘️","Real Estate","Runs your property portfolio.",3000,"Property rent pays 8% more."],
   ["nrg","🛢️","Energy","Runs your oil rigs. Only shows once you own a rig.",6000,"Oil rigs pump 10% more oil and fuel."],
   ["law","⚖️","Legal","Keeps you on the right side of the law.",4000,"Fines, audits and probes are 25% less likely."],
-  ["depot","🔧","Depot","Runs the vehicle depot and fleet maintenance.",4000,"Every truck, ship and plane in your fleet is serviced back to 100% condition automatically (normal service fee), so nothing breaks down."]];
+  ["depot","🔧","Depot","Runs the vehicle depot and fleet maintenance.",4000,"Every truck, ship and plane in your fleet is serviced back to 100% condition automatically (normal service fee), so nothing breaks down."],
+  ["camp","🗳️","Campaign","Runs your election campaigns abroad.",5000,"Needed (with Marketing) to run in another country's elections."]];
 const OFN=[["Ava","Liam","Noah","Mia","Zoe","Omar","Lina","Kai","Sofia","Ravi","Elena","Jonah","Priya","Mateo","Hana","Leo","Nadia","Theo","Aisha","Felix"],["Moreau","Chen","Okafor","Silva","Novak","Haddad","Tanaka","Brennan","Rossi","Kowalski","Dubois","Mensah","Lindqvist","Park","Ortiz","Reyes","Weber","Ito","Nair","Laurent"]],OFAV=["👩‍💼","👨‍💼","🧑‍💼","👩🏽‍💼","👨🏿‍💼","👩🏻‍💼","🧑🏾‍💼","👨🏽‍💼"];
 function ofS(){const o=S.off=S.off&&typeof S.off==="object"?S.off:{};o.d=o.d&&typeof o.d==="object"?o.d:{};for(const k in o.d)if(!OFD.some(x=>x[0]===k&&x[4]>0)||!o.d[k]||typeof o.d[k].nm!=="string")delete o.d[k];
   // the Exchange head is the exchange's own manager (S.exch.mgr): exists only while you own the exchange and the manager is on duty
@@ -11356,7 +11368,7 @@ function ofAsk(k,yes,late){const h=ofS().d[k];if(!h||!h.ask)return"";delete h.as
 function ofRep(k,n,v){const h=ofS().d[k];if(!h)return;const now=Date.now();if(!h.rep||now-h.rep.t>=864e5){if(h.rep&&h.rep.n)h.prev=h.rep;h.rep={t:now,n:0,v:0}}h.rep.n+=n||0;h.rep.v+=v||0}
 /* what each head earned the company this game day (tracked where the perk applies; marketing and HR are worked out from current numbers) */
 function ofSav(k,v){const h=ofS().d[k];if(!h||!(v>0))return;const d=Math.floor(Date.now()/DAYMS);if(!h.sv||h.sv.d!==d){h.svp=h.sv&&h.sv.d===d-1?h.sv.v:0;h.sv={d,v:0}}h.sv.v+=v}
-const OFNOGAIN=["rnd","sec","law","depot"];
+const OFNOGAIN=["rnd","sec","law","depot","camp"];
 function ofGain(k){const h=ofS().d[k];if(!h)return 0;if(k==="re"){try{return propIncome0()*.08*ofP("re")}catch(e){return 0}}if(k==="nrg"){let v=0;try{for(const r of rigs())v+=rigLv(r).val*.1*ofP("nrg")}catch(e){}return v}if(OFNOGAIN.includes(k))return 0;if(k==="exch"){const g=exGross(),b=exBoost();return g-g/b}if(k==="hr"){let sv=0;for(const x in ofS().d)if(x!=="hr")sv+=ofPay(x)/.85*.15;return sv}
   if(k==="mkt"){let b=0;for(const c of CITIES){const o=S.own[c.id];if(!o)continue;for(const x of BIZ)if(o[x.k])b+=Math.max(0,uSum(c.id,x.k,l=>profit(x,c,l)))}const f=(1+.06*ofP("mkt"))*(ofCampOn()?1.1:1);return b-b/f}
   const d=Math.floor(Date.now()/DAYMS);return h.sv&&h.sv.d===d?h.sv.v:0}
@@ -11383,6 +11395,7 @@ function ofLine(k,h){if(k==="exch"){const g=exGross();return`Running ${S.exch.na
   if(k==="re")return S.props.length?`${S.props.length} propert${S.props.length===1?"y":"ies"}: rent up ${Math.round(8*ofP("re"))}%, about ${fmt(ofGain("re"))}/day extra.`:"No properties yet. Buy some in a city's Property tab.";
   if(k==="nrg"){const n=rigs().length;return`${n} rig${n===1?"":"s"} pumping ${Math.round(10*ofP("nrg"))}% more, worth about ${fmt(ofGain("nrg"))}/day.`}
   if(k==="depot"){const n=S.fleet.length,w=S.fleet.filter(v=>fxCond(v)<99.5).length;return n?`Looking after ${n} vehicle${n===1?"":"s"}: ${FX().dfix||0} serviced so far.${w?` ${w} on the road, serviced when they park.`:" All at full condition."}`:"No vehicles yet. Buy some on the Fleet tab."}
+  if(k==="camp"){const b=S.pol&&S.pol.bid;return b&&b.c?`Running your campaign in ${b.c}: next race is ${GOVCFG.offices[b.r].n}.`:"Ready to run your campaign in another country's elections."}
   if(k==="law")return`Fines, audits and probes are ${Math.round(Math.min(90,25*ofP("law")))}% less likely while I'm here.`;
   if(k==="hr"){const n=Object.keys(ofS().d).filter(x=>x!=="hr").length;let sv=0;for(const x in ofS().d)if(x!=="hr")sv+=ofPay(x)/.85*.15;return`Looking after ${n} head${n===1?"":"s"}, saving ${fmt(sv)}/day on salaries.`}
   const n=Object.keys(S.mgr||{}).filter(i=>S.mgr[i]&&S.own[i]).length;ofRep(k);const r=h.rep;return n?`Today: ${r.n} restock${r.n===1?"":"s"} for ${fmt(r.v)} across ${n} city manager${n===1?"":"s"}.`:"No city managers yet. Hire one in a city where you own businesses."}
