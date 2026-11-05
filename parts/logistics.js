@@ -259,10 +259,10 @@ function findG(g,go){const c=CITIES[W.city],it=lcLayout(c).items.find(x=>x.g===g
   if(go){const az=z+RACKD/2+1.2;W.p={x,z:az,yaw:0};panel(false)}else panel(false)}
 function loop(t){if(!W.on||!W.ren){W.raf=0;return}W.raf=requestAnimationFrame(loop);if(document.hidden)return;const dt=Math.min(.1,Math.max(0,(t-W.last)/1000));W.last=t;step(dt,t);
   const w=W.el.clientWidth,h=W.el.clientHeight;if(W._w!==w||W._h!==h){W.ren.setSize(w,h,false);W.cam.aspect=w/h;W.cam.updateProjectionMatrix();W._w=w;W._h=h}W.ren.render(W.scene,W.cam)}
-function step(dt,t){const P=W.p,k=W.keys,busy=!!W.panel;let f=0,s=0,turn=0;
+function step(dt,t){const P=W.p,k=W.keys,busy=!!W.panel,L=L0();let f=0,s=0,turn=0;
   if(!busy){if(k.w||k.arrowup)f+=1;if(k.s||k.arrowdown)f-=1;if(k.d)s+=1;if(k.a)s-=1;if(k.arrowleft)turn+=1;if(k.arrowright)turn-=1;if(W.joy){f-=W.joy.y;s+=W.joy.x}}
   P.yaw+=turn*2.2*dt;const m=Math.hypot(f,s);let moving=false;
-  if(m>.05){const L=L0(),vs=L&&L.ride?LCVEH[L.ride].sp:1,sp=(k.shift?7:4)*vs*Math.min(1,m)*dt/m,fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw),rx=Math.cos(P.yaw),rz=-Math.sin(P.yaw),dx=(fx*f+rx*s)*sp,dz=(fz*f+rz*s)*sp;
+  if(m>.05){const vs=L&&L.ride?LCVEH[L.ride].sp:1,sp=(k.shift?7:4)*vs*Math.min(1,m)*dt/m,fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw),rx=Math.cos(P.yaw),rz=-Math.sin(P.yaw),dx=(fx*f+rx*s)*sp,dz=(fz*f+rz*s)*sp;
     if(!blocked(P.x+dx,P.z))P.x+=dx;if(!blocked(P.x,P.z+dz))P.z+=dz;moving=true;W.av.rotation.y=Math.atan2(-(fx*f+rx*s),-(fz*f+rz*s))}
   W.walkT=moving&&!(L&&L.ride)?W.walkT+dt*10:0;const sw=Math.sin(W.walkT)*.5;W.legs[0].rotation.x=sw;W.legs[1].rotation.x=-sw;W.av.position.set(P.x,moving?Math.abs(Math.sin(W.walkT))*.04:0,P.z);
   if(W.fp){const fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw),cp=Math.cos(W.pitch);const ey=1.62+(L&&L.ride?.5:0);W.cam.position.set(P.x,ey,P.z);W.cam.lookAt(P.x+fx*cp,ey+Math.sin(W.pitch),P.z+fz*cp)}
