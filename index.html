@@ -2034,7 +2034,7 @@ function flipDay(quiet){const f=flipS();
   for(const id of new Set([...Object.keys(f.list),...f.own.map(h=>h.city)]))if(CITIES[id])f.pv[id]=+flipMk(CITIES[id]).toFixed(4)}
 let flipTab="plots";
 /* per-city production dashboard (Land tab button): every farm, mine and factory in this city with hire / upgrade / pause in one place */
-let pdOn=0,pdF="all",pdS="out",pdB=0,pdZ=null,pdK="s",pdO=null,pdQ=1;
+let pdOn=0,pdF="all",pdS="out",pdB=0,pdZ=null,pdK="s",pdO=null,pdQ=1,pdSell=null;
 /* land shop inside the dashboard: pick plot type, size and what it makes, then buy (or rent) and build in one go */
 function pdOpts(c,z){const d=deps(c);return OPS.filter(o=>!o.gone&&(!o.dep||d.includes(o.dep))&&ZONE[z].cats.includes(o.cat)&&(!o.req||hasTech(o.req)))}
 function pdBuyHtml(c){const d=deps(c),zs=Object.keys(ZONE).filter(z=>z!=="mine"||d.length);if(!zs.includes(pdZ))pdZ=zs[0];const Z=ZONE[pdZ],ha=LAND[pdK][1],opts=pdOpts(c,pdZ);if(!opts.some(o=>o.k===pdO))pdO=opts[0]&&opts[0].k;
@@ -2072,7 +2072,9 @@ function pdHtml(c,sites){const kind=s=>{const o=siteOp(s);return !o?"empty":o.ca
   const qa=[];if(miss.length)qa.push(`<button class="buy" data-pd="hireall">👷 Hire all crews (${miss.length})</button>`);if(upAll[0])qa.push(`<button class="buy" data-pd="upall">⬆️ Upgrade ${upAll[0]} for ${fmt(upAll[1])}</button>`);if(pz.length)qa.push(`<button class="buy up" data-pd="resall">▶️ Resume all (${pz.length})</button>`);
   if(qa.length)h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${qa.join("")}</div>`;
   {const wm=S.sites.filter(s=>siteOp(s)&&!s.crew).length,wu=S.sites.filter(s=>siteOp(s)&&s.reg&&slv(s)<4).length;
-  h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><span style="font-size:12px;color:var(--muted);font-weight:600">ALL CITIES</span><button class="buy${wm?"":" up"}" data-pd="hireallw">👷 Hire all crews everywhere (${wm})</button><button class="buy${wu?"":" up"}" data-pd="upallw">⬆️ Upgrade all everywhere (${wu})</button></div>`}
+  h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><span style="font-size:12px;color:var(--muted);font-weight:600">ALL CITIES</span><button class="buy${wm?"":" up"}" data-pd="hireallw">👷 Hire all crews everywhere (${wm})</button><button class="buy${wu?"":" up"}" data-pd="upallw">⬆️ Upgrade all everywhere (${wu})</button><button class="buy up" data-pd="fireallw">🚪 Let all crews go everywhere (${S.sites.filter(s=>s.crew).length})</button></div>`;
+  const cr=sites.filter(s=>s.crew).length,sv=sites.reduce((a,s)=>a+(s.lease?0:plotPrice(c,zoneOf(s)||"farm",s.size)*.75),0);
+  if(sites.length)h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><span style="font-size:12px;color:var(--muted);font-weight:600">${c.name.toUpperCase()}</span><button class="buy up" data-pd="fireall">🚪 Let all crews go here (${cr})</button><button class="buy up" data-pd="sellall" style="color:var(--bad)">${pdSell===c.id?`⚠️ Click again to sell all ${sites.length} sites for ${fmt(sv)}`:`💰 Sell all land here (${sites.length}) · ${fmt(sv)}`}</button></div>`}
   if(sites.length>1)h+=`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;font-size:12px;color:var(--muted)">Sort: ${[["out","Output"],["up","Cheapest upgrade"],["lv","Level"]].map(([k,t])=>`<button class="buy${pdS===k?"":" up"}" data-pd="s" data-v="${k}" style="padding:4px 8px;font-size:12px">${t}</button>`).join("")}</div>`;
   const ls=sites.filter(s=>pdF==="all"||(pdF==="att"?bad(s):kind(s)===pdF)).sort((a,b)=>pdS==="up"?(siteOp(a)&&slv(a)<4?supCost(a):1e18)-(siteOp(b)&&slv(b)<4?supCost(b):1e18):pdS==="lv"?slv(b)-slv(a):(siteEst(b)||0)-(siteEst(a)||0));
   h+=`<div class="list pd-list">`;if(!ls.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">${sites.length?"Nothing matches this filter.":`No land in ${c.name} yet. Buy a plot below.`}</p>`;
@@ -2097,7 +2099,7 @@ function pdOpen(c){pdC=c;pdF="all";pdB=0;let w=document.getElementById("pdw");if
   document.body.appendChild(w);w.addEventListener("click",pdClick)}w.style.display="flex";pdRender()}
 function pdClose(){const w=document.getElementById("pdw");if(w)w.style.display="none";pdC=null}
 function pdRender(){const w=document.getElementById("pdw");if(!w||!pdC)return;w.querySelector("#pdw-t").textContent=`Production · ${pdC.name}`;w.querySelector("#pdw-m").innerHTML=pdHtml(pdC,S.sites.filter(s=>s.city===pdC.id))}
-function pdClick(e){if(e.target.id==="pdw"){pdClose();return}const b=e.target.closest("[data-pd],[data-crew],[data-pause],[data-act]");if(!b||b.disabled||!pdC)return;e.stopPropagation();const c=pdC;
+function pdClick(e){if(!e.target.closest("[data-pd=sellall]"))pdSell=null;if(e.target.id==="pdw"){pdClose();return}const b=e.target.closest("[data-pd],[data-crew],[data-pause],[data-act]");if(!b||b.disabled||!pdC)return;e.stopPropagation();const c=pdC;
   if(b.dataset.crew||b.dataset.pause){const s=S.sites.find(x=>x.id===+(b.dataset.crew||b.dataset.pause));if(s){if(b.dataset.crew){s.crew=!s.crew;toast(s.crew?"Crew hired. Wages start now.":"Crew let go.")}else{s.paused=!s.paused;toast(s.paused?"Production paused":"Production resumed")}commit()}}
   else if(b.dataset.act==="slv"){const s=S.sites.find(x=>x.id===+b.dataset.id);if(s){if(!s.reg)toast("Register this land at your HQ to upgrade it");else{const k=supCost(s);if(S.cash>=k){S.cash-=k;s.lv=slv(s)+1;toast(`${OP[s.op].n}: ${(EQ[OP[s.op].cat]||[])[s.lv-1]||"Mk "+s.lv} installed`);commit()}}}}
   else{const a=b.dataset.pd;
@@ -2106,6 +2108,8 @@ function pdClick(e){if(e.target.id==="pdw"){pdClose();return}const b=e.target.cl
     if(a==="f")pdF=b.dataset.v;else if(a==="s")pdS=b.dataset.v;
     else if(a==="hireallw"){let k=0;for(const s of S.sites)if(siteOp(s)&&!s.crew){s.crew=true;k++}toast(k?`Crews hired at ${k} site${k>1?"s":""} in every city. Wages start now.`:"Every site already has a crew");commit()}
     else if(a==="upallw"){let k=0,t=0;const l=S.sites.filter(s=>siteOp(s)&&s.reg&&slv(s)<4).sort((x,y)=>supCost(x)-supCost(y));for(const s of l){const q=supCost(s);if(S.cash>=q){S.cash-=q;t+=q;s.lv=slv(s)+1;k++}}toast(k?`Upgraded ${k} site${k>1?"s":""} across all cities for ${fmt(t)}`:l.length?"Not enough cash for an upgrade":"Nothing left to upgrade");commit()}
+    else if(a==="fireallw"||a==="fireall"){let k=0;for(const s of S.sites)if(s.crew&&(a==="fireallw"||s.city===c.id)){s.crew=false;k++}toast(k?`Let ${k} crew${k>1?"s":""} go${a==="fireall"?" in "+c.name:" in every city"}. Sites run slower without them.`:"No crews to let go");commit()}
+    else if(a==="sellall"){if(pdSell!==c.id){pdSell=c.id;pdRender();return}pdSell=null;let k=0,t=0;for(const s of S.sites.filter(x=>x.city===c.id)){if(!s.lease)t+=plotPrice(c,zoneOf(s)||"farm",s.size)*.75;k++}S.cash+=t;S.sites=S.sites.filter(x=>x.city!==c.id);toast(`Sold ${k} site${k>1?"s":""} in ${c.name} for ${fmt(t)}. Rented plots were handed back.`);commit()}
     else if(a==="buyp")pdB=pdB?0:1;else if(a==="bz"){pdZ=b.dataset.v;pdO=null}else if(a==="bk")pdK=b.dataset.v;else if(a==="bo")pdO=b.dataset.v;else if(a==="bq")pdQ=+b.dataset.v||1;
     else if(a==="bbuy"||a==="brent")pdDoBuy(c,a==="brent");
     else if(a==="resall"){let k=0;for(const s of S.sites)if(s.city===c.id&&siteOp(s)&&s.paused){s.paused=false;k++}toast(`Resumed ${k} site${k>1?"s":""}`);commit()}
