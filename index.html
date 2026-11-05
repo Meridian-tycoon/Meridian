@@ -14406,6 +14406,34 @@ const lcJobPay=c=>{const L=LCO(c.id);return Math.round(LCW.job*PRICE[c.size]*(L&
 function lcHire(c,k,d){const L=LCO(c.id);if(!L)return "";if(k==="mgr"){L.mgr=d>0?1:0;if(!L.mgr){L.staff=Math.min(L.staff||0,LCW.max0);L.xp=(L.xp||[]).slice(0,L.staff)}lcLog(c,L.mgr?"Hired a warehouse manager":"Let the warehouse manager go");save();return ""}
   const n=Math.max(0,Math.min(lcMaxStaff(c),(L.staff||0)+d));if(n===(L.staff||0))return d>0?`Hire a manager to grow past ${LCW.max0} workers`:"";L.xp=L.xp||[];if(n>(L.staff||0))L.xp.push(S.hour||0);else L.xp.pop();L.staff=n;lcLog(c,d>0?`Hired a worker (${n} on staff)`:`Let a worker go (${n} on staff)`);save();return ""}
 function lcJobDone(c){const L=LCO(c.id);if(!L)return 0;const p=lcJobPay(c);S.cash+=p;L.jobs=(L.jobs||0)+1;lcLog(c,`Forklift job done: +${fmt(p)}`);save();return p}
+/* warehouse contracts (Mark, 2026-11-05): buyers offer contracts for the stock types a logistics center holds.
+   Terms depend on the type: raw goods are big bulk orders with a long deadline and a small premium; parts (mid) are middle;
+   finished goods are small rush orders with a short deadline and a big premium. Accept one, then press Deliver while the
+   center holds enough: the stock leaves and you're paid. Miss the deadline and you pay a penalty (not on the dev account).
+   L.ct = {at: last refresh, of:[offers], ac:[accepted]}; each {id,g,q,pay,due(ms, accepted only),pen}. Offers refresh every game day. */
+const LCCT={raw:{n:"Bulk supply",qa:.6,qb:1.5,pr:1.15,d:3,pen:.05},mid:{n:"Parts order",qa:.4,qb:1.2,pr:1.35,d:2,pen:.1},fin:{n:"Rush order",qa:.2,qb:.9,pr:1.6,d:1,pen:.15}};
+const lcctT=g=>LCCT[G[g][2]]||LCCT.fin;
+function lcctOf(c){const L=LCO(c.id);if(!L)return null;if(!L.ct||typeof L.ct!=="object")L.ct={at:0,of:[],ac:[]};const K=L.ct;if(!Array.isArray(K.of))K.of=[];if(!Array.isArray(K.ac))K.ac=[];K.of=K.of.filter(o=>G[o.g]);K.ac=K.ac.filter(o=>G[o.g]);
+  const n=Date.now();if(n-(K.at||0)>=DAYMS){K.at=n;K.of=[];const by={};for(const g of L.ord)(by[G[g][2]]=by[G[g][2]]||[]).push(g);
+    const ts=Object.keys(by);for(let i=0;i<4&&ts.length;i++){const t=ts[i%ts.length],a=by[t],g=a[Math.floor(Math.random()*a.length)],T=lcctT(g),held=L.inv[g]||0;
+      const q=Math.max(1,Math.round(held*(T.qa+Math.random()*(T.qb-T.qa))*100)/100);if(K.of.some(o=>o.g===g))continue;
+      S.lcctN=(S.lcctN||0)+1;K.of.push({id:S.lcctN,g,q,pay:Math.round(q*px(c,g)*T.pr)})}}
+  return K}
+const lcctDev=()=>{try{return !!(typeof ON!=="undefined"&&ON.user&&DEV_UIDS.includes(ON.user.uid))}catch(e){return false}};
+function lcctTick(){const n=Date.now();for(const id in (S.lc||{})){const c=CITIES[id],L=c&&LCO(id);if(!L||!L.ct||!Array.isArray(L.ct.ac))continue;
+  L.ct.ac=L.ct.ac.filter(o=>{if(o.due>n)return true;const f=lcctDev()?0:Math.round(o.pay*o.pen);S.cash-=f;lcLog(c,`Contract #${o.id} missed: ${gq(o.q)} ${G[o.g][0].toLowerCase()}${f?` · penalty ${fmt(f)}`:""}`);toast(`📄 Contract #${o.id} in ${c.name} missed${f?`: ${fmt(f)} penalty`:""}`);return false})}}
+function lcctAct(c,a,id){const K=lcctOf(c),L=LCO(c.id);if(!K)return "";
+  if(a==="take"){const i=K.of.findIndex(o=>o.id===id);if(i<0)return "That offer is gone";if(K.ac.length>=3)return "You can hold 3 contracts at a time per center";const o=K.of.splice(i,1)[0],T=lcctT(o.g);o.due=Date.now()+T.d*DAYMS;o.pen=T.pen;K.ac.push(o);lcLog(c,`Contract #${o.id} accepted: ${gq(o.q)} ${G[o.g][0].toLowerCase()} for ${fmt(o.pay)}`);save();return ""}
+  const i=K.ac.findIndex(o=>o.id===id);if(i<0)return "";const o=K.ac[i];
+  if(a==="drop"){K.ac.splice(i,1);const f=lcctDev()?0:Math.round(o.pay*o.pen);S.cash-=f;lcLog(c,`Contract #${o.id} cancelled${f?` · penalty ${fmt(f)}`:""}`);save();return ""}
+  if(a==="give"){if((L.inv[o.g]||0)+1e-9<o.q)return `Needs ${gq(o.q)} ${G[o.g][0].toLowerCase()} in the center (has ${gq(L.inv[o.g]||0)})`;lcSub(c,o.g,o.q);S.cash+=o.pay;K.ac.splice(i,1);lcLog(c,`Contract #${o.id} delivered: +${fmt(o.pay)}`);toast(`📄 Contract delivered: +${fmt(o.pay)}`);save();return ""}
+  return ""}
+function lcctHtml(c){const K=lcctOf(c),L=LCO(c.id);if(!K)return "";const n=Date.now();
+  let h=`<div class="sec">Contracts · ${K.ac.length}/3 active</div><div class="list">`;
+  for(const o of K.ac){const T=lcctT(o.g),ok=(L.inv[o.g]||0)+1e-9>=o.q;h+=`<div class="row own"><div class="n">${T.n} #${o.id}: ${G[o.g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(o.q)} · ${fmt(o.pay)}</span></div><div class="d">Due in ${fmtDur(o.due-n)} · you have ${gq(L.inv[o.g]||0)} · miss it: ${lcctDev()?"no penalty (dev)":fmt(Math.round(o.pay*o.pen))+" penalty"}</div><button class="buy" data-act="lcctgive" data-k="${o.id}" ${ok?"":"disabled"}>Deliver</button><button class="buy up" data-act="lcctdrop" data-k="${o.id}">Cancel</button></div>`}
+  if(!K.of.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">${L.ord.length?"No new offers today. New ones come in every game day.":"Store goods here to get contract offers for them."}</p>`;
+  for(const o of K.of){const T=lcctT(o.g);h+=`<div class="row"><div class="n">${T.n}: ${G[o.g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(o.q)} · ${fmt(o.pay)}</span></div><div class="d">${Math.round((T.pr-1)*100)}% over the local price · ${T.d} game day${T.d>1?"s":""} to deliver · ${Math.round(T.pen*100)}% penalty if missed</div><button class="buy up" data-act="lccttake" data-k="${o.id}" ${K.ac.length>=3?"disabled":""}>Accept</button></div>`}
+  return h+`</div>`}
 function lcUnpin(c,g){const L=LCO(c.id);if(L){delete L.pin[g];save()}}
 function lcHtml(c){const L=LCO(c.id);
   if(!L)return `<div class="sec">Logistics center</div><div class="list"><div class="row"><div class="n">Open a logistics center</div><div class="d">A separate depot for goods sent between your cities. Shipments to ${E2(c.name)} unload here first: containers, pallets and a central computer that lists every product's row and bay. Starts with ${fmtT(LCROW)}; every upgrade adds a row and makes the building bigger, with no level limit. You can walk around inside.</div><button class="buy" data-act="lcopen" ${S.cash<lcCost(c)?"disabled":""}>Open ${fmt(lcCost(c))}</button></div></div>`;
@@ -14418,7 +14446,7 @@ function lcHtml(c){const L=LCO(c.id);
    if(!mk.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Nothing listed. Post listings from the Market tab: they ship out of this center.</p>`;
    for(const m of mk)h+=`<div class="row own"><div class="n">${G[m.g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(m.q)} left</span></div><div class="d">${m.w} ${m.id} · asking ${fmt(m.p)}${m.sold?` · ${gq(m.sold)} sold`:""}</div></div>`;
    const lg=L.log||[];h+=`</div><div class="sec">Activity</div><div class="list">`+(lg.length?lg.slice(0,15).map(([t,x])=>`<div class="row"><div class="d" style="grid-column:1/-1"><span style="color:var(--muted);font-family:var(--mono)">${new Date(t).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span> · ${E2(x)}</div></div>`).join(""):`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">No activity yet.</p>`)}
-  h+=`</div><div class="list">
+  h+=`</div>`+lcctHtml(c)+`<div class="list">
    <div class="row"><div class="n">Staff: ${L.staff||0} worker${L.staff===1?"":"s"}${L.mgr?" + manager":""}</div><div class="d">Wages ${fmt(lcWageC(c))}/hr. Orders turn around ${Math.round(lcSpeed(c)*100)}% faster. Hire and fire at the reception office inside.</div><button class="buy up" data-act="lcin">Go inside</button></div>
    <div class="row"><div class="n">Upgrade storage · Level ${L.lv+1}</div><div class="d">+${fmtT(LCROW*(1+.25*(L.upg.rack||0)))} and a new rack row (Row ${lcRowName(L.lv)}). The building gets longer.</div><button class="buy up" data-act="lcup" ${S.cash<lcUp(c,L.lv)?"disabled":""}>${fmt(lcUp(c,L.lv))}</button></div>
    <div class="row"><div class="n">Auto-expand when full: ${L.ax?"On":"Off"}</div><div class="d">When a delivery doesn't fit, buy as many upgrades as it needs (if you have the cash). Off: the extra goes to the warehouse.</div><button class="buy up" data-act="lcax">${L.ax?"Turn off":"Turn on"}</button></div>
@@ -14434,6 +14462,7 @@ function lcAct(c,a,b){const L=LCO(c.id),g=b.dataset.g;
   if(!L)return;
   if(a==="lcin"){lcEnter(c);return false}
   if(a==="lcup"){const p=lcUp(c,L.lv);if(S.cash<p)return;S.cash-=p;L.lv++;toast(`Logistics center: level ${L.lv}, Row ${lcRowName(L.lv-1)} added`)}
+  else if(a==="lccttake"||a==="lcctgive"||a==="lcctdrop"){const e=lcctAct(c,a.slice(4),+b.dataset.k);if(e)toast(e)}
   else if(a==="lcax"){L.ax=L.ax?0:1}
   else if(a==="lcrx"){L.rx=L.rx?0:1}
   else if(a==="lcout"){if(!hasWh(c))return toast("Open a warehouse here first");const q=Math.min(L.inv[g]||0,Math.floor(whRoom(c)/tpu(g)*100)/100);if(!(q>0))return toast("The warehouse is full");lcSub(c,g,q);S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;lcLog(c,`${gq(q)} ${G[g][0].toLowerCase()} moved to the warehouse`);toast(`Moved ${gq(q)} ${G[g][0].toLowerCase()} to the warehouse`)}
@@ -14443,7 +14472,7 @@ function lcAct(c,a,b){const L=LCO(c.id),g=b.dataset.g;
 function lcEnter(c){partLoad("logistics").then(api=>api.open(c.id)).catch(()=>toast("The logistics center didn't load. Try again."))}
 
 let saveT=0;
-setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();try{colTick(Date.now())}catch(e){console.warn("col",e)}try{airTick(Date.now())}catch(e){console.warn("air",e)}if(++saveT%5===0){save();checkGoals()}hud();
+setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();try{colTick(Date.now())}catch(e){console.warn("col",e)}try{airTick(Date.now())}catch(e){console.warn("air",e)}try{lcctTick()}catch(e){console.warn("lcct",e)}if(++saveT%5===0){save();checkGoals()}hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
   $("#clk").title="Where you are";$("#clk").textContent=jailed()?"in prison · "+fmtDur(S.jail.until-Date.now()):S.trip?(S.trip.local?"on the way":(S.trip.mode==="plane"?"flying to ":"travelling to ")+CITIES[S.trip.to.city].name)+" · "+fmtDur(S.trip.arr-Date.now()):"in "+CITIES[S.loc.city].name;
   if(mode==="pf"&&saveT%5===0&&sheet.classList.contains("open")&&!(document.activeElement&&/^(SELECT|INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}
