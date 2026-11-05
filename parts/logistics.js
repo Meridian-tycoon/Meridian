@@ -91,6 +91,16 @@ function fillShop(){const p=W.panel;if(!p||!W.shopOn)return;const c=CITIES[W.cit
 function shopAct(a,b){const c=CITIES[W.city];if(a==="sbuy"){const e=lcBuy(c,b.dataset.t,b.dataset.k);if(e){const m=W.panel.querySelector("#lc3-se");if(m)m.textContent=e;return}
     if(b.dataset.t==="veh")ride(b.dataset.k);else if(b.dataset.k!=="led"){try{buildRacks(W.T)}catch(err){console.warn(err)}}toast("Bought from the warehouse shop");sub()}
   else if(a==="sride"){ride(b.dataset.k);save()}fillShop()}
+/* performance (Mark: "super laggy"): the building is thousands of small static meshes, one draw call each.
+   Bake every static mesh under root into one mesh per look (same material settings), so the GPU gets a few dozen draw calls instead of 1000+. */
+function bake(T,root,skip){root.updateMatrixWorld(true);const B=new Map(),dead=[],inv=new T.Matrix4().copy(root.matrixWorld).invert(),nm=new T.Matrix3(),mt=new T.Matrix4();
+  root.traverse(o=>{if(!o.isMesh||o.isInstancedMesh||Array.isArray(o.material)||skip.has(o))return;for(let p=o.parent;p&&p!==root;p=p.parent)if(skip.has(p))return;
+    const m=o.material,c=m.color?m.color.getHex():0,e=m.emissive?m.emissive.getHex():0,k=[m.type,c,m.roughness,m.metalness,e,m.emissiveIntensity,m.transparent,m.opacity,m.flatShading,m.side,m.map?m.map.uuid:""].join("|");
+    let b=B.get(k);if(!b)B.set(k,b={m,p:[],n:[],u:[]});let g=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();mt.multiplyMatrices(inv,o.matrixWorld);g.applyMatrix4(mt);
+    const P=g.attributes.position,N=g.attributes.normal,U=g.attributes.uv;b.p.push(P.array);b.n.push(N?N.array:new Float32Array(P.count*3));b.u.push(U?U.array:new Float32Array(P.count*2));if(o.geometry!==g)g.dispose();dead.push(o)});
+  for(const o of dead){o.parent.remove(o);o.geometry.dispose()}
+  const cat=a=>{let n=0;for(const x of a)n+=x.length;const r=new Float32Array(n);let i=0;for(const x of a){r.set(x,i);i+=x.length}return r};
+  for(const b of B.values()){const g=new T.BufferGeometry();g.setAttribute("position",new T.BufferAttribute(cat(b.p),3));g.setAttribute("normal",new T.BufferAttribute(cat(b.n),3));g.setAttribute("uv",new T.BufferAttribute(cat(b.u),2));g.computeBoundingSphere();const m=new T.Mesh(g,b.m);m.frustumCulled=false;root.add(m)}}
 function L0(){return W.city!=null?LCO(W.city):null}
 function open(cid){if(W.on)return;const c=CITIES[cid],L=c&&LCO(cid);if(!L)return toast("No logistics center here");css();W.on=true;W.city=cid;
   const el=W.el=document.createElement("div");el.className="lc3";el.setAttribute("role","dialog");el.setAttribute("aria-label","Logistics center in "+c.name);
@@ -185,7 +195,7 @@ function build(T){W.T=T;const el=W.el,L=L0(),c=CITIES[W.city];let ren;try{ren=ne
   W.scr=[];for(let i=-1;i<=1;i++){ofBox(T,pc,.08,.4,.08,0x111827,i*1.05,.9,.2);const m=new T.Mesh(new T.PlaneGeometry(.95,.6),new T.MeshBasicMaterial({map:screenTex(T,i+1)}));m.position.set(i*1.05,1.62,.18);m.rotation.y=i*-.25;m.rotation.x=0;pc.add(m);W.scr.push(m);ofBox(T,pc,1,.66,.04,0x0f172a,i*1.05,1.29,.15).rotation.y=i*-.25}
   ofBox(T,pc,.6,.04,.25,0x111827,0,.88,-.25);pc.position.set(0,0,z1-15);room.add(pc);W.pcz=z1-15;
   sign(T,room,["CENTRAL INVENTORY"],2.6,.5,0,2.75,z1-15.1,0,{bg:"#14532d",fg:"#dcfce7"});
-  buildRacks(T);
+  buildRacks(T);try{bake(T,room,new Set([W.rk,...W.scr]))}catch(e){console.warn(e)}
   const av=W.av=person(T,0x1f2937);W.legs=av.userData.legs;sc.add(av);W.body=av.children.slice();ride(L.ride);W.p={x:0,z:z1-6,yaw:0};W.cd=W.zoom;setFp(W.fp);
   const bc=W.beacon=new T.Mesh(new T.ConeGeometry(.5,1.1,16),new T.MeshBasicMaterial({color:0x22c55e,transparent:true,opacity:.85}));bc.rotation.x=Math.PI;bc.visible=false;sc.add(bc);
   sub()}
@@ -227,7 +237,7 @@ function buildRacks(T){if(W.rk){W.room.remove(W.rk);W.rk.traverse(o=>{if(o.geome
   for(let r=0;r<R;r++)for(const x0 of [-BAYS*BW/2-.35,BAYS*BW/2+.35]){const x=rowX(r)+x0;ofBox(T,room,.12,.9,RACKD+.4,0xfacc15,x,0,rowZ(r),{r:.5});for(let k=0;k<3;k++)ofBox(T,room,.13,.12,RACKD+.42,0x111111,x,.2+k*.28,rowZ(r),{r:.5})}
   // product labels over the first bay of each product
   for(const it of lay.items){if(it.row>=R)continue;sign(T,room,[G[it.g][0],gq(it.q)+" · "+fmtT(it.t)],BW-.2,.62,bayX(it.bay,it.row),RACKH-.35,rowZ(it.row)+RACKD/2+.08,0,{bg:"#f8fafc",fg:"#0f172a",w:384,h:120,fs:42})}
-  if(L0().lv>MAXR)sign(T,room,["Rows "+lcRowName(MAXR)+"+ in the annex","See the computer for every location"],8,1.3,0,6.5,zBack()+.3,0,{w:1024,h:180,bg:"#7c2d12",fg:"#fff"})}
+  if(L0().lv>MAXR)sign(T,room,["Rows "+lcRowName(MAXR)+"+ in the annex","See the computer for every location"],8,1.3,0,6.5,zBack()+.3,0,{w:1024,h:180,bg:"#7c2d12",fg:"#fff"});try{bake(T,room,new Set())}catch(e){console.warn(e)}}
 function blocked(x,z,cam){const r=cam?.15:.32;if(x<-HW+r||x>HW-r||z<zBack()+r||z>zEnd()-r)return true;
   for(let i=0;i<W.rows;i++){const zz=rowZ(i);if(Math.abs(z-zz)<RACKD/2+r&&Math.abs(x-rowX(i))<BAYS*BW/2+r)return true}
   if(!cam&&Math.abs(x)<1.7+r&&Math.abs(z-W.pcz)<.6+r)return true;if(W.shop&&!cam&&x<W.shop.x+.55+r&&Math.abs(z-W.shop.z)<1.55+r&&x>W.shop.x-.6)return true;if(W.shop&&!cam&&x<-HW+1.2+r&&Math.abs(z-W.shop.z)<2.1+r)return true;{const ox=HW-5,oz=zEnd()-15.5;if(x>ox-3.5-r&&z>oz-3-r&&z<oz+3+r&&!(z>oz+2.6&&x<ox-1.5)&&(x<ox-3.4+r||z<oz-2.9+r||(z>oz+2.9-r&&x>ox-1.5)||Math.abs(x-ox)<1.1+r&&Math.abs(z-oz-2.4)<.35+r))return true}
@@ -247,7 +257,7 @@ function findG(g,go){const c=CITIES[W.city],it=lcLayout(c).items.find(x=>x.g===g
   if(it.row>=W.rows){toast(`${G[g][0]} is in ${it.loc} (annex)`);return}
   W.find={x,z,t:performance.now()};W.beacon.visible=true;W.beacon.position.set(x,RACKH+1.4,z);const f=W.el.querySelector(".lc3-find");f.hidden=false;f.textContent=`📍 ${G[g][0]}: ${it.loc}`;
   if(go){const az=z+RACKD/2+1.2;W.p={x,z:az,yaw:0};panel(false)}else panel(false)}
-function loop(t){if(!W.on||!W.ren){W.raf=0;return}W.raf=requestAnimationFrame(loop);if(document.hidden)return;const dt=Math.min(.05,Math.max(0,(t-W.last)/1000));W.last=t;step(dt,t);
+function loop(t){if(!W.on||!W.ren){W.raf=0;return}W.raf=requestAnimationFrame(loop);if(document.hidden)return;const dt=Math.min(.1,Math.max(0,(t-W.last)/1000));W.last=t;step(dt,t);
   const w=W.el.clientWidth,h=W.el.clientHeight;if(W._w!==w||W._h!==h){W.ren.setSize(w,h,false);W.cam.aspect=w/h;W.cam.updateProjectionMatrix();W._w=w;W._h=h}W.ren.render(W.scene,W.cam)}
 function step(dt,t){const P=W.p,k=W.keys,busy=!!W.panel;let f=0,s=0,turn=0;
   if(!busy){if(k.w||k.arrowup)f+=1;if(k.s||k.arrowdown)f-=1;if(k.d)s+=1;if(k.a)s-=1;if(k.arrowleft)turn+=1;if(k.arrowright)turn-=1;if(W.joy){f-=W.joy.y;s+=W.joy.x}}
