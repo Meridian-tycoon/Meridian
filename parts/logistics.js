@@ -13,10 +13,10 @@ const zBack=()=>-(W.rows*ROWP)-2;             // the back wall
 function css(){if(document.getElementById("lc3-css"))return;const s=document.createElement("style");s.id="lc3-css";s.textContent=`
 .lc3{position:fixed;inset:0;z-index:2147483000;background:#0b0f14;font:13px system-ui,sans-serif;color:#e2e8f0;overflow:hidden;touch-action:none;user-select:none}
 .lc3 canvas{display:block;width:100%;height:100%;outline:none}
-.lc3-top{position:absolute;top:10px;left:10px;right:10px;display:flex;gap:8px;align-items:center;pointer-events:none}.lc3-top>*{pointer-events:auto}
+.lc3-top{position:absolute;top:0;left:0;right:0;padding:10px 10px 22px;background:linear-gradient(#020617d9,#02061700);display:flex;gap:8px;align-items:center;pointer-events:none}.lc3-top>*{pointer-events:auto}
 .lc3-top div{flex:1;pointer-events:none;text-shadow:0 1px 3px #000}.lc3-top b{display:block;color:#fbbf24;letter-spacing:.05em;font-size:15px}.lc3-top small{color:#cbd5e1;font:600 12px ui-monospace,monospace}
 .lc3-btn{appearance:none;background:#b45309;color:#fff;border:0;border-radius:999px;padding:9px 14px;font:600 13px system-ui;cursor:pointer}.lc3-btn.g{background:#334155}
-.lc3-help{position:absolute;left:10px;top:58px;font-size:11px;color:#e2e8f0cc;text-shadow:0 1px 3px #000;pointer-events:none}
+.lc3-help{position:absolute;left:10px;top:58px;font-size:11px;color:#f1f5f9;background:#020617a6;padding:3px 8px;border-radius:6px;pointer-events:none}
 .lc3-load{position:absolute;inset:0;display:grid;place-items:center;font-size:15px;color:#fbbf24}
 .lc3-joy{position:absolute;left:22px;bottom:26px;width:112px;height:112px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35);touch-action:none;display:none}
 .lc3-joy i{position:absolute;left:36px;top:36px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.8);pointer-events:none}.lc3.touch .lc3-joy{display:block}.lc3.touch .lc3-help{display:none}
@@ -29,6 +29,37 @@ function css(){if(document.getElementById("lc3-css"))return;const s=document.cre
 .lc3-pan .sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;margin-bottom:8px}.lc3-pan .sum div{background:#1e293b;border-radius:8px;padding:7px 9px}.lc3-pan .sum small{display:block;color:#94a3b8;font-size:11px}.lc3-pan .sum b{font:700 14px ui-monospace,monospace;color:#fde68a}
 @media(max-width:640px){.lc3-top b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.lc3-top small{font-size:10px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.lc3-top div{min-width:0}.lc3-btn{padding:7px 10px;font-size:12px}.lc3-pan{top:52px;right:6px;width:calc(100% - 12px)}.lc3-pan .c-t,.lc3-pan .c-w{display:none}.lc3-pan .mini{display:block;margin:2px 0}}
 .lc3-find{position:absolute;left:50%;top:58px;transform:translateX(-50%);background:#14532dee;border:1px solid #22c55e;color:#dcfce7;border-radius:999px;padding:7px 14px;font-weight:600;pointer-events:none;white-space:nowrap}`;document.head.appendChild(s)}
+/* how a product is stored, and a tint for bags and drums */
+const KN={carton:"Wrapped pallet",bag:"Bulk bags",drum:"Drums",crate:"Crates"};
+function kindOf(g){if(/oil|fuel|chem|gas|petro|water|wine|beer|milk|juice|ethanol|thc|paint|acid|lubric/i.test(g+" "+G[g][0]))return "drum";
+  if(G[g][2]==="raw"&&tpu(g)<2)return "bag";if(tpu(g)>=2||/steel|iron|copper|alum|metal|ore|machin|engine|car|aero|arm|weapon|tank|part/i.test(g+" "+G[g][0]))return "crate";return "carton"}
+function tintOf(g){const n=(g+" "+G[g][0]).toLowerCase();if(/coal|carbon|oil|crude/.test(n))return 0x3f3f46;if(/fuel|petrol/.test(n))return 0xdc2626;if(/chem|acid/.test(n))return 0xf59e0b;if(/water|milk/.test(n))return 0x2563eb;if(/sand|wheat|corn|grain|rice|flour/.test(n))return 0xf5f0e1;
+  if(/ore|iron/.test(n))return 0xd6c7b0;let h=0;for(const ch of g)h=(h*31+ch.charCodeAt(0))>>>0;return [0xf8fafc,0xe7e5e4,0x16a34a,0x2563eb,0x0f766e][h%5]}
+/* procedural textures (canvas), cached per kind; repeat set per use */
+const TXC={};
+function tx(T,k,rx,ry){let base=TXC[k];if(!base){const cv=document.createElement("canvas"),N=k==="floor"||k==="roof"?512:256;cv.width=cv.height=N;const g=cv.getContext("2d"),R=(a,b)=>a+Math.random()*(b-a);
+    const noise=(n,a,col)=>{for(let i=0;i<n;i++){g.fillStyle=col(Math.random());g.globalAlpha=a*Math.random();g.fillRect(R(0,N),R(0,N),R(1,4),R(1,4))}g.globalAlpha=1};
+    if(k==="floor"){g.fillStyle="#8d9095";g.fillRect(0,0,N,N);noise(9000,.25,v=>v>.5?"#b7b9bc":"#6b6e73");for(let i=0;i<6;i++){const gr=g.createRadialGradient(R(0,N),R(0,N),5,R(0,N),R(0,N),R(60,160));gr.addColorStop(0,"rgba(60,60,60,.18)");gr.addColorStop(1,"rgba(60,60,60,0)");g.fillStyle=gr;g.fillRect(0,0,N,N)}
+      g.strokeStyle="rgba(30,30,30,.18)";g.lineWidth=6;for(let i=0;i<3;i++){g.beginPath();g.moveTo(R(0,N),0);g.bezierCurveTo(R(0,N),N/3,R(0,N),N*2/3,R(0,N),N);g.stroke()}g.fillStyle="#55585c";g.fillRect(0,0,N,3);g.fillRect(0,0,3,N)}
+    else if(k==="clad"){for(let x=0;x<N;x++){const v=Math.sin(x/N*Math.PI*2*8);const c=Math.round(196+30*v);g.fillStyle=`rgb(${c},${c+2},${c+6})`;g.fillRect(x,0,1,N)}noise(1500,.08,()=>"#555");g.fillStyle="rgba(0,0,0,.25)";g.fillRect(0,N-2,N,2)}
+    else if(k==="roof"){g.fillStyle="#d8dade";g.fillRect(0,0,N,N);for(let x=0;x<N;x+=32){g.fillStyle="#b9bcc2";g.fillRect(x,0,10,N)}g.fillStyle="#9aa0a6";g.fillRect(0,0,N,3)}
+    else if(k==="conc"){g.fillStyle="#9b9a96";g.fillRect(0,0,N,N);noise(4000,.3,v=>v>.5?"#b8b7b2":"#7c7b77");g.fillStyle="#6d6c69";g.fillRect(0,0,2,N)}
+    else if(k==="door"){g.fillStyle="#cbd5e1";g.fillRect(0,0,N,N);for(let y=0;y<N;y+=N/8){g.fillStyle="#94a3b8";g.fillRect(0,y,N,3);g.fillStyle="#e2e8f0";g.fillRect(0,y+4,N,2)}g.fillStyle="#475569";g.fillRect(N*.15,N*.3,N*.7,N*.07);g.fillStyle="#1e293b";g.fillRect(N*.42,N*.88,N*.16,N*.04)}
+    else if(k==="cont"){for(let x=0;x<N;x++){const v=(x%16)<8?235:200;g.fillStyle=`rgb(${v},${v},${v})`;g.fillRect(x,0,1,N)}noise(2500,.15,()=>"#5a3a20");g.fillStyle="#444";g.fillRect(0,0,N,8);g.fillRect(0,N-8,N,8);g.fillStyle="#fff";g.font="bold 22px monospace";g.fillText("MRDU "+(100000+((Math.random()*899999)|0)),14,40)}
+    else if(k==="pallet"){g.fillStyle="#b9894f";g.fillRect(0,0,N,N);for(let x=0;x<N;x+=N/6){g.fillStyle="#3b2a18";g.fillRect(x+N/7,0,N/40,N)}for(let i=0;i<300;i++){g.strokeStyle="rgba(90,60,30,.25)";g.beginPath();const y=R(0,N);g.moveTo(0,y);g.lineTo(N,y+R(-6,6));g.stroke()}g.fillStyle="#2a1f14";g.fillRect(N*.1,N*.25,N*.25,N*.5);g.fillRect(N*.65,N*.25,N*.25,N*.5)}
+    else if(k==="carton"){g.fillStyle="#c49a6c";g.fillRect(0,0,N,N);noise(1500,.15,v=>v>.5?"#d9b48a":"#a67c52");for(let y=0;y<N;y+=N/3){g.fillStyle="rgba(80,55,30,.55)";g.fillRect(0,y,N,2)}for(let x=0;x<N;x+=N/2){g.fillStyle="rgba(80,55,30,.55)";g.fillRect(x,0,2,N)}
+      for(let y=0;y<3;y++)for(let x=0;x<2;x++){g.fillStyle="rgba(230,210,170,.7)";g.fillRect(x*N/2+N/4-6,y*N/3,12,N/3);g.fillStyle="#fff";g.fillRect(x*N/2+18,y*N/3+18,40,26);g.fillStyle="#111";g.fillRect(x*N/2+22,y*N/3+24,32,3);g.fillRect(x*N/2+22,y*N/3+31,24,3);g.fillRect(x*N/2+22,y*N/3+38,28,2)}}
+    else if(k==="bag"){g.fillStyle="#f4f4f0";g.fillRect(0,0,N,N);for(let i=0;i<N;i+=4){g.fillStyle="rgba(0,0,0,.06)";g.fillRect(i,0,1,N);g.fillRect(0,i,N,1)}g.fillStyle="rgba(0,0,0,.18)";g.fillRect(0,0,N,10);g.fillStyle="#1d4ed8";g.fillRect(N*.3,N*.35,N*.4,N*.25);g.fillStyle="#fff";g.font="bold 20px sans-serif";g.fillText("1000 kg",N*.33,N*.5)}
+    else if(k==="drum"){g.fillStyle="#f8fafc";g.fillRect(0,0,N,N);for(const y of [.2,.5,.8]){g.fillStyle="rgba(0,0,0,.35)";g.fillRect(0,N*y-3,N,6)}g.fillStyle="#fff";g.fillRect(N*.1,N*.3,N*.2,N*.14);noise(800,.1,()=>"#444")}
+    else if(k==="crate"){g.fillStyle="#c9a26b";g.fillRect(0,0,N,N);for(let y=0;y<N;y+=N/5){g.fillStyle="rgba(70,45,20,.6)";g.fillRect(0,y,N,2)}g.fillStyle="#a37a45";g.fillRect(0,0,N,18);g.fillRect(0,N-18,N,18);g.fillRect(0,0,18,N);g.fillRect(N-18,0,18,N);
+      g.save();g.translate(N/2,N/2);g.rotate(Math.PI/4);g.fillRect(-N*.7,-9,N*1.4,18);g.restore();g.fillStyle="#111";g.font="bold 18px monospace";g.fillText("THIS WAY UP ↑",N*.2,N*.75)}
+    else if(k==="mesh"){g.clearRect(0,0,N,N);g.strokeStyle="#fff";g.lineWidth=4;for(let i=0;i<=N;i+=N/8){g.beginPath();g.moveTo(i,0);g.lineTo(i,N);g.stroke();g.beginPath();g.moveTo(0,i);g.lineTo(N,i);g.stroke()}}
+    else if(k==="upright"){g.fillStyle="#fff";g.fillRect(0,0,N,N);g.fillStyle="#1e293b";for(let y=8;y<N;y+=N/4)g.fillRect(N*.4,y,N*.2,N*.1)}
+    base=TXC[k]=new T.CanvasTexture(cv);base.wrapS=base.wrapT=T.RepeatWrapping;base.encoding=T.sRGBEncoding;base.anisotropy=8}
+  const t=base.clone();t.needsUpdate=true;t.repeat.set(rx||1,ry||1);return t}
+/* a staged pallet at the dock: a mix of loads waiting for put-away */
+function stage(T,room,x,z,i){const k=["carton","bag","crate","carton"][i%4];ofBox(T,room,1.2,.144,1,0xb9894f,x,0,z,{r:.9});
+  const m=new T.Mesh(new T.BoxGeometry(1.1,k==="bag"?.95:1.1,.95),new T.MeshStandardMaterial({map:tx(T,k,1,1),roughness:.85}));m.position.set(x,.144+(k==="bag"?.475:.55),z);room.add(m)}
 function L0(){return W.city!=null?LCO(W.city):null}
 function open(cid){if(W.on)return;const c=CITIES[cid],L=c&&LCO(cid);if(!L)return toast("No logistics center here");css();W.on=true;W.city=cid;
   const el=W.el=document.createElement("div");el.className="lc3";el.setAttribute("role","dialog");el.setAttribute("aria-label","Logistics center in "+c.name);
@@ -49,12 +80,12 @@ function open(cid){if(W.on)return;const c=CITIES[cid],L=c&&LCO(cid);if(!L)return
   loadThree().then(T=>{if(!W.on||W.el!==el)return;build(T);W.raf=requestAnimationFrame(loop);if(W.cv)W.cv.focus()}).catch(()=>{close();toast("Couldn't load the 3D logistics center. Check your connection and try again.")})}
 function close(){if(!W.on)return;W.on=false;cancelAnimationFrame(W.raf);W.raf=0;
   if(W.scene)W.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();const m=o.material;if(m)(Array.isArray(m)?m:[m]).forEach(x=>{if(x.map)x.map.dispose();x.dispose()})});
-  if(W.ren){W.ren.dispose();try{W.ren.forceContextLoss()}catch(e){}}W.ren=W.scene=W.cam=W.av=W.beacon=null;if(W.el)W.el.remove();W.el=null;try{save()}catch(e){}}
+  if(W.ren){W.ren.dispose();try{W.ren.forceContextLoss()}catch(e){}}for(const k in TXC){TXC[k].dispose();delete TXC[k]}W.ren=W.scene=W.cam=W.av=W.beacon=null;if(W.el)W.el.remove();W.el=null;try{save()}catch(e){}}
 /* canvas text as a sprite or a flat sign */
 function texOf(T,lines,o){o=o||{};const cv=document.createElement("canvas"),w=o.w||512,h=o.h||128;cv.width=w;cv.height=h;const g=cv.getContext("2d");g.fillStyle=o.bg||"#111827";g.fillRect(0,0,w,h);
   if(o.border){g.strokeStyle=o.border;g.lineWidth=8;g.strokeRect(4,4,w-8,h-8)}g.fillStyle=o.fg||"#fff";g.textBaseline="middle";g.textAlign=o.align||"center";
   const n=lines.length;lines.forEach((t,i)=>{g.font=(i===0?"bold ":"")+Math.round((o.fs||52)*(i?.62:1))+"px system-ui,sans-serif";g.fillText(t,o.align==="left"?24:w/2,h*(i+1)/(n+1))});
-  const tx=new T.CanvasTexture(cv);tx.anisotropy=4;return tx}
+  const tx=new T.CanvasTexture(cv);tx.anisotropy=4;tx.encoding=T.sRGBEncoding;return tx}
 /* readable from both sides: two one-sided planes back to back */
 function sign(T,g,lines,w,h,x,y,z,ry,o){const mat=new T.MeshBasicMaterial({map:texOf(T,lines,o)}),geo=new T.PlaneGeometry(w,h);let m;for(const r of [0,Math.PI]){m=new T.Mesh(geo,mat);m.position.set(x,y,z);m.rotation.y=(ry||0)+r;g.add(m)}return m}
 function person(T,suit){const g=new T.Group();const l=ofBox(T,g,.13,.5,.15,0x111827,-.1,0,0),r=ofBox(T,g,.13,.5,.15,0x111827,.1,0,0);ofBox(T,g,.42,.55,.26,suit,0,.5,0);ofBox(T,g,.44,.12,.28,0xfacc15,0,.78,0);
@@ -65,26 +96,47 @@ function gcol(g,i){const t=G[g][2],a=GCOL[t==="raw"?"raw":t==="mid"?"mid":"fin"]
 function build(T){W.T=T;const el=W.el,L=L0(),c=CITIES[W.city];let ren;try{ren=new T.WebGLRenderer({antialias:(devicePixelRatio||1)<1.5,powerPreference:"low-power"})}catch(e){close();toast("3D isn't available on this device.");return}
   ren.setPixelRatio(Math.min(1.5,devicePixelRatio||1));W.ren=ren;const cv=ren.domElement;cv.tabIndex=0;cv.setAttribute("aria-label","3D logistics center. W A S D to move, E to use.");el.insertBefore(cv,el.firstChild);W.cv=cv;const ld=el.querySelector(".lc3-load");if(ld)ld.remove();
   let drag=null;cv.addEventListener("pointerdown",e=>{drag={x:e.clientX,id:e.pointerId};cv.focus()});cv.addEventListener("pointermove",e=>{if(drag&&drag.id===e.pointerId){W.p.yaw-=(e.clientX-drag.x)*.006;drag.x=e.clientX}});const du=()=>{drag=null};cv.addEventListener("pointerup",du);cv.addEventListener("pointercancel",du);
-  const sc=new T.Scene();sc.background=new T.Color(0x0b0f14);W.scene=sc;W.cam=new T.PerspectiveCamera(62,1,.1,400);
-  sc.add(new T.HemisphereLight(0xfff7ed,0x334155,.75));const dl=new T.DirectionalLight(0xffffff,.35);dl.position.set(6,20,8);sc.add(dl);sc.add(new T.AmbientLight(0xffffff,.18));
-  W.rows=Math.min(MAXR,L.lv);const z1=zEnd(),z0=zBack(),len=z1-z0,zm=(z1+z0)/2;W.len=len;sc.fog=new T.Fog(0x0b0f14,30,Math.max(60,Math.min(160,len+20)));
-  const room=new T.Group();sc.add(room);W.room=room;
-  // concrete floor, yellow aisle lines, painted bay numbers on the floor
-  ofBox(T,room,HW*2,.1,len,0x4b5563,0,-.1,zm,{r:.95});
-  for(const x of [-BAYS*BW/2-1.6,BAYS*BW/2+1.6])ofBox(T,room,.12,.012,len-1,0xfacc15,x,0,zm,{r:1});
-  ofBox(T,room,HW*2-1,.012,.12,0xfacc15,0,0,-.4,{r:1});
-  // walls, roof with light strips, roll-up dock doors on the entrance wall
-  const wm=ofMat(T,0x9ca3af,{r:.9}),wall=(w,h,d,x,y,z,m)=>{const o=new T.Mesh(new T.BoxGeometry(w,h,d),m||wm);o.position.set(x,y+h/2,z);room.add(o);return o},WH=9;
-  wall(.3,WH,len,-HW-.15,0,zm);wall(.3,WH,len,HW+.15,0,zm);wall(HW*2+.6,WH,.3,0,0,z0-.15);wall(HW*2+.6,WH,.3,0,0,z1+.15);
-  for(let z=z0+4;z<z1;z+=8)wall(.4,WH,.4,-HW+.2,0,z,ofMat(T,0x1e3a8a)),wall(.4,WH,.4,HW-.2,0,z,ofMat(T,0x1e3a8a));
-  const roof=ofMat(T,0x374151,{r:1});wall(HW*2+.6,.3,len+.6,0,WH,zm,roof);
-  for(let z=z0+3;z<z1;z+=6)for(const x of [-8,0,8])ofBox(T,room,3.2,.08,.35,0xffffff,x,WH-.1,z,{e:0xfffbeb,ei:1});
-  for(let i=0;i<3;i++){const dx=-HW+5+i*7;ofBox(T,room,4.4,4.6,.1,0x64748b,dx,0,z1-.02,{r:.6});for(let j=0;j<12;j++)ofBox(T,room,4.4,.05,.12,0x475569,dx,.3+j*.37,z1-.08);sign(T,room,["DOCK "+(i+1)],2.2,.55,dx,5.1,z1-.1,Math.PI,{bg:"#facc15",fg:"#111"})}
-  sign(T,room,["LOGISTICS CENTER · "+c.name.toUpperCase(),"Level "+L.lv+" · "+fmtT(lcCap(c))+" capacity"],10,1.6,0,6.6,z1-.12,Math.PI,{w:1024,h:180,bg:"#0f172a",fg:"#fde68a",border:"#f59e0b",fs:56});
-  // loading dock: shipping containers, pallets waiting, a forklift
-  const cont=(x,z,col,ry,y)=>{const g=new T.Group();ofBox(T,g,6,2.6,2.4,col,0,0,0,{r:.7});for(let i=-2.7;i<=2.7;i+=.3)ofBox(T,g,.08,2.4,2.46,col-0x111111>0?col-0x111111:col,i,.1,0,{r:.7});ofBox(T,g,.05,2.4,2.2,0x1f2937,3.01,.1,0);g.position.set(x,y||0,z);g.rotation.y=ry||0;room.add(g)};
-  cont(-HW+4,z1-4.5,0xb91c1c,0);cont(-HW+4,z1-4.5,0x1d4ed8,0,2.6);cont(HW-4,z1-4.5,0x15803d,0);cont(HW-11,z1-4.6,0xc2410c,0);
-  const fl=new T.Group();ofBox(T,fl,1.2,1,2,0xf59e0b,0,.25,0);ofBox(T,fl,1.1,1.2,.08,0x111827,0,1.25,-.4);for(const x of [-.45,.45])ofBox(T,fl,.08,2.6,.08,0x374151,x,.2,-1.05),ofBox(T,fl,.1,.06,1.1,0x9ca3af,x,.1,-1.6);ofBox(T,fl,.9,.06,.9,0x111827,0,2.3,.2);for(const [x,z] of [[-.6,.6],[.6,.6],[-.6,-.6],[.6,-.6]])ofCyl(T,fl,.25,.25,.2,0x111827,x,.05,z);fl.position.set(5,0,z1-7.5);fl.rotation.y=.4;room.add(fl);
+  ren.toneMapping=T.ACESFilmicToneMapping;ren.toneMappingExposure=1.05;ren.outputEncoding=T.sRGBEncoding;
+  const sc=new T.Scene();sc.background=new T.Color(0x2a2f36);W.scene=sc;W.cam=new T.PerspectiveCamera(62,1,.1,400);
+  sc.add(new T.HemisphereLight(0xfff4e0,0x5b5f66,1.05));const dl=new T.DirectionalLight(0xfff1d6,.55);dl.position.set(8,30,14);sc.add(dl);sc.add(new T.AmbientLight(0xffffff,.12));
+  W.rows=Math.min(MAXR,L.lv);const z1=zEnd(),z0=zBack(),len=z1-z0,zm=(z1+z0)/2;W.len=len;sc.fog=new T.Fog(0x2a2f36,40,Math.max(70,Math.min(180,len+30)));
+  const room=new T.Group();sc.add(room);W.room=room;const WH=10;
+  // polished concrete slab with saw-cut joints, worn patches and tyre marks; painted walkway and aisle lines
+  const fm=new T.MeshStandardMaterial({map:tx(T,"floor",HW*2/6,len/6),roughness:.55,metalness:.05});const fl0=new T.Mesh(new T.PlaneGeometry(HW*2,len),fm);fl0.rotation.x=-Math.PI/2;fl0.position.set(0,0,zm);room.add(fl0);
+  for(const x of [-BAYS*BW/2-1.7,BAYS*BW/2+1.7])ofBox(T,room,.1,.008,len-1,0xeab308,x,0,zm,{r:.8});
+  ofBox(T,room,HW*2-1,.008,.1,0xeab308,0,0,-.5,{r:.8});ofBox(T,room,HW*2-1,.008,.1,0xeab308,0,0,z1-11.5,{r:.8});
+  for(let i=0;i<12;i++)ofBox(T,room,.5,.009,1.6,0xf8fafc,-3+i*.55,0,-1.3,{r:.8}); // pedestrian crossing
+  ofBox(T,room,1.4,.009,len-14,0x15803d,-HW+1.1,0,zm-6,{r:.9}); // green walkway along the wall
+  // insulated corrugated-steel cladding over a concrete plinth, steel portal frames, roof trusses, skylights and high-bay lamps
+  const clad=new T.MeshStandardMaterial({map:tx(T,"clad",len/3,WH/3),roughness:.6,metalness:.35}),cladE=new T.MeshStandardMaterial({map:tx(T,"clad",HW*2/3,WH/3),roughness:.6,metalness:.35}),plinth=new T.MeshStandardMaterial({map:tx(T,"conc",len/4,1),roughness:.95});
+  const wall=(w,h,d,x,y,z,m)=>{const o=new T.Mesh(new T.BoxGeometry(w,h,d),m);o.position.set(x,y+h/2,z);room.add(o);return o};
+  wall(.3,WH,len,-HW-.15,0,zm,clad);wall(.3,WH,len,HW+.15,0,zm,clad);wall(HW*2+.6,WH,.3,0,0,z0-.15,cladE);wall(HW*2+.6,WH,.3,0,0,z1+.15,cladE);
+  for(const x of [-HW+.05,HW-.05])wall(.25,1.2,len,x,0,zm,plinth);wall(HW*2,1.2,.25,0,0,z0+.05,plinth);
+  const steel=new T.MeshStandardMaterial({color:0x7b8794,roughness:.45,metalness:.7}),stl=(w,h,d,x,y,z)=>{const o=new T.Mesh(new T.BoxGeometry(w,h,d),steel);o.position.set(x,y,z);room.add(o);return o};
+  for(let z=z0+3;z<z1-1;z+=9){for(const x of [-HW+.35,HW-.35]){stl(.45,WH,.35,x,WH/2,z);ofBox(T,room,.6,1,.6,0xfacc15,x,0,z,{r:.6})}stl(HW*2,.5,.3,0,WH-.6,z);
+    for(let i=-6;i<=6;i++){const x=i*HW/6.5;stl(.08,1.6,.08,x,WH-1.4,z);if(i<6){const d=stl(Math.hypot(HW/6.5,1.5),.07,.07,x+HW/13,WH-1.4,z);d.rotation.z=(i%2?1:-1)*Math.atan2(1.5,HW/6.5)}}stl(HW*2,.18,.18,0,WH-2.2,z)}
+  const rf=new T.Mesh(new T.PlaneGeometry(HW*2+.6,len+.6),new T.MeshStandardMaterial({map:tx(T,"roof",HW*2/3,len/3),roughness:.8,metalness:.3,side:T.DoubleSide}));rf.rotation.x=Math.PI/2;rf.position.set(0,WH+.02,zm);room.add(rf);
+  for(let z=z0+7.5;z<z1-2;z+=9)for(const x of [-9,9]){const s=new T.Mesh(new T.PlaneGeometry(4,2.4),new T.MeshBasicMaterial({color:0xe0f2fe}));s.rotation.x=Math.PI/2;s.position.set(x,WH-.01,z);room.add(s)}
+  const lampM=new T.MeshStandardMaterial({color:0x374151,roughness:.4,metalness:.8}),glow=new T.MeshBasicMaterial({color:0xfffbeb});
+  for(let z=z0+5;z<z1-1;z+=4.8)for(const x of [-BAYS*BW/2-1.7,0,BAYS*BW/2+1.7]){const c0=new T.Mesh(new T.CylinderGeometry(.08,.5,.45,14,1,true),lampM);c0.position.set(x,WH-2.6,z);room.add(c0);const d=new T.Mesh(new T.CircleGeometry(.45,14),glow);d.rotation.x=Math.PI/2;d.position.set(x,WH-2.83,z);room.add(d);ofBox(T,room,.02,2.4,.02,0x111827,x,WH-2.4,z)}
+  // three dock doors with sectional roll-up doors, dock levelers, bumpers and traffic lights
+  const doorM=new T.MeshStandardMaterial({map:tx(T,"door",1,1),roughness:.5,metalness:.4});
+  for(let i=0;i<3;i++){const dx=-HW+5.5+i*7.5;const dr=new T.Mesh(new T.PlaneGeometry(3.6,4.2),doorM);dr.position.set(dx,2.1+1.2,z1-.01);dr.rotation.y=Math.PI;room.add(dr);
+    ofBox(T,room,.25,4.4,.2,0xfacc15,dx-1.95,1.2,z1-.12);ofBox(T,room,.25,4.4,.2,0xfacc15,dx+1.95,1.2,z1-.12);ofBox(T,room,4.1,.3,.25,0x1f2937,dx,5.6,z1-.12);
+    ofBox(T,room,3.4,.06,2.2,0x52525b,dx,0,z1-1.2,{r:.5,m:.6});for(const s of [-1.3,1.3])ofBox(T,room,.35,.5,.25,0x111111,dx+s,.9,z1-.15);
+    for(const [k,cl] of [[0,0xef4444],[1,0x22c55e]])ofCyl(T,room,.09,.09,.04,cl,dx+2.4,3.3-k*.25,z1-.15,{e:cl,ei:i===1?k:1-k}).rotation.x=Math.PI/2;
+    sign(T,room,["DOCK "+(i+1)],1.6,.45,dx,6.1,z1-.2,Math.PI,{bg:"#facc15",fg:"#111"})}
+  sign(T,room,[c.name.toUpperCase()+" LOGISTICS CENTER","Level "+L.lv+" · "+fmtT(lcCap(c))+" capacity · "+W.rows+" aisles"],10,1.5,0,8.1,z1-.2,Math.PI,{w:1024,h:180,bg:"#0f172a",fg:"#f8fafc",border:"#f59e0b",fs:54});
+  sign(T,room,["⚠ FORKLIFTS OPERATE IN THIS AREA","Hi-vis vests required · Speed limit 8 km/h"],5,.9,HW-.2,3.2,z1-8,-Math.PI/2,{w:768,h:150,bg:"#facc15",fg:"#111",fs:40});
+  // dock staging: wrapped pallets waiting to be put away, a pallet jack, a forklift and a few shipping containers in the yard bay
+  const cont=(x,z,col,y)=>{const m=new T.MeshStandardMaterial({map:tx(T,"cont",1,1),color:col,roughness:.55,metalness:.45}),o=new T.Mesh(new T.BoxGeometry(6.06,2.59,2.44),m);o.position.set(x,(y||0)+1.3,z);room.add(o)};
+  cont(-HW+4,z1-4.4,0xb91c1c);cont(-HW+4,z1-4.4,0x1d4ed8,2.6);cont(HW-4,z1-4.4,0x15803d);
+  for(let i=0;i<4;i++)stage(T,room,-3.5+i*1.5,z1-3.2,i);
+  const fk=new T.Group(),or=new T.MeshStandardMaterial({color:0xf59e0b,roughness:.45,metalness:.3}),blk=new T.MeshStandardMaterial({color:0x111827,roughness:.6}),put=(g,m,w,h,d,x,y,z)=>{const o=new T.Mesh(new T.BoxGeometry(w,h,d),m);o.position.set(x,y,z);g.add(o);return o};
+  put(fk,or,1.2,.9,1.9,0,.75,0);put(fk,blk,1.25,.5,.5,0,.65,.85);put(fk,blk,.5,.6,.5,0,1.3,.2);put(fk,or,.07,1.1,.07,-.55,1.85,.6);put(fk,or,.07,1.1,.07,.55,1.85,.6);put(fk,or,.07,1.1,.07,-.55,1.85,-.45);put(fk,or,.07,1.1,.07,.55,1.85,-.45);put(fk,blk,1.25,.05,1.2,0,2.4,.08);
+  for(const x of [-.42,.42])put(fk,steel,.08,2.6,.1,x,1.4,-1.05);put(fk,steel,1,.1,.1,0,2.6,-1.05);for(const x of [-.35,.35])put(fk,steel,.12,.05,1.15,x,.12,-1.65);
+  for(const [x,z,r] of [[-.6,-.6,.3],[.6,-.6,.3],[-.55,.65,.22],[.55,.65,.22]]){const w=new T.Mesh(new T.CylinderGeometry(r,r,.25,16),blk);w.rotation.z=Math.PI/2;w.position.set(x,r,z);fk.add(w)}
+  fk.position.set(5,0,z1-7.5);fk.rotation.y=.4;room.add(fk);
   // central computer system: desk, three screens, sign
   const pc=new T.Group();ofBox(T,pc,3.2,.85,1.1,0x334155,0,0,0);ofBox(T,pc,3.3,.06,1.2,0x1e293b,0,.85,0);
   W.scr=[];for(let i=-1;i<=1;i++){ofBox(T,pc,.08,.4,.08,0x111827,i*1.05,.9,.2);const m=new T.Mesh(new T.PlaneGeometry(.95,.6),new T.MeshBasicMaterial({map:screenTex(T,i+1)}));m.position.set(i*1.05,1.62,.18);m.rotation.y=i*-.25;m.rotation.x=0;pc.add(m);W.scr.push(m);ofBox(T,pc,1,.66,.04,0x0f172a,i*1.05,1.29,.15).rotation.y=i*-.25}
@@ -98,11 +150,11 @@ function screenTex(T,i){const L=L0(),c=CITIES[W.city],lay=lcLayout(c),cv=documen
   if(i===1){g.fillText("INVENTORY",20,42);g.font="22px monospace";lay.items.slice(0,9).forEach((it,k)=>{g.fillStyle="#bbf7d0";g.fillText(G[it.g][0].slice(0,16),20,80+k*27);g.fillStyle="#fde68a";g.fillText("ROW "+lcRowName(it.row)+"-"+(it.bay+1),350,80+k*27)});if(!lay.items.length){g.fillStyle="#94a3b8";g.fillText("No stock yet",20,90)}}
   else if(i===0){g.fillText("CAPACITY",20,42);const u=lcUsed(c),cp=lcCap(c);g.fillStyle="#1e293b";g.fillRect(20,80,470,36);g.fillStyle=u/cp>.9?"#ef4444":"#22c55e";g.fillRect(20,80,470*Math.min(1,u/cp),36);g.fillStyle="#e2e8f0";g.font="24px monospace";g.fillText(fmtT(u)+" / "+fmtT(cp),20,160);g.fillText("Level "+L.lv+" · "+L.lv+" rows",20,200);g.fillText(lay.items.length+" products",20,240)}
   else{g.fillText("INBOUND",20,42);g.font="22px monospace";const inc=(S.fleet||[]).filter(v=>v.arr&&v.dest===W.city&&v.cargo).slice(0,8);inc.forEach((v,k)=>{g.fillStyle="#bbf7d0";g.fillText((G[v.cargo.g]||[v.cargo.g])[0].slice(0,14)+" "+Math.round(v.cargo.q),20,80+k*27);g.fillStyle="#fde68a";g.fillText(fmtDur(Math.max(0,v.arr-Date.now())),360,80+k*27)});if(!inc.length){g.fillStyle="#94a3b8";g.fillText("Nothing on the way",20,90)}}
-  return new T.CanvasTexture(cv)}
+  const st=new T.CanvasTexture(cv);st.encoding=T.sRGBEncoding;return st}
 /* rack rows with pallets and containers. Instanced meshes keep big centers fast. */
-function buildRacks(T){const room=W.room,c=CITIES[W.city],lay=lcLayout(c),R=W.rows,frame=ofMat(T,0x1d4ed8,{r:.6}),beam=ofMat(T,0xf97316,{r:.6});
-  const upG=new T.BoxGeometry(.1,RACKH,.1),bmG=new T.BoxGeometry(BAYS*BW,.12,.1),dkG=new T.BoxGeometry(BAYS*BW,.04,RACKD);
-  const nUp=R*(BAYS+1)*2,nBm=R*3*2,nDk=R*3,up=new T.InstancedMesh(upG,frame,nUp),bm=new T.InstancedMesh(bmG,beam,nBm),dk=new T.InstancedMesh(dkG,ofMat(T,0x6b7280),nDk);
+function buildRacks(T){const room=W.room,c=CITIES[W.city],lay=lcLayout(c),R=W.rows,frame=new T.MeshStandardMaterial({map:tx(T,"upright",1,RACKH*3),color:0x1e40af,roughness:.45,metalness:.4}),beam=new T.MeshStandardMaterial({color:0xea580c,roughness:.4,metalness:.35});
+  const upG=new T.BoxGeometry(.09,RACKH,.11),bmG=new T.BoxGeometry(BAYS*BW,.12,.1),dkG=new T.BoxGeometry(BAYS*BW,.04,RACKD);
+  const nUp=R*(BAYS+1)*2,nBm=R*3*2,nDk=R*3,up=new T.InstancedMesh(upG,frame,nUp),bm=new T.InstancedMesh(bmG,beam,nBm),dk=new T.InstancedMesh(dkG,new T.MeshStandardMaterial({map:tx(T,"mesh",BAYS*2,1),color:0xd1d5db,roughness:.5,metalness:.6,transparent:true,alphaTest:.4}),nDk);
   const M=new T.Matrix4();let iu=0,ib=0,id=0;
   for(let r=0;r<R;r++){const z=rowZ(r);for(let b=0;b<=BAYS;b++)for(const s of [-1,1]){M.makeTranslation(-BAYS*BW/2+b*BW,RACKH/2,z+s*RACKD/2);up.setMatrixAt(iu++,M)}
     for(let l=0;l<3;l++){const y=.12+l*LVH;for(const s of [-1,1]){M.makeTranslation(0,y,z+s*RACKD/2);bm.setMatrixAt(ib++,M)}M.makeTranslation(0,y+.06,z);dk.setMatrixAt(id++,M)}}
@@ -110,14 +162,26 @@ function buildRacks(T){const room=W.room,c=CITIES[W.city],lay=lcLayout(c),R=W.ro
   // row letter signs hanging at both ends of each row, bay numbers on the beams of row fronts
   for(let r=0;r<R;r++){const z=rowZ(r),n="ROW "+lcRowName(r);for(const x of [-BAYS*BW/2-.9,BAYS*BW/2+.9])sign(T,room,[n],1.5,.6,x,RACKH+.6,z,x<0?Math.PI/2:-Math.PI/2,{bg:"#facc15",fg:"#111",fs:64,w:256,h:100})}
   if(R)for(let b=0;b<BAYS;b++)sign(T,room,[String(b+1)],.5,.32,bayX(b),RACKH+.25,rowZ(0)+RACKD/2+.06,0,{bg:"#111827",fg:"#fde68a",w:128,h:80,fs:60});
-  // goods: each bay's fill decides how many shelf levels hold stock. Containers for raw/heavy goods, pallets of cartons for the rest.
-  const pal=[],box=[],con=[];for(const B of lay.bays){if(B.row>=R)continue;const it=lay.items.find(x=>x.g===B.g),lv=Math.max(1,Math.ceil(B.f*3-1e-9)),x=bayX(B.bay),z=rowZ(B.row);
-    for(let l=0;l<lv;l++){const y=.2+l*LVH;if(it.cont)con.push([x,y,z,gcol(B.g,l)]);else{pal.push([x-.6,y,z]);pal.push([x+.6,y,z]);for(const dx of [-.6,.6]){const n=l===lv-1&&B.f*3%1>.01?1+((B.f*3%1)*3|0):3;for(let k=0;k<n;k++)box.push([x+dx,y+.14+k*.36,z,gcol(B.g,k)])}}}}
-  const inst=(geo,mat,arr,col)=>{if(!arr.length)return;const m=new T.InstancedMesh(geo,mat,arr.length),C=new T.Color();arr.forEach((a,i)=>{M.makeTranslation(a[0],a[1]+geo.parameters.height/2,a[2]);m.setMatrixAt(i,M);if(col){C.setHex(a[3]);m.setColorAt(i,C)}});if(m.instanceColor)m.instanceColor.needsUpdate=true;room.add(m)};
-  inst(new T.BoxGeometry(1.1,.14,1.1),ofMat(T,0xa16207,{r:1}),pal,false);
-  inst(new T.BoxGeometry(1,.34,1),new T.MeshStandardMaterial({color:0xffffff,roughness:.9}),box,true);
-  inst(new T.BoxGeometry(2.2,1.1,1.1),new T.MeshStandardMaterial({color:0xffffff,roughness:.7,metalness:.2}),con,true);
-  inst(new T.BoxGeometry(.06,1.12,1.12),new T.MeshStandardMaterial({color:0x111827,roughness:.6}),con.flatMap(a=>[[a[0]-1.05,a[1],a[2]],[a[0]+1.05,a[1],a[2]],[a[0]-.35,a[1],a[2]],[a[0]+.35,a[1],a[2]]]),false);
+  // goods: each bay holds two pallet positions per shelf level; fill decides how many levels are used.
+  // Cartons are shrink-wrapped, grain/ore/coal sit in bulk bags, liquids in drums, metals and machines in timber crates.
+  const P={pal:[],carton:[],wrap:[],bag:[],drum:[],crate:[]};
+  for(const B of lay.bays){if(B.row>=R)continue;const kd=kindOf(B.g),lv=Math.max(1,Math.ceil(B.f*3-1e-9)),x=bayX(B.bay),z=rowZ(B.row),tint=tintOf(B.g);
+    for(let l=0;l<lv;l++){const y=.2+l*LVH,part=l===lv-1?Math.max(.34,(B.f*3)-(lv-1)):1;
+      for(const dx of [-.62,.62]){if(dx>0&&part<.5)continue;const px0=x+dx;P.pal.push([px0,y,z,1,1,1]);const y1=y+.144;
+        if(kd==="carton"){const h=.5+.6*Math.min(1,part);P.carton.push([px0,y1,z,1,h,1]);P.wrap.push([px0,y1,z,1.03,h+.02,1.03])}
+        else if(kd==="bag")P.bag.push([px0,y1,z,1,.95,1,tint]);
+        else if(kd==="crate")P.crate.push([px0,y1,z,1,.85,1]);
+        else for(const [ox,oz] of [[-.25,-.25],[.25,-.25],[-.25,.25],[.25,.25]])P.drum.push([px0+ox,y1,z+oz,1,1,1,tint])}}}
+  const inst=(geo,mat,arr,col)=>{if(!arr.length)return;const m=new T.InstancedMesh(geo,mat,arr.length),C=new T.Color(),Q=new T.Quaternion(),V=new T.Vector3(),Sv=new T.Vector3(),h=geo.parameters.height;
+    arr.forEach((a,i)=>{Sv.set(a[3],a[4],a[5]);V.set(a[0],a[1]+h*a[4]/2,a[2]);M.compose(V,Q,Sv);m.setMatrixAt(i,M);if(col){C.setHex(a[6]);m.setColorAt(i,C)}});if(m.instanceColor)m.instanceColor.needsUpdate=true;room.add(m)};
+  inst(new T.BoxGeometry(1.2,.144,1.0),new T.MeshStandardMaterial({map:tx(T,"pallet",1,1),roughness:.9}),P.pal);
+  inst(new T.BoxGeometry(1.1,1,.95),new T.MeshStandardMaterial({map:tx(T,"carton",1,1),roughness:.85}),P.carton);
+  inst(new T.BoxGeometry(1.1,1,.95),new T.MeshStandardMaterial({color:0xe2e8f0,roughness:.15,metalness:.1,transparent:true,opacity:.28,depthWrite:false}),P.wrap);
+  inst(new T.BoxGeometry(1.05,1,.92),new T.MeshStandardMaterial({map:tx(T,"bag",1,1),roughness:.95}),P.bag,true);
+  inst(new T.CylinderGeometry(.25,.25,.88,16),new T.MeshStandardMaterial({map:tx(T,"drum",1,1),roughness:.4,metalness:.55}),P.drum,true);
+  inst(new T.BoxGeometry(1.12,1,.95),new T.MeshStandardMaterial({map:tx(T,"crate",1,1),roughness:.9}),P.crate);
+  // rack-end safety barriers and upright protectors
+  for(let r=0;r<R;r++)for(const x of [-BAYS*BW/2-.35,BAYS*BW/2+.35]){ofBox(T,room,.12,.9,RACKD+.4,0xfacc15,x,0,rowZ(r),{r:.5});for(let k=0;k<3;k++)ofBox(T,room,.13,.12,RACKD+.42,0x111111,x,.2+k*.28,rowZ(r),{r:.5})}
   // product labels over the first bay of each product
   for(const it of lay.items){if(it.row>=R)continue;sign(T,room,[G[it.g][0],gq(it.q)+" · "+fmtT(it.t)],BW-.2,.62,bayX(it.bay),RACKH-.35,rowZ(it.row)+RACKD/2+.08,0,{bg:"#f8fafc",fg:"#0f172a",w:384,h:120,fs:42})}
   if(L0().lv>MAXR)sign(T,room,["Rows "+lcRowName(MAXR)+"+ in the annex","See the computer for every location"],8,1.3,0,3,zBack()+.3,0,{w:1024,h:180,bg:"#7c2d12",fg:"#fff"})}
@@ -135,7 +199,7 @@ function panel(on){if(W.panel){W.panel.remove();W.panel=null}if(!on){if(W.cv)W.c
    <input id="lc3-q" placeholder="Search products or a row (e.g. B)" aria-label="Search inventory"><div id="lc3-tb"></div></div>`;fillTable()}
 function fillTable(){const t=W.panel&&W.panel.querySelector("#lc3-tb");if(!t)return;const c=CITIES[W.city],q=(W.panel.querySelector("#lc3-q").value||"").trim().toLowerCase(),lay=lcLayout(c);
   const rows=lay.items.filter(it=>!q||G[it.g][0].toLowerCase().includes(q)||(q.length<=2&&/^[a-z]+$/.test(q)?lcRowName(it.row).toLowerCase()===q||(it.loc.toLowerCase().match(/row ([a-z]+)/g)||[]).some(r=>r.slice(4)===q):it.loc.toLowerCase().includes(q)));
-  t.innerHTML=rows.length?`<table><thead><tr><th>Product</th><th>Qty</th><th class="c-w">Weight</th><th>Location</th><th class="c-t">Type</th><th></th></tr></thead><tbody>${rows.map(it=>`<tr><td class="n">${esc(G[it.g][0])}</td><td>${gq(it.q)}</td><td class="c-w">${fmtT(it.t)}</td><td>${esc(it.loc)}</td><td class="c-t">${it.cont?"Container":"Pallet"}</td><td style="white-space:nowrap"><button class="mini" data-lc="find" data-g="${esc(it.g)}">Find</button><button class="mini" data-lc="go" data-g="${esc(it.g)}" style="background:#15803d">Walk there</button></td></tr>`).join("")}</tbody></table>`:`<p style="color:#94a3b8">${lay.items.length?"No match.":"The warehouse is empty. Ship goods to "+esc(c.name)+" and they'll be listed here with their row and bay."}</p>`}
+  t.innerHTML=rows.length?`<table><thead><tr><th>Product</th><th>Qty</th><th class="c-w">Weight</th><th>Location</th><th class="c-t">Type</th><th></th></tr></thead><tbody>${rows.map(it=>`<tr><td class="n">${esc(G[it.g][0])}</td><td>${gq(it.q)}</td><td class="c-w">${fmtT(it.t)}</td><td>${esc(it.loc)}</td><td class="c-t">${KN[kindOf(it.g)]}</td><td style="white-space:nowrap"><button class="mini" data-lc="find" data-g="${esc(it.g)}">Find</button><button class="mini" data-lc="go" data-g="${esc(it.g)}" style="background:#15803d">Walk there</button></td></tr>`).join("")}</tbody></table>`:`<p style="color:#94a3b8">${lay.items.length?"No match.":"The warehouse is empty. Ship goods to "+esc(c.name)+" and they'll be listed here with their row and bay."}</p>`}
 function findG(g,go){const c=CITIES[W.city],it=lcLayout(c).items.find(x=>x.g===g);if(!it)return;const x=bayX(it.bay),z=rowZ(it.row);
   if(it.row>=W.rows){toast(`${G[g][0]} is in ${it.loc} (annex)`);return}
   W.find={x,z,t:performance.now()};W.beacon.visible=true;W.beacon.position.set(x,RACKH+1.4,z);const f=W.el.querySelector(".lc3-find");f.hidden=false;f.textContent=`📍 ${G[g][0]}: ${it.loc}`;
@@ -148,7 +212,7 @@ function step(dt,t){const P=W.p,k=W.keys,busy=!!W.panel;let f=0,s=0,turn=0;
   if(m>.05){const sp=(k.shift?7:4)*Math.min(1,m)*dt/m,fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw),rx=Math.cos(P.yaw),rz=-Math.sin(P.yaw),dx=(fx*f+rx*s)*sp,dz=(fz*f+rz*s)*sp;
     if(!blocked(P.x+dx,P.z))P.x+=dx;if(!blocked(P.x,P.z+dz))P.z+=dz;moving=true;W.av.rotation.y=Math.atan2(-(fx*f+rx*s),-(fz*f+rz*s))}
   W.walkT=moving?W.walkT+dt*10:0;const sw=Math.sin(W.walkT)*.5;W.legs[0].rotation.x=sw;W.legs[1].rotation.x=-sw;W.av.position.set(P.x,moving?Math.abs(Math.sin(W.walkT))*.04:0,P.z);
-  const D=4.6;let cx=P.x+Math.sin(P.yaw)*D,cz=P.z+Math.cos(P.yaw)*D;cx=Math.max(-HW+.4,Math.min(HW-.4,cx));cz=Math.max(zBack()+.4,Math.min(zEnd()-.4,cz));
+  let D=4.6;const camHit=(x,z)=>x<-HW+.9||x>HW-.9||z<zBack()+.5||z>zEnd()-.5||blocked(x,z);while(D>1.2&&camHit(P.x+Math.sin(P.yaw)*D,P.z+Math.cos(P.yaw)*D))D-=.2;const cx=P.x+Math.sin(P.yaw)*D,cz=P.z+Math.cos(P.yaw)*D;
   W.cam.position.set(cx,3.1,cz);W.cam.lookAt(P.x-Math.sin(P.yaw)*1.5,1.1,P.z-Math.cos(P.yaw)*1.5);
   if(W.find){W.beacon.position.y=RACKH+1.4+Math.sin(t/250)*.25;W.beacon.rotation.y+=dt*2;if(Math.hypot(P.x-W.find.x,P.z-W.find.z)<2.4&&t-W.find.t>1500){W.find=null;W.beacon.visible=false;W.el.querySelector(".lc3-find").hidden=true}}
   const n=W.near=nearest();if(W.btn){if(n&&!W.panel){W.btn.hidden=false;if(W.btn.textContent!==n.n+" (E)")W.btn.textContent=n.n+" (E)"}else W.btn.hidden=true}
