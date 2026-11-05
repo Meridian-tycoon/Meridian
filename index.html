@@ -481,7 +481,7 @@ function evalPart(__src){return eval(__src)}
 /* shared loader for parts/<name>.js: fetched once, cached; partApi(name) is null until it has loaded */
 const PARTS={};
 function partLoad(n){const p=PARTS[n]||(PARTS[n]={api:null,p:null});if(p.api)return Promise.resolve(p.api);if(p.p)return p.p;
-  return p.p=fetch("parts/"+n+".js?v=6").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
+  return p.p=fetch("parts/"+n+".js?v=7").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
 function partApi(n){const p=PARTS[n];return p?p.api:null}
 /* Online players (Firebase). Paste your Firebase web app config object here, e.g.
    const FIREBASE_CONFIG={apiKey:"...",authDomain:"...",projectId:"...",storageBucket:"...",messagingSenderId:"...",appId:"..."};
@@ -1211,9 +1211,14 @@ function fupSpent(v){let s=0;for(const k in FUP)for(let l=0;l<fupLv(v,k);l++)s+=
 const capV=(v,g)=>capU(v.type,g)*fupM(v,"cap");            // units of g this vehicle loads, with its own chassis upgrade
 const vCap=v=>VEH[v.type].cap*fupM(v,"cap");
 function fupBuy(id,k){const F=FUP[k],v=(S.fleet||[]).find(x=>x.id===id);if(!F||!v)return"";const l=fupLv(v,k),c=fupCost(v,k),nm=`${VEH[v.type].n} #${v.id}`;if(l>=F.max)return`${F.n} is maxed out on ${nm}`;if(S.cash<c)return`Need ${fmt(c)} for ${F.n}`;S.cash-=c;v.up=v.up||{};v.up[k]=l+1;return`${nm}: ${F.n} level ${l+1}, ${k==="spd"?"drives":"carries"} +${Math.round(F.per*(l+1)*100)}%`}
+/* Max (Mark, 2026-11-05): buy every remaining level in one tap; if the cash runs short, buy as many as it covers */
+function fupMaxCost(v,k){let t=0;for(let l=fupLv(v,k);l<FUP[k].max;l++)t+=fupCostL(k,l);return t}
+function fupMax(id,k){const F=FUP[k],v=(S.fleet||[]).find(x=>x.id===id);if(!F||!v)return"";const l0=fupLv(v,k),nm=`${VEH[v.type].n} #${v.id}`;if(l0>=F.max)return`${F.n} is maxed out on ${nm}`;
+  let l=l0,spent=0;while(l<F.max&&S.cash>=fupCostL(k,l)){const c=fupCostL(k,l);S.cash-=c;spent+=c;l++}if(l===l0)return`Need ${fmt(fupCostL(k,l0))} for ${F.n}`;v.up=v.up||{};v.up[k]=l;
+  return`${nm}: ${F.n} ${l0}→${l}${l<F.max?" (as far as your cash went)":" (maxed)"} for ${fmt(spent)}, ${k==="spd"?"drives":"carries"} +${Math.round(F.per*l*100)}%`}
 function fupCell(v,k){const F=FUP[k],l=fupLv(v,k),c=fupCost(v,k),mx=l>=F.max;
   return `<div class="dv-up"><b>${F.ico} ${F.n} · Lv ${l}/${F.max}</b><small>+${Math.round(F.per*l*100)}%${mx?"":`, next +${Math.round(F.per*(l+1)*100)}%`}</small><div class="lx-bar"><i style="width:${l/F.max*100}%"></i></div>
-    <button class="lx-btn" data-dv="fup" data-i="${v.id}" data-k="${k}" ${mx||S.cash<c?'aria-disabled="true"':""} title="${mx?"Maxed out":S.cash<c?`Need ${fmt(c)}`:""}">${mx?"Maxed":`Upgrade · ${fmt(c)}`}</button></div>`}
+    <button class="lx-btn" data-dv="fup" data-i="${v.id}" data-k="${k}" ${mx||S.cash<c?'aria-disabled="true"':""} title="${mx?"Maxed out":S.cash<c?`Need ${fmt(c)}`:""}">${mx?"Maxed":`Upgrade · ${fmt(c)}`}</button>${!mx&&F.max-l>1?(()=>{const t=fupMaxCost(v,k);return `<button class="lx-btn" data-dv="fupmax" data-i="${v.id}" data-k="${k}" ${S.cash<c?'aria-disabled="true"':""} title="${S.cash<t?"Buys as many levels as your cash covers":`All ${F.max-l} levels`}" style="margin-top:4px;background:#7c3aed">Max · ${fmt(t)}</button>`})():""}</div>`}
 function fupHtml(){const L=S.fleet||[];const op=window.DVVO!=null?window.DVVO:L.length<=6;   // open by default for small fleets, folded for big ones; remembers the player's choice
   let h=`<details class="mdx-card dv-vd" ${op?"open":""} ontoggle="window.DVVO=this.open"><summary class="mdx-ch"><h3>Your vehicles</h3><span class="lx-tag">${L.length} · upgrades &amp; sell</span><span class="dv-chev">▾</span></summary>`;
   if(!L.length)return h+`<div class="mdx-empty">No vehicles yet. Buy one at a depot.</div></details>`;

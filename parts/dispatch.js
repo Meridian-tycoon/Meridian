@@ -188,6 +188,7 @@ function dvAct(a,b){const id=b.dataset.id,now=Date.now(),v=S.fleet.find(x=>Strin
   if(a!=="cancel"&&a!=="alcan"&&a!=="lcan"&&a!=="rcan")DV.arm=null;
   if(a==="albuy"){S.alNoBuy=!S.alNoBuy;dvNote(S.alNoBuy?"Auto-buy off: Auto-line only moves your own stock.":"Auto-buy on: Auto-line buys at the market when no depot has the goods.");done=true}
   if(a==="fup"){dvNote(fupBuy(+b.dataset.i,b.dataset.k));done=true}
+  if(a==="fupmax"){dvNote(fupMax(+b.dataset.i,b.dataset.k));done=true}
   if(a==="vsell"){const v=S.fleet.find(x=>x.id===+b.dataset.i);if(!v||!vSellOk(v))dvNote("That vehicle is busy and can't be sold right now");else if(!b.dataset.arm){b.dataset.arm=1;b.textContent=`Tap again: sell ${fmt(vSellP(v))}`;return}else{const p=vSellP(v);S.fleet=S.fleet.filter(x=>x!==v);S.cash+=p;dvNote(`Sold ${VEH[v.type].n} #${v.id} for ${fmt(p)}`)}done=true}
   
   else if(a==="recall"&&v){const ok=v.job?lxRecall(v):dvRecall(v);dvNote(ok?`${VEH[v.type].n} #${v.id} is heading back${v.cargo?" with its load":""}.`:"That vehicle is already heading back.");done=ok}
