@@ -1801,7 +1801,7 @@ function renderHQ(c){let h=cityHead(c);const o=S.own[c.id]||{},sites=S.sites.fil
     if(un)h+=`<p class="d" style="color:var(--bad);font-size:13px;padding:8px 0">You have ${un} unregistered asset${un>1?"s":""} here.</p>`;
     sheet.innerHTML=h;$("#cls").onclick=closeSheet;return}
   const hc=hqCity(c.country),nb=hqNetB(c);h+=`<p class="d" style="font-size:12px;color:var(--muted);margin:4px 0">${hc.id===c.id?`Your ${c.country} HQ. It covers every city in ${c.country}.`:`Your HQ in ${hc.name} already covers ${c.country}.`}${nb?` HQ network: +${Math.round(nb*100)}% income here.`:""}</p>${ipoHqNote()}${typeof OFC!=="undefined"&&OFC.on?"":`<button class="buy" data-ofc="1" style="width:100%;margin:4px 0 8px">🏢 Enter your 3D office</button>`}<div id="hqroom-host"></div><div id="hqpanel"></div><div class="tabs" style="margin-top:0">${[["reg","📝 Register"],["emp","👥 Employees"],["all","📋 All registered"],["net","🕸️ Network"]].map(([k,n])=>`<button data-hqt="${k}" aria-selected="${hqTab===k}">${n}</button>`).join("")}</div>`;
-  if(hqTab==="reg"){const cs=CITIES.filter(x=>x.country===c.country),one=cs.length<2,nm=(x)=>one?"":` · ${x.name}`;h+=`<div class="sec">Businesses in ${one?c.name:c.country}</div><div class="list">`;
+  if(hqTab==="reg"){const cs=CITIES.filter(x=>x.country===c.country),one=cs.length<2,nm=(x)=>one?"":` · ${x.name}`;{const ua=hqUnreg(c.country);if(ua.length){const tf=ua.reduce((t,u)=>t+u.f,0);h+=`<button class="buy" data-hq="regall" style="width:100%;margin:6px 0" ${S.cash<ua[0].f?"disabled":""}>📝 Register all (${ua.length}) · ${fmt(tf)}</button>`}}h+=`<div class="sec">Businesses in ${one?c.name:c.country}</div><div class="list">`;
     const mine=[];for(const x of cs){const ox=S.own[x.id]||{};for(const b of BIZ)if(ox[b.k])mine.push([x,b])}if(!mine.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:8px 0">No businesses here yet.</p>`;
     for(const [x,b] of mine){const r=bizReg(x,b.k);h+=`<div class="row own"><div class="n">${b.n}${nm(x)} <span class="tag ${r?"boom":"bust"}">${r?"Registered":"Unregistered"}</span></div>
       <div class="d">${r?`Taxed at ${TAX_REG*100}%.`:`Taxed at ${TAX_UNREG*100}% and at risk of audit. Registration fee is 5% of its value.`}</div>
@@ -1831,6 +1831,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-hq],[data-hqt
   if(a==="open"){const hc=hqCity(c.country);if(hc){toast(`Your HQ in ${hc.name} already covers ${c.country}`);return}const p=hqCost(c);if(S.cash<p)return;S.cash-=p;S.hq[c.id]=1;toast(`HQ open in ${c.name}: covers all of ${c.country}`);bigMove(`our company opened a new HQ in ${c.name} covering all of ${c.country}`,p,1)}
   else if(a==="link"||a==="unlink"){if(a==="unlink"&&!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again to disconnect";return}hqLinkAct(b.dataset.a,b.dataset.b,a==="link")}
   else if(a==="regbiz"){const B=BIZ.find(x=>x.k===b.dataset.k),bc=CITIES[b.dataset.c]||c,p=regFeeBiz(B,bc);if(S.cash<p)return;S.cash-=p;(S.reg[bc.id]=S.reg[bc.id]||{})[B.k]=1;toast(`${B.n} registered`)}
+  else if(a==="regall"){let n=0,sk=0;for(const u of hqUnreg(c.country)){if(S.cash<u.f){sk++;continue}S.cash-=u.f;u.go();n++}toast(n?`${n} registered${sk?` · ${sk} skipped (not enough cash)`:""}`:"Not enough cash")}
   else if(a==="regsite"){const s=S.sites.find(x=>x.id===+b.dataset.id),p=regFeeSite(s);if(S.cash<p)return;S.cash-=p;s.reg=1;toast("Land registered")}
   else if(a==="bonus"){S.bonus[c.id]=S.bonus[c.id]?0:1}
   else return;commit()});
@@ -2319,6 +2320,7 @@ const FURN=[ // x,y = back-left corner on the floor grid; w,d footprint; h heigh
  {x:5.6,y:.2,w:.6,d:.6,h:1.1,top:"#cfe3ee",side:"#a9c4d3",deco:"cooler"}];
 const DOOR={x:7.1,y:ROOM.d-.2,name:"Exit to map"};
 const H3={x:5.2,y:5.8,dir:1,step:0,vx:0,vy:0,keys:{},near:null,cv:null,raf:0,joy:null};
+function hqUnreg(cn){const o=[];for(const x of CITIES){if(x.country!==cn)continue;const ox=S.own[x.id]||{};for(const B of BIZ)if(ox[B.k]&&!bizReg(x,B.k))o.push({f:regFeeBiz(B,x),go:()=>{(S.reg[x.id]=S.reg[x.id]||{})[B.k]=1}})}for(const s of S.sites)if(!s.reg&&CITIES[s.city].country===cn)o.push({f:regFeeSite(s),go:()=>{s.reg=1}});return o.sort((a,b)=>a.f-b.f)}
 function hqStationName(k){return{reg:"Register businesses & land",emp:"Employees",all:"All registered"}[k]}
 function mountRoom(host,c){
   if(!H3.cv){const cv=document.createElement("canvas");cv.setAttribute("aria-label","Your HQ office. Use the joystick or arrow keys to walk to a station.");cv.tabIndex=0;
