@@ -122,11 +122,12 @@ function fillOrd(){const p=W.panel;if(!p||!W.ordOn)return;const c=CITIES[W.city]
   const mine=lcoList().filter(o=>o.to===c.id||o.from===c.id),ST={run:"Running",done:"Filled",short:"Source ran out",cancel:"Cancelled"};
   const rows=mine.map(o=>{const v=(S.fleet||[]).find(x=>x.id===o.v),pct=Math.min(100,o.done/o.q*100),inb=o.to===c.id,where=!v?"vehicle gone":v.arr?(v.cargo?`loaded, ${fmtDur(v.arr-Date.now())} to ${CITIES[v.dest].name}`:`empty, ${fmtDur(v.arr-Date.now())} to ${CITIES[v.dest].name}`):v.lco===o.id?`parked in ${CITIES[v.city].name}`:"home";
     return `<tr><td>#${o.id}</td><td>${inb?"⬇ from "+esc(CITIES[o.from].name):"⬆ to "+esc(CITIES[o.to].name)}</td><td class="n">${esc(G[o.g][0])}</td><td style="min-width:120px"><div style="background:#1e293b;border-radius:4px;height:8px"><i style="display:block;height:8px;border-radius:4px;width:${pct}%;background:${o.st==="run"?"#22c55e":"#64748b"}"></i></div><small>${gq(Math.min(o.done,o.q))} / ${gq(o.q)} · ${o.trips} trip${o.trips===1?"":"s"}</small></td><td>${v?esc(VEH[v.type].n)+" #"+v.id:"—"}<br><small style="color:#94a3b8">${esc(where)}</small></td><td><b style="color:${o.st==="run"?(o.why?"#fbbf24":"#4ade80"):"#94a3b8"}">${o.why&&o.st==="run"?esc(o.why):ST[o.st]}</b></td><td>${o.st==="run"?`<button class="mini g" data-lc="lcox" data-k="${o.id}">Cancel</button>`:""}</td></tr>`}).join("");
-  p.innerHTML=`<header><span>ORDERS · ${esc(c.name.toUpperCase())}</span><span><button class="lc3-btn g" data-lc="pc" style="padding:5px 10px;margin-right:6px">🖥 Inventory</button><button class="lc3-btn g" data-lc="xp" style="padding:5px 10px">Close</button></span></header><div class="bd">
+  const oh=`<header><span>ORDERS · ${esc(c.name.toUpperCase())}</span><span><button class="lc3-btn g" data-lc="pc" style="padding:5px 10px;margin-right:6px">🖥 Inventory</button><button class="lc3-btn g" data-lc="xp" style="padding:5px 10px">Close</button></span></header><div class="bd">
    ${form}
-   <h4 style="margin:14px 0 6px;color:#cbd5e1">Orders in and out of ${esc(c.name)}</h4>${rows?`<table><thead><tr><th>#</th><th>Route</th><th>Product</th><th>Progress</th><th>Vehicle</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:`<p style="color:#94a3b8">No orders yet.</p>`}</div>`}
+   <h4 style="margin:14px 0 6px;color:#cbd5e1">Orders in and out of ${esc(c.name)}</h4>${rows?`<table><thead><tr><th>#</th><th>Route</th><th>Product</th><th>Progress</th><th>Vehicle</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:`<p style="color:#94a3b8">No orders yet.</p>`}</div>`;
+  if(oh===p._h)return;const bd=p.querySelector(".bd"),y=bd?bd.scrollTop:0;p._h=oh;p.innerHTML=oh;const b2=p.querySelector(".bd");if(b2)b2.scrollTop=y}
 function ordAct(a,b){const c=CITIES[W.city],P=W.panel;if(a==="lcodir"){W.of.dir=b.dataset.k;W.of.src=null;W.of.q=0}else if(a==="lcogo"){const out=W.of.dir==="out",e=out?lcoNew(CITIES[W.of.src],W.city,P.querySelector("#lco-g").value,P.querySelector("#lco-q").value,P.querySelector("#lco-v").value):lcoNew(c,W.of.src,P.querySelector("#lco-g").value,P.querySelector("#lco-q").value,P.querySelector("#lco-v").value);if(e){P.querySelector("#lco-e").textContent=e;return}W.of.q=0;toast("Order placed")}
-  else if(a==="lcox")lcoCancel(+b.dataset.k);fillOrd()}
+  else if(a==="lcox")lcoCancel(+b.dataset.k);if(P)P._h=null;fillOrd()}
 /* ---------- warehouse life (Mark, 2026-11-05): workers, forklifts, trucks at the docks, sound, live racks, day and night, forklift jobs ---------- */
 const NIGHT=[21,6];
 function localHour(){const c=CITIES[W.city],d=new Date();return ((d.getUTCHours()+d.getUTCMinutes()/60+c.lon/15)%24+24)%24}
@@ -200,7 +201,7 @@ function fillStaff(){const p=W.panel;if(!p||!W.stOn)return;const c=CITIES[W.city
    <small id="lc3-he" style="color:#fca5a5"></small>
    <p style="color:#94a3b8;font-size:12px">Forklift jobs done here: <b style="color:#e2e8f0">${L.jobs||0}</b> · each pays ${fmt(lcJobPay(c))}. Take one at the yellow board by the docks. Local time ${String(Math.floor(localHour())).padStart(2,"0")}:${String(Math.floor(localHour()%1*60)).padStart(2,"0")} (${isNight()?"night shift":"day shift"}). New staff walk in next time you enter.</p></div>`}
 function L0(){return W.city!=null?LCO(W.city):null}
-function open(cid){if(W.on)return;const c=CITIES[cid],L=c&&LCO(cid);if(!L)return toast("No logistics center here");css();W.on=true;W.city=cid;
+function open(cid){if(W.on)return;const c=CITIES[cid],L=c&&LCO(cid);if(!L)return toast("No logistics center here");css();W.on=true;W.city=cid;document.body.classList.add("lc3-on");
   const el=W.el=document.createElement("div");el.className="lc3";el.setAttribute("role","dialog");el.setAttribute("aria-label","Logistics center in "+c.name);
   if(matchMedia("(pointer:coarse)").matches||"ontouchstart" in window)el.classList.add("touch");
   el.innerHTML=`<div class="lc3-load">Opening the logistics center…</div><div class="lc3-top"><div><b>📦 LOGISTICS CENTER · ${esc(c.name.toUpperCase())}</b><small id="lc3-sub"></small></div><button class="lc3-btn g" data-lc="pc">🖥 Inventory</button><button class="lc3-btn g" data-lc="ord">📋 Orders</button><button class="lc3-btn g" data-lc="snd" title="Sound on/off" aria-label="Sound on or off">🔊</button><button class="lc3-btn g" data-lc="ride" hidden title="Get on or off your vehicle (R)">🚜 Ride</button><button class="lc3-btn g" data-lc="fp" title="First-person view (V)">👁 1st person</button><button class="lc3-btn g" data-lc="zin" title="Zoom in (+ or mouse wheel)" aria-label="Zoom in">＋</button><button class="lc3-btn g" data-lc="zout" title="Zoom out (−)" aria-label="Zoom out">－</button><button class="lc3-btn" data-lc="close">Exit</button></div>
@@ -218,7 +219,7 @@ function open(cid){if(W.on)return;const c=CITIES[cid],L=c&&LCO(cid);if(!L)return
   el.addEventListener("input",e=>{if(e.target.id==="lc3-q")fillTable();else if(e.target.id==="lco-q")W.of.q=+e.target.value});
   el.addEventListener("change",e=>{const id=e.target.id;if(id==="lco-src"){W.of.src=+e.target.value;W.of.q=0;fillOrd()}else if(id==="lco-g"){W.of.g=e.target.value;W.of.q=0;fillOrd()}else if(id==="lco-v")W.of.v=+e.target.value});
   loadThree().then(T=>{if(!W.on||W.el!==el)return;build(T);W.raf=requestAnimationFrame(loop);if(W.cv)W.cv.focus()}).catch(()=>{close();toast("Couldn't load the 3D logistics center. Check your connection and try again.")})}
-function close(){if(!W.on)return;W.on=false;try{if(W.au)W.au.ctx.close()}catch(e){}W.au=null;W.wk=null;W.job=null;W.carry=null;W.tk=null;cancelAnimationFrame(W.raf);W.raf=0;
+function close(){if(!W.on)return;W.on=false;document.body.classList.remove("lc3-on");try{if(W.au)W.au.ctx.close()}catch(e){}W.au=null;W.wk=null;W.job=null;W.carry=null;W.tk=null;cancelAnimationFrame(W.raf);W.raf=0;
   if(W.scene)W.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();const m=o.material;if(m)(Array.isArray(m)?m:[m]).forEach(x=>{if(x.map)x.map.dispose();x.dispose()})});
   if(W.ren){W.ren.dispose();try{W.ren.forceContextLoss()}catch(e){}}for(const k in TXC){TXC[k].dispose();delete TXC[k]}W.ren=W.scene=W.cam=W.av=W.beacon=null;W._w=W._h=0;if(W.el)W.el.remove();W.el=null;try{save()}catch(e){}}
 /* canvas text as a sprite or a flat sign */
@@ -358,7 +359,8 @@ function findG(g,go){const c=CITIES[W.city],it=lcLayout(c).items.find(x=>x.g===g
   W.find={x,z,t:performance.now()};W.beacon.visible=true;W.beacon.position.set(x,RACKH+1.4,z);const f=W.el.querySelector(".lc3-find");f.hidden=false;f.textContent=`📍 ${G[g][0]}: ${it.loc}`;
   if(go){const az=z+RACKD/2+1.2;W.p={x,z:az,yaw:0};panel(false)}else panel(false)}
 function loop(t){if(!W.on||!W.ren){W.raf=0;return}W.raf=requestAnimationFrame(loop);if(document.hidden)return;const dt=Math.min(.1,Math.max(0,(t-W.last)/1000));W.last=t;step(dt,t);
-  const w=W.el.clientWidth,h=W.el.clientHeight;if(W._w!==w||W._h!==h){W.ren.setSize(w,h,false);W.cam.aspect=w/h;W.cam.updateProjectionMatrix();W._w=w;W._h=h}W.ren.render(W.scene,W.cam)}
+  /* a menu is open: the player can't move, so redraw the hall only ~5 times a second to keep the menu smooth */
+  const w=W.el.clientWidth,h=W.el.clientHeight,rs=W._w!==w||W._h!==h;if(W.panel&&!rs&&t-(W.rt||0)<200)return;W.rt=t;if(rs){W.ren.setSize(w,h,false);W.cam.aspect=w/h;W.cam.updateProjectionMatrix();W._w=w;W._h=h}W.ren.render(W.scene,W.cam)}
 function step(dt,t){const P=W.p,k=W.keys,busy=!!W.panel,L=L0();let f=0,s=0,turn=0;
   if(!busy){if(k.w||k.arrowup)f+=1;if(k.s||k.arrowdown)f-=1;if(k.d)s+=1;if(k.a)s-=1;if(k.arrowleft)turn+=1;if(k.arrowright)turn-=1;if(W.joy){f-=W.joy.y;s+=W.joy.x}}
   P.yaw+=turn*2.2*dt;const m=Math.hypot(f,s);let moving=false;
@@ -372,6 +374,6 @@ function step(dt,t){const P=W.p,k=W.keys,busy=!!W.panel,L=L0();let f=0,s=0,turn=
     W.cam.position.set(cx,cy,cz);W.cam.lookAt(P.x-sx*la,1.1,P.z-sz*la)}
   if(W.find){W.beacon.position.y=RACKH+1.4+Math.sin(t/250)*.25;W.beacon.rotation.y+=dt*2;if(Math.hypot(P.x-W.find.x,P.z-W.find.z)<2.4&&t-W.find.t>1500){W.find=null;W.beacon.visible=false;W.el.querySelector(".lc3-find").hidden=true}}
   const n=W.near=nearest();if(W.btn){if(n&&!W.panel){W.btn.hidden=false;if(W.btn.textContent!==n.n+" (E)")W.btn.textContent=n.n+" (E)"}else W.btn.hidden=true}
-  try{lifeStep(dt,t)}catch(e){console.warn(e)}if(((t/2000)|0)!==W._st){W._st=(t/2000)|0;sub();{const L=L0();if(W.T&&L&&Math.min(MAXR,L.lv)===W.rows&&!W.panel){const sg=rackSig();if(sg!==W.sig){W.sig=sg;try{buildRacks(W.T)}catch(e){}}}}if(W.ordOn&&!W.el.querySelector('.lco-f :focus'))fillOrd();if(W.scr)W.scr.forEach((m,i)=>{m.material.map.dispose();m.material.map=screenTex(W.T,i);m.material.needsUpdate=true})}}
+  try{lifeStep(dt,t)}catch(e){console.warn(e)}if(((t/2000)|0)!==W._st){W._st=(t/2000)|0;sub();{const L=L0();if(W.T&&L&&Math.min(MAXR,L.lv)===W.rows&&!W.panel){const sg=rackSig();if(sg!==W.sig){W.sig=sg;try{buildRacks(W.T)}catch(e){}}}}if(W.ordOn&&!W.el.querySelector('.lco-f :focus'))fillOrd();if(W.scr&&!W.panel)W.scr.forEach((m,i)=>{m.material.map.dispose();m.material.map=screenTex(W.T,i);m.material.needsUpdate=true})}}
 return {open,close,_w:()=>W};
 })()
