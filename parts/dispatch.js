@@ -44,7 +44,7 @@ function dvCss(){if(document.getElementById("dv-css"))return;const st=document.c
 `;document.head.appendChild(st)}
 function dvOpen(){if(!document.getElementById("mdx-css")){const st=document.createElement("style");st.id="mdx-css";st.textContent=DXCSS;document.head.appendChild(st)}lxCss();dvCss();
   if(!DV.el){const el=DV.el=document.createElement("div");el.className="mdx-win mx-win dv";el.setAttribute("role","dialog");el.setAttribute("aria-label","Deliveries dashboard");document.body.appendChild(el);
-    el.addEventListener("click",e=>{const b=e.target.closest("[data-dv]");if(!b||b.disabled)return;try{dvAct(b.dataset.dv,b)}catch(err){console.warn("dv",err)}});
+    el.addEventListener("click",e=>{const b=e.target.closest("[data-dv]");if(!b||b.disabled)return;if(b.closest("summary"))e.preventDefault();try{dvAct(b.dataset.dv,b)}catch(err){console.warn("dv",err)}});
     el.addEventListener("change",e=>{const t=e.target;if(!t.dataset)return;try{if(t.dataset.dvf)dvSetF(t.dataset.dvf,t.type==="checkbox"?t.checked:t.value);else if(t.dataset.dve&&DV.ed){DV.ed[t.dataset.dve]=t.value;dvRender(true)}}catch(err){console.warn("dv",err)}});
     el.addEventListener("input",e=>{const t=e.target;if(t.dataset&&t.dataset.dvf==="q"){DV.f.q=+t.value||0;const x=el.querySelector("#dv-est");if(x)x.innerHTML=dvEstHtml(dvForm())}else if(t.dataset&&t.dataset.dve==="q"&&DV.ed)DV.ed.q=t.value});mdxMove(el,DV)}
   const vw=innerWidth,vh=innerHeight,el=DV.el;if(vw<560){el.classList.add("mdx-full");Object.assign(el.style,{left:"0px",top:"0px",width:vw+"px",height:vh+"px"})}
@@ -190,6 +190,7 @@ function dvAct(a,b){const id=b.dataset.id,now=Date.now(),v=S.fleet.find(x=>Strin
   if(a!=="cancel"&&a!=="alcan"&&a!=="lcan"&&a!=="rcan")DV.arm=null;
   if(a==="albuy"){S.alNoBuy=!S.alNoBuy;dvNote(S.alNoBuy?"Auto-buy off: Auto-line only moves your own stock.":"Auto-buy on: Auto-line buys at the market when no depot has the goods.");done=true}
   if(a==="fup"){dvNote(fupBuy(+b.dataset.i,b.dataset.k));done=true}
+  if(a==="fupall"){dvNote(fupMaxAll());done=true}
   if(a==="fupmax"){dvNote(fupMax(+b.dataset.i,b.dataset.k));done=true}
   if(a==="vsell"){const v=S.fleet.find(x=>x.id===+b.dataset.i);if(!v||!vSellOk(v))dvNote("That vehicle is busy and can't be sold right now");else if(!b.dataset.arm){b.dataset.arm=1;b.textContent=`Tap again: sell ${fmt(vSellP(v))}`;return}else{const p=vSellP(v);S.fleet=S.fleet.filter(x=>x!==v);S.cash+=p;dvNote(`Sold ${VEH[v.type].n} #${v.id} for ${fmt(p)}`)}done=true}
   

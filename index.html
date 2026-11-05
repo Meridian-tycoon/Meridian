@@ -1216,11 +1216,18 @@ function fupMaxCost(v,k){let t=0;for(let l=fupLv(v,k);l<FUP[k].max;l++)t+=fupCos
 function fupMax(id,k){const F=FUP[k],v=(S.fleet||[]).find(x=>x.id===id);if(!F||!v)return"";const l0=fupLv(v,k),nm=`${VEH[v.type].n} #${v.id}`;if(l0>=F.max)return`${F.n} is maxed out on ${nm}`;
   let l=l0,spent=0;while(l<F.max&&S.cash>=fupCostL(k,l)){const c=fupCostL(k,l);S.cash-=c;spent+=c;l++}if(l===l0)return`Need ${fmt(fupCostL(k,l0))} for ${F.n}`;v.up=v.up||{};v.up[k]=l;
   return`${nm}: ${F.n} ${l0}→${l}${l<F.max?" (as far as your cash went)":" (maxed)"} for ${fmt(spent)}, ${k==="spd"?"drives":"carries"} +${Math.round(F.per*l*100)}%`}
+/* Max all (Mark, 2026-11-05): max Engine tuning and Reinforced chassis on every truck in one tap; short on cash, it buys the cheapest levels first */
+function fupAllCost(){let t=0;for(const v of S.fleet||[])if(isTruck(v))for(const k in FUP)t+=fupMaxCost(v,k);return t}
+function fupMaxAll(){const T=(S.fleet||[]).filter(isTruck);if(!T.length)return"No trucks to upgrade";if(!fupAllCost())return"Every truck is already maxed";
+  let n=0,spent=0;for(;;){let b=null;for(const v of T)for(const k in FUP){const l=fupLv(v,k);if(l<FUP[k].max){const c=fupCostL(k,l);if(!b||c<b.c)b={v,k,c}}}
+    if(!b||S.cash<b.c)break;S.cash-=b.c;spent+=b.c;b.v.up=b.v.up||{};b.v.up[b.k]=fupLv(b.v,b.k)+1;n++}
+  if(!n)return"Not enough cash for even one upgrade level";const left=fupAllCost();
+  return left?`Bought ${n} upgrade levels for ${fmt(spent)}, as far as your cash went (${fmt(left)} more to max everything)`:`All trucks maxed: ${n} levels for ${fmt(spent)}`}
 function fupCell(v,k){const F=FUP[k],l=fupLv(v,k),c=fupCost(v,k),mx=l>=F.max;
   return `<div class="dv-up"><b>${F.ico} ${F.n} · Lv ${l}/${F.max}</b><small>+${Math.round(F.per*l*100)}%${mx?"":`, next +${Math.round(F.per*(l+1)*100)}%`}</small><div class="lx-bar"><i style="width:${l/F.max*100}%"></i></div>
     <button class="lx-btn" data-dv="fup" data-i="${v.id}" data-k="${k}" ${mx||S.cash<c?'aria-disabled="true"':""} title="${mx?"Maxed out":S.cash<c?`Need ${fmt(c)}`:""}">${mx?"Maxed":`Upgrade · ${fmt(c)}`}</button>${!mx&&F.max-l>1?(()=>{const t=fupMaxCost(v,k);return `<button class="lx-btn" data-dv="fupmax" data-i="${v.id}" data-k="${k}" ${S.cash<c?'aria-disabled="true"':""} title="${S.cash<t?"Buys as many levels as your cash covers":`All ${F.max-l} levels`}" style="margin-top:4px;background:#7c3aed">Max · ${fmt(t)}</button>`})():""}</div>`}
 function fupHtml(){const L=S.fleet||[];const op=window.DVVO!=null?window.DVVO:L.length<=6;   // open by default for small fleets, folded for big ones; remembers the player's choice
-  let h=`<details class="mdx-card dv-vd" ${op?"open":""} ontoggle="window.DVVO=this.open"><summary class="mdx-ch"><h3>Your vehicles</h3><span class="lx-tag">${L.length} · upgrades &amp; sell</span><span class="dv-chev">▾</span></summary>`;
+  let h=`<details class="mdx-card dv-vd" ${op?"open":""} ontoggle="window.DVVO=this.open"><summary class="mdx-ch"><h3>Your vehicles</h3><span class="lx-tag">${L.length} · upgrades &amp; sell</span>${(()=>{const t=fupAllCost();return t?`<button class="lx-btn" data-dv="fupall" style="margin-left:auto;background:#7c3aed" title="${S.cash<t?"Buys as many levels as your cash covers, cheapest first":"Maxes Engine tuning and Reinforced chassis on every truck"}">Max upgrade all · ${fmt(t)}</button>`:""})()}<span class="dv-chev">▾</span></summary>`;
   if(!L.length)return h+`<div class="mdx-empty">No vehicles yet. Buy one at a depot.</div></details>`;
   for(const v of L){const ok=vSellOk(v),p=vSellP(v),st=v.arr?"On the road":v.al||v.route||v.job||v.lco?"Busy on a line":`Idle in ${dxE((CITIES[v.city]||{}).name||"?")}`;
     h+=`<div class="dv-veh"><div><b>${dxE(VEH[v.type].n)} #${v.id}</b><small>${st} · ${fmtT(vCap(v))}</small></div>${isTruck(v)?fupCell(v,"spd")+fupCell(v,"cap"):`<small class="dv-up2">Engine and chassis upgrades are for trucks only</small>`}
