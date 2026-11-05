@@ -3,7 +3,7 @@
    Layout: x runs across the hall (bays), z runs down its length. The entrance, loading dock and central computer are at the +z end; rack rows go towards -z,
    one row per level, so the building gets longer with every upgrade. Controls match the bunker: W/S forward/back, A/D strafe, arrows or drag to turn, E use. */
 (function(){
-const BW=2.6,BAYS=LCBAYS,HW=BAYS*BW/2+4.5,ROWP=4.8,RACKD=1.3,RACKH=4.5,DOCK=12,MAXR=80,LVH=1.45;
+const BW=2.6,BAYS=LCBAYS,HW=BAYS*BW/2+4.5,ROWP=4.8,RACKD=1.3,RACKH=4.5,DOCK=24,MAXR=80,LVH=1.45;
 const W={el:null,on:false,T:null,ren:null,scene:null,cam:null,av:null,legs:null,walkT:0,p:{x:0,z:0,yaw:0},keys:{},joy:null,near:null,panel:null,raf:0,last:0,city:null,rows:0,len:0,beacon:null,find:null};
 const esc=t=>String(t).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
 const rowZ=r=>-(r*ROWP)-ROWP/2;            // centre line of rack row r
@@ -104,7 +104,7 @@ function build(T){W.T=T;const el=W.el,L=L0(),c=CITIES[W.city];let ren;try{ren=ne
   // polished concrete slab with saw-cut joints, worn patches and tyre marks; painted walkway and aisle lines
   const fm=new T.MeshStandardMaterial({map:tx(T,"floor",HW*2/6,len/6),roughness:.55,metalness:.05});const fl0=new T.Mesh(new T.PlaneGeometry(HW*2,len),fm);fl0.rotation.x=-Math.PI/2;fl0.position.set(0,0,zm);room.add(fl0);
   for(const x of [-BAYS*BW/2-1.7,BAYS*BW/2+1.7])ofBox(T,room,.1,.008,len-1,0xeab308,x,0,zm,{r:.8});
-  ofBox(T,room,HW*2-1,.008,.1,0xeab308,0,0,-.5,{r:.8});ofBox(T,room,HW*2-1,.008,.1,0xeab308,0,0,z1-11.5,{r:.8});
+  ofBox(T,room,HW*2-1,.008,.1,0xeab308,0,0,-.5,{r:.8});ofBox(T,room,HW*2-1,.008,.1,0xeab308,0,0,z1-11,{r:.8});
   for(let i=0;i<12;i++)ofBox(T,room,.5,.009,1.6,0xf8fafc,-3+i*.55,0,-1.3,{r:.8}); // pedestrian crossing
   ofBox(T,room,1.4,.009,len-14,0x15803d,-HW+1.1,0,zm-6,{r:.9}); // green walkway along the wall
   // insulated corrugated-steel cladding over a concrete plinth, steel portal frames, roof trusses, skylights and high-bay lamps
@@ -131,7 +131,9 @@ function build(T){W.T=T;const el=W.el,L=L0(),c=CITIES[W.city];let ren;try{ren=ne
   // dock staging: wrapped pallets waiting to be put away, a pallet jack, a forklift and a few shipping containers in the yard bay
   const cont=(x,z,col,y)=>{const m=new T.MeshStandardMaterial({map:tx(T,"cont",1,1),color:col,roughness:.55,metalness:.45}),o=new T.Mesh(new T.BoxGeometry(6.06,2.59,2.44),m);o.position.set(x,(y||0)+1.3,z);room.add(o)};
   cont(-HW+4,z1-4.4,0xb91c1c);cont(-HW+4,z1-4.4,0x1d4ed8,2.6);cont(HW-4,z1-4.4,0x15803d);
-  for(let i=0;i<4;i++)stage(T,room,-3.5+i*1.5,z1-3.2,i);
+  for(let i=0;i<4;i++)stage(T,room,-3.5+i*1.5,z1-3.2,i);for(let i=0;i<6;i++)stage(T,room,-HW+4+i*1.5,z1-9,i+1);for(let i=0;i<5;i++)stage(T,room,HW-11+i*1.5,z1-9,i+2);
+  // reception office: glass-walled cabin with a counter, beside the receiving lanes
+  {const ox=HW-5,oz=z1-15.5;ofBox(T,room,7,.1,6,0x94a3b8,ox,0,oz,{r:.6});for(const [w,d,x,z] of [[7,.08,0,-3],[.08,6,-3.5,0],[.08,6,3.5,0]])ofBox(T,room,w,3,d,0xbfdbfe,ox+x,0,oz+z,{op:.25,r:.1,m:.2});ofBox(T,room,7.1,.15,6.1,0x334155,ox,3,oz,{r:.5});ofBox(T,room,3,.1,.1,0x334155,ox-2,0,oz+3,{});ofBox(T,room,2.2,1.05,.7,0x475569,ox,0,oz+2.4,{r:.5});ofBox(T,room,2.3,.06,.8,0xe2e8f0,ox,1.05,oz+2.4,{r:.4});sign(T,room,["RECEIVING OFFICE"],2.6,.45,ox,3.45,oz+3.05,0,{bg:"#1e3a8a",fg:"#fff"})}
   const fk=new T.Group(),or=new T.MeshStandardMaterial({color:0xf59e0b,roughness:.45,metalness:.3}),blk=new T.MeshStandardMaterial({color:0x111827,roughness:.6}),put=(g,m,w,h,d,x,y,z)=>{const o=new T.Mesh(new T.BoxGeometry(w,h,d),m);o.position.set(x,y,z);g.add(o);return o};
   put(fk,or,1.2,.9,1.9,0,.75,0);put(fk,blk,1.25,.5,.5,0,.65,.85);put(fk,blk,.5,.6,.5,0,1.3,.2);put(fk,or,.07,1.1,.07,-.55,1.85,.6);put(fk,or,.07,1.1,.07,.55,1.85,.6);put(fk,or,.07,1.1,.07,-.55,1.85,-.45);put(fk,or,.07,1.1,.07,.55,1.85,-.45);put(fk,blk,1.25,.05,1.2,0,2.4,.08);
   for(const x of [-.42,.42])put(fk,steel,.08,2.6,.1,x,1.4,-1.05);put(fk,steel,1,.1,.1,0,2.6,-1.05);for(const x of [-.35,.35])put(fk,steel,.12,.05,1.15,x,.12,-1.65);
@@ -140,8 +142,8 @@ function build(T){W.T=T;const el=W.el,L=L0(),c=CITIES[W.city];let ren;try{ren=ne
   // central computer system: desk, three screens, sign
   const pc=new T.Group();ofBox(T,pc,3.2,.85,1.1,0x334155,0,0,0);ofBox(T,pc,3.3,.06,1.2,0x1e293b,0,.85,0);
   W.scr=[];for(let i=-1;i<=1;i++){ofBox(T,pc,.08,.4,.08,0x111827,i*1.05,.9,.2);const m=new T.Mesh(new T.PlaneGeometry(.95,.6),new T.MeshBasicMaterial({map:screenTex(T,i+1)}));m.position.set(i*1.05,1.62,.18);m.rotation.y=i*-.25;m.rotation.x=0;pc.add(m);W.scr.push(m);ofBox(T,pc,1,.66,.04,0x0f172a,i*1.05,1.29,.15).rotation.y=i*-.25}
-  ofBox(T,pc,.6,.04,.25,0x111827,0,.88,-.25);pc.position.set(0,0,z1-9);room.add(pc);W.pcz=z1-9;
-  sign(T,room,["CENTRAL INVENTORY"],2.6,.5,0,2.75,z1-9.1,0,{bg:"#14532d",fg:"#dcfce7"});
+  ofBox(T,pc,.6,.04,.25,0x111827,0,.88,-.25);pc.position.set(0,0,z1-15);room.add(pc);W.pcz=z1-15;
+  sign(T,room,["CENTRAL INVENTORY"],2.6,.5,0,2.75,z1-15.1,0,{bg:"#14532d",fg:"#dcfce7"});
   buildRacks(T);
   const av=W.av=person(T,0x1f2937);W.legs=av.userData.legs;sc.add(av);W.p={x:0,z:z1-6,yaw:0};
   const bc=W.beacon=new T.Mesh(new T.ConeGeometry(.5,1.1,16),new T.MeshBasicMaterial({color:0x22c55e,transparent:true,opacity:.85}));bc.rotation.x=Math.PI;bc.visible=false;sc.add(bc);
@@ -187,8 +189,8 @@ function buildRacks(T){const room=W.room,c=CITIES[W.city],lay=lcLayout(c),R=W.ro
   if(L0().lv>MAXR)sign(T,room,["Rows "+lcRowName(MAXR)+"+ in the annex","See the computer for every location"],8,1.3,0,3,zBack()+.3,0,{w:1024,h:180,bg:"#7c2d12",fg:"#fff"})}
 function blocked(x,z){const r=.32;if(x<-HW+r||x>HW-r||z<zBack()+r||z>zEnd()-r)return true;
   for(let i=0;i<W.rows;i++){const zz=rowZ(i);if(Math.abs(z-zz)<RACKD/2+r&&Math.abs(x)<BAYS*BW/2+r)return true}
-  if(Math.abs(x)<1.7+r&&Math.abs(z-W.pcz)<.6+r)return true;
-  for(const [cx,cz,hw,hd] of [[-HW+4,zEnd()-4.5,3,1.2],[HW-4,zEnd()-4.5,3,1.2],[HW-11,zEnd()-4.6,3,1.2],[5,zEnd()-7.5,1.1,1.1]])if(Math.abs(x-cx)<hw+r&&Math.abs(z-cz)<hd+r)return true;return false}
+  if(Math.abs(x)<1.7+r&&Math.abs(z-W.pcz)<.6+r)return true;{const ox=HW-5,oz=zEnd()-15.5;if(x>ox-3.5-r&&z>oz-3-r&&z<oz+3+r&&!(z>oz+2.6&&x<ox-1.5)&&(x<ox-3.4+r||z<oz-2.9+r||(z>oz+2.9-r&&x>ox-1.5)||Math.abs(x-ox)<1.1+r&&Math.abs(z-oz-2.4)<.35+r))return true}
+  for(const [cx,cz,hw,hd] of [[-HW+4,zEnd()-4.5,3,1.2],[HW-4,zEnd()-4.5,3,1.2],[HW-11,zEnd()-4.6,3,1.2],[5,zEnd()-7.5,1.1,1.1],[-HW+7.75,zEnd()-9,4.5,.6],[HW-8,zEnd()-9,3.8,.6],[-1.25,zEnd()-3.2,2.9,.6]])if(Math.abs(x-cx)<hw+r&&Math.abs(z-cz)<hd+r)return true;return false}
 function nearest(){const P=W.p;if(Math.abs(P.x)<2.6&&Math.abs(P.z-W.pcz)<1.6)return {k:"pc",n:"🖥 Use the central computer"};if(P.z>zEnd()-1.4&&Math.abs(P.x)<HW)return {k:"exit",n:"🚪 Leave the building"};return null}
 function use(){const n=W.near;if(!n)return;if(n.k==="pc")panel(true);else if(n.k==="exit")close()}
 function sub(){const c=CITIES[W.city],L=L0(),s=W.el&&W.el.querySelector("#lc3-sub");if(s&&L)s.textContent=`Level ${L.lv} · ${fmtT(lcUsed(c))} / ${fmtT(lcCap(c))} · ${L.ord.length} products`}
