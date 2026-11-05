@@ -82,7 +82,7 @@ function veh(T,k){const g=new T.Group(),b=(w,h,d,c,x,y,z)=>ofBox(T,g,w,h,d,c,x,y
   return g}
 function ride(k){const L=L0();if(!L)return;L.ride=k&&L.veh.includes(k)?k:"";if(!W.av||!W.T)return;if(W.vm){W.av.remove(W.vm);W.vm=null}
   const on=!!L.ride;W.body.forEach(o=>{if(W.legs.includes(o))o.visible=!on});const y=on?{jack:.45,fork:.55,cart:.6}[L.ride]:0;W.body.forEach(o=>{if(o.userData.y0==null)o.userData.y0=o.position.y;o.position.y=o.userData.y0+(o.geometry&&o.geometry.type==="CircleGeometry"?0:y)});
-  if(on){W.vm=veh(W.T,L.ride);W.vm.rotation.y=Math.PI;W.av.add(W.vm)}const b=W.el&&W.el.querySelector('[data-lc="ride"]');if(b){b.hidden=!L.veh.length;b.textContent=on?"🚶 Get off":"🚜 Ride"}}
+  if(on){W.vm=veh(W.T,L.ride);W.vm.rotation.y=0;W.av.add(W.vm)}const b=W.el&&W.el.querySelector('[data-lc="ride"]');if(b){b.hidden=!L.veh.length;b.textContent=on?"🚶 Get off":"🚜 Ride"}}
 function shopPanel(){if(W.panel){W.panel.remove();W.panel=null}const p=W.panel=document.createElement("div");p.className="lc3-pan";W.el.appendChild(p);W.shopOn=true;fillShop()}
 function fillShop(){const p=W.panel;if(!p||!W.shopOn)return;const c=CITIES[W.city],L=L0(),row=(e,n,d,st,btn)=>`<tr><td style="font-size:22px">${e}</td><td><b>${esc(n)}</b><br><small style="color:#94a3b8">${esc(d)}</small></td><td style="white-space:nowrap">${st}</td><td style="white-space:nowrap">${btn}</td></tr>`;
   const vs=Object.entries(LCVEH).map(([k,v])=>{const own=L.veh.includes(k),pr=lcShopP(c,v.p);return row(v.e,v.n,v.d,own?(L.ride===k?"<b style='color:#4ade80'>Driving</b>":"Owned"):fmt(pr),own?(L.ride===k?`<button class="mini g" data-lc="sride" data-k="">Park it</button>`:`<button class="mini" data-lc="sride" data-k="${k}" style="background:#15803d">Drive</button>`):`<button class="mini" data-lc="sbuy" data-t="veh" data-k="${k}" ${S.cash<pr?"disabled":""}>Buy</button>`)}).join("");
@@ -127,13 +127,80 @@ function fillOrd(){const p=W.panel;if(!p||!W.ordOn)return;const c=CITIES[W.city]
    <h4 style="margin:14px 0 6px;color:#cbd5e1">Orders in and out of ${esc(c.name)}</h4>${rows?`<table><thead><tr><th>#</th><th>Route</th><th>Product</th><th>Progress</th><th>Vehicle</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:`<p style="color:#94a3b8">No orders yet.</p>`}</div>`}
 function ordAct(a,b){const c=CITIES[W.city],P=W.panel;if(a==="lcodir"){W.of.dir=b.dataset.k;W.of.src=null;W.of.q=0}else if(a==="lcogo"){const out=W.of.dir==="out",e=out?lcoNew(CITIES[W.of.src],W.city,P.querySelector("#lco-g").value,P.querySelector("#lco-q").value,P.querySelector("#lco-v").value):lcoNew(c,W.of.src,P.querySelector("#lco-g").value,P.querySelector("#lco-q").value,P.querySelector("#lco-v").value);if(e){P.querySelector("#lco-e").textContent=e;return}W.of.q=0;toast("Order placed")}
   else if(a==="lcox")lcoCancel(+b.dataset.k);fillOrd()}
+/* ---------- warehouse life (Mark, 2026-11-05): workers, forklifts, trucks at the docks, sound, live racks, day and night, forklift jobs ---------- */
+const NIGHT=[21,6];
+function localHour(){const c=CITIES[W.city],d=new Date();return ((d.getUTCHours()+d.getUTCMinutes()/60+c.lon/15)%24+24)%24}
+const isNight=()=>{const h=localHour();return h>=NIGHT[0]||h<NIGHT[1]};
+function rackSig(){const c=CITIES[W.city],L=L0(),B=lcBay(c)/4;return L.lv+"|"+L.ord.map(g=>g+":"+Math.ceil(L.inv[g]*tpu(g)/B)+":"+(L.pin[g]??"")).join(",")}
+/* a spot workers can walk to: inside the building, not inside a rack, desk or crate */
+function freeSpot(){for(let i=0;i<40;i++){const x=(Math.random()*2-1)*(HW-2),z=zBack()+2+Math.random()*(zEnd()-zBack()-5);if(!blocked(x,z))return {x,z}}return {x:0,z:zEnd()-6}}
+const laneX=x=>{let best=null;for(let b=0;b<W.nb;b++)for(const s of [-1,1]){const lx=blkX(b)+s*(BAYS*BW/2+1.7);if(best==null||Math.abs(lx-x)<Math.abs(best-x))best=lx}return best};
+function route(w){const t=freeSpot(),lx=laneX(w.x);w.path=Math.abs(t.z-w.z)>2?[{x:lx,z:w.z},{x:lx,z:t.z},t]:[t];w.wait=0}
+function life(T,sc){const c=CITIES[W.city],L=L0();W.wk=[];W.sig=rackSig();W.tk=null;W.tkT=performance.now()+4000;W.nk=isNight()?1:0;
+  const n=Math.min(8,L.staff||0),nf=Math.min(2,Math.floor(n/3));
+  for(let i=0;i<n;i++){const fork=i<nf,g=new T.Group(),p=person(T,fork?0x334155:0xea580c);g.add(p);let legs=p.userData.legs;
+    if(fork){const v=veh(T,"fork");g.add(v);p.position.y=.55;legs.forEach(l=>l.visible=false);legs=null}
+    const s=freeSpot();g.position.set(s.x,0,s.z);sc.add(g);const w={g,legs,fork,x:s.x,z:s.z,sp:fork?3.2:1.5+Math.random()*.4,ph:Math.random()*6,beep:0};route(w);W.wk.push(w)}
+  // the manager waits by the reception office door
+  W.mgrP={x:HW-7.5,z:zEnd()-11.5};if(L.mgr){const m=person(T,0x1e3a8a);m.position.set(W.mgrP.x,0,W.mgrP.z);m.rotation.y=-Math.PI/2;sc.add(m);W.mgrM=m}else W.mgrM=null;
+  sign(T,W.room,["STAFF OFFICE",L.mgr?"Manager on duty":"Hire a manager here"],2.2,.6,HW-7.6,2.6,zEnd()-12.6,0,{bg:"#1e3a8a",fg:"#fff",w:512,h:150});
+  // job board on the right wall by the docks
+  W.jobP={x:HW-1.4,z:zEnd()-10.5};sign(T,W.room,["📋 FORKLIFT JOBS","Press E for a job · "+fmt(lcJobPay(c))+" each"],2.6,1.1,HW-.3,2.2,zEnd()-10.5,-Math.PI/2,{bg:"#facc15",fg:"#111",w:640,h:240,fs:44});
+  // delivery truck that backs into the docks
+  const tk=new T.Group(),b=(w,h,d,col,x,y,z)=>ofBox(T,tk,w,h,d,col,x,y,z,{r:.6,m:.2});b(2.5,2.7,12,0xf8fafc,0,1.2,6.2);b(2.5,.25,12,0x334155,0,.95,6.2);b(2.4,2.4,2.6,[0xb91c1c,0x1d4ed8,0x15803d][Math.floor(Math.random()*3)],0,.9,13.9);b(2.2,.9,.1,0x0f172a,0,2.2,15.25);
+  for(const z of [1.5,2.8,13.2,14.6])for(const x of [-1.05,1.05]){const wh=ofCyl(T,tk,.48,.48,.35,0x111111,x,.48-.175,z,{});wh.rotation.z=Math.PI/2}
+  tk.visible=false;sc.add(tk);W.tk={g:tk,st:"idle",dock:0,t:0};lifeLights(true)}
+/* smooth day/night: k=1 at night */
+function lifeLights(snap,dt){const k=W.nk=snap?(isNight()?1:0):W.nk+((isNight()?1:0)-W.nk)*Math.min(1,(dt||.016)*.8);if(W.hemi)W.hemi.intensity=W.hemi.userData.i0*(1-.55*k);if(W.dl)W.dl.intensity=W.dl.userData.i0*(1-.8*k);
+  const bg=new W.T.Color(0x2a2f36).lerp(new W.T.Color(0x0b1020),k);if(W.scene){W.scene.background=bg;if(W.scene.fog)W.scene.fog.color=bg}if(W.skyM)W.skyM.color.set(0xe0f2fe).lerp(new W.T.Color(0x111827),k)}
+function lifeStep(dt,t){if(!W.wk)return;const P=W.p,night=isNight();
+  W.wk.forEach((w,i)=>{w.g.visible=!night||i%2===0;if(!w.g.visible)return;
+    if(w.wait>0){w.wait-=dt;if(w.legs){w.legs[0].rotation.x=0;w.legs[1].rotation.x=0}return}
+    const p=w.path[0];if(!p){route(w);return}const dx=p.x-w.x,dz=p.z-w.z,d=Math.hypot(dx,dz);
+    if(d<.15){w.path.shift();if(!w.path.length){w.wait=2+Math.random()*5;}return}
+    const st=Math.min(d,w.sp*dt);w.x+=dx/d*st;w.z+=dz/d*st;w.g.position.set(w.x,0,w.z);w.g.rotation.y=Math.atan2(-dx,-dz);
+    if(w.legs){w.ph+=dt*9;const sw=Math.sin(w.ph)*.5;w.legs[0].rotation.x=sw;w.legs[1].rotation.x=-sw}
+    if(w.fork&&(w.beep-=dt)<0){w.beep=2.5+Math.random()*2;const dd=Math.hypot(w.x-P.x,w.z-P.z);if(dd<14)snd("beep",1-dd/14)}});
+  // truck cycle: idle → reversing in → docked (door up) → pulling out
+  const K=W.tk;if(K){const z1=zEnd(),door=W.doors&&W.doors[K.dock],now=performance.now();
+    if(K.st==="idle"&&now>W.tkT){K.dock=W.jobDock!=null?W.jobDock:Math.floor(Math.random()*3);W.jobDock=null;K.st="in";K.z=z1+40;K.g.visible=true}
+    if(K.st==="in"){K.z=Math.max(z1+.25,K.z-dt*5);if((K.bp=(K.bp||0)-dt)<0){K.bp=.6;snd("rev",.9)}if(K.z<=z1+.25){K.st="dock";K.t=now+15000}}
+    else if(K.st==="dock"){if(now>K.t)K.st="out"}
+    else if(K.st==="out"){K.z+=dt*6;if(K.z>z1+42){K.st="idle";K.g.visible=false;W.tkT=now+12000+Math.random()*20000}}
+    if(K.st!=="idle"){K.g.position.set(-7.5+K.dock*7.5,0,K.z);const open=K.st==="dock"?1:K.st==="in"?Math.max(0,1-(K.z-z1)/12):Math.max(0,1-(K.z-z1)/6);
+      if(door){door.scale.y=1-.85*open;door.position.y=3.3+4.2*.425*open}}
+    W.doors&&W.doors.forEach((d,i)=>{if(K.st==="idle"||i!==K.dock){d.scale.y=1;d.position.y=3.3}})}
+  if(W.job){const J=W.job,tg=J.st==="pick"?{x:bayX(J.bay,J.row),z:rowZ(J.row)+RACKD/2+1.3}:{x:-7.5+J.dock*7.5,z:zEnd()-2.2};W.beacon.visible=true;W.beacon.position.set(tg.x,J.st==="pick"?RACKH+1.4:3.2,tg.z);W.beacon.rotation.y+=dt*2;J.tg=tg}
+  lifeLights(false,dt)}
+/* sound: synthesized with WebAudio, no files. Hum + forklift beeps + truck reversing alarm. Mute is remembered. */
+function sndInit(){if(W.au)return;let m=false;try{m=localStorage.getItem("lc3-mute")==="1"}catch(e){}W.mute=m;try{const A=window.AudioContext||window.webkitAudioContext;if(!A)return;const ctx=new A(),out=ctx.createGain();out.gain.value=m?0:.6;out.connect(ctx.destination);
+  const len=ctx.sampleRate*2,buf=ctx.createBuffer(1,len,ctx.sampleRate),d=buf.getChannelData(0);let last=0;for(let i=0;i<len;i++){last=(last+.02*(Math.random()*2-1))/1.02;d[i]=last*3}
+  const src=ctx.createBufferSource();src.buffer=buf;src.loop=true;const lp=ctx.createBiquadFilter();lp.type="lowpass";lp.frequency.value=220;const hg=ctx.createGain();hg.gain.value=.25;src.connect(lp);lp.connect(hg);hg.connect(out);src.start();W.au={ctx,out}}catch(e){W.au=null}}
+function snd(k,v){const A=W.au;if(!A||W.mute||document.hidden)return;try{const c=A.ctx,o=c.createOscillator(),g=c.createGain(),t=c.currentTime;o.type="square";o.frequency.value=k==="rev"?1150:k==="ok"?880:1600;
+  const L=k==="rev"?.35:k==="ok"?.25:.09;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.05*v,t+.01);g.gain.setValueAtTime(.05*v,t+L);g.gain.linearRampToValueAtTime(0,t+L+.02);o.connect(g);g.connect(A.out);o.start(t);o.stop(t+L+.05);
+  if(k==="beep"){const o2=c.createOscillator(),g2=c.createGain();o2.type="square";o2.frequency.value=1600;g2.gain.setValueAtTime(0,t+.18);g2.gain.linearRampToValueAtTime(.05*v,t+.19);g2.gain.linearRampToValueAtTime(0,t+.29);o2.connect(g2);g2.connect(A.out);o2.start(t+.18);o2.stop(t+.35)}}catch(e){}}
+function sndToggle(){W.mute=!W.mute;try{localStorage.setItem("lc3-mute",W.mute?"1":"0")}catch(e){}if(W.au)W.au.out.gain.value=W.mute?0:.6;const b=W.el&&W.el.querySelector('[data-lc="snd"]');if(b)b.textContent=W.mute?"🔇":"🔊"}
+/* forklift jobs: take one at the board, pick the pallet at the marked bay, drop it at the marked dock */
+function jobTake(){const L=L0();if(W.job)return toast("You already have a job: follow the green marker");if(!L.ride)return toast("Get on a forklift or pallet jack first (R). Buy one at the shop.");
+  const rows=Math.min(W.rows,RPB);W.job={row:Math.floor(Math.random()*rows),bay:Math.floor(Math.random()*BAYS),dock:Math.floor(Math.random()*3),st:"pick"};snd("ok",1);toast(`Job: pick a pallet at Row ${lcRowName(W.job.row)} bay ${W.job.bay+1}, drop it at Dock ${W.job.dock+1}`)}
+function jobPick(){const L=L0();if(!L.ride)return toast("You need a vehicle to lift the pallet (R)");const T=W.T,p=new T.Group();ofBox(T,p,1.2,.144,1,0xb9894f,0,0,0,{r:.9});ofBox(T,p,1.1,1,.95,0xd6a35c,0,.144,0,{r:.85});p.position.set(0,.35,-1.6);W.av.add(p);W.carry=p;W.job.st="carry";snd("ok",1);toast(`Pallet loaded. Take it to Dock ${W.job.dock+1}`)}
+function jobDrop(){const c=CITIES[W.city];if(W.carry){W.av.remove(W.carry);W.carry.traverse(o=>{if(o.geometry)o.geometry.dispose()});W.carry=null}W.jobDock=W.job.dock;W.job=null;W.beacon.visible=false;const p=lcJobDone(c);snd("ok",1);setTimeout(()=>snd("ok",1),150);toast(`✅ Job done: +${fmt(p)}`);sub()}
+/* staff office panel: hire and fire, wages, effects */
+function staffPanel(){panel(false);const p=W.panel=document.createElement("div");p.className="lc3-pan";W.el.appendChild(p);W.stOn=true;fillStaff()}
+function fillStaff(){const p=W.panel;if(!p||!W.stOn)return;const c=CITIES[W.city],L=L0(),pr=PRICE[c.size],mx=lcMaxStaff(c);
+  p.innerHTML=`<header><span>STAFF OFFICE · ${esc(c.name.toUpperCase())}</span><button class="lc3-btn g" data-lc="xp" style="padding:5px 10px">Close</button></header><div class="bd">
+   <div class="sum"><div><small>Workers</small><b>${L.staff||0} / ${mx}</b></div><div><small>Manager</small><b>${L.mgr?"Hired":"None"}</b></div><div><small>Wages</small><b>${fmt(lcWageC(c))}/hr</b></div><div><small>Orders faster by</small><b>${Math.round(lcSpeed(c)*100)}%</b></div></div>
+   <table><tbody><tr><td style="font-size:22px">👷</td><td><b>Warehouse workers</b><br><small style="color:#94a3b8">${fmt(LCW.wk*pr)}/hr each. Each one makes center orders turn around ${LCW.per*100}% faster. You see them at work; half work the night shift.</small></td><td style="white-space:nowrap"><button class="mini g" data-lc="hire" data-k="wk" data-d="-1" ${(L.staff||0)?"":"disabled"}>− Let go</button> <button class="mini" data-lc="hire" data-k="wk" data-d="1" ${(L.staff||0)>=mx?"disabled":""}>+ Hire</button></td></tr>
+   <tr><td style="font-size:22px">👔</td><td><b>Warehouse manager</b><br><small style="color:#94a3b8">${fmt(LCW.mgr*pr)}/hr. Orders ${LCW.mgrB*100}% faster on top, crew up to ${LCW.max1} (else ${LCW.max0}), forklift jobs pay 50% more. Waits by this office.</small></td><td>${L.mgr?`<button class="mini g" data-lc="hire" data-k="mgr" data-d="-1">Let go</button>`:`<button class="mini" data-lc="hire" data-k="mgr" data-d="1" style="background:#15803d">Hire</button>`}</td></tr></tbody></table>
+   <small id="lc3-he" style="color:#fca5a5"></small>
+   <p style="color:#94a3b8;font-size:12px">Forklift jobs done here: <b style="color:#e2e8f0">${L.jobs||0}</b> · each pays ${fmt(lcJobPay(c))}. Take one at the yellow board by the docks. Local time ${String(Math.floor(localHour())).padStart(2,"0")}:${String(Math.floor(localHour()%1*60)).padStart(2,"0")} (${isNight()?"night shift":"day shift"}). New staff walk in next time you enter.</p></div>`}
 function L0(){return W.city!=null?LCO(W.city):null}
 function open(cid){if(W.on)return;const c=CITIES[cid],L=c&&LCO(cid);if(!L)return toast("No logistics center here");css();W.on=true;W.city=cid;
   const el=W.el=document.createElement("div");el.className="lc3";el.setAttribute("role","dialog");el.setAttribute("aria-label","Logistics center in "+c.name);
   if(matchMedia("(pointer:coarse)").matches||"ontouchstart" in window)el.classList.add("touch");
-  el.innerHTML=`<div class="lc3-load">Opening the logistics center…</div><div class="lc3-top"><div><b>📦 LOGISTICS CENTER · ${esc(c.name.toUpperCase())}</b><small id="lc3-sub"></small></div><button class="lc3-btn g" data-lc="pc">🖥 Inventory</button><button class="lc3-btn g" data-lc="ord">📋 Orders</button><button class="lc3-btn g" data-lc="ride" hidden title="Get on or off your vehicle (R)">🚜 Ride</button><button class="lc3-btn g" data-lc="fp" title="First-person view (V)">👁 1st person</button><button class="lc3-btn g" data-lc="zin" title="Zoom in (+ or mouse wheel)" aria-label="Zoom in">＋</button><button class="lc3-btn g" data-lc="zout" title="Zoom out (−)" aria-label="Zoom out">－</button><button class="lc3-btn" data-lc="close">Exit</button></div>
+  el.innerHTML=`<div class="lc3-load">Opening the logistics center…</div><div class="lc3-top"><div><b>📦 LOGISTICS CENTER · ${esc(c.name.toUpperCase())}</b><small id="lc3-sub"></small></div><button class="lc3-btn g" data-lc="pc">🖥 Inventory</button><button class="lc3-btn g" data-lc="ord">📋 Orders</button><button class="lc3-btn g" data-lc="snd" title="Sound on/off" aria-label="Sound on or off">🔊</button><button class="lc3-btn g" data-lc="ride" hidden title="Get on or off your vehicle (R)">🚜 Ride</button><button class="lc3-btn g" data-lc="fp" title="First-person view (V)">👁 1st person</button><button class="lc3-btn g" data-lc="zin" title="Zoom in (+ or mouse wheel)" aria-label="Zoom in">＋</button><button class="lc3-btn g" data-lc="zout" title="Zoom out (−)" aria-label="Zoom out">－</button><button class="lc3-btn" data-lc="close">Exit</button></div>
   <div class="lc3-help">W/S forward/back · A/D strafe · ←/→ or drag to turn · wheel/± zoom · V first person · Shift run · E use · R ride · Esc exit</div><div class="lc3-joy"><i></i></div><div class="lc3-act"><button class="lc3-btn" data-lc="use" hidden></button></div><div class="lc3-find" hidden></div>`;
-  document.body.appendChild(el);W.btn=el.querySelector('[data-lc="use"]');W.keys={};W.joy=null;W.near=null;W.panel=null;W.find=null;
+  document.body.appendChild(el);sndInit();{const sb=el.querySelector('[data-lc="snd"]');if(sb)sb.textContent=W.mute?"🔇":"🔊"}W.wk=null;W.job=null;W.carry=null;W.btn=el.querySelector('[data-lc="use"]');W.keys={};W.joy=null;W.near=null;W.panel=null;W.find=null;
   const joy=el.querySelector(".lc3-joy"),kn=joy.firstChild,jr=56;let jid=null;
   const jm=e=>{const r=joy.getBoundingClientRect();let dx=e.clientX-(r.left+jr),dy=e.clientY-(r.top+jr);const m=Math.hypot(dx,dy);if(m>jr){dx*=jr/m;dy*=jr/m}kn.style.left=36+dx+"px";kn.style.top=36+dy+"px";W.joy={x:dx/jr,y:dy/jr}};
   joy.addEventListener("pointerdown",e=>{e.stopPropagation();jid=e.pointerId;joy.setPointerCapture(jid);jm(e)});joy.addEventListener("pointermove",e=>{if(e.pointerId===jid)jm(e)});
@@ -142,11 +209,11 @@ function open(cid){if(W.on)return;const c=CITIES[cid],L=c&&LCO(cid);if(!L)return
   el.addEventListener("keyup",e=>{W.keys[e.key.toLowerCase()]=0});
   el.addEventListener("click",e=>{const b=e.target.closest("[data-lc]");if(!b)return;const a=b.dataset.lc;
     if(a==="close")close();else if(a==="use")use();else if(a==="pc")panel(!W.panel||W.ordOn||W.shopOn);else if(a==="xp")panel(false);
-    else if(a==="fp")setFp(!W.fp);else if(a==="sbuy"||a==="sride")shopAct(a,b);else if(a==="lcogo"||a==="lcox"||a==="lcodir")ordAct(a,b);else if(a==="ord")ordPanel();else if(a==="ride"){const L=L0();ride(L.ride?"":(W.lastRide&&L.veh.includes(W.lastRide)?W.lastRide:L.veh[L.veh.length-1]));if(L.ride)W.lastRide=L.ride}else if(a==="zin")zoomBy(-1);else if(a==="zout")zoomBy(1);else if(a==="find")findG(b.dataset.g,false);else if(arr(a,b))return;else if(a==="go")findG(b.dataset.g,true)});
+    else if(a==="fp")setFp(!W.fp);else if(a==="sbuy"||a==="sride")shopAct(a,b);else if(a==="lcogo"||a==="lcox"||a==="lcodir")ordAct(a,b);else if(a==="snd")sndToggle();else if(a==="hire"){const e=lcHire(CITIES[W.city],b.dataset.k,+b.dataset.d);fillStaff();if(e){const m=W.panel&&W.panel.querySelector("#lc3-he");if(m)m.textContent=e}sub()}else if(a==="ord")ordPanel();else if(a==="ride"){const L=L0();ride(L.ride?"":(W.lastRide&&L.veh.includes(W.lastRide)?W.lastRide:L.veh[L.veh.length-1]));if(L.ride)W.lastRide=L.ride}else if(a==="zin")zoomBy(-1);else if(a==="zout")zoomBy(1);else if(a==="find")findG(b.dataset.g,false);else if(arr(a,b))return;else if(a==="go")findG(b.dataset.g,true)});
   el.addEventListener("input",e=>{if(e.target.id==="lc3-q")fillTable();else if(e.target.id==="lco-q")W.of.q=+e.target.value});
   el.addEventListener("change",e=>{const id=e.target.id;if(id==="lco-src"){W.of.src=+e.target.value;W.of.q=0;fillOrd()}else if(id==="lco-g"){W.of.g=e.target.value;W.of.q=0;fillOrd()}else if(id==="lco-v")W.of.v=+e.target.value});
   loadThree().then(T=>{if(!W.on||W.el!==el)return;build(T);W.raf=requestAnimationFrame(loop);if(W.cv)W.cv.focus()}).catch(()=>{close();toast("Couldn't load the 3D logistics center. Check your connection and try again.")})}
-function close(){if(!W.on)return;W.on=false;cancelAnimationFrame(W.raf);W.raf=0;
+function close(){if(!W.on)return;W.on=false;try{if(W.au)W.au.ctx.close()}catch(e){}W.au=null;W.wk=null;W.job=null;W.carry=null;W.tk=null;cancelAnimationFrame(W.raf);W.raf=0;
   if(W.scene)W.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();const m=o.material;if(m)(Array.isArray(m)?m:[m]).forEach(x=>{if(x.map)x.map.dispose();x.dispose()})});
   if(W.ren){W.ren.dispose();try{W.ren.forceContextLoss()}catch(e){}}for(const k in TXC){TXC[k].dispose();delete TXC[k]}W.ren=W.scene=W.cam=W.av=W.beacon=null;W._w=W._h=0;if(W.el)W.el.remove();W.el=null;try{save()}catch(e){}}
 /* canvas text as a sprite or a flat sign */
@@ -171,7 +238,7 @@ function build(T){W.T=T;const el=W.el,L=L0(),c=CITIES[W.city];let ren;try{ren=ne
   cv.addEventListener("wheel",e=>{e.preventDefault();zoomBy(e.deltaY>0?1:-1,Math.min(3,Math.abs(e.deltaY)/100))},{passive:false});
   ren.toneMapping=T.ACESFilmicToneMapping;ren.toneMappingExposure=1.05;ren.outputEncoding=T.sRGBEncoding;
   const sc=new T.Scene();sc.background=new T.Color(0x2a2f36);W.scene=sc;W.cam=new T.PerspectiveCamera(62,1,.1,400);
-  const led=!!(L.upg&&L.upg.led);sc.add(new T.HemisphereLight(led?0xf8fbff:0xfff4e0,0x5b5f66,led?1.45:1.05));const dl=new T.DirectionalLight(led?0xffffff:0xfff1d6,led?.7:.55);dl.position.set(8,30,14);sc.add(dl);sc.add(new T.AmbientLight(0xffffff,.12));
+  const led=!!(L.upg&&L.upg.led);W.hemi=new T.HemisphereLight(led?0xf8fbff:0xfff4e0,0x5b5f66,led?1.45:1.05);W.hemi.userData.i0=W.hemi.intensity;sc.add(W.hemi);const dl=W.dl=new T.DirectionalLight(led?0xffffff:0xfff1d6,led?.7:.55);dl.userData.i0=dl.intensity;dl.position.set(8,30,14);sc.add(dl);sc.add(new T.AmbientLight(0xffffff,.12));
   W.rows=Math.min(MAXR,L.lv);W.nb=Math.ceil(W.rows/RPB)||1;{let m=0;for(let b=0;b<W.nb;b++)m=Math.max(m,Math.abs(blkX(b)));HW=BAYS*BW/2+4.5+m}const z1=zEnd(),z0=zBack(),len=z1-z0,zm=(z1+z0)/2;W.len=len;sc.fog=new T.Fog(0x2a2f36,40,Math.max(70,Math.min(180,len+30)));
   const room=new T.Group();sc.add(room);W.room=room;const WH=10;
   // polished concrete slab with saw-cut joints, worn patches and tyre marks; painted walkway and aisle lines
@@ -183,18 +250,19 @@ function build(T){W.T=T;const el=W.el,L=L0(),c=CITIES[W.city];let ren;try{ren=ne
   // insulated corrugated-steel cladding over a concrete plinth, steel portal frames, roof trusses, skylights and high-bay lamps
   const clad=new T.MeshStandardMaterial({map:tx(T,"clad",len/3,WH/3),roughness:.6,metalness:.35}),cladE=new T.MeshStandardMaterial({map:tx(T,"clad",HW*2/3,WH/3),roughness:.6,metalness:.35}),plinth=new T.MeshStandardMaterial({map:tx(T,"conc",len/4,1),roughness:.95});
   const wall=(w,h,d,x,y,z,m)=>{const o=new T.Mesh(new T.BoxGeometry(w,h,d),m);o.position.set(x,y+h/2,z);room.add(o);return o};
-  wall(.3,WH,len,-HW-.15,0,zm,clad);wall(.3,WH,len,HW+.15,0,zm,clad);wall(HW*2+.6,WH,.3,0,0,z0-.15,cladE);wall(HW*2+.6,WH,.3,0,0,z1+.15,cladE);
+  wall(.3,WH,len,-HW-.15,0,zm,clad);wall(.3,WH,len,HW+.15,0,zm,clad);wall(HW*2+.6,WH,.3,0,0,z0-.15,cladE);{const ed=[-7.5,0,7.5];let x0=-HW-.3;for(const dx of ed){wall(dx-1.8-x0,WH,.3,(x0+dx-1.8)/2,0,z1+.15,cladE);wall(3.6,1.2,.3,dx,0,z1+.15,cladE);wall(3.6,WH-5.4,.3,dx,5.4,z1+.15,cladE);x0=dx+1.8}wall(HW+.3-x0,WH,.3,(x0+HW+.3)/2,0,z1+.15,cladE)}
+  {const ap=new T.Mesh(new T.PlaneGeometry(HW*2+40,40),new T.MeshStandardMaterial({map:tx(T,"conc",12,8),roughness:.95}));ap.rotation.x=-Math.PI/2;ap.position.set(0,-.01,z1+20.3);room.add(ap)}
   for(const x of [-HW+.05,HW-.05])wall(.25,1.2,len,x,0,zm,plinth);wall(HW*2,1.2,.25,0,0,z0+.05,plinth);
   const steel=new T.MeshStandardMaterial({color:0x7b8794,roughness:.45,metalness:.7}),stl=(w,h,d,x,y,z)=>{const o=new T.Mesh(new T.BoxGeometry(w,h,d),steel);o.position.set(x,y,z);room.add(o);return o};
   for(let z=z0+3;z<z1-1;z+=9){for(const x of [-HW+.35,HW-.35]){stl(.45,WH,.35,x,WH/2,z);ofBox(T,room,.6,1,.6,0xfacc15,x,0,z,{r:.6})}stl(HW*2,.5,.3,0,WH-.6,z);
     for(let i=-6;i<=6;i++){const x=i*HW/6.5;stl(.08,1.6,.08,x,WH-1.4,z);if(i<6){const d=stl(Math.hypot(HW/6.5,1.5),.07,.07,x+HW/13,WH-1.4,z);d.rotation.z=(i%2?1:-1)*Math.atan2(1.5,HW/6.5)}}stl(HW*2,.18,.18,0,WH-2.2,z)}
   const rf=new T.Mesh(new T.PlaneGeometry(HW*2+.6,len+.6),new T.MeshStandardMaterial({map:tx(T,"roof",HW*2/3,len/3),roughness:.8,metalness:.3,side:T.DoubleSide}));rf.rotation.x=Math.PI/2;rf.position.set(0,WH+.02,zm);room.add(rf);
-  for(let z=z0+7.5;z<z1-2;z+=9)for(const x of [-9,9]){const s=new T.Mesh(new T.PlaneGeometry(4,2.4),new T.MeshBasicMaterial({color:0xe0f2fe}));s.rotation.x=Math.PI/2;s.position.set(x,WH-.01,z);room.add(s)}
+  for(let z=z0+7.5;z<z1-2;z+=9)for(const x of [-9,9]){const s=new T.Mesh(new T.PlaneGeometry(4,2.4),(W.skyM=W.skyM&&W.skyM.userData.sc===sc?W.skyM:Object.assign(new T.MeshBasicMaterial({color:0xe0f2fe}),{userData:{sc}})));s.rotation.x=Math.PI/2;s.position.set(x,WH-.01,z);room.add(s)}
   const lampM=new T.MeshStandardMaterial({color:0x374151,roughness:.4,metalness:.8}),glow=new T.MeshBasicMaterial({color:0xfffbeb});
   for(let z=z0+5;z<z1-1;z+=4.8)for(let b=0;b<W.nb;b++)for(const x of [-BAYS*BW/2-1.7,0,BAYS*BW/2+1.7].map(v=>v+blkX(b))){const c0=new T.Mesh(new T.CylinderGeometry(.08,.5,.45,14,1,true),lampM);c0.position.set(x,WH-2.6,z);room.add(c0);const d=new T.Mesh(new T.CircleGeometry(.45,14),glow);d.rotation.x=Math.PI/2;d.position.set(x,WH-2.83,z);room.add(d);ofBox(T,room,.02,2.4,.02,0x111827,x,WH-2.4,z)}
   // three dock doors with sectional roll-up doors, dock levelers, bumpers and traffic lights
   const doorM=new T.MeshStandardMaterial({map:tx(T,"door",1,1),roughness:.5,metalness:.4});
-  for(let i=0;i<3;i++){const dx=-7.5+i*7.5;const dr=new T.Mesh(new T.PlaneGeometry(3.6,4.2),doorM);dr.position.set(dx,2.1+1.2,z1-.01);dr.rotation.y=Math.PI;room.add(dr);
+  for(let i=0;i<3;i++){const dx=-7.5+i*7.5;const dr=new T.Mesh(new T.PlaneGeometry(3.6,4.2),doorM);dr.position.set(dx,2.1+1.2,z1-.01);dr.rotation.y=Math.PI;room.add(dr);(W.doors||(W.doors=[]))[i]=dr;
     ofBox(T,room,.25,4.4,.2,0xfacc15,dx-1.95,1.2,z1-.12);ofBox(T,room,.25,4.4,.2,0xfacc15,dx+1.95,1.2,z1-.12);ofBox(T,room,4.1,.3,.25,0x1f2937,dx,5.6,z1-.12);
     ofBox(T,room,3.4,.06,2.2,0x52525b,dx,0,z1-1.2,{r:.5,m:.6});for(const s of [-1.3,1.3])ofBox(T,room,.35,.5,.25,0x111111,dx+s,.9,z1-.15);
     for(const [k,cl] of [[0,0xef4444],[1,0x22c55e]])ofCyl(T,room,.09,.09,.04,cl,dx+2.4,3.3-k*.25,z1-.15,{e:cl,ei:i===1?k:1-k}).rotation.x=Math.PI/2;
@@ -222,7 +290,7 @@ function build(T){W.T=T;const el=W.el,L=L0(),c=CITIES[W.city];let ren;try{ren=ne
   W.scr=[];for(let i=-1;i<=1;i++){ofBox(T,pc,.08,.4,.08,0x111827,i*1.05,.9,.2);const m=new T.Mesh(new T.PlaneGeometry(.95,.6),new T.MeshBasicMaterial({map:screenTex(T,i+1)}));m.position.set(i*1.05,1.62,.18);m.rotation.y=i*-.25;m.rotation.x=0;pc.add(m);W.scr.push(m);ofBox(T,pc,1,.66,.04,0x0f172a,i*1.05,1.29,.15).rotation.y=i*-.25}
   ofBox(T,pc,.6,.04,.25,0x111827,0,.88,-.25);pc.position.set(0,0,z1-15);room.add(pc);W.pcz=z1-15;
   sign(T,room,["CENTRAL INVENTORY"],2.6,.5,0,2.75,z1-15.1,0,{bg:"#14532d",fg:"#dcfce7"});
-  buildRacks(T);try{bake(T,room,new Set([W.rk,...W.scr]))}catch(e){console.warn(e)}
+  buildRacks(T);try{bake(T,room,new Set([W.rk,...W.scr,...W.doors]))}catch(e){console.warn(e)}life(T,sc);
   const av=W.av=person(T,0x1f2937);W.legs=av.userData.legs;sc.add(av);W.body=av.children.slice();ride(L.ride);W.p={x:0,z:z1-6,yaw:0};W.cd=W.zoom;setFp(W.fp);
   const bc=W.beacon=new T.Mesh(new T.ConeGeometry(.5,1.1,16),new T.MeshBasicMaterial({color:0x22c55e,transparent:true,opacity:.85}));bc.rotation.x=Math.PI;bc.visible=false;sc.add(bc);
   sub()}
@@ -269,10 +337,10 @@ function blocked(x,z,cam){const r=cam?.15:.32;if(x<-HW+r||x>HW-r||z<zBack()+r||z
   for(let i=0;i<W.rows;i++){const zz=rowZ(i);if(Math.abs(z-zz)<RACKD/2+r&&Math.abs(x-rowX(i))<BAYS*BW/2+r)return true}
   if(!cam&&Math.abs(x)<1.7+r&&Math.abs(z-W.pcz)<.6+r)return true;if(W.shop&&!cam&&x<W.shop.x+.55+r&&Math.abs(z-W.shop.z)<1.55+r&&x>W.shop.x-.6)return true;if(W.shop&&!cam&&x<-HW+1.2+r&&Math.abs(z-W.shop.z)<2.1+r)return true;{const ox=HW-5,oz=zEnd()-15.5;if(x>ox-3.5-r&&z>oz-3-r&&z<oz+3+r&&!(z>oz+2.6&&x<ox-1.5)&&(x<ox-3.4+r||z<oz-2.9+r||(z>oz+2.9-r&&x>ox-1.5)||Math.abs(x-ox)<1.1+r&&Math.abs(z-oz-2.4)<.35+r))return true}
   for(const [cx,cz,hw,hd] of [[-HW+4,zEnd()-4.5,3,1.2],[HW-4,zEnd()-4.5,3,1.2],[HW-11,zEnd()-4.6,3,1.2],[5,zEnd()-7.5,1.1,1.1],[-HW+7.75,zEnd()-9,4.5,.6],[HW-8,zEnd()-9,3.8,.6],[-1.25,zEnd()-3.2,2.9,.6]].slice(0,cam?4:7))if(Math.abs(x-cx)<hw+r&&Math.abs(z-cz)<hd+r)return true;return false}
-function nearest(){const P=W.p;if(W.shop&&Math.abs(P.x-W.shop.x)<2.4&&Math.abs(P.z-W.shop.z)<2.2)return {k:"shop",n:"🛒 Open the warehouse shop"};if(Math.abs(P.x)<2.6&&Math.abs(P.z-W.pcz)<1.6)return {k:"pc",n:"🖥 Use the central computer"};if(P.z>zEnd()-1.4&&Math.abs(P.x)<HW)return {k:"exit",n:"🚪 Leave the building"};return null}
-function use(){const n=W.near;if(!n)return;if(n.k==="pc")panel(true);else if(n.k==="shop")shopPanel();else if(n.k==="exit")close()}
-function sub(){const c=CITIES[W.city],L=L0(),s=W.el&&W.el.querySelector("#lc3-sub");if(s&&L)s.textContent=`Level ${L.lv} · ${fmtT(lcUsed(c))} / ${fmtT(lcCap(c))} · ${L.ord.length} products`}
-function panel(on){W.shopOn=false;W.ordOn=false;if(W.panel){W.panel.remove();W.panel=null}if(!on){if(W.cv)W.cv.focus();return}const p=W.panel=document.createElement("div");p.className="lc3-pan";W.el.appendChild(p);
+function nearest(){const P=W.p;if(W.job&&W.job.tg&&Math.hypot(P.x-W.job.tg.x,P.z-W.job.tg.z)<2.4)return W.job.st==="pick"?{k:"pick",n:"⬆ Lift the pallet"}:{k:"drop",n:"⬇ Drop the pallet"};if(W.jobP&&Math.hypot(P.x-W.jobP.x,P.z-W.jobP.z)<2.2)return {k:"job",n:W.job?"📋 Your job: follow the green marker":"📋 Take a forklift job"};if(W.mgrP&&Math.hypot(P.x-W.mgrP.x,P.z-W.mgrP.z)<2)return {k:"staff",n:L0().mgr?"👔 Talk to the manager":"👔 Staff office: hire staff"};if(W.shop&&Math.abs(P.x-W.shop.x)<2.4&&Math.abs(P.z-W.shop.z)<2.2)return {k:"shop",n:"🛒 Open the warehouse shop"};if(Math.abs(P.x)<2.6&&Math.abs(P.z-W.pcz)<1.6)return {k:"pc",n:"🖥 Use the central computer"};if(P.z>zEnd()-1.4&&Math.abs(P.x)<HW)return {k:"exit",n:"🚪 Leave the building"};return null}
+function use(){const n=W.near;if(!n)return;if(n.k==="pc")panel(true);else if(n.k==="shop")shopPanel();else if(n.k==="staff")staffPanel();else if(n.k==="job")jobTake();else if(n.k==="pick")jobPick();else if(n.k==="drop")jobDrop();else if(n.k==="exit")close()}
+function sub(){const c=CITIES[W.city],L=L0(),s=W.el&&W.el.querySelector("#lc3-sub");if(s&&L){const h=localHour();s.textContent=`Level ${L.lv} · ${fmtT(lcUsed(c))} / ${fmtT(lcCap(c))} · ${L.ord.length} products · ${isNight()?"🌙":"☀️"} ${String(Math.floor(h)).padStart(2,"0")}:${String(Math.floor(h%1*60)).padStart(2,"0")} · 👷 ${L.staff||0}${L.mgr?" + 👔":""}`}}
+function panel(on){W.shopOn=false;W.ordOn=false;W.stOn=false;if(W.panel){W.panel.remove();W.panel=null}if(!on){if(W.cv)W.cv.focus();return}const p=W.panel=document.createElement("div");p.className="lc3-pan";W.el.appendChild(p);
   const c=CITIES[W.city],L=L0(),lay=lcLayout(c);let val=0;for(const it of lay.items)val+=it.q*px(c,it.g);
   p.innerHTML=`<header><span>CENTRAL INVENTORY SYSTEM · ${esc(c.name.toUpperCase())}</span><span><button class="lc3-btn g" data-lc="ord" style="padding:5px 10px;margin-right:6px">📋 Orders</button><button class="lc3-btn g" data-lc="xp" style="padding:5px 10px">Close</button></span></header><div class="bd">
    <div class="sum"><div><small>Stored</small><b>${fmtT(lcUsed(c))}</b></div><div><small>Capacity</small><b>${fmtT(lcCap(c))}</b></div><div><small>Rows · bays</small><b>${L.lv} · ${L.lv*BAYS}</b></div><div><small>Stock value here</small><b>${fmt(val)}</b></div></div>
@@ -299,6 +367,6 @@ function step(dt,t){const P=W.p,k=W.keys,busy=!!W.panel,L=L0();let f=0,s=0,turn=
     W.cam.position.set(cx,cy,cz);W.cam.lookAt(P.x-sx*la,1.1,P.z-sz*la)}
   if(W.find){W.beacon.position.y=RACKH+1.4+Math.sin(t/250)*.25;W.beacon.rotation.y+=dt*2;if(Math.hypot(P.x-W.find.x,P.z-W.find.z)<2.4&&t-W.find.t>1500){W.find=null;W.beacon.visible=false;W.el.querySelector(".lc3-find").hidden=true}}
   const n=W.near=nearest();if(W.btn){if(n&&!W.panel){W.btn.hidden=false;if(W.btn.textContent!==n.n+" (E)")W.btn.textContent=n.n+" (E)"}else W.btn.hidden=true}
-  if(((t/2000)|0)!==W._st){W._st=(t/2000)|0;sub();if(W.ordOn&&!W.el.querySelector('.lco-f :focus'))fillOrd();if(W.scr)W.scr.forEach((m,i)=>{m.material.map.dispose();m.material.map=screenTex(W.T,i);m.material.needsUpdate=true})}}
+  try{lifeStep(dt,t)}catch(e){console.warn(e)}if(((t/2000)|0)!==W._st){W._st=(t/2000)|0;sub();{const L=L0();if(W.T&&L&&Math.min(MAXR,L.lv)===W.rows&&!W.panel){const sg=rackSig();if(sg!==W.sig){W.sig=sg;try{buildRacks(W.T)}catch(e){}}}}if(W.ordOn&&!W.el.querySelector('.lco-f :focus'))fillOrd();if(W.scr)W.scr.forEach((m,i)=>{m.material.map.dispose();m.material.map=screenTex(W.T,i);m.material.needsUpdate=true})}}
 return {open,close,_w:()=>W};
 })()
