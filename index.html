@@ -1890,14 +1890,19 @@ const SKY={occ:.9,set:.03,skP:.05,
   /* malls use their own stages; their rent also follows local shopper demand (popDem) */
   ml:[{n:"Site works",out:1,c:.2},{n:"Structure",out:1,c:.35},{n:"Roof and atrium",out:1,c:.2},{n:"Shop fit-out",out:0,c:.25}],
   st:[{n:"Foundations",out:1,c:.2},{n:"Steel frame",out:1,c:.35},{n:"Facade",out:1,c:.25},{n:"Fit-out",out:0,c:.2}]};
+/* upgrades on a finished building (Mark, 2026-11-05): up to SKY.U.max levels, bought one at a time. Level n costs build cost × U.c × U.g^(n-1)
+   and multiplies rent by U.r^level. Saved as pj.u (level) and pj.up (cash spent on upgrades, 60% counts toward resale). */
+SKY.U={max:18,c:.1,g:1.22,r:1.08};
+const skyUpCost=pj=>Math.round(skyCost(SKY.T[pj.k],CITIES[pj.city])*SKY.U.c*Math.pow(SKY.U.g,(pj.u|0)));
+const skyUpM=pj=>Math.pow(SKY.U.r,Math.min(SKY.U.max,pj.u|0));
 const skySt=pj=>{const T=SKY.T[pj.k];return (T&&T.st&&SKY[T.st])||SKY.st};
 function skyS(){if(!S.sky||typeof S.sky!=="object"||!Array.isArray(S.sky.l))S.sky={t:0,l:[]};return S.sky}
 const skyCost=(T,c)=>Math.round(T.cost*Math.pow(PRICE[c.size],1.3));
 const skyStageCost=(pj)=>{const c=CITIES[pj.city];return Math.round(skyCost(SKY.T[pj.k],c)*skySt(pj)[pj.s].c)};
 const skyRent0=(pj)=>{const T=SKY.T[pj.k],c=CITIES[pj.city];return Math.round(T.rent*PRICE[c.size]*DEMAND[c.size])};
-function skyRent(pj){const c=CITIES[pj.city];if(!pj.done||unhOn(c))return 0;const T=SKY.T[pj.k];return skyRent0(pj)*SKY.occ*(T&&T.shop&&typeof popDem==="function"?popDem(c):1)*(typeof rentLaw==="function"?rentLaw(c):1)*(typeof dmgMult==="function"?dmgMult(c):1)}
+function skyRent(pj){const c=CITIES[pj.city];if(!pj.done||unhOn(c))return 0;const T=SKY.T[pj.k];return skyRent0(pj)*skyUpM(pj)*SKY.occ*(T&&T.shop&&typeof popDem==="function"?popDem(c):1)*(typeof rentLaw==="function"?rentLaw(c):1)*(typeof dmgMult==="function"?dmgMult(c):1)}
 function skyIncome(){const s=S.sky;if(!s||!Array.isArray(s.l)||!s.l.length)return 0;let m=1;try{m=1+.08*ofP("re")}catch(e){}return s.l.reduce((a,pj)=>a+skyRent(pj),0)*m}
-function skyVal(pj){const c=CITIES[pj.city];return Math.round(pj.done?skyCost(SKY.T[pj.k],c)*.9*(typeof flipMk==="function"?flipMk(c):1):pj.paid*.6)}
+function skyVal(pj){const c=CITIES[pj.city];return Math.round(pj.done?(skyCost(SKY.T[pj.k],c)*.9+(+pj.up||0)*.6)*(typeof flipMk==="function"?flipMk(c):1):pj.paid*.6)}
 function skyAssets(){const s=S.sky;if(!s||!Array.isArray(s.l))return 0;return s.l.reduce((a,pj)=>a+(CITIES[pj.city]?skyVal(pj):0),0)}
 function skyLog(t,quiet){try{if(!Array.isArray(S.news))S.news=[];S.news.unshift({t,at:Date.now()});S.news=S.news.slice(0,40);if(!quiet){S.log.unshift(t);S.log=S.log.slice(0,3)}}catch(e){}}
 /* why a site is not moving right now ("" = working) */
@@ -1927,8 +1932,8 @@ function skyHtml(c){const s=skyS(),mine=s.l.filter(p=>p.city===c.id),now=Date.no
   let h=`<div class="sec">Real estate developments</div><p class="d" style="color:var(--muted);font-size:12px;margin:0 0 4px">Build a tower or mall in four stages over several game days. Each stage is paid when it starts. Storms stop outdoor work, crews can strike, and war damage slows or sets back the site. Finished buildings rent out at about ${Math.round(SKY.occ*100)}% occupancy; malls earn more where shoppers are plentiful.</p><div class="list">`;
   const WHY={rad:"☢ Halted: the city is uninhabitable",funds:"💰 Waiting for funds",strike:"🪧 Crews on strike",storm:"⛈ Storm: outdoor work stopped"};
   for(const pj of mine){const T=SKY.T[pj.k],w=skyWhy(pj,now),war=dmgLvl(c);
-    if(pj.done){h+=`<div class="row own"><div class="n">${T.i} ${T.n} · ${T.fl} ${T.shop?"levels":"floors"} <span class="tag boom">Open</span></div><div class="d">Rent <b>${fmt(skyRent(pj))}</b>/hr${pj.dh.w+pj.dh.s+pj.dh.x>=1?` · built with ${Math.round(pj.dh.w+pj.dh.s+pj.dh.x)} h of delays`:""}</div>
-      <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy up" data-sky="sell" data-id="${pj.id}">Sell ${fmt(skyVal(pj))}</button></span></div>`;continue}
+    if(pj.done){h+=`<div class="row own"><div class="n">${T.i} ${T.n} · ${T.fl} ${T.shop?"levels":"floors"} <span class="tag boom">Open</span>${pj.u?` <span class="tag">Upgrade ${pj.u}/${SKY.U.max}</span>`:""}</div><div class="d">Rent <b>${fmt(skyRent(pj))}</b>/hr${(pj.u|0)<SKY.U.max?` · next upgrade +${Math.round((SKY.U.r-1)*100)}% rent`:" · fully upgraded"}${pj.dh.w+pj.dh.s+pj.dh.x>=1?` · built with ${Math.round(pj.dh.w+pj.dh.s+pj.dh.x)} h of delays`:""}</div>
+      <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${(pj.u|0)<SKY.U.max?`<button class="buy" data-sky="upg" data-id="${pj.id}" ${S.cash<skyUpCost(pj)||unhOn(c)?"disabled":""}>Upgrade ${(pj.u|0)+1} · ${fmt(skyUpCost(pj))}</button>`:""}<button class="buy up" data-sky="sell" data-id="${pj.id}">Sell ${fmt(skyVal(pj))}</button></span></div>`;continue}
     const tot=SKY.T[pj.k].d.reduce((a,b)=>a+b,0),doneD=tot-skyLeft(pj),pc=Math.max(1,Math.round(doneD/tot*100));
     const dl=[pj.dh.w>=1?`weather ${Math.round(pj.dh.w)} h`:"",pj.dh.s>=1?`strikes ${Math.round(pj.dh.s)} h`:"",pj.dh.x>=1?`war ${Math.round(pj.dh.x)} h`:""].filter(Boolean).join(", ");
     h+=`<div class="row own" data-skyrow="${pj.id}"><div class="n">${T.i} ${T.n} <span class="tag ${w?"bust":"boom"}">${w?"Delayed":"Building"}</span></div>
@@ -1944,6 +1949,7 @@ const skySettle=pj=>Math.round(skyCost(SKY.T[pj.k],CITIES[pj.city])*SKY.set);
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-sky]");if(!b||!sel)return;const c=sel,a=b.dataset.sky,s=skyS(),pj=s.l.find(x=>x.id===+b.dataset.id);
   if(a==="start"){const T=SKY.T[b.dataset.k];if(!T||c.size<T.min||unhOn(c))return;const k=Math.round(skyCost(T,c)*SKY.st[0].c);if(S.cash<k)return;S.cash-=k;
     if(!s.l.some(p=>!p.done))s.t=Date.now();s.l.push({id:S.nid++,city:c.id,k:b.dataset.k,s:0,p:0,f:1,paid:k,sk:0,dh:{w:0,s:0,x:0},done:0});toast(`Broke ground on a ${skyFl(T)} in ${c.name}`);bigMove(`work started on a ${skyFl(T)} in ${c.name}`,skyCost(T,c))}
+  else if(a==="upg"&&pj&&pj.done){if((pj.u|0)>=SKY.U.max||unhOn(c))return;const k=skyUpCost(pj);if(S.cash<k)return;S.cash-=k;pj.u=(pj.u|0)+1;pj.up=(+pj.up||0)+k;toast(`${SKY.T[pj.k].n} in ${c.name} upgraded to level ${pj.u}: rent now ${fmt(skyRent(pj))}/hr`)}
   else if(a==="settle"&&pj){const k=skySettle(pj);if(S.cash<k)return;S.cash-=k;pj.sk=0;toast("Strike settled: crews are back on site")}
   else if(a==="sell"&&pj){if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return}const v=skyVal(pj);S.cash+=v;s.l=s.l.filter(x=>x!==pj);toast(`${pj.done?(SKY.T[pj.k].shop?"Mall":"Tower"):"Site"} sold for ${fmt(v)}`)}
   else return;e.stopPropagation();commit()});
