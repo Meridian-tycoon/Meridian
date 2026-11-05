@@ -80,7 +80,7 @@ function open(cid){if(W.on)return;const c=CITIES[cid],L=c&&LCO(cid);if(!L)return
   loadThree().then(T=>{if(!W.on||W.el!==el)return;build(T);W.raf=requestAnimationFrame(loop);if(W.cv)W.cv.focus()}).catch(()=>{close();toast("Couldn't load the 3D logistics center. Check your connection and try again.")})}
 function close(){if(!W.on)return;W.on=false;cancelAnimationFrame(W.raf);W.raf=0;
   if(W.scene)W.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();const m=o.material;if(m)(Array.isArray(m)?m:[m]).forEach(x=>{if(x.map)x.map.dispose();x.dispose()})});
-  if(W.ren){W.ren.dispose();try{W.ren.forceContextLoss()}catch(e){}}for(const k in TXC){TXC[k].dispose();delete TXC[k]}W.ren=W.scene=W.cam=W.av=W.beacon=null;if(W.el)W.el.remove();W.el=null;try{save()}catch(e){}}
+  if(W.ren){W.ren.dispose();try{W.ren.forceContextLoss()}catch(e){}}for(const k in TXC){TXC[k].dispose();delete TXC[k]}W.ren=W.scene=W.cam=W.av=W.beacon=null;W._w=W._h=0;if(W.el)W.el.remove();W.el=null;try{save()}catch(e){}}
 /* canvas text as a sprite or a flat sign */
 function texOf(T,lines,o){o=o||{};const cv=document.createElement("canvas"),w=o.w||512,h=o.h||128;cv.width=w;cv.height=h;const g=cv.getContext("2d");g.fillStyle=o.bg||"#111827";g.fillRect(0,0,w,h);
   if(o.border){g.strokeStyle=o.border;g.lineWidth=8;g.strokeRect(4,4,w-8,h-8)}g.fillStyle=o.fg||"#fff";g.textBaseline="middle";g.textAlign=o.align||"center";
@@ -94,7 +94,7 @@ function person(T,suit){const g=new T.Group();const l=ofBox(T,g,.13,.5,.15,0x111
 const GCOL={raw:[0xb45309,0x1d4ed8,0x15803d,0xb91c1c,0x7c3aed,0x0e7490],mid:[0x92400e,0xa16207,0x854d0e],fin:[0xd6a35c,0xc08a4a,0xe0b878]};
 function gcol(g,i){const t=G[g][2],a=GCOL[t==="raw"?"raw":t==="mid"?"mid":"fin"];let h=0;for(const ch of g)h=(h*31+ch.charCodeAt(0))>>>0;return a[(h+i)%a.length]}
 function build(T){W.T=T;const el=W.el,L=L0(),c=CITIES[W.city];let ren;try{ren=new T.WebGLRenderer({antialias:(devicePixelRatio||1)<1.5,powerPreference:"low-power"})}catch(e){close();toast("3D isn't available on this device.");return}
-  ren.setPixelRatio(Math.min(1.5,devicePixelRatio||1));W.ren=ren;const cv=ren.domElement;cv.tabIndex=0;cv.setAttribute("aria-label","3D logistics center. W A S D to move, E to use.");el.insertBefore(cv,el.firstChild);W.cv=cv;const ld=el.querySelector(".lc3-load");if(ld)ld.remove();
+  ren.setPixelRatio(Math.min(1.5,devicePixelRatio||1));W.ren=ren;W._w=W._h=0;const cv=ren.domElement;cv.tabIndex=0;cv.setAttribute("aria-label","3D logistics center. W A S D to move, E to use.");el.insertBefore(cv,el.firstChild);W.cv=cv;const ld=el.querySelector(".lc3-load");if(ld)ld.remove();
   let drag=null;cv.addEventListener("pointerdown",e=>{drag={x:e.clientX,id:e.pointerId};cv.focus()});cv.addEventListener("pointermove",e=>{if(drag&&drag.id===e.pointerId){W.p.yaw-=(e.clientX-drag.x)*.006;drag.x=e.clientX}});const du=()=>{drag=null};cv.addEventListener("pointerup",du);cv.addEventListener("pointercancel",du);
   ren.toneMapping=T.ACESFilmicToneMapping;ren.toneMappingExposure=1.05;ren.outputEncoding=T.sRGBEncoding;
   const sc=new T.Scene();sc.background=new T.Color(0x2a2f36);W.scene=sc;W.cam=new T.PerspectiveCamera(62,1,.1,400);
