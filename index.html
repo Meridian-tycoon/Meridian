@@ -481,7 +481,7 @@ function evalPart(__src){return eval(__src)}
 /* shared loader for parts/<name>.js: fetched once, cached; partApi(name) is null until it has loaded */
 const PARTS={};
 function partLoad(n){const p=PARTS[n]||(PARTS[n]={api:null,p:null});if(p.api)return Promise.resolve(p.api);if(p.p)return p.p;
-  return p.p=fetch("parts/"+n+".js?v=5").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
+  return p.p=fetch("parts/"+n+".js?v=6").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
 function partApi(n){const p=PARTS[n];return p?p.api:null}
 /* Online players (Firebase). Paste your Firebase web app config object here, e.g.
    const FIREBASE_CONFIG={apiKey:"...",authDomain:"...",projectId:"...",storageBucket:"...",messagingSenderId:"...",appId:"..."};
@@ -14274,12 +14274,23 @@ function LCO(id){if(!S.lc||typeof S.lc!=="object"||Array.isArray(S.lc))S.lc={};c
   L.lv=Math.max(1,Math.floor(+L.lv)||1);if(!L.inv||typeof L.inv!=="object")L.inv={};for(const g in L.inv)if(!G[g]||!(L.inv[g]>0))delete L.inv[g];
   if(!Array.isArray(L.ord))L.ord=[];L.ord=L.ord.filter((g,i,a)=>L.inv[g]>0&&a.indexOf(g)===i);for(const g in L.inv)if(!L.ord.includes(g))L.ord.push(g);
   L.rx=L.rx===0?0:1;L.ax=L.ax?1:0;if(L.log&&!Array.isArray(L.log))L.log=[];
+  if(!Array.isArray(L.veh))L.veh=[];L.veh=L.veh.filter((v,i,a)=>LCVEH[v]&&a.indexOf(v)===i);if(!L.veh.includes(L.ride))L.ride="";if(!L.upg||typeof L.upg!=="object"||Array.isArray(L.upg))L.upg={};for(const k in L.upg){const t=Math.floor(+L.upg[k]);if(!LCUPG[k]||!(t>0))delete L.upg[k];else L.upg[k]=Math.min(t,LCUPG[k].max)}if(!(L.spent>0))L.spent=0;
   if(!L.pin||typeof L.pin!=="object"||Array.isArray(L.pin))L.pin={};for(const g in L.pin){const v=Math.floor(+L.pin[g]);if(!(L.inv[g]>0)||!(v>=0))delete L.pin[g];else L.pin[g]=v}return L}
 const lcHas=c=>!!(c&&LCO(c.id));
-const lcCap=c=>{const L=LCO(c.id);return L?L.lv*LCROW:0};
+const lcCap=c=>{const L=LCO(c.id);return L?L.lv*LCROW*(1+.25*(L.upg.rack||0)):0};
+/* warehouse shop (Mark, 2026-11-05): a counter in the reception area of the walk-in center. Vehicles get you around faster; upgrades improve the building.
+   L.veh = [owned vehicle ids], L.ride = the one you're driving (or ""), L.upg = {upgrade id: tier}. Prices scale with the city like the center itself. */
+const LCVEH={jack:{n:"Electric pallet jack",e:"🛒",sp:1.6,p:15000,d:"Ride-on jack. 1.6× walking speed."},fork:{n:"Forklift",e:"🚜",sp:2.1,p:60000,d:"Sit-down counterbalance forklift. 2.1× walking speed."},cart:{n:"Warehouse cart",e:"🛺",sp:2.8,p:110000,d:"Electric tug cart for long aisles. 2.8× walking speed."}};
+const LCUPG={rack:{n:"High-bay racking",e:"🏗",max:3,p:150000,d:"Taller racks: every bay holds 25% more per tier."},led:{n:"LED high-bay lighting",e:"💡",max:1,p:30000,d:"Brighter, whiter light across the whole floor."},sort:{n:"Auto-sorter",e:"🤖",max:1,p:90000,d:"New deliveries are filed by type (raw, parts, finished) automatically."}};
+const lcShopP=(c,base,tier)=>Math.round(base*PRICE[c.size]*(tier||1));
+const lcBay=c=>{const L=LCO(c.id);return LCBAY*(1+.25*((L&&L.upg.rack)||0))};
+function lcBuy(c,kind,id){const L=LCO(c.id);if(!L)return "No logistics center";
+  if(kind==="veh"){const v=LCVEH[id];if(!v)return "Unknown item";if(L.veh.includes(id))return "Already owned";const p=lcShopP(c,v.p);if(S.cash<p)return `Needs ${fmt(p)}`;S.cash-=p;L.veh.push(id);L.ride=id;L.spent=(L.spent||0)+p;lcLog(c,`Bought from the shop: ${v.n.toLowerCase()}`)}
+  else{const u=LCUPG[id];if(!u)return "Unknown item";const t=L.upg[id]||0;if(t>=u.max)return "Fully upgraded";const p=lcShopP(c,u.p,t+1);if(S.cash<p)return `Needs ${fmt(p)}`;S.cash-=p;L.upg[id]=t+1;L.spent=(L.spent||0)+p;lcLog(c,`Installed ${u.n.toLowerCase()}${u.max>1?" tier "+(t+1):""}`);if(id==="sort")lcSort(c,"type")}
+  save();return ""}
 const lcUsed=c=>{const L=LCO(c.id);let t=0;if(L)for(const g in L.inv)t+=L.inv[g]*tpu(g);return t};
 const lcRoom=c=>Math.max(0,lcCap(c)-lcUsed(c));
-function lcAdd(c,g,q){const L=LCO(c.id);L.inv[g]=(L.inv[g]||0)+q;if(!L.ord.includes(g))L.ord.push(g)}
+function lcAdd(c,g,q){const L=LCO(c.id);L.inv[g]=(L.inv[g]||0)+q;if(!L.ord.includes(g)){L.ord.push(g);if(L.upg.sort){const T={raw:0,mid:1,fin:2},nm=x=>G[x][0].toLowerCase();L.ord.sort((a,b)=>(T[G[a][2]]??3)-(T[G[b][2]]??3)||nm(a).localeCompare(nm(b)))}}}
 function lcSub(c,g,q){const L=LCO(c.id);L.inv[g]=(L.inv[g]||0)-q;if(!(L.inv[g]>=.01)){delete L.inv[g];L.ord=L.ord.filter(x=>x!==g)}}
 function lcAssets(){let a=0;for(const id in (S.lc||{})){const L=LCO(id);if(L)for(const g in L.inv)a+=L.inv[g]*G[g][1]*.9}return a}
 /* takes up to q units of g into the center; returns the units that didn't fit */
@@ -14296,11 +14307,11 @@ const lcRowName=i=>{let s="";i++;while(i>0){i--;s=String.fromCharCode(65+i%26)+s
 /* where everything sits: products in arrival order fill row A bay 1, 2... then row B. Each bay holds LCBAY tonnes. */
 /* where everything sits. Products the player pinned (L.pin[g] = start bay index) go there first; the rest fill the free bays in list order (L.ord).
    Each bay holds LCBAY tonnes; a product that needs several bays takes the next free ones. */
-function lcLayout(c){const L=LCO(c.id),out=[],bays=[];if(!L)return {items:out,bays};const tot=L.lv*LCBAYS,used=new Uint8Array(tot),slots={};
-  const need=g=>Math.max(1,Math.ceil(L.inv[g]*tpu(g)/LCBAY-1e-9));
+function lcLayout(c){const L=LCO(c.id),out=[],bays=[];if(!L)return {items:out,bays};const tot=L.lv*LCBAYS,used=new Uint8Array(tot),slots={},BY=lcBay(c);
+  const need=g=>Math.max(1,Math.ceil(L.inv[g]*tpu(g)/BY-1e-9));
   for(const g of L.ord){const p=L.pin[g];if(p==null)continue;const a=slots[g]=[];for(let s=Math.min(p,tot-1);s<tot&&a.length<need(g);s++)if(!used[s]){used[s]=1;a.push(s)}}
   let s=0;for(const g of L.ord){const a=slots[g]||(slots[g]=[]);while(a.length<need(g)&&s<tot){if(!used[s]){used[s]=1;a.push(s)}s++}a.sort((x,y)=>x-y)}
-  for(const g of L.ord){const a=slots[g],q=L.inv[g];if(!a.length)continue;const t=q*tpu(g);a.forEach((sl,i)=>bays.push({g,row:Math.floor(sl/LCBAYS),bay:sl%LCBAYS,f:Math.min(1,(t-i*LCBAY)/LCBAY)}));
+  for(const g of L.ord){const a=slots[g],q=L.inv[g];if(!a.length)continue;const t=q*tpu(g);a.forEach((sl,i)=>bays.push({g,row:Math.floor(sl/LCBAYS),bay:sl%LCBAYS,f:Math.min(1,(t-i*BY)/BY)}));
     const s0=a[0],s1=a[a.length-1],r0=Math.floor(s0/LCBAYS),r1=Math.floor(s1/LCBAYS),split=s1-s0!==a.length-1;
     const loc=(r0===r1?`Row ${lcRowName(r0)} · bay${s1>s0?"s":""} ${s0%LCBAYS+1}${s1>s0?"–"+(s1%LCBAYS+1):""}`:`Row ${lcRowName(r0)} bay ${s0%LCBAYS+1} → Row ${lcRowName(r1)} bay ${s1%LCBAYS+1}`)+(split?" (split)":"");
     out.push({g,q,t,row:r0,bay:s0%LCBAYS,loc,pin:L.pin[g]!=null,cont:G[g][2]==="raw"||tpu(g)>=2})}
@@ -14325,7 +14336,7 @@ function lcHtml(c){const L=LCO(c.id);
    for(const m of mk)h+=`<div class="row own"><div class="n">${G[m.g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(m.q)} left</span></div><div class="d">${m.w} ${m.id} · asking ${fmt(m.p)}${m.sold?` · ${gq(m.sold)} sold`:""}</div></div>`;
    const lg=L.log||[];h+=`</div><div class="sec">Activity</div><div class="list">`+(lg.length?lg.slice(0,15).map(([t,x])=>`<div class="row"><div class="d" style="grid-column:1/-1"><span style="color:var(--muted);font-family:var(--mono)">${new Date(t).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span> · ${E2(x)}</div></div>`).join(""):`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">No activity yet.</p>`)}
   h+=`</div><div class="list">
-   <div class="row"><div class="n">Upgrade storage · Level ${L.lv+1}</div><div class="d">+${fmtT(LCROW)} and a new rack row (Row ${lcRowName(L.lv)}). The building gets longer.</div><button class="buy up" data-act="lcup" ${S.cash<lcUp(c,L.lv)?"disabled":""}>${fmt(lcUp(c,L.lv))}</button></div>
+   <div class="row"><div class="n">Upgrade storage · Level ${L.lv+1}</div><div class="d">+${fmtT(LCROW*(1+.25*(L.upg.rack||0)))} and a new rack row (Row ${lcRowName(L.lv)}). The building gets longer.</div><button class="buy up" data-act="lcup" ${S.cash<lcUp(c,L.lv)?"disabled":""}>${fmt(lcUp(c,L.lv))}</button></div>
    <div class="row"><div class="n">Auto-expand when full: ${L.ax?"On":"Off"}</div><div class="d">When a delivery doesn't fit, buy as many upgrades as it needs (if you have the cash). Off: the extra goes to the warehouse.</div><button class="buy up" data-act="lcax">${L.ax?"Turn off":"Turn on"}</button></div>
    <div class="row"><div class="n">Receive deliveries: ${L.rx?"On":"Off"}</div><div class="d">${L.rx?"Shipments to this city unload into the center first.":"Shipments go to the warehouse; the center only keeps what's inside."}</div><button class="buy up" data-act="lcrx">${L.rx?"Turn off":"Turn on"}</button></div>
    ${whG.length?`<div class="row"><div class="n">Store warehouse goods here</div><div class="d">Moves ${whG.length} product${whG.length>1?"s":""} from the ${E2(c.name)} warehouse into the center (as much as fits).</div><button class="buy up" data-act="lcfill">Move in</button></div>`:""}
@@ -14333,7 +14344,7 @@ function lcHtml(c){const L=LCO(c.id);
    <div class="row"><div class="n">Sell logistics center</div><div class="d">Refunds half of what you paid (${fmt(lcSellV(c))}). ${used>=.05?"Empty it first.":""}</div><button class="buy up" data-act="lcsell" ${used>=.05?"disabled":""}>Sell</button></div></div>`;
   return h}
 const E2=t=>String(t).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
-function lcSellV(c){const L=LCO(c.id);if(!L)return 0;let v=lcCost(c);for(let l=1;l<L.lv;l++)v+=lcUp(c,l);return Math.round(v*.5)}
+function lcSellV(c){const L=LCO(c.id);if(!L)return 0;let v=lcCost(c);for(let l=1;l<L.lv;l++)v+=lcUp(c,l);v+=L.spent||0;return Math.round(v*.5)}
 function lcAct(c,a,b){const L=LCO(c.id),g=b.dataset.g;
   if(a==="lcopen"){if(L)return;const p=lcCost(c);if(S.cash<p)return toast(`Needs ${fmt(p)}`);S.cash-=p;S.lc[c.id]={lv:1,inv:{},ord:[],rx:1,ax:0};LCO(c.id);toast(`📦 Logistics center open in ${c.name}`);return}
   if(!L)return;
