@@ -481,7 +481,7 @@ function evalPart(__src){return eval(__src)}
 /* shared loader for parts/<name>.js: fetched once, cached; partApi(name) is null until it has loaded */
 const PARTS={};
 function partLoad(n){const p=PARTS[n]||(PARTS[n]={api:null,p:null});if(p.api)return Promise.resolve(p.api);if(p.p)return p.p;
-  return p.p=fetch("parts/"+n+".js?v=9").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
+  return p.p=fetch("parts/"+n+".js?v=10").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
 function partApi(n){const p=PARTS[n];return p?p.api:null}
 /* Online players (Firebase). Paste your Firebase web app config object here, e.g.
    const FIREBASE_CONFIG={apiKey:"...",authDomain:"...",projectId:"...",storageBucket:"...",messagingSenderId:"...",appId:"..."};
@@ -1222,7 +1222,7 @@ function fupCell(v,k){const F=FUP[k],l=fupLv(v,k),c=fupCost(v,k),mx=l>=F.max;
 function fupHtml(){const L=S.fleet||[];const op=window.DVVO!=null?window.DVVO:L.length<=6;   // open by default for small fleets, folded for big ones; remembers the player's choice
   let h=`<details class="mdx-card dv-vd" ${op?"open":""} ontoggle="window.DVVO=this.open"><summary class="mdx-ch"><h3>Your vehicles</h3><span class="lx-tag">${L.length} · upgrades &amp; sell</span><span class="dv-chev">▾</span></summary>`;
   if(!L.length)return h+`<div class="mdx-empty">No vehicles yet. Buy one at a depot.</div></details>`;
-  for(const v of L){const ok=vSellOk(v),p=vSellP(v),st=v.arr?"On the road":v.al||v.route||v.job?"Busy on a line":`Idle in ${dxE((CITIES[v.city]||{}).name||"?")}`;
+  for(const v of L){const ok=vSellOk(v),p=vSellP(v),st=v.arr?"On the road":v.al||v.route||v.job||v.lco?"Busy on a line":`Idle in ${dxE((CITIES[v.city]||{}).name||"?")}`;
     h+=`<div class="dv-veh"><div><b>${dxE(VEH[v.type].n)} #${v.id}</b><small>${st} · ${fmtT(vCap(v))}</small></div>${isTruck(v)?fupCell(v,"spd")+fupCell(v,"cap"):`<small class="dv-up2">Engine and chassis upgrades are for trucks only</small>`}
       <div><button class="lx-btn" style="border-color:#ef4444;color:#ef4444" data-dv="vsell" data-i="${v.id}" ${ok?"":'aria-disabled="true" title="Busy: sell it once it is back and off its line"'}>Sell · ${fmt(p)}</button></div></div>`}
   return h+`<small style="display:block;margin-top:8px">Upgrades stack on top of research bonuses. Selling pays back part of the price and half of what you spent on upgrades. Trips already on the road keep their old time.</small></details>`}
@@ -1348,9 +1348,9 @@ function runFleet(now){for(const v of S.fleet){let guard=0;
   while(v.arr&&now>=v.arr&&guard++<200){const t=v.arr,d=CITIES[v.dest];ensureWh(d);
     if(v.cargo&&unhOn(d)){S.log.unshift(`${VEH[v.type].n} #${v.id} holds ${Math.round(v.cargo.q)} ${G[v.cargo.g][0].toLowerCase()}: ${d.name} is uninhabitable`);S.log=S.log.slice(0,3);v.city=v.dest;v.dest=null;v.dep=null;v.arr=null;routeStep(v,t);continue}
     if(v.cargo)try{fxTon(v.cargo.g,v.cargo.q,v.cargo.rc);if(!v.cargo.rc&&G[v.cargo.g])wevAdd("rush",v.cargo.q*px(d,v.cargo.g))}catch(e){}
-    if(v.cargo&&!lxDeliver(v,d)){const lq=lcTake(d,v.cargo.g,v.cargo.q),inLc=v.cargo.q-lq;if(lq>0){ensureWh(d);S.inv[d.id][v.cargo.g]=(S.inv[d.id][v.cargo.g]||0)+lq}S.log.unshift(`${VEH[v.type].n} #${v.id} delivered ${Math.round(v.cargo.q)} ${G[v.cargo.g][0].toLowerCase()} to ${d.name}${inLc>0?` (${Math.round(inLc)} into the logistics center)`:""}`);S.log=S.log.slice(0,3)}
-    v.city=v.dest;v.dest=null;v.cargo=null;v.dep=null;v.arr=null;routeStep(v,t);if(v.job)lxVeh(v,t)}
-  if(!v.arr)routeStep(v,now)}}
+    if(v.cargo&&v.cargo.lco)lcoDrop(v,d);else if(v.cargo&&!lxDeliver(v,d)){const lq=lcTake(d,v.cargo.g,v.cargo.q),inLc=v.cargo.q-lq;if(lq>0){ensureWh(d);S.inv[d.id][v.cargo.g]=(S.inv[d.id][v.cargo.g]||0)+lq}S.log.unshift(`${VEH[v.type].n} #${v.id} delivered ${Math.round(v.cargo.q)} ${G[v.cargo.g][0].toLowerCase()} to ${d.name}${inLc>0?` (${Math.round(inLc)} into the logistics center)`:""}`);S.log=S.log.slice(0,3)}
+    v.city=v.dest;v.dest=null;v.cargo=null;v.dep=null;v.arr=null;routeStep(v,t);if(v.job)lxVeh(v,t);if(v.lco)lcoStep(v,t)}
+  if(!v.arr)routeStep(v,now);if(!v.arr&&v.lco)lcoStep(v,now)}}
 function driftPrices(){for(const c of CITIES){const p=S.px[c.id]=S.px[c.id]||{};for(const g of GK){let m=p[g]||1;m+=(1-m)*.12;p[g]=Math.min(1.6,Math.max(.4,m*(1+(Math.random()-.5)*.08)))}}}
 /* selling floods a local market; buying tightens it. Bigger cities absorb more. */
 const depth=(c,g)=>(G[g][2]==="raw"?3000:G[g][2]==="mid"?800:400)*(.5+.3*c.size);
@@ -2310,7 +2310,7 @@ function gxCancel(id){const s=PMXS(),e=s.esc[id];if(!e||PMX.busy[id])return;if(!
   ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)return e.q;const q=Math.floor(+d.data().q||0);t.delete(ref);return q})
     .then(q=>{delete PMX.busy[id];q=Math.max(0,Math.min(e.q,q));const w=pmBack(CITIES[e.c],e.g,q,e.src);if(e.src)lcLog(CITIES[e.c],`Player listing cancelled: ${gq(q)} ${G[e.g][0].toLowerCase()} back`);e.q-=q;gxTidy();save();hud();toast(`Listing cancelled, goods back in the ${w}`);gxRefresh()},
       er=>{delete PMX.busy[id];toast("Couldn't cancel: "+(er&&er.message||er))})}
-const gxIdle=()=>(S.fleet||[]).filter(v=>!v.arr&&!v.cargo&&!v.route&&!v.job&&v.city!=null&&CITIES[v.city]);
+const gxIdle=()=>(S.fleet||[]).filter(v=>!v.arr&&!v.cargo&&!v.route&&!v.job&&!v.lco&&v.city!=null&&CITIES[v.city]);
 const gxVname=v=>`${VEH[v.type].n} #${v.id} (${CITIES[v.city].name})`;
 function gxVsel(a){const L=gxIdle(),E=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));if(!L.length)return "";const cur=PMX.v[a.id];
   return `<select data-gxv="${E(a.id)}" aria-label="Vehicle to fetch it" style="flex:1;min-width:0;padding:4px;font:inherit;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px">${L.map(v=>`<option value="${v.id}" ${String(v.id)===String(cur)?"selected":""}>${E(gxVname(v))} · carries ${Math.floor(capV(v,a.g)).toLocaleString("en-US")}</option>`).join("")}</select>`}
@@ -10566,7 +10566,7 @@ function lxStockAvail(c,bk){const b=BIZ.find(x=>x.k===bk),lv=(S.own[c.id]||{})[b
 function lxBlock(c,d){if(unhOn(c))return `${c.name} is uninhabitable for ${unhLeft(c)}`;if(unhOn(d))return `${d.name} is uninhabitable for ${unhLeft(d)}`;
   if(c.country!==d.country){for(const w of S.wars||[])if(w.l>=2&&((w.a===c.country&&w.b===d.country)||(w.a===d.country&&w.b===c.country)))return `${WARL[w.l]} between ${c.country} and ${d.country}: no trade`;
     if(warLvl(d.country)>=4)return `${d.country} is at war: freight there is suspended`}return ""}
-function lxIdle(c){return S.fleet.filter(v=>v.city===c.id&&!v.arr&&!v.route&&!v.job&&!v.cargo&&!(v.al&&v.al.cu)&&v.hm==null)}
+function lxIdle(c){return S.fleet.filter(v=>v.city===c.id&&!v.arr&&!v.route&&!v.job&&!v.lco&&!v.cargo&&!(v.al&&v.al.cu)&&v.hm==null)}
 function lxVehOK(v,c,d){return vcls(v.type)!=="truck"||landmass(c)===landmass(d)}
 /* units already heading for a warehouse (escrow not yet launched, in vehicles, hired) */
 function lxIncoming(d,g,wt){const X=LX();let t=0;const W=wt?tpu:()=>1;
@@ -10708,7 +10708,7 @@ function fxTier(){const t=FX().tons;let i=0;for(let k=0;k<FXT.length;k++)if(t>=F
 function fxHire(){return (.4+.6*fuelM())*(1-fxTier().disc)}
 function fxCap(){return lxc().maxJobs+lxc().maxSh+fxTier().jobs}
 /* resale: 60% of what you paid, scaled by condition; only parked, empty, idle vehicles (no job, route, Auto-line or recall) */
-const vSellP=v=>Math.round((v.paid||(VEH[v.type]||{}).cost||0)*.6*fxCond(v)/100+fupSpent(v)*.5),vSellOk=v=>!!v&&!v.arr&&!v.job&&!v.route&&!v.al&&!v.cargo&&v.hm==null;
+const vSellP=v=>Math.round((v.paid||(VEH[v.type]||{}).cost||0)*.6*fxCond(v)/100+fupSpent(v)*.5),vSellOk=v=>!!v&&!v.arr&&!v.job&&!v.lco&&!v.route&&!v.al&&!v.cargo&&v.hm==null;
 function fxCond(v){return v&&v.cond>=0&&v.cond<=100?+v.cond:100}
 function fxUp(v){return vPrice(v)*FXM*(1+(100-fxCond(v))/100)}
 function fxFee(v){return Math.round(vPrice(v)*FXS*(100-fxCond(v))/100*(1-fxTier().sv))}
@@ -12268,7 +12268,7 @@ function alBuyLocal(n,now,want,bridge){const N=n.c,g=n.g,mk=N.id+":"+g,gn=G[g][0
   (alTick.src=alTick.src||{})[mk]=N.name+" (bought locally)";alOnce(mk+"L",bridge?`buying ${gn} in ${N.name} to bridge the gap until the next vehicle arrives`:`buying ${gn} in ${N.name} itself (cheaper than a trip, or no trip possible)`);return got}
 function alFetch(n,spare,now){const N=n.c,g=n.g,mkt=alMkt(g);
   const KM={},km=(a,b)=>{const k=a.id<b.id?a.id+"-"+b.id:b.id+"-"+a.id;return KM[k]!=null?KM[k]:(KM[k]=distKm(a,b))};
-  const idle=S.fleet.filter(v=>v.city!=null&&!v.arr&&!v.route&&!v.job&&!v.cargo&&!v.al&&v.hm==null&&CITIES[v.city]&&!unhOn(CITIES[v.city]));
+  const idle=S.fleet.filter(v=>v.city!=null&&!v.arr&&!v.route&&!v.job&&!v.lco&&!v.cargo&&!v.al&&v.hm==null&&CITIES[v.city]&&!unhOn(CITIES[v.city]));
   const src=[];for(const id in S.wh){const w=CITIES[id];if(!w||w===N||S.wh[id]==null||lxBlock(w,N))continue;const own=spare(w,g)>=1;
     if(own||mkt)src.push({w,own,km:km(w,N)})}
   if(!src.length)return "src";if(!idle.length)return "veh";
@@ -12300,7 +12300,7 @@ function alTick(now){S.alMiss=S.alMiss||{};
   for(const v of S.fleet){if(!v.al||v.arr)continue;const a=v.al,h=CITIES[a.home];
     if(a.cu){try{dvStep(v,now,0)}catch(e){console.warn("dv",e)}continue}   // custom deliveries (Deliveries dashboard), on or off
     if(a.fx){const N=CITIES[a.to],w=CITIES[a.src];if(!h||!N||!w){v.al=null;continue}
-      if(v.cargo||v.route||v.job){if(v.route||v.job)v.al=null;continue}            // waiting to unload (uninhabitable city) / taken over manually
+      if(v.cargo||v.route||v.job||v.lco){if(v.route||v.job||v.lco)v.al=null;continue}            // waiting to unload (uninhabitable city) / taken over manually
       if(a.st==="go"&&v.city===a.src){a.why="";const q=lxBlock(w,N)?0:alLoad(v,a,w,N,spare,now);
         if(q>=1){a.st="del";a.q=q;continue}
         const mk=a.to+":"+a.g+"@"+a.src;const gn=G[a.g][0].toLowerCase();alOnce(mk,a.why==="cash"?`not enough cash to load ${gn} in ${w.name} for ${N.name}`:a.why==="out"?`${w.name} ran out of ${gn}`:`${lxBlock(w,N)||"route closed"}: ${gn} not fetched for ${N.name}`);
@@ -12309,7 +12309,7 @@ function alTick(now){S.alMiss=S.alMiss||{};
       if(v.city===a.home){v.al=null;continue}
       a.st="back";if(!depart(v,CITIES[v.city],h,"",now))v.al=null;continue}
     if(v.city===a.home||!h||!hasWh(h)){v.al=null;continue}   // push: back home: free it; at drop-off: drive home empty
-    if(!v.cargo&&!v.route&&!v.job&&!depart(v,CITIES[v.city],h,"",now)){v.al=null}}
+    if(!v.cargo&&!v.route&&!v.job&&!v.lco&&!depart(v,CITIES[v.city],h,"",now)){v.al=null}}
   try{dvLines(now)}catch(e){console.warn("dv",e)}   // repeating custom lines run whether Auto-line is on or off
   if(!S.aline){if((S.dvl||[]).some(x=>x.au))S.dvl=S.dvl.filter(x=>!x.au);return}   // Auto-line off: its standing lines stop (vehicles finish the leg and drive back)
   try{alPlan(R,now)}catch(e){console.warn("al",e)}
@@ -12325,7 +12325,7 @@ function alTick(now){S.alMiss=S.alMiss||{};
         const ok=depart(v,w,n.c,n.g,now);inv[n.g]=(inv[n.g]||0)+keep;if(inv[n.g]<1e-6)delete inv[n.g];
         if(!ok){r="fuel$";break}
         v.al={home:w.id,to:n.c.id,g:n.g};(alTick.src=alTick.src||{})[mk]=w.name;alLog(`${VEH[v.type].n} #${v.id} taking ${Math.round(q)} ${gn} ${w.name} → ${n.c.name}`);n.want-=q;n.trips++;sent++;continue}
-      const sk=alTick.sk||(alTick.sk={}),nw=Object.keys(S.wh).length,nv=S.fleet.filter(v=>v.city!=null&&!v.arr&&!v.al&&!v.route&&!v.job&&!v.cargo).length,o=sk[mk];
+      const sk=alTick.sk||(alTick.sk={}),nw=Object.keys(S.wh).length,nv=S.fleet.filter(v=>v.city!=null&&!v.arr&&!v.al&&!v.route&&!v.job&&!v.lco&&!v.cargo).length,o=sk[mk];
       if(o&&o.t>now&&o.w===nw&&(o.v==null||o.v===nv)){r=o.r||"veh";break}   // a fetch that just failed is re-planned after 1 game hour (3 if prices/fuel were the problem), or sooner if a depot opens / (when vehicles were the problem) one frees up
       alFetch.q=0;r=alFetch(n,spare,now);if(r){const vv=r==="veh"||r==="cash";sk[mk]={t:now+(vv?1:3)*DAYMS,w:nw,v:vv?nv:null,r};break}
       delete sk[mk];n.want-=alFetch.q||0;n.trips++;sent++}
@@ -12383,13 +12383,13 @@ function alHtml(){const A=S.fleet.filter(v=>v.al&&!v.al.cu),run=A.filter(v=>!v.a
    v.hm = city a recalled vehicle drives back to once parked. Both run inside alTick, so the offline catch-up covers them too. */
 const dvLine=id=>(S.dvl||[]).find(x=>x.id===id);
 const dvCityOk=c=>!!c&&(hasWh(c)||Object.keys(S.own[c.id]||{}).length>0);
-const dvIdle=v=>v.city!=null&&!v.arr&&!v.route&&!v.job&&!v.cargo&&!v.al&&v.hm==null&&!!CITIES[v.city];
+const dvIdle=v=>v.city!=null&&!v.arr&&!v.route&&!v.job&&!v.lco&&!v.cargo&&!v.al&&v.hm==null&&!!CITIES[v.city];
 function dvHome(v,now){const H=CITIES[v.hm],c=CITIES[v.city];
-  if(v.route||v.job||!H||!c||v.city===v.hm){delete v.hm;return}if(v.cargo)return;   // still holding cargo it cannot unload yet: try later
+  if(v.route||v.job||v.lco||!H||!c||v.city===v.hm){delete v.hm;return}if(v.cargo)return;   // still holding cargo it cannot unload yet: try later
   if(lxBlock(c,H)||!lxVehOK(v,c,H)||!depart(v,c,H,"",now))delete v.hm}
 function dvStep(v,now,depth){const a=v.al,line=a.ln?dvLine(a.ln):null,live=a.ln?!!(line&&line.on):true,H=CITIES[a.home],W=CITIES[a.src],N=CITIES[a.to],here=CITIES[v.city];
   if(!H||!W||!N||!G[a.g]||!here){v.al=null;return}
-  if(v.route||v.job){v.al=null;if(line){line.on=false;line.why="vehicle was given other work"}return}
+  if(v.route||v.job||v.lco){v.al=null;if(line){line.on=false;line.why="vehicle was given other work"}return}
   if(v.cargo)return;   // waiting to unload
   const gn=G[a.g][0].toLowerCase(),nm=`${VEH[v.type].n} #${v.id}`,why=m=>{a.why=m;if(line)line.why=m};
   if(a.st==="del"){if(v.city===a.to&&line){line.n=(line.n||0)+1;line.qd=(line.qd||0)+(a.lq||0)}
@@ -12416,7 +12416,7 @@ function dvStep(v,now,depth){const a=v.al,line=a.ln?dvLine(a.ln):null,live=a.ln?
 function dvLines(now){for(const line of S.dvl||[]){if(!line.on)continue;const v=S.fleet.find(x=>x.id===line.v);
   if(!v){line.on=false;line.why="vehicle no longer owned";continue}
   if(v.al&&v.al.cu&&v.al.ln===line.id)continue;
-  if(v.route||v.job){line.on=false;line.why="vehicle was given other work";continue}
+  if(v.route||v.job||v.lco){line.on=false;line.why="vehicle was given other work";continue}
   if(!dvIdle(v)){line.why="waiting for the vehicle";continue}
   v.al={cu:1,ln:line.id,home:line.src,src:line.src,to:line.to,g:line.g,q:line.q,st:"go"};line.why="";dvStep(v,now,0)}}
 /* Recall: turn back now (cargo goes back to where it was loaded, the manual-recall rule), then drive home. Lines keep running. */
@@ -14330,6 +14330,32 @@ function lcSort(c,k){const L=LCO(c.id);if(!L)return;const T={raw:0,mid:1,fin:2},
   L.ord.sort(k==="type"?(a,b)=>(T[G[a][2]]??3)-(T[G[b][2]]??3)||nm(a).localeCompare(nm(b)):k==="weight"?(a,b)=>L.inv[b]*tpu(b)-L.inv[a]*tpu(a):(a,b)=>nm(a).localeCompare(nm(b)));L.pin={};save();toast("Warehouse re-arranged")}
 function lcPin(c,g,row,bay){const L=LCO(c.id);if(!L||!(L.inv[g]>0))return "Nothing to move";const r=lcRowIdx(row),b=Math.floor(+bay)-1;
   if(r<0||r>=L.lv)return `Pick a row from A to ${lcRowName(L.lv-1)}`;if(!(b>=0&&b<LCBAYS))return `Pick a bay from 1 to ${LCBAYS}`;L.pin[g]=r*LCBAYS+b;save();return ""}
+/* center-to-center orders (Mark, 2026-11-05): a center requests goods from another of your logistics centers. One of your idle vehicles parked
+   in the source city shuttles loads back and forth until the order is filled (or the source runs out), then drives home to its own depot.
+   S.lco = [{id,from,to,g,q,done,v,st:"run"|"done"|"short"|"cancel",at,trips,why}]; the vehicle carries v.lco = order id until it is home. */
+function lcoList(){if(!Array.isArray(S.lco))S.lco=[];return S.lco}
+const lcoIdle=v=>v.city!=null&&!v.arr&&!v.route&&!v.job&&!v.lco&&!v.cargo&&!v.al&&v.hm==null;
+function lcoVehicles(src,dst){return (S.fleet||[]).filter(v=>v.city===src.id&&lcoIdle(v)&&VEH[v.type]&&(vcls(v.type)==="plane"||vcls(v.type)==="truck"&&landmass(src)===landmass(dst)))}
+function lcoNew(dst,srcId,g,q,vid){const src=CITIES[srcId],Ls=src&&LCO(src.id);if(!LCO(dst.id))return "No logistics center here";if(!Ls||src===dst)return "Pick another city with a logistics center";
+  if(!G[g]||!(Ls.inv[g]>0))return `That center has no ${G[g]?G[g][0].toLowerCase():"stock"}`;q=Math.min(+q||0,Ls.inv[g]);if(!(q>=.01))return "Enter an amount";
+  const v=(S.fleet||[]).find(x=>x.id===+vid);if(!v||!lcoVehicles(src,dst).includes(v))return `Pick an idle vehicle parked in ${src.name}`;
+  S.lcoN=(S.lcoN||0)+1;const o={id:S.lcoN,from:src.id,to:dst.id,g,q:Math.round(q*100)/100,done:0,v:v.id,st:"run",at:Date.now(),trips:0,why:""};lcoList().unshift(o);S.lco=S.lco.filter((x,i)=>x.st==="run"||i<40);v.lco=o.id;
+  lcLog(dst,`Order #${o.id}: ${gq(o.q)} ${G[g][0].toLowerCase()} requested from ${src.name}`);lcLog(src,`Order #${o.id}: ${gq(o.q)} ${G[g][0].toLowerCase()} to ship to ${dst.name}`);lcoStep(v,Date.now());save();return ""}
+function lcoEnd(o,st){o.st=st;o.end=Date.now();const msg=st==="done"?"filled":st==="short"?`closed: ${CITIES[o.from].name} ran out (${gq(o.done)} of ${gq(o.q)} delivered)`:"cancelled";
+  lcLog(CITIES[o.to],`Order #${o.id} ${msg}`);toast(`📦 Order #${o.id} ${msg}`)}
+function lcoCancel(id){const o=lcoList().find(x=>x.id===id);if(!o||o.st!=="run")return;lcoEnd(o,"cancel");const v=(S.fleet||[]).find(x=>x.lco===id);if(v&&!v.arr)lcoStep(v,Date.now());save()}
+/* called whenever the order's vehicle is parked */
+function lcoStep(v,t){const o=lcoList().find(x=>x.id===v.lco);if(!o){v.lco=0;return}const A=CITIES[o.from],B=CITIES[o.to];if(v.arr||!A||!B)return;
+  if(o.st==="run"&&!(LCO(o.from)&&LCO(o.to)))lcoEnd(o,"cancel");
+  const left=o.q-o.done,src=LCO(o.from),have=src?src.inv[o.g]||0:0;
+  if(v.city===o.from){if(o.st!=="run"){v.lco=0;return}if(left<.01){lcoEnd(o,"done");v.lco=0;return}
+    const take=Math.min(left,capV(v,o.g),have);if(take<.01){lcoEnd(o,"short");v.lco=0;return}
+    lcSub(A,o.g,take);if(!depart(v,A,B,null,t,{g:o.g,q:take,lco:o.id})){lcAdd(A,o.g,take);o.why="Waiting for fuel money";return}o.why="";o.trips++;return}
+  if(o.st==="run"&&(left<.01||have<.01))lcoEnd(o,left<.01?"done":"short");
+  /* at the destination (or anywhere else): drive back empty to the source depot, which is the vehicle's home */
+  if(!depart(v,CITIES[v.city]||B,A,null,t))o.why="Waiting for fuel money";else o.why=""}
+function lcoDrop(v,d){const o=lcoList().find(x=>x.id===v.cargo.lco),g=v.cargo.g,q=v.cargo.q;let fit=0;if(LCO(d.id)){fit=Math.min(q,Math.floor(lcRoom(d)/tpu(g)*100)/100);if(fit>0)lcAdd(d,g,fit)}
+  if(q-fit>0){ensureWh(d);S.inv[d.id][g]=(S.inv[d.id][g]||0)+q-fit}if(o){o.done+=q;lcLog(d,`Order #${o.id}: ${gq(q)} ${G[g][0].toLowerCase()} arrived${q-fit>0?` (${gq(q-fit)} to the warehouse: center full)`:""} · ${gq(Math.min(o.done,o.q))}/${gq(o.q)}`)}}
 function lcUnpin(c,g){const L=LCO(c.id);if(L){delete L.pin[g];save()}}
 function lcHtml(c){const L=LCO(c.id);
   if(!L)return `<div class="sec">Logistics center</div><div class="list"><div class="row"><div class="n">Open a logistics center</div><div class="d">A separate depot for goods sent between your cities. Shipments to ${E2(c.name)} unload here first: containers, pallets and a central computer that lists every product's row and bay. Starts with ${fmtT(LCROW)}; every upgrade adds a row and makes the building bigger, with no level limit. You can walk around inside.</div><button class="buy" data-act="lcopen" ${S.cash<lcCost(c)?"disabled":""}>Open ${fmt(lcCost(c))}</button></div></div>`;
