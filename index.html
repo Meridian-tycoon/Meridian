@@ -3055,7 +3055,7 @@ function shopStep(h,t,now){const short=[];
     const q=Math.round(r*6),wait=!!b.fuel&&(S.mgrEmpty[key]==null||t-S.mgrEmpty[key]<MGR_WAIT);const mf=typeof ofFee==="function"?ofFee():1.1;let gp=b.fuel?gasPlan(c,q,mf):null;
     if(wait){if(gp&&gp.dep>0){gasTake(c,key,{dep:gp.dep,buy:0,p:gp.p});delete S.mgrEmpty[key]}continue}
     // player market next: cheapest player lots of this good in this city go straight into the business, no delivery wait
-    if(t>=now-60000&&gxRestock(c,b,key,gp?gp.buy:q,gp?gp.p*mf:unitCost(b,c)*mf,gp)){delete S.mgrShort[key];continue}
+    if(t>=now-60000&&gxRestock(c,b,key,gp?gp.buy:q,gp)){delete S.mgrShort[key];continue}
     const cost=gp?gp.cost:q*unitCost(b,c)*mf;
     if(S.cash<cost){const m=S.mgrShort[key]||(S.mgrShort[key]={n:0});
       if(!m.n||now-m.n>3*DAYMS){m.n=now;const msg=`Manager couldn't restock ${b.n} in ${c.name}: needs ${cost<100?fmtC(cost):fmt(cost)}`;S.log.unshift(msg);S.log=S.log.slice(0,3);short.push(msg)}
@@ -3063,19 +3063,23 @@ function shopStep(h,t,now){const short=[];
     delete S.mgrShort[key];S.cash-=cost;try{ofRep("log",1,cost);ofSav("log",cost*(1.1/mf-1))}catch(e){}if(gp){gasTake(c,key,gp);if(gp.buy>0)S.orders.push({key,q:gp.buy,arr:t+ORDER_MIN*60000,auto:1})}else S.orders.push({key,q,arr:t+ORDER_MIN*60000,auto:1})}}
   if(short.length)toast(short.length>1?`Manager couldn't restock ${short.length} businesses — not enough cash`:short[0])}
 /* Manager auto-restock from the online player market (gdask lots) before the game supplier.
-   RSG maps a business's supply to a player-market good (1 unit = 1 unit). Only lots in the business's own city, priced at or under
-   what the game supplier would charge (incl. the manager fee), cheapest first. Bought lots go straight into the business's stock.
-   Whatever players can't cover is bought from the game supplier on the next tick. Returns true when a player buy was started. */
-const RSG={gasstation:"fuel"};
-function gxRestock(c,b,key,q,cap,gp){const g=RSG[b.k];if(!g||q<1||!gxOn())return false;gxEnsure();const uid=ON.user.uid;
+   RSG maps a business's supply to a player-market good and how much of that good one supply unit holds, in market units
+   (TPU tonnes each: beef 0.4 t, plastics 0.6 t, flour 1 t, fuel 1 kL), e.g. one cart serving has ~100 g of beef = 0.00025 units.
+   REALPX is a realistic real-world price per market unit. A manager only buys a lot priced up to REALPX x 1.1, never your own,
+   cheapest first, in the business's own city. Bought goods go straight into stock (n units = n/per supply units, rounded up to
+   whole market units). Whatever players can't cover is bought from the game supplier on the next tick. True when a buy started. */
+const RSG={gasstation:["fuel",1],cart:["beef",.00025],taco:["beef",.0002],rest:["beef",.000625],noodle:["flour",.0001],pretzel:["flour",.0001],
+  shop:["flour",.002],coffeecart:["plastics",.00002],kiosk:["plastics",.00002],smoothie:["plastics",.00002],icecream:["plastics",.00002],hotel:["plastics",.0005]};
+const REALPX={wheat:250,corn:200,flour:500,beef:2400,ore:110,coal:130,oil:550,fuel:800,plastics:800};
+function gxRestock(c,b,key,q,gp){const m=RSG[b.k];if(!m||q<1||!gxOn())return false;const [g,per]=m,cap=REALPX[g]*1.1;gxEnsure();const uid=ON.user.uid;
   const lots=PMX.ask.filter(a=>a.c===c.id&&a.g===g&&a.uid!==uid&&+a.px<=cap&&!PMX.busy["l:"+a.id]).sort((x,y)=>x.px-y.px);if(!lots.length)return false;
-  const a=lots[0],n=Math.min(q,a.q|0),px=+a.px,amt=Math.round(n*px*100)/100;if(n<1||S.cash<amt)return false;
+  const a=lots[0],n=Math.min(Math.max(1,Math.ceil(q*per-1e-9)),a.q|0),px=+a.px,amt=Math.round(n*px*100)/100;if(n<1||S.cash<amt)return false;
   if(gp&&gp.dep>0)gasTake(c,key,{dep:gp.dep,buy:0,p:gp.p});
   S.cash-=amt;PMX.busy["r:"+key]=1;PMX.busy["l:"+a.id]=1;const db=ON.db,ar=db.collection("gdask").doc(a.id),sr=db.collection("gdsale").doc(a.id+"_"+uid),FV=window.firebase.firestore.FieldValue;
   const end=()=>{delete PMX.busy["r:"+key];delete PMX.busy["l:"+a.id]};
   db.runTransaction(async tx=>{const d=await tx.get(ar);if(!d.exists)throw new Error("gone");const v=d.data();if((v.q|0)<n||+v.px!==px||v.g!==g||v.c!==c.id)throw new Error("changed");
       if((v.q|0)===n)tx.delete(ar);else tx.update(ar,{q:(v.q|0)-n});tx.set(sr,{to:v.uid,by:uid,byName:gxName(),ask:a.id,c:c.id,g,q:n,px,amt:n*px,at:FV.serverTimestamp()})})
-    .then(()=>{end();S.stock[key]=(S.stock[key]||0)+n;const msg=`Manager bought ${gq(n)} ${G[g][0].toLowerCase()} from ${String(a.name||"a player").slice(0,20)} for ${b.n} in ${c.name}: ${fmt(amt)}`;
+    .then(()=>{end();S.stock[key]=(S.stock[key]||0)+n/per;const msg=`Manager bought ${gq(n)} ${G[g][0].toLowerCase()} from ${String(a.name||"a player").slice(0,20)} for ${b.n} in ${c.name}: ${fmt(amt)}`;
       S.log.unshift(msg);S.log=S.log.slice(0,3);save();hud()},
       ()=>{end();S.cash+=amt;save();hud()});
   return true}
