@@ -74,6 +74,7 @@ function dvRows(){const now=Date.now(),out=[];
     if(a&&a.cu){ty=a.ln?"Custom line":"Custom";tc="b";plan=`${dvCn(a.src)} → ${dvCn(a.to)}${a.ln?" · repeats":""}`}
     else if(a&&a.fx){ty="Fetch";tc="y";plan=`for ${dvCn(a.to)} from ${dvCn(a.src)}${a.buy?" (buying)":""}`}
     else if(a){ty="Auto-line";tc="g";plan=`${dvCn(a.home)} → ${dvCn(a.to)}`}
+    else if(v.lco){const o=(S.lco||[]).find(x=>x.id===v.lco);ty="Center order";tc="b";plan=o?`${dvCn(o.from)} ⇄ ${dvCn(o.to)}`:"logistics center order"}
     else if(v.job){ty="Logistics";tc="b";plan="HQ shipment"}
     else if(v.route){ty="Route";tc="g";plan=`${dvCn(v.route.from)} ⇄ ${dvCn(v.route.to)}`}
     else{ty="Manual";tc="";plan=v.hm!=null?`recalled · home ${dvCn(v.hm)}`:"sent from a depot"}
@@ -82,7 +83,8 @@ function dvRows(){const now=Date.now(),out=[];
     else if(a&&a.st==="go"){st=a.why?"Waiting":"Loading";sc=a.why?"p":"l"}else{st="Parked";sc=""}
     load=v.cargo?`${dvGn(v.cargo.g)} × ${lxg(v.cargo.q)}${v.cargo.rc?" (back to depot)":""}`:a&&(a.fx||a.cu)&&a.st==="go"?`${dvGn(a.g)} × ${lxg(a.q)} <small>to load</small>`:"empty";
     if(v.arr){const A=CITIES[v.from],B=CITIES[v.dest];if(A&&B)fuel=vFuel(v.type,distKm(A,B),v.cargo?v.cargo.q*tpu(v.cargo.g):0,A,B)}
-    if(v.job){rec=v.cargo&&v.cargo.rc?dvB("x",v.id,"Recall",{off:"Already heading back"}):v.arr?dvB("recall",v.id,"Recall",{tip:"Turn back; the load returns to the depot it came from"}):dvB("x",v.id,"Recall",{off:"Parked"});
+    if(v.lco){rec=dvB("x",v.id,"Recall",{off:"Cancel the order on the central computer in the logistics center"});edit=dvB("x",v.id,"Edit",{off:"Orders are managed on the central computer"});can=dvB("x",v.id,"Cancel",{off:"Cancel the order on the central computer"})}
+    else if(v.job){rec=v.cargo&&v.cargo.rc?dvB("x",v.id,"Recall",{off:"Already heading back"}):v.arr?dvB("recall",v.id,"Recall",{tip:"Turn back; the load returns to the depot it came from"}):dvB("x",v.id,"Recall",{off:"Parked"});
       edit=dvB("x",v.id,"Edit",{off:"Edit Logistics shipments in the HQ dashboard → Logistics"});can=dvB("x",v.id,"Cancel",{off:"Cancel this shipment in the HQ dashboard → Logistics"})}
     else{rec=ret?dvB("x",v.id,"Recall",{off:"Already heading home"}):dvB("recall",v.id,"Recall",{tip:a&&(a.cu&&a.ln||!a.cu)?"Turn back now; the line keeps running":"Turn back now; the load returns to the depot it came from"});
       const pre=a&&(a.fx||a.cu)&&a.st==="go"&&!v.cargo;
