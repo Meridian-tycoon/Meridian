@@ -400,7 +400,8 @@ function offShell(T,room){const o=ofs(),w=o.x1-o.x0,d=o.z1-o.z0;
   const gl=(ww,dd,x,z)=>{ofBox(T,room,ww,1,dd,0x334155,x,FY,z,{r:.5});ofBox(T,room,ww,1.5,dd,0xbfdbfe,x,FY+1,z,{op:.22,r:.1,m:.2});ofBox(T,room,ww+.04,.08,dd+.04,0x1f2937,x,FY+2.5,z,{r:.4})};
   gl(w,.08,o.cx,o.z0);gl(.08,d,o.x0,o.cz);{const dx=HW-6.5,a=o.x0,b=dx-1;gl(b-a,.08,(a+b)/2,o.z1);gl(o.x1-dx-1,.08,(dx+1+o.x1)/2,o.z1)}
   for(let i=0;i<12;i++){const x=HW-12.25+i*.5;ofBox(T,room,.5,(i+1)*.4,1.2,0x475569,x,0,zEnd()-11.35,{r:.6,m:.3})}
-  {const s=ofBox(T,room,.06,.06,Math.hypot(6,4.8),0xfacc15,HW-9.5,2.4+1,zEnd()-10.75,{r:.4});s.rotation.y=Math.PI/2;s.rotation.x=Math.atan2(4.8,6)}
+  // handrail along the stairs: a sloped bar on posts (the old y-then-x rotation left it flat, floating across the hall)
+  {const rl=Math.hypot(5.5,4.4),s=ofBox(T,room,rl,.06,.06,0xfacc15,HW-9.5,3.4,zEnd()-10.75,{r:.4});s.rotation.z=Math.atan2(4.4,5.5);for(let i=0;i<12;i+=3)ofBox(T,room,.05,1,.05,0xfacc15,HW-12.25+i*.5,(i+1)*.4,zEnd()-10.8,{r:.4})}
   ofBox(T,room,.7,1.1,.5,0x7c3aed,o.x1-.45,FY,o.cz,{r:.5});ofBox(T,room,.6,.4,.05,0x0f172a,o.x1-.45,FY+1.15,o.cz-.2,{e:0x4c1d95,ei:.6});
   sign(T,room,["OFFICE SHOP"],1.2,.3,o.x1-.45,FY+1.75,o.cz,-Math.PI/2,{bg:"#4c1d95",fg:"#fff"});
   sign(T,room,["MANAGER'S OFFICE"],3,.5,o.cx,FY+2.85,o.z0-.05,0,{bg:"#0f172a",fg:"#fbbf24",border:"#f59e0b"});
