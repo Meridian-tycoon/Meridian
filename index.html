@@ -1261,6 +1261,7 @@ const VEH={truck:{n:"Truck",cls:"truck",cap:30,spd:400,cost:60000,km:.8},hvtruck
 const vcls=t=>(VEH[t]||{}).cls||t;
 /* vehicles bought before the price rise keep their old purchase price (v.paid unset): upkeep, service and asset value use vPrice(v), so old fleets are neither refunded nor re-valued */
 const OLDC={truck:15000,ship:250000,plane:360000};
+const VEH_MULTI=100;   // most vehicles one "Buy ×N" can buy (Mark, 2026-11-05)
 const vPrice=v=>v.paid>0?v.paid:(OLDC[v.type]||VEH[v.type].cost);
 function fuelM(){const f=S.lx&&S.lx.fx;return (f&&f.fuel>=.6&&f.fuel<=2?f.fuel:1)*wevFuelF()}   // fuel price index (see FREIGHT SYSTEMS)
 const capU=(t,g)=>VEH[t].cap/tpu(g);                       // units of g one vehicle of type t loads
@@ -1421,7 +1422,7 @@ function renderInd(c){let h=cityHead(c);const d=deps(c),hp=haPrice(c),mySites=S.
       if(incoming.length)h+=`<div class="sec">Arriving</div><div class="list">`+incoming.map(v=>`<div class="row"><div class="n">${VEH[v.type].n} #${v.id}</div><div class="d">${v.cargo?`${Math.round(v.cargo.q)} ${G[v.cargo.g][0].toLowerCase()} · `:"empty · "}from ${CITIES[v.from].name} · in ${fmtDur(v.arr-Date.now())}</div><span></span></div>`).join("")+`</div>`;
       h+=`<div class="sec">Buy vehicles</div><div class="list">`;
       for(const k in VEH){const V=VEH[k];h+=`<div class="row"><div class="n">${V.n}</div><div class="d">${fmtT(V.cap)} (${lxg(V.cap)} units of 1 t goods) · ${V.spd} km/day · ${fmtc(V.km)}/km full load ($${(V.km/V.cap).toFixed(4)}/t-km)${V.cls==="truck"?" · roads only, same continent":V.cls==="ship"?" · cheap bulk, slow":" · fastest, anywhere"}</div>
-        <button class="buy" data-act="veh" data-k="${k}" ${S.cash<V.cost?"disabled":""}>Buy ${fmt(V.cost)}</button></div>`}
+        <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2"><button class="buy" data-act="veh" data-k="${k}" ${S.cash<V.cost?"disabled":""}>Buy ${fmt(V.cost)}</button><span style="display:flex;gap:4px"><input type="number" min="1" max="${VEH_MULTI}" step="1" value="2" data-vq="${k}" aria-label="How many ${V.n} to buy" title="How many to buy (max ${VEH_MULTI})" style="width:56px"><button class="buy up" data-act="vehn" data-k="${k}" title="Buy this many at ${fmt(V.cost)} each">Buy ×N</button></span></span></div>`}
       h+=`</div>`}}
   sheet.innerHTML=h;$("#cls").onclick=closeSheet}
 const inv0=(c,g)=>(S.inv[c.id]||{})[g]||0;
@@ -1462,6 +1463,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   else if(a==="whup"){const p=whUp(c);if(S.cash<p)return;S.cash-=p;S.wh[c.id]++;toast("Warehouse expanded")}
   else if(a==="sell"){if(noSell(b.dataset.g)){toast("Orbital launches can't be sold. Launch them from the Space app");return}if(G[b.dataset.g][2]==="gov"&&!govOK(c)){toast(hasTech("govlic")?"Government buyers are only in cities of size 4+":"Research the Defense contractor licence to sell this");return}if(G[b.dataset.g][2]==="gov"&&!hasHQ(c)){toast("Government contracts need a registered company: open an HQ here");return}const g=b.dataset.g,street=!hasHQ(c),q=street?Math.min(20,S.inv[c.id][g]||0):(S.inv[c.id][g]||0),v=sellGood(c,g,q)*(street?.7:1);S.cash+=v;S.earned=(S.earned||0)+v;S.inv[c.id][g]-=q;if(S.inv[c.id][g]<1e-6)delete S.inv[c.id][g];toast(`Sold ${gq(q)} ${G[g][0].toLowerCase()} for ${fmt(v)}`)}
   else if(a==="buy"){if(+b.dataset.q>10&&!hasHQ(c)){toast("Bulk buying needs an HQ here");return}const g=b.dataset.g,q=+b.dataset.q;if(g==="uranium"&&nlcNeed()){toast(nlcNeed());return}if(g==="uranium"&&!uranAnyPermit()){toast(uranNeed());return}const B=buyGood(c,g,q),p=B.v;if(S.cash<p){toast(`Need ${fmt(p)}`);return}if(stored(c)+q*tpu(g)>whCap(c)+1e-9){toast(`Not enough warehouse space: ${fmtT(whRoom(c))} free, ${q} ${G[g][0].toLowerCase()} weigh ${fmtT(q*tpu(g))}`);return}S.cash-=p;B.commit();S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Bought ${q} ${G[g][0].toLowerCase()}`)}
+  else if(a==="vehn"){const k=b.dataset.k,V=VEH[k],qi=b.closest(".row").querySelector(`[data-vq="${k}"]`),n=Math.floor(+(qi&&qi.value)||0);if(!V)return;if(!(n>=1&&n<=VEH_MULTI)){toast(`Enter a number from 1 to ${VEH_MULTI}`);return}const tot=V.cost*n;if(S.cash<tot){toast(`Need ${fmt(tot)} for ${n} ${V.n}s (you can afford ${Math.floor(S.cash/V.cost)})`);return}S.cash-=tot;for(let i=0;i<n;i++)S.fleet.push({id:S.nid++,type:k,city:c.id,paid:V.cost,cond:100});toast(`${n} × ${V.n} ready in ${c.name} for ${fmt(tot)}`)}
   else if(a==="veh"){const k=b.dataset.k,V=VEH[k];if(S.cash<V.cost)return;S.cash-=V.cost;S.fleet.push({id:S.nid++,type:k,city:c.id,paid:V.cost,cond:100});toast(`${V.n} ready in ${c.name}`)}
   else if(a==="ship"){shipForm=shipForm===id?null:id;renderSheet();shipInfo();return}
   else if(a==="vsell"){const v=S.fleet.find(x=>x.id===id);if(!v||!vSellOk(v)){toast("That vehicle is busy and can't be sold right now");return}
