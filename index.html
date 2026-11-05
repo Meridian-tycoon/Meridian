@@ -481,7 +481,7 @@ function evalPart(__src){return eval(__src)}
 /* shared loader for parts/<name>.js: fetched once, cached; partApi(name) is null until it has loaded */
 const PARTS={};
 function partLoad(n){const p=PARTS[n]||(PARTS[n]={api:null,p:null});if(p.api)return Promise.resolve(p.api);if(p.p)return p.p;
-  return p.p=fetch("parts/"+n+".js?v=11").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
+  return p.p=fetch("parts/"+n+".js?v=12").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
 function partApi(n){const p=PARTS[n];return p?p.api:null}
 /* Online players (Firebase). Paste your Firebase web app config object here, e.g.
    const FIREBASE_CONFIG={apiKey:"...",authDomain:"...",projectId:"...",storageBucket:"...",messagingSenderId:"...",appId:"..."};
@@ -1313,7 +1313,7 @@ const ievM=(s,o)=>{const e=S.iev[s.city];return (e&&IEV[e.t].cats.includes(o.cat
 const effHa=s=>s.reg?LAND[s.size][1]:Math.min(2,LAND[s.size][1]);
 function siteEst(s){const o=siteOp(s);if(!o||unhOn(CITIES[s.city]))return 0;const c=CITIES[s.city],ha=effHa(s)*thr(s)*ievM(s,o)*(typeof crewF==="function"?crewF(s):1);let v=0;
   for(const g in o.out)v+=o.out[g]*px(c,g);for(const g in (o.in||{}))v-=o.in[g]*px(c,g);return Math.round(v*ha-(s.crew?1:.2)*o.up*techUp(o)*LAND[s.size][1]*(1+.15*(slv(s)-1)))}
-function indUpkeep(){let u=0;for(const s of S.sites){const o=siteOp(s);if(o&&!unhOn(CITIES[s.city]))u+=(s.crew?1:.2)*o.up*techUp(o)*LAND[s.size][1]*(1+.15*(slv(s)-1))}return u}
+function indUpkeep(){let u=typeof lcWages==="function"?lcWages():0;for(const s of S.sites){const o=siteOp(s);if(o&&!unhOn(CITIES[s.city]))u+=(s.crew?1:.2)*o.up*techUp(o)*LAND[s.size][1]*(1+.15*(slv(s)-1))}return u}
 function indAssets(){let a=0;for(const s of S.sites){const c=CITIES[s.city],ha=LAND[s.size][1];if(!s.lease)a+=haPrice(c)*(ZONE[zoneOf(s)]||{pm:1}).pm*ha*.75;const o=siteOp(s);if(o)a+=o.build*ha*.5}
   for(const v of S.fleet)a+=vPrice(v)*.6*(.6+.4*fxCond(v)/100);
   for(const id in S.inv)for(const g in S.inv[id])a+=S.inv[id][g]*G[g][1]*.9;
@@ -4860,7 +4860,7 @@ function moneyRows(){const R=[],f=(n,fn)=>{let v=0;try{v=+fn()||0}catch(e){}if(N
   for(const id in S.own){const c=CITIES[id];if(!c)continue;for(const b of BIZ){if(!S.own[id][b.k])continue;uSum(id,b.k,l=>{const v=profit(b,c,l);if(v>=0)gain+=v;else{loss+=v;nl++}return 0})}}
   if(Math.abs(gain)>=.5)R.push(["Businesses (profitable ones)",gain]);if(loss)R.push([`Businesses losing money (${nl})`,loss]);
   f("Job and home rent",()=>lifeIncome());f("Rental properties",()=>propIncome());f("Developments",()=>skyIncome());f("Franchise royalties",()=>franIncome());f("Rebuild royalties",()=>royIncome());f("Auction businesses",()=>aucIncome());f("Office / military pay",()=>polIncome()+(typeof milUpkeep==="function"?milUpkeep():0));
-  f("Military upkeep",()=>-milUpkeep());f("Land & factory upkeep",()=>-indUpkeep());f("Leases and land rent",()=>-rentTotal());f("HQ upkeep and links",()=>-hqTotalUpkeep());f("Office heads' salaries",()=>-ofUpk());
+  f("Military upkeep",()=>-milUpkeep());f("Land & factory upkeep",()=>-(indUpkeep()-lcWages()));f("Logistics center staff",()=>-lcWages());f("Leases and land rent",()=>-rentTotal());f("HQ upkeep and links",()=>-hqTotalUpkeep());f("Office heads' salaries",()=>-ofUpk());
   f("Loan payments",()=>-(typeof bankPayHr==="function"?bankPayHr():S.debt*.003));f("Credit card interest",()=>{const c=B().card;return c&&!c.paidStmt?-Math.min(c.bal,c.stmt)*c.rate:0});f("War reparations",()=>{const m=S.pol&&S.pol.mil;return m&&Array.isArray(m.rep)?-m.rep.reduce((a,r)=>a+Math.min(r.left,r.per),0):0});f("Luxury items",()=>luxIncome());f("Flip homes (property tax)",()=>-flipUpk());f("Insurance & colonies",()=>-gxUpk());f("Ships",()=>ishIncome());f("Mars base",()=>mbIncome());f("Moon colonies (ore at broker price)",()=>colIncome("moon"));f("Mars colonies (ore at broker price)",()=>colIncome("mars"));f("Oil rigs (stored on board until sold)",()=>{let v=0;for(const r of (typeof rigs==="function"?rigs():[])){const d=rigDay(r),cp=rigCapU(r),st=r.st||{};if((st.fuel||0)>=cp.fuel-1e-6&&(st.oil||0)>=cp.oil-1e-6)continue;v+=d.oil*rigPx("oil")+d.fuel*rigPx("fuel")*RIGCFG.sell}return v});
   f("Tax building up (paid at year end)",()=>{const r=taxableRates(),h=EVADE.lv[evLevel()]||0;return-(r.reg*TAX_REG+r.un*TAX_UNREG)*(1-h)});
   return R.sort((a,b)=>a[1]-b[1])}
@@ -14288,7 +14288,7 @@ function LCO(id){if(!S.lc||typeof S.lc!=="object"||Array.isArray(S.lc))S.lc={};c
   L.lv=Math.max(1,Math.floor(+L.lv)||1);if(!L.inv||typeof L.inv!=="object")L.inv={};for(const g in L.inv)if(!G[g]||!(L.inv[g]>0))delete L.inv[g];
   if(!Array.isArray(L.ord))L.ord=[];L.ord=L.ord.filter((g,i,a)=>L.inv[g]>0&&a.indexOf(g)===i);for(const g in L.inv)if(!L.ord.includes(g))L.ord.push(g);
   L.rx=L.rx===0?0:1;L.ax=L.ax?1:0;if(L.log&&!Array.isArray(L.log))L.log=[];
-  if(!Array.isArray(L.veh))L.veh=[];L.veh=L.veh.filter((v,i,a)=>LCVEH[v]&&a.indexOf(v)===i);if(!L.veh.includes(L.ride))L.ride="";if(!L.upg||typeof L.upg!=="object"||Array.isArray(L.upg))L.upg={};for(const k in L.upg){const t=Math.floor(+L.upg[k]);if(!LCUPG[k]||!(t>0))delete L.upg[k];else L.upg[k]=Math.min(t,LCUPG[k].max)}if(!(L.spent>0))L.spent=0;
+  if(!Array.isArray(L.veh))L.veh=[];L.veh=L.veh.filter((v,i,a)=>LCVEH[v]&&a.indexOf(v)===i);if(!L.veh.includes(L.ride))L.ride="";if(!L.upg||typeof L.upg!=="object"||Array.isArray(L.upg))L.upg={};for(const k in L.upg){const t=Math.floor(+L.upg[k]);if(!LCUPG[k]||!(t>0))delete L.upg[k];else L.upg[k]=Math.min(t,LCUPG[k].max)}if(!(L.spent>0))L.spent=0;L.staff=Math.max(0,Math.min(LCW.max1,Math.floor(+L.staff)||0));L.mgr=L.mgr?1:0;if(!L.mgr)L.staff=Math.min(L.staff,LCW.max0);if(!(L.jobs>0))L.jobs=0;
   if(!L.pin||typeof L.pin!=="object"||Array.isArray(L.pin))L.pin={};for(const g in L.pin){const v=Math.floor(+L.pin[g]);if(!(L.inv[g]>0)||!(v>=0))delete L.pin[g];else L.pin[g]=v}return L}
 const lcHas=c=>!!(c&&LCO(c.id));
 const lcCap=c=>{const L=LCO(c.id);return L?L.lv*LCROW*(1+.25*(L.upg.rack||0)):0};
@@ -14358,12 +14358,24 @@ function lcoStep(v,t){const o=lcoList().find(x=>x.id===v.lco);if(!o){v.lco=0;ret
   if(v.city===o.from){if(o.st!=="run"){v.lco=0;return}if(left<.01){lcoEnd(o,"done");v.lco=0;return}
     /* Mark: never close early; wait at the source until a full load (or the last bit of the order) is in stock */
     const need=Math.min(left,capV(v,o.g));if(have+1e-9<need){o.why=`Waiting for stock: ${gq(have)} / ${gq(need)} for a full load`;return}const take=need;
-    lcSub(A,o.g,take);if(!depart(v,A,B,null,t,{g:o.g,q:take,lco:o.id})){lcAdd(A,o.g,take);o.why="Waiting for fuel money";return}o.why="";o.trips++;return}
+    lcSub(A,o.g,take);if(!depart(v,A,B,null,t,{g:o.g,q:take,lco:o.id})){lcAdd(A,o.g,take);o.why="Waiting for fuel money";return}v.arr=v.dep+(v.arr-v.dep)*(1-lcSpeed(A));o.why="";o.trips++;return}
   if(o.st==="run"&&left<.01)lcoEnd(o,"done");
   /* at the destination (or anywhere else): drive back empty to the source depot, which is the vehicle's home */
   if(!depart(v,CITIES[v.city]||B,A,null,t))o.why="Waiting for fuel money";else o.why=""}
 function lcoDrop(v,d){const o=lcoList().find(x=>x.id===v.cargo.lco),g=v.cargo.g,q=v.cargo.q;let fit=0;if(LCO(d.id)){fit=Math.min(q,Math.floor(lcRoom(d)/tpu(g)*100)/100);if(fit>0)lcAdd(d,g,fit)}
   if(q-fit>0){ensureWh(d);S.inv[d.id][g]=(S.inv[d.id][g]||0)+q-fit}if(o){o.done+=q;lcLog(d,`Order #${o.id}: ${gq(q)} ${G[g][0].toLowerCase()} arrived${q-fit>0?` (${gq(q-fit)} to the warehouse: center full)`:""} · ${gq(Math.min(o.done,o.q))}/${gq(o.q)}`)}}
+/* staff (Mark, 2026-11-05): warehouse workers and a manager, paid by the hour like other upkeep.
+   L.staff = workers, L.mgr = 1 when a manager is hired, L.jobs = forklift jobs the player finished by hand.
+   Workers make center orders turn around faster; the manager adds to that, allows a bigger crew and pays more for hands-on jobs. */
+const LCW={wk:500,mgr:3000,max0:3,max1:20,per:.025,mgrB:.1,job:1500};
+const lcWageC=c=>{const L=LCO(c.id);return L?((L.staff||0)*LCW.wk+(L.mgr?LCW.mgr:0))*PRICE[c.size]:0};
+function lcWages(){let w=0;for(const id in (S.lc||{}))if(CITIES[id]&&!unhOn(CITIES[id]))w+=lcWageC(CITIES[id]);return w}
+const lcMaxStaff=c=>{const L=LCO(c.id);return L&&L.mgr?LCW.max1:LCW.max0};
+const lcSpeed=c=>{const L=LCO(c.id);return L?Math.min(.5,(L.staff||0)*LCW.per+(L.mgr?LCW.mgrB:0)):0}; // share of trip time saved
+const lcJobPay=c=>{const L=LCO(c.id);return Math.round(LCW.job*PRICE[c.size]*(L&&L.mgr?1.5:1))};
+function lcHire(c,k,d){const L=LCO(c.id);if(!L)return "";if(k==="mgr"){L.mgr=d>0?1:0;if(!L.mgr)L.staff=Math.min(L.staff||0,LCW.max0);lcLog(c,L.mgr?"Hired a warehouse manager":"Let the warehouse manager go");save();return ""}
+  const n=Math.max(0,Math.min(lcMaxStaff(c),(L.staff||0)+d));if(n===(L.staff||0))return d>0?`Hire a manager to grow past ${LCW.max0} workers`:"";L.staff=n;lcLog(c,d>0?`Hired a worker (${n} on staff)`:`Let a worker go (${n} on staff)`);save();return ""}
+function lcJobDone(c){const L=LCO(c.id);if(!L)return 0;const p=lcJobPay(c);S.cash+=p;L.jobs=(L.jobs||0)+1;lcLog(c,`Forklift job done: +${fmt(p)}`);save();return p}
 function lcUnpin(c,g){const L=LCO(c.id);if(L){delete L.pin[g];save()}}
 function lcHtml(c){const L=LCO(c.id);
   if(!L)return `<div class="sec">Logistics center</div><div class="list"><div class="row"><div class="n">Open a logistics center</div><div class="d">A separate depot for goods sent between your cities. Shipments to ${E2(c.name)} unload here first: containers, pallets and a central computer that lists every product's row and bay. Starts with ${fmtT(LCROW)}; every upgrade adds a row and makes the building bigger, with no level limit. You can walk around inside.</div><button class="buy" data-act="lcopen" ${S.cash<lcCost(c)?"disabled":""}>Open ${fmt(lcCost(c))}</button></div></div>`;
@@ -14377,6 +14389,7 @@ function lcHtml(c){const L=LCO(c.id);
    for(const m of mk)h+=`<div class="row own"><div class="n">${G[m.g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(m.q)} left</span></div><div class="d">${m.w} ${m.id} · asking ${fmt(m.p)}${m.sold?` · ${gq(m.sold)} sold`:""}</div></div>`;
    const lg=L.log||[];h+=`</div><div class="sec">Activity</div><div class="list">`+(lg.length?lg.slice(0,15).map(([t,x])=>`<div class="row"><div class="d" style="grid-column:1/-1"><span style="color:var(--muted);font-family:var(--mono)">${new Date(t).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span> · ${E2(x)}</div></div>`).join(""):`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">No activity yet.</p>`)}
   h+=`</div><div class="list">
+   <div class="row"><div class="n">Staff: ${L.staff||0} worker${L.staff===1?"":"s"}${L.mgr?" + manager":""}</div><div class="d">Wages ${fmt(lcWageC(c))}/hr. Orders turn around ${Math.round(lcSpeed(c)*100)}% faster. Hire and fire at the reception office inside.</div><button class="buy up" data-act="lcin">Go inside</button></div>
    <div class="row"><div class="n">Upgrade storage · Level ${L.lv+1}</div><div class="d">+${fmtT(LCROW*(1+.25*(L.upg.rack||0)))} and a new rack row (Row ${lcRowName(L.lv)}). The building gets longer.</div><button class="buy up" data-act="lcup" ${S.cash<lcUp(c,L.lv)?"disabled":""}>${fmt(lcUp(c,L.lv))}</button></div>
    <div class="row"><div class="n">Auto-expand when full: ${L.ax?"On":"Off"}</div><div class="d">When a delivery doesn't fit, buy as many upgrades as it needs (if you have the cash). Off: the extra goes to the warehouse.</div><button class="buy up" data-act="lcax">${L.ax?"Turn off":"Turn on"}</button></div>
    <div class="row"><div class="n">Receive deliveries: ${L.rx?"On":"Off"}</div><div class="d">${L.rx?"Shipments to this city unload into the center first.":"Shipments go to the warehouse; the center only keeps what's inside."}</div><button class="buy up" data-act="lcrx">${L.rx?"Turn off":"Turn on"}</button></div>
