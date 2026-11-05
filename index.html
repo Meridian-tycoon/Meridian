@@ -2118,7 +2118,7 @@ function pdShipHtml(c){const inv=S.inv[c.id]||{},gs=GK.filter(g=>(inv[g]||0)>=1)
 function pdDoShip(c){const inv=S.inv[c.id]||{},g=pdSG,d=CITIES[+pdSD];if(!d||!lcHas(d)||!(inv[g]>=1))return toast("Pick a product and a logistics center");
   const same=d.id===c.id,v=same?null:pdIdle(c).find(x=>String(x.id)===pdSV);if(!same&&!v)return toast("No free vehicle here");
   const max=Math.floor(same?Math.min(inv[g],lcRoom(d)/tpu(g)):Math.min(inv[g],capV(v,g))),q=Math.min(max,Math.floor(+pdSQ||0));if(!(q>=1))return toast(same?"The logistics center is full":"Enter an amount");
-  if(same){inv[g]-=q;if(inv[g]<1e-6)delete inv[g];lcAdd(d,g,q);toast(`Moved ${gq(q)} ${G[g][0].toLowerCase()} into the logistics center`)}
+  if(same){inv[g]-=q;if(inv[g]<1e-6)delete inv[g];lcAdd(d,g,q);lcLog(d,`${gq(q)} ${G[g][0].toLowerCase()} moved in from the depot`);toast(`Moved ${gq(q)} ${G[g][0].toLowerCase()} into the logistics center`)}
   else{if(!depart(v,c,d,null,0,{g,q}))return toast("Not enough cash for fuel");inv[g]-=q;if(inv[g]<1e-6)delete inv[g];v.al=null;v.route=null;toast(`${VEH[v.type].n} #${v.id} left for ${d.name} with ${gq(q)} ${G[g][0].toLowerCase()}`)}
   pdSQ="";commit()}
 /* the dashboard is its own window over the map */
@@ -2226,14 +2226,15 @@ function runMarket(now){if(!S.lst.length){S.mlast=now;return}
     for(const key of keys){const [cid,g]=key.split(":"),c=CITIES[+cid];const stockLv=mLevel(c,g,t);if(stockLv>=LOW)continue;
       let want=(.8-stockLv)*mT(c,g)*.25;const cap=maxPay(c,g,stockLv);                    // buyers trickle in: a quarter of the gap each minute
       const offers=S.lst.filter(l=>l.city==cid&&l.g===g&&l.q>0&&l.p<=cap).sort((a,b)=>a.p-b.p);
-      for(const l of offers){if(want<=0)break;const n=Math.min(l.q,want);l.q-=n;l.sold=(l.sold||0)+n;pmSold(c,g,l.p,t);want-=n;const v=n*l.p*(1-FEE);S.cash+=v;S.earned=(S.earned||0)+v;
+      for(const l of offers){if(want<=0)break;const n=Math.min(l.q,want);l.q-=n;l.sold=(l.sold||0)+n;pmSold(c,g,l.p,t);want-=n;if(l.src==="lc")(l.log=l.log||[0,0],l.log[0]+=n,l.log[1]+=n*l.p*(1-FEE));const v=n*l.p*(1-FEE);S.cash+=v;S.earned=(S.earned||0)+v;
         S.mkt[key].L=Math.min(1,S.mkt[key].L+n/mT(c,g));const sk=c.name+"|"+g;sold[sk]=sold[sk]||[0,0];sold[sk][0]+=n;sold[sk][1]+=v}}}
   S.mlast+=mins*MIN;
+  for(const l of S.lst)if(l.log&&l.log[0]>0){const c=CITIES[l.city];if(lcHas(c))lcLog(c,`NPCs bought ${gq(l.log[0])} ${G[l.g][0].toLowerCase()} from listing #${l.id}: +${fmt(l.log[1])}`);l.log=null}
   for(const l of S.lst)if(l.q<1e-6&&!l.doneAt){l.doneAt=now;S.log.unshift(`Listing sold out: ${Math.round(l.sold)} ${G[l.g][0].toLowerCase()} in ${CITIES[l.city].name}`);S.log=S.log.slice(0,3)}
   S.lst=S.lst.filter(l=>!(l.doneAt&&now-l.doneAt>DAYMS));
   const ks=Object.keys(sold);if(ks.length&&mins<5){const [cn,g]=ks[0].split("|");toast(`NPCs bought ${gq(sold[ks[0]][0])} ${G[g][0].toLowerCase()} in ${cn} · +${fmt(sold[ks[0]][1])}`)}
   else if(ks.length){const tot=ks.reduce((a,k)=>a+sold[k][1],0);S.log.unshift(`Market sales while away: ${fmt(tot)}`);S.log=S.log.slice(0,3)}}
-function marketHtml(c){const inv=S.inv[c.id]||{},mine=S.lst.filter(l=>l.city===c.id);
+function marketHtml(c){const LC=LCO(c.id),inv=LC?LC.inv:{},mine=S.lst.filter(l=>l.city===c.id);
   let h=`<div class="sec">Player market · ${FEE*100}% fee</div>`;
   if(!hasHQ(c))return h+`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Open an HQ in ${c.name} to post listings. NPC buyers come by every minute, but only for goods the city is running low on.</p>`+gxHtml(c);
   h+=`<div class="list">`;
@@ -2244,12 +2245,13 @@ function marketHtml(c){const inv=S.inv[c.id]||{},mine=S.lst.filter(l=>l.city===c
   const goods=GK.filter(g=>inv[g]>=1&&G[g][2]!=="gov");
   if(goods.length){const g0=mkForm.g&&goods.includes(mkForm.g)?mkForm.g:goods[0],stockLv=mLevel(c,g0),st=mState(stockLv);
     h+=`<div style="display:grid;gap:8px;padding:10px 0;font-size:13px;border-bottom:1px solid var(--line)"><b>New listing</b>
-    <select id="mk-g" style="width:100%;font:inherit;padding:6px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px">${goods.map(g=>`<option value="${g}" ${g===g0?"selected":""}>${G[g][0]} (${gq(inv[g])} in warehouse)</option>`).join("")}</select>
+    <select id="mk-g" style="width:100%;font:inherit;padding:6px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px">${goods.map(g=>`<option value="${g}" ${g===g0?"selected":""}>${G[g][0]} (${gq(inv[g])} in logistics center)</option>`).join("")}</select>
     <div class="d" style="color:var(--muted)">Stock here ${Math.round(stockLv*100)}% <span class="tag ${st[1]}">${st[0]}</span> · reference price ${fmt(mRef(c,g0))}${stockLv<LOW?` · buyers pay up to ${fmt(maxPay(c,g0,stockLv))} right now`:""}</div>
     <div style="display:flex;gap:8px"><label style="flex:1">Quantity<input id="mk-q" type="number" min="1" max="${Math.floor(inv[g0])}" value="${Math.floor(inv[g0])}" style="width:100%;box-sizing:border-box;font:inherit;padding:6px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px"></label>
     <label style="flex:1">Price each<input id="mk-p" type="number" min="0" step="0.01" value="${(mRef(c,g0)*1.1).toFixed(2)}" style="width:100%;box-sizing:border-box;font:inherit;padding:6px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px"></label></div>
     <button class="buy" data-mk="post">Post listing</button>${gxOn()?`<button class="buy up" data-gx="list">List for other players</button>`:""}</div>`}
-  else if(!mine.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Nothing in this warehouse to list.</p>`;
+  else if(!LC)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Listings ship out of your logistics center, so every sale can be tracked there. Open one in ${c.name} from the Depot tab first.</p>`;
+  else h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Nothing in the ${c.name} logistics center to list. Move goods in from the warehouse (Depot tab) or ship them here.</p>`;
   return h+`</div>`+gxHtml(c)}
 let mkForm={};
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-bzf],[data-bzt]");if(!b||!sel)return;
@@ -2258,10 +2260,10 @@ sheet.addEventListener("change",e=>{const t=e.target;if(t.id==="bz-s"){bzF.s=t.v
 sheet.addEventListener("input",e=>{const t=e.target;if(t.id!=="bz-q")return;bzF.q=t.value.slice(0,40);const n=t.selectionStart;renderSheet();const q=$("#bz-q");if(q){q.focus();try{q.setSelectionRange(n,n)}catch(x){}}});
 sheet.addEventListener("change",e=>{if(e.target.id==="mk-g"&&sel){mkForm.g=e.target.value;renderSheet()}});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-mk]");if(!b||!sel)return;const c=sel,a=b.dataset.mk;
-  if(a==="post"){const g=$("#mk-g").value,inv=S.inv[c.id]||{},q=Math.min(+$("#mk-q").value||0,inv[g]||0),p=+$("#mk-p").value;
-    if(!(q>=1)||!(p>0)){toast("Enter a quantity and a price");return}inv[g]-=q;if(inv[g]<1e-6)delete inv[g];
-    S.lst.push({id:S.nid++,city:c.id,g,q,p,sold:0});mkForm={};toast(`Listed ${Math.floor(q)} ${G[g][0].toLowerCase()} at ${fmt(p)} each`)}
-  else if(a==="cancel"){const l=S.lst.find(x=>x.id===+b.dataset.id);const inv=S.inv[c.id]=S.inv[c.id]||{};inv[l.g]=(inv[l.g]||0)+l.q;S.lst=S.lst.filter(x=>x!==l);toast("Listing cancelled, goods back in the warehouse")}
+  if(a==="post"){const L=LCO(c.id);if(!L){toast("Open a logistics center here first");return}const g=$("#mk-g").value,q=Math.min(+$("#mk-q").value||0,L.inv[g]||0),p=+$("#mk-p").value;
+    if(!(q>=1)||!(p>0)){toast("Enter a quantity and a price");return}lcSub(c,g,q);
+    const id=S.nid++;S.lst.push({id,city:c.id,g,q,p,sold:0,src:"lc"});lcLog(c,`Listed ${gq(q)} ${G[g][0].toLowerCase()} on the market at ${fmt(p)} (#${id})`);mkForm={};toast(`Listed ${Math.floor(q)} ${G[g][0].toLowerCase()} at ${fmt(p)} each`)}
+  else if(a==="cancel"){const l=S.lst.find(x=>x.id===+b.dataset.id);if(!l)return;S.lst=S.lst.filter(x=>x!==l);toast(`Listing cancelled, goods back in the ${pmBack(c,l.g,l.q,l.src)}`);if(l.src==="lc")lcLog(c,`Listing #${l.id} cancelled: ${gq(l.q)} ${G[l.g][0].toLowerCase()} back`)}
   else return;commit()});
 
 /* ---------- online goods exchange: players buy each other's listings (Firestore gdask / gdsale, same pattern as the ore exchange) ----------
@@ -2281,24 +2283,25 @@ function gxTidy(){const s=PMXS();for(const id in s.esc)if(!(s.esc[id].q>0))delet
 function gxClaim(d){const s=PMXS(),v=d.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():0,key=d.id+"@"+at;if(v.to!==PMX.on)return;
   if(!s.seen.includes(key)){const q=Math.floor(+v.q||0),amt=+v.amt||0;
     if(q>0&&amt>0&&amt<=1e13&&G[v.g]){s.seen.unshift(key);s.seen=s.seen.slice(0,300);const net=Math.round(amt*(1-FEE));S.cash+=net;S.earned=(S.earned||0)+net;
-      const e=s.esc[v.ask];if(e){e.q-=q;gxTidy()}const who=String(v.byName||"A player").slice(0,20);
+      const e=s.esc[v.ask],who=String(v.byName||"A player").slice(0,20);if(e){if(e.src&&lcHas(CITIES[e.c]))lcLog(CITIES[e.c],`${who} bought ${gq(q)} ${G[v.g][0].toLowerCase()} from your player listing: +${fmt(net)}`);e.q-=q;gxTidy()}
       toast(`🛒 ${who} bought ${gq(q)} ${G[v.g][0].toLowerCase()} from you${CITIES[v.c]?" in "+CITIES[v.c].name:""}: +${fmt(net)}`);
       try{S.log.unshift(`${who} bought ${gq(q)} ${G[v.g][0].toLowerCase()} from you`);S.log=S.log.slice(0,3)}catch(x){}save();hud();gxRefresh()}}
   d.ref.delete().catch(()=>{})}
 function gxList(c){if(!gxOn())return toast("Sign in to the online world (Saves › Online) to sell to other players");
-  const g=$("#mk-g")&&$("#mk-g").value,inv=S.inv[c.id]||{},q=Math.floor(+($("#mk-q")||{}).value||0),px=Math.round((+($("#mk-p")||{}).value||0)*100)/100,s=PMXS();
+  const LC=LCO(c.id);if(!LC)return toast("Open a logistics center here first: listings ship out of it");
+  const g=$("#mk-g")&&$("#mk-g").value,inv=LC.inv,q=Math.floor(+($("#mk-q")||{}).value||0),px=Math.round((+($("#mk-p")||{}).value||0)*100)/100,s=PMXS();
   if(!G[g]||G[g][2]==="gov")return toast("Pick something to sell");if(q<1)return toast("Enter a quantity");if(q>PMXCFG.qMax)return toast(`At most ${PMXCFG.qMax.toLocaleString("en-US")} per listing`);
-  if((+inv[g]||0)<q)return toast(`Only ${Math.floor(+inv[g]||0)} in this warehouse`);
+  if((+inv[g]||0)<q)return toast(`Only ${Math.floor(+inv[g]||0)} in the logistics center`);
   if(!(px>0))return toast("Enter a price");
   if(PMX.busy.list)return;PMX.busy.list=1;
-  const ref=ON.db.collection("gdask").doc();inv[g]-=q;if(inv[g]<1e-6)delete inv[g];s.esc[ref.id]={c:c.id,g,q,px,at:Date.now()};mkForm={};save();hud();renderSheet();
+  const ref=ON.db.collection("gdask").doc();lcSub(c,g,q);s.esc[ref.id]={c:c.id,g,q,px,at:Date.now(),src:"lc"};lcLog(c,`Listed ${gq(q)} ${G[g][0].toLowerCase()} for other players at ${fmt(px)}`);mkForm={};save();hud();renderSheet();
   ref.set({uid:ON.user.uid,name:gxName(),c:c.id,g,q,px,at:window.firebase.firestore.FieldValue.serverTimestamp()})
     .then(()=>{delete PMX.busy.list;toast(`Listed ${gq(q)} ${G[g][0].toLowerCase()} for other players at ${fmt(px)} each`);gxRefresh()},
-      e=>{delete PMX.busy.list;const x=s.esc[ref.id];if(x){const iv=S.inv[x.c]=S.inv[x.c]||{};iv[x.g]=(+iv[x.g]||0)+x.q;delete s.esc[ref.id]}save();hud();toast("Listing refused: "+(e&&e.code||e));gxRefresh()})}
+      e=>{delete PMX.busy.list;const x=s.esc[ref.id];if(x){pmBack(CITIES[x.c],x.g,x.q,x.src);lcLog(CITIES[x.c],`Player listing refused: ${gq(x.q)} ${G[x.g][0].toLowerCase()} back`);delete s.esc[ref.id]}save();hud();toast("Listing refused: "+(e&&e.code||e));gxRefresh()})}
 function gxCancel(id){const s=PMXS(),e=s.esc[id];if(!e||PMX.busy[id])return;if(!gxOn()||PMX.on!==ON.user.uid)return toast("Sign in to cancel a player listing");PMX.busy[id]=1;
   const ref=ON.db.collection("gdask").doc(id);
   ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)return e.q;const q=Math.floor(+d.data().q||0);t.delete(ref);return q})
-    .then(q=>{delete PMX.busy[id];q=Math.max(0,Math.min(e.q,q));const inv=S.inv[e.c]=S.inv[e.c]||{};inv[e.g]=(+inv[e.g]||0)+q;e.q-=q;gxTidy();save();hud();toast("Listing cancelled, goods back in the warehouse");gxRefresh()},
+    .then(q=>{delete PMX.busy[id];q=Math.max(0,Math.min(e.q,q));const w=pmBack(CITIES[e.c],e.g,q,e.src);if(e.src)lcLog(CITIES[e.c],`Player listing cancelled: ${gq(q)} ${G[e.g][0].toLowerCase()} back`);e.q-=q;gxTidy();save();hud();toast(`Listing cancelled, goods back in the ${w}`);gxRefresh()},
       er=>{delete PMX.busy[id];toast("Couldn't cancel: "+(er&&er.message||er))})}
 const gxIdle=()=>(S.fleet||[]).filter(v=>!v.arr&&!v.cargo&&!v.route&&!v.job&&v.city!=null&&CITIES[v.city]);
 const gxVname=v=>`${VEH[v.type].n} #${v.id} (${CITIES[v.city].name})`;
@@ -14264,7 +14267,7 @@ const lcUp=(c,lv)=>Math.round(60000*PRICE[c.size]*Math.pow(lv,1.2)); // price fr
 function LCO(id){if(!S.lc||typeof S.lc!=="object"||Array.isArray(S.lc))S.lc={};const L=S.lc[id];if(!L||typeof L!=="object")return null;
   L.lv=Math.max(1,Math.floor(+L.lv)||1);if(!L.inv||typeof L.inv!=="object")L.inv={};for(const g in L.inv)if(!G[g]||!(L.inv[g]>0))delete L.inv[g];
   if(!Array.isArray(L.ord))L.ord=[];L.ord=L.ord.filter((g,i,a)=>L.inv[g]>0&&a.indexOf(g)===i);for(const g in L.inv)if(!L.ord.includes(g))L.ord.push(g);
-  L.rx=L.rx===0?0:1;L.ax=L.ax?1:0;return L}
+  L.rx=L.rx===0?0:1;L.ax=L.ax?1:0;if(L.log&&!Array.isArray(L.log))L.log=[];return L}
 const lcHas=c=>!!(c&&LCO(c.id));
 const lcCap=c=>{const L=LCO(c.id);return L?L.lv*LCROW:0};
 const lcUsed=c=>{const L=LCO(c.id);let t=0;if(L)for(const g in L.inv)t+=L.inv[g]*tpu(g);return t};
@@ -14275,7 +14278,13 @@ function lcAssets(){let a=0;for(const id in (S.lc||{})){const L=LCO(id);if(L)for
 /* takes up to q units of g into the center; returns the units that didn't fit */
 function lcTake(c,g,q){const L=c&&LCO(c.id);if(!L||!L.rx||!G[g]||!(q>0))return q;const w=tpu(g);
   if(L.ax){let n=0;while(lcRoom(c)+1e-9<q*w&&n<100&&S.cash>=lcUp(c,L.lv)){S.cash-=lcUp(c,L.lv);L.lv++;n++}if(n)toast(`📦 Logistics center in ${c.name} expanded to level ${L.lv}`)}
-  const fit=Math.min(q,Math.floor(lcRoom(c)/w*100)/100);if(fit>0)lcAdd(c,g,fit);return q-Math.max(0,fit)}
+  const fit=Math.min(q,Math.floor(lcRoom(c)/w*100)/100);if(fit>0){lcAdd(c,g,fit);lcLog(c,`${gq(fit)} ${G[g][0].toLowerCase()} delivered`)}return q-Math.max(0,fit)}
+/* market tracking (Mark, 2026-11-05): player market listings ship out of the city's logistics center and every move is logged on it */
+function lcLog(c,t){const L=c&&LCO(c.id);if(!L)return;if(!Array.isArray(L.log))L.log=[];L.log.unshift([Date.now(),String(t)]);L.log=L.log.slice(0,60)}
+/* goods coming back from a listing: into the logistics center when they came from it (and it still exists), else the warehouse */
+function pmBack(c,g,q,src){if(!c||!(q>0))return "warehouse";if(src==="lc"&&lcHas(c)){lcAdd(c,g,q);return "logistics center"}ensureWh(c);S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;return "warehouse"}
+function lcMkt(c){const a=S.lst.filter(l=>l.city===c.id&&l.src==="lc"&&l.q>=.01).map(l=>({g:l.g,q:l.q,p:l.p,w:"NPC market",sold:l.sold||0,id:"#"+l.id}));
+  try{const e=PMXS().esc;for(const id in e){const x=e[id];if(x.c===c.id&&x.src==="lc"&&x.q>0)a.push({g:x.g,q:x.q,p:x.px,w:"Other players",sold:0,id:""})}}catch(err){}return a}
 const lcRowName=i=>{let s="";i++;while(i>0){i--;s=String.fromCharCode(65+i%26)+s;i=Math.floor(i/26)}return s};
 /* where everything sits: products in arrival order fill row A bay 1, 2... then row B. Each bay holds LCBAY tonnes. */
 function lcLayout(c){const L=LCO(c.id),out=[],bays=[];if(!L)return {items:out,bays};let s=0;const tot=L.lv*LCBAYS;
@@ -14292,6 +14301,10 @@ function lcHtml(c){const L=LCO(c.id);
   <button class="buy" data-act="lcin" style="width:100%;margin:8px 0">🚶 Walk inside the logistics center</button><div class="list">`;
   if(!lay.items.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:8px 0">Empty. Ship goods to ${E2(c.name)} from another city's depot and they unload here.</p>`;
   for(const it of lay.items)h+=`<div class="row own"><div class="n">${G[it.g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(it.q)} · ${fmtT(it.t)}</span></div><div class="d">${it.loc} · ${it.cont?"containers":"pallets"} · worth ${fmt(it.q*px(c,it.g))} here</div><button class="buy up" data-act="lcout" data-g="${it.g}" ${wh?"":"disabled"} title="${wh?"Move to the warehouse so trucks can load it or you can sell it":"Open a warehouse here first"}">→ Warehouse</button></div>`;
+  {const mk=lcMkt(c);h+=`</div><div class="sec">On the player market · ${mk.length} listing${mk.length===1?"":"s"}</div><div class="list">`;
+   if(!mk.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">Nothing listed. Post listings from the Market tab: they ship out of this center.</p>`;
+   for(const m of mk)h+=`<div class="row own"><div class="n">${G[m.g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(m.q)} left</span></div><div class="d">${m.w} ${m.id} · asking ${fmt(m.p)}${m.sold?` · ${gq(m.sold)} sold`:""}</div></div>`;
+   const lg=L.log||[];h+=`</div><div class="sec">Activity</div><div class="list">`+(lg.length?lg.slice(0,15).map(([t,x])=>`<div class="row"><div class="d" style="grid-column:1/-1"><span style="color:var(--muted);font-family:var(--mono)">${new Date(t).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span> · ${E2(x)}</div></div>`).join(""):`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">No activity yet.</p>`)}
   h+=`</div><div class="list">
    <div class="row"><div class="n">Upgrade storage · Level ${L.lv+1}</div><div class="d">+${fmtT(LCROW)} and a new rack row (Row ${lcRowName(L.lv)}). The building gets longer.</div><button class="buy up" data-act="lcup" ${S.cash<lcUp(c,L.lv)?"disabled":""}>${fmt(lcUp(c,L.lv))}</button></div>
    <div class="row"><div class="n">Auto-expand when full: ${L.ax?"On":"Off"}</div><div class="d">When a delivery doesn't fit, buy as many upgrades as it needs (if you have the cash). Off: the extra goes to the warehouse.</div><button class="buy up" data-act="lcax">${L.ax?"Turn off":"Turn on"}</button></div>
@@ -14309,8 +14322,8 @@ function lcAct(c,a,b){const L=LCO(c.id),g=b.dataset.g;
   if(a==="lcup"){const p=lcUp(c,L.lv);if(S.cash<p)return;S.cash-=p;L.lv++;toast(`Logistics center: level ${L.lv}, Row ${lcRowName(L.lv-1)} added`)}
   else if(a==="lcax"){L.ax=L.ax?0:1}
   else if(a==="lcrx"){L.rx=L.rx?0:1}
-  else if(a==="lcout"){if(!hasWh(c))return toast("Open a warehouse here first");const q=Math.min(L.inv[g]||0,Math.floor(whRoom(c)/tpu(g)*100)/100);if(!(q>0))return toast("The warehouse is full");lcSub(c,g,q);S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;toast(`Moved ${gq(q)} ${G[g][0].toLowerCase()} to the warehouse`)}
-  else if(a==="lcfill"){const inv=S.inv[c.id]||{};let n=0;for(const k of GK){if(!(inv[k]>=1))continue;const q=Math.min(inv[k],Math.floor(lcRoom(c)/tpu(k)*100)/100);if(q>0){inv[k]-=q;lcAdd(c,k,q);n++}}toast(n?`Moved ${n} product${n>1?"s":""} into the logistics center`:"The logistics center is full")}
+  else if(a==="lcout"){if(!hasWh(c))return toast("Open a warehouse here first");const q=Math.min(L.inv[g]||0,Math.floor(whRoom(c)/tpu(g)*100)/100);if(!(q>0))return toast("The warehouse is full");lcSub(c,g,q);S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;lcLog(c,`${gq(q)} ${G[g][0].toLowerCase()} moved to the warehouse`);toast(`Moved ${gq(q)} ${G[g][0].toLowerCase()} to the warehouse`)}
+  else if(a==="lcfill"){const inv=S.inv[c.id]||{};let n=0;for(const k of GK){if(!(inv[k]>=1))continue;const q=Math.min(inv[k],Math.floor(lcRoom(c)/tpu(k)*100)/100);if(q>0){inv[k]-=q;lcAdd(c,k,q);lcLog(c,`${gq(q)} ${G[k][0].toLowerCase()} moved in from the warehouse`);n++}}toast(n?`Moved ${n} product${n>1?"s":""} into the logistics center`:"The logistics center is full")}
   else if(a==="lcmove"){if(!pendingPos||pendingPos.city!==c.id){toast("Tap Move, then pick the spot on the map");return}S.pos["lc:"+c.id]={...pendingPos};pendingPos=null;toast("Logistics center moved")}
   else if(a==="lcsell"){if(lcUsed(c)>=.05)return toast("Empty it first");if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return false}const v=lcSellV(c);S.cash+=v;delete S.lc[c.id];delete S.pos["lc:"+c.id];toast(`Logistics center sold for ${fmt(v)}`)}}
 function lcEnter(c){partLoad("logistics").then(api=>api.open(c.id)).catch(()=>toast("The logistics center didn't load. Try again."))}
