@@ -2035,7 +2035,7 @@ function flipDay(quiet){const f=flipS();
   for(const id of new Set([...Object.keys(f.list),...f.own.map(h=>h.city)]))if(CITIES[id])f.pv[id]=+flipMk(CITIES[id]).toFixed(4)}
 let flipTab="plots";
 /* per-city production dashboard (Land tab button): every farm, mine and factory in this city with hire / upgrade / pause in one place */
-let pdOn=0,pdF="all",pdS="out",pdB=0,pdZ=null,pdK="s",pdO=null,pdQ=1,pdSell=null;
+let pdV="sites",pdSG="",pdSD="",pdSV="",pdSQ="",pdOn=0,pdF="all",pdS="out",pdB=0,pdZ=null,pdK="s",pdO=null,pdQ=1,pdSell=null;
 /* land shop inside the dashboard: pick plot type, size and what it makes, then buy (or rent) and build in one go */
 function pdOpts(c,z){const d=deps(c);return OPS.filter(o=>!o.gone&&(!o.dep||d.includes(o.dep))&&ZONE[z].cats.includes(o.cat)&&(!o.req||hasTech(o.req)))}
 function pdBuyHtml(c){const d=deps(c),zs=Object.keys(ZONE).filter(z=>z!=="mine"||d.length);if(!zs.includes(pdZ))pdZ=zs[0];const Z=ZONE[pdZ],ha=LAND[pdK][1],opts=pdOpts(c,pdZ);if(!opts.some(o=>o.k===pdO))pdO=opts[0]&&opts[0].k;
@@ -2060,6 +2060,8 @@ function pdHtml(c,sites){const kind=s=>{const o=siteOp(s);return !o?"empty":o.ca
   const kp=(t,v,d,col)=>`<div style="background:var(--card,rgba(127,127,127,.08));border:1px solid var(--line);border-radius:12px;padding:8px 10px"><div style="font-size:11px;color:var(--muted);font-weight:600">${t}</div><div style="font-size:18px;font-weight:700${col?";color:"+col:""}">${v}</div><div style="font-size:11px;color:var(--muted)">${d}</div></div>`;
   let h=`<div class="pd-k">${kp("Sites",sites.length,`${n("farm")} farms · ${n("mine")} mines · ${n("fact")} factories`)}${kp("Output value",fmt(val)+"/hr","estimated, at local prices")}${kp("Upkeep",fmt(upk)+"/hr","crews and land")}${kp("Need attention",att,"no crew, paused or stopped",att?"var(--bad)":"")}<button class="buy pd-buy${pdB?" up":""}" data-pd="buyp">${pdB?"✕ Close land shop":`🏗️ Buy land in ${c.name}`}</button></div>`;
   if(pdB)h+=pdBuyHtml(c);
+  h+=`<div class="pd-tabs">${[["sites","🏭 Sites"],["stock","📦 Depot stock"],["ship","🚚 Shipping"]].map(([k,t])=>`<button class="buy${pdV===k?"":" up"}" data-pd="v" data-v="${k}">${t}</button>`).join("")}</div>`;
+  if(pdV==="stock")return h+pdStockHtml(c);if(pdV==="ship")return h+pdShipHtml(c);
   h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">${[["all","All"],["farm","🌾 Farms"],["mine","⛏️ Mines"],["fact","🏭 Factories"],["att","⚠️ Needs attention"]].map(([k,t])=>`<button class="buy${pdF===k?"":" up"}" data-pd="f" data-v="${k}">${t}</button>`).join("")}</div>`;
   /* helpers: quick fixes and advice for this city */
   const ups=sites.filter(s=>siteOp(s)&&s.reg&&slv(s)<4).sort((a,b)=>supCost(a)-supCost(b)),upAll=(()=>{let m=S.cash,n=0,t=0;for(const s of ups){const k=supCost(s);if(m>=k){m-=k;n++;t+=k}}return[n,t]})(),pz=sites.filter(s=>siteOp(s)&&s.paused);
@@ -2086,10 +2088,46 @@ function pdHtml(c,sites){const kind=s=>{const o=siteOp(s);return !o?"empty":o.ca
     <span style="display:flex;flex-direction:column;gap:6px;grid-row:1/3;grid-column:2">${o?`<button class="buy${s.crew?" up":""}" data-crew="${s.id}">${s.crew?"Let crew go":`Hire crew (${siteStaff(s)})`}</button>${slv(s)<4&&s.reg?`<button class="buy" data-act="slv" data-id="${s.id}" ${S.cash<supCost(s)?"disabled":""}>${(EQ[o.cat]||[])[slv(s)]||"Mk "+(slv(s)+1)} ${fmt(supCost(s))}</button>`:slv(s)>=4?`<button class="buy up" disabled>Maxed</button>`:""}<button class="buy up" data-pause="${s.id}">${s.paused?"Resume":"Pause"}</button>`:`<button class="buy up" data-pd="land">Set up</button>`}</span></div>`}
   h+=`</div>`;
   return h}
+
+/* Depot stock and Shipping tabs of the production dashboard (Mark, 2026-11-05) */
+const pdIdle=c=>S.fleet.filter(v=>v.city===c.id&&!v.arr&&!v.job&&!v.cargo);
+function pdStockHtml(c){const inv=S.inv[c.id]||{},L=LCO(c.id),li=L?L.inv:{},gs=GK.concat(Object.keys(inv).filter(g=>G[g]&&!GK.includes(g))).filter(g=>(inv[g]||0)>=.01||(li[g]||0)>=.01);
+  let h="";if(!hasWh(c))h+=`<p class="d" style="color:var(--muted);font-size:13px">No depot in ${E2(c.name)} yet. Open one from the city's Depot tab.</p>`;
+  else{const cap=whCap(c),u=stored(c),pc=cap?Math.min(100,u/cap*100):0;h+=`<div style="border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin-bottom:8px"><div style="font-size:13px;font-weight:600">Depot · ${fmtT(u)} / ${fmtT(cap)} (${Math.round(pc)}%)</div><div class="bar" style="height:6px;margin-top:6px"><i style="width:${pc}%;background:${pc>90?"var(--bad)":"var(--own)"}"></i></div>${L?`<div style="font-size:12px;color:var(--muted);margin-top:6px">Logistics center here: ${fmtT(lcUsed(c))} / ${fmtT(lcCap(c))}</div>`:""}</div>`}
+  if(!gs.length)return h+`<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">Nothing in stock in ${E2(c.name)}.</p>`;
+  let tv=0;const rows=gs.map(g=>{const q=inv[g]||0,lq=li[g]||0,v=(q+lq)*px(c,g);tv+=v;return `<tr><td>${G[g][0]}</td><td class="n">${q>=.01?gq(q):"–"}</td><td class="n">${q>=.01?fmtT(q*tpu(g)):"–"}</td>${L?`<td class="n">${lq>=.01?gq(lq):"–"}</td>`:""}<td class="n">${fmt(px(c,g))}</td><td class="n">${fmt(v)}</td></tr>`}).join("");
+  return h+`<div class="pd-tbl"><table><thead><tr><th>Item</th><th class="n">In depot</th><th class="n">Weight</th>${L?`<th class="n">In logistics center</th>`:""}<th class="n">Price here</th><th class="n">Worth</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="${L?5:4}">Total</td><td class="n">${fmt(tv)}</td></tr></tfoot></table></div>`}
+function pdShipHtml(c){const inv=S.inv[c.id]||{},gs=GK.filter(g=>(inv[g]||0)>=1),ds=CITIES.filter(d=>lcHas(d));
+  if(!ds.length)return `<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">You don't own a logistics center yet. Open one from a city's Depot tab, then ship goods to it from here.</p>`;
+  if(!gs.length)return `<p class="d" style="color:var(--muted);font-size:13px;padding:10px 0">The depot in ${E2(c.name)} has nothing to ship.</p>`;
+  if(!gs.includes(pdSG))pdSG=gs[0];if(!ds.some(d=>String(d.id)===pdSD))pdSD=String((ds.find(d=>d.id===c.id)||ds[0]).id);
+  const d=CITIES[+pdSD],g=pdSG,have=inv[g],same=d.id===c.id,vs=same?[]:pdIdle(c).filter(v=>vcls(v.type)!=="truck"||landmass(d)===landmass(c));
+  if(!same&&!vs.some(v=>String(v.id)===pdSV))pdSV=vs.length?String(vs[0].id):"";const v=vs.find(x=>String(x.id)===pdSV);
+  const max=Math.floor(same?Math.min(have,lcRoom(d)/tpu(g)):v?Math.min(have,capV(v,g)):have),q=Math.max(0,Math.min(max,Math.floor(+pdSQ||0)));
+  const st="width:100%;font:inherit;padding:7px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;box-sizing:border-box";
+  let info="";if(same)info=`Moves straight into the logistics center here, no truck needed. Room for ${gq(Math.floor(lcRoom(d)/tpu(g)))} more.`;
+  else if(!v)info=`No free vehicle in ${E2(c.name)} that can reach ${E2(d.name)}. Buy one or wait for one to come back.`;
+  else{const km=distKm(c,d),fuel=vFuel(v.type,km,q*tpu(g),c,d);info=`${VEH[v.type].n} #${v.id} carries up to ${gq(Math.floor(capV(v,g)))} · ${Math.round(km).toLocaleString()} km · arrives in ${fmtDur(legMs(v,c,d))} · fuel ${fmt(fuel)}${LCO(d.id).rx?"":" · receiving is off there, so it unloads into the warehouse"}`}
+  return `<div class="pd-ship">
+   <label>Product<select data-pdi="g" style="${st}">${gs.map(k=>`<option value="${k}"${k===g?" selected":""}>${G[k][0]} (${gq(inv[k])} in depot)</option>`).join("")}</select></label>
+   <label>Send to logistics center<select data-pdi="d" style="${st}">${ds.map(x=>`<option value="${x.id}"${x.id===d.id?" selected":""}>${E2(x.name)}${x.id===c.id?" (this city)":""} · ${fmtT(lcRoom(x))} free</option>`).join("")}</select></label>
+   ${same?"":`<label>Vehicle<select data-pdi="v" style="${st}" ${vs.length?"":"disabled"}>${vs.length?vs.map(x=>`<option value="${x.id}"${x===v?" selected":""}>${VEH[x.type].n} #${x.id}</option>`).join(""):"<option>None free here</option>"}</select></label>`}
+   <label>Amount (max ${gq(max)})<span style="display:flex;gap:6px"><input data-pdi="q" type="number" min="1" max="${max}" step="1" value="${pdSQ}" placeholder="How many?" style="${st}"><button class="buy up" data-pd="shmax" data-v="${max}">Max</button></span></label>
+   <div class="d" style="color:var(--muted);font-size:13px">${info}</div>
+   <button class="buy" data-pd="ship" ${same||v?"":"disabled"}>${same?"Move":"Ship"} ${G[g][0].toLowerCase()} to ${E2(d.name)}</button></div>`}
+function pdDoShip(c){const inv=S.inv[c.id]||{},g=pdSG,d=CITIES[+pdSD];if(!d||!lcHas(d)||!(inv[g]>=1))return toast("Pick a product and a logistics center");
+  const same=d.id===c.id,v=same?null:pdIdle(c).find(x=>String(x.id)===pdSV);if(!same&&!v)return toast("No free vehicle here");
+  const max=Math.floor(same?Math.min(inv[g],lcRoom(d)/tpu(g)):Math.min(inv[g],capV(v,g))),q=Math.min(max,Math.floor(+pdSQ||0));if(!(q>=1))return toast(same?"The logistics center is full":"Enter an amount");
+  if(same){inv[g]-=q;if(inv[g]<1e-6)delete inv[g];lcAdd(d,g,q);toast(`Moved ${gq(q)} ${G[g][0].toLowerCase()} into the logistics center`)}
+  else{if(!depart(v,c,d,null,0,{g,q}))return toast("Not enough cash for fuel");inv[g]-=q;if(inv[g]<1e-6)delete inv[g];v.al=null;v.route=null;toast(`${VEH[v.type].n} #${v.id} left for ${d.name} with ${gq(q)} ${G[g][0].toLowerCase()}`)}
+  pdSQ="";commit()}
 /* the dashboard is its own window over the map */
 let pdC=null;
 function pdOpen(c){pdC=c;pdF="all";pdB=0;let w=document.getElementById("pdw");if(!w){w=document.createElement("div");w.id="pdw";
   if(!document.getElementById("pd-css")){const st=document.createElement("style");st.id="pd-css";st.textContent=`.pd-k{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 8px}.pd-k .pd-buy{grid-column:1/-1}
+.pd-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.pd-tbl{overflow:auto}.pd-tbl table{width:100%;border-collapse:collapse;font-size:13px}.pd-tbl th{text-align:left;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line)}.pd-tbl td{padding:7px 8px;border-bottom:1px solid var(--line)}.pd-tbl .n{text-align:right;font-family:var(--mono)}.pd-tbl tfoot td{font-weight:700}
+.pd-ship{display:grid;gap:10px;max-width:560px;font-size:13px}.pd-ship label{display:grid;gap:4px;font-weight:600}
 #pdw-m .pd-adv{border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin-bottom:8px}
 @media(min-width:900px){#pdw-m{padding:20px 28px 40px!important}.pd-k{grid-template-columns:repeat(4,1fr);gap:12px}.pd-k .pd-buy{grid-column:1;grid-row:2}.pd-k>div{padding:14px 16px!important}.pd-k>div>div:nth-child(2){font-size:26px!important}
 #pdw-m .pd-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:12px}#pdw-m .pd-list>.row{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0}
@@ -2097,7 +2135,7 @@ function pdOpen(c){pdC=c;pdF="all";pdB=0;let w=document.getElementById("pdw");if
 @media(min-width:900px){#pdw>div{border-left:1px solid var(--line);border-right:1px solid var(--line)}}`;document.head.appendChild(st)}
   w.style.cssText="position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.55);display:flex;justify-content:center;align-items:stretch";
   w.innerHTML=`<div style="position:relative;color:var(--ink,#e6edf7);max-width:1400px;width:100%;height:100%;overflow:auto;border-radius:0;margin:0;padding:0;background:var(--bg,#0b1220)"><div style="position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);background:inherit"><span style="font-size:22px">🏭</span><b id="pdw-t" style="flex:1;font-size:17px"></b><button class="x" data-pd="x" aria-label="Close">×</button></div><div id="pdw-m" style="padding:12px 16px 40px"></div></div>`;
-  document.body.appendChild(w);w.addEventListener("click",pdClick)}w.style.display="flex";pdRender()}
+  document.body.appendChild(w);w.addEventListener("click",pdClick);w.addEventListener("change",e=>{const k=e.target.dataset.pdi;if(!k||k==="q")return;const v=e.target.value;if(k==="g")pdSG=v;else if(k==="d")pdSD=v;else if(k==="v")pdSV=v;pdRender()});w.addEventListener("input",e=>{if(e.target.dataset.pdi==="q")pdSQ=e.target.value})}w.style.display="flex";pdRender()}
 function pdClose(){const w=document.getElementById("pdw");if(w)w.style.display="none";pdC=null}
 function pdRender(){const w=document.getElementById("pdw");if(!w||!pdC)return;w.querySelector("#pdw-t").textContent=`Production · ${pdC.name}`;w.querySelector("#pdw-m").innerHTML=pdHtml(pdC,S.sites.filter(s=>s.city===pdC.id))}
 function pdClick(e){if(!e.target.closest("[data-pd=sellall]"))pdSell=null;if(e.target.id==="pdw"){pdClose();return}const b=e.target.closest("[data-pd],[data-crew],[data-pause],[data-act]");if(!b||b.disabled||!pdC)return;e.stopPropagation();const c=pdC;
@@ -2106,7 +2144,7 @@ function pdClick(e){if(!e.target.closest("[data-pd=sellall]"))pdSell=null;if(e.t
   else{const a=b.dataset.pd;
     if(a==="x"){pdClose();return}
     if(a==="land"){pdClose();tab="ind";flipTab="plots";openCity(c);return}
-    if(a==="f")pdF=b.dataset.v;else if(a==="s")pdS=b.dataset.v;
+    if(a==="f")pdF=b.dataset.v;else if(a==="s")pdS=b.dataset.v;else if(a==="v")pdV=b.dataset.v;else if(a==="shmax")pdSQ=b.dataset.v;else if(a==="ship")pdDoShip(c);
     else if(a==="hireallw"){let k=0;for(const s of S.sites)if(siteOp(s)&&!s.crew){s.crew=true;k++}toast(k?`Crews hired at ${k} site${k>1?"s":""} in every city. Wages start now.`:"Every site already has a crew");commit()}
     else if(a==="upallw"){let k=0,t=0;const l=S.sites.filter(s=>siteOp(s)&&s.reg&&slv(s)<4).sort((x,y)=>supCost(x)-supCost(y));for(const s of l){const q=supCost(s);if(S.cash>=q){S.cash-=q;t+=q;s.lv=slv(s)+1;k++}}toast(k?`Upgraded ${k} site${k>1?"s":""} across all cities for ${fmt(t)}`:l.length?"Not enough cash for an upgrade":"Nothing left to upgrade");commit()}
     else if(a==="fireallw"||a==="fireall"){let k=0;for(const s of S.sites)if(s.crew&&(a==="fireallw"||s.city===c.id)){s.crew=false;k++}toast(k?`Let ${k} crew${k>1?"s":""} go${a==="fireall"?" in "+c.name:" in every city"}. Sites run slower without them.`:"No crews to let go");commit()}
