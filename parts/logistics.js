@@ -136,13 +136,17 @@ function rackSig(){const c=CITIES[W.city],L=L0(),B=lcBay(c)/4;return L.lv+"|"+L.
 function freeSpot(){for(let i=0;i<40;i++){const x=(Math.random()*2-1)*(HW-2),z=zBack()+2+Math.random()*(zEnd()-zBack()-5);if(!blocked(x,z))return {x,z}}return {x:0,z:zEnd()-6}}
 const laneX=x=>{let best=null;for(let b=0;b<W.nb;b++)for(const s of [-1,1]){const lx=blkX(b)+s*(BAYS*BW/2+1.7);if(best==null||Math.abs(lx-x)<Math.abs(best-x))best=lx}return best};
 function route(w){const t=freeSpot(),lx=laneX(w.x);w.path=Math.abs(t.z-w.z)>2?[{x:lx,z:w.z},{x:lx,z:t.z},t]:[t];w.wait=0}
-function life(T,sc){const c=CITIES[W.city],L=L0();W.wk=[];W.sig=rackSig();W.tk=null;W.tkT=performance.now()+4000;W.nk=isNight()?1:0;
-  const n=Math.min(8,L.staff||0),nf=Math.min(2,Math.floor(n/3));
-  for(let i=0;i<n;i++){const fork=i<nf,g=new T.Group(),p=person(T,fork?0x334155:0xea580c);g.add(p);let legs=p.userData.legs;
+/* keep the people on the floor in step with the payroll: up to 16 shown (a third on forklifts, max 4), plus the manager */
+function crew(){const T=W.T,sc=W.scene,L=L0();if(!T||!sc||!W.wk)return;const n=Math.min(16,L.staff||0),nf=Math.min(4,Math.floor(n/3));
+  const drop=g=>{sc.remove(g);g.traverse(o=>{if(o.geometry)o.geometry.dispose()})};
+  while(W.wk.length>n)drop(W.wk.pop().g);
+  while(W.wk.length<n){const fork=W.wk.filter(w=>w.fork).length<nf,g=new T.Group(),p=person(T,fork?0x334155:0xea580c);g.add(p);let legs=p.userData.legs;
     if(fork){const v=veh(T,"fork");g.add(v);p.position.y=.55;legs.forEach(l=>l.visible=false);legs=null}
     const s=freeSpot();g.position.set(s.x,0,s.z);sc.add(g);const w={g,legs,fork,x:s.x,z:s.z,sp:fork?3.2:1.5+Math.random()*.4,ph:Math.random()*6,beep:0};route(w);W.wk.push(w)}
   // the manager waits by the reception office door
-  W.mgrP={x:HW-7.5,z:zEnd()-11.5};if(L.mgr){const m=person(T,0x1e3a8a);m.position.set(W.mgrP.x,0,W.mgrP.z);m.rotation.y=-Math.PI/2;sc.add(m);W.mgrM=m}else W.mgrM=null;
+  if(L.mgr&&!W.mgrM){const m=person(T,0x1e3a8a);m.position.set(W.mgrP.x,0,W.mgrP.z);m.rotation.y=-Math.PI/2;sc.add(m);W.mgrM=m}else if(!L.mgr&&W.mgrM){drop(W.mgrM);W.mgrM=null}}
+function life(T,sc){const c=CITIES[W.city],L=L0();W.wk=[];W.sig=rackSig();W.tk=null;W.tkT=performance.now()+4000;W.nk=isNight()?1:0;
+  W.mgrP={x:HW-7.5,z:zEnd()-11.5};W.mgrM=null;crew();
   sign(T,W.room,["STAFF OFFICE",L.mgr?"Manager on duty":"Hire a manager here"],2.2,.6,HW-7.6,2.6,zEnd()-12.6,0,{bg:"#1e3a8a",fg:"#fff",w:512,h:150});
   // job board on the right wall by the docks
   W.jobP={x:HW-1.4,z:zEnd()-10.5};sign(T,W.room,["📋 FORKLIFT JOBS","Press E for a job · "+fmt(lcJobPay(c))+" each"],2.6,1.1,HW-.3,2.2,zEnd()-10.5,-Math.PI/2,{bg:"#facc15",fg:"#111",w:640,h:240,fs:44});
@@ -210,7 +214,7 @@ function open(cid){if(W.on)return;const c=CITIES[cid],L=c&&LCO(cid);if(!L)return
   el.addEventListener("keyup",e=>{W.keys[e.key.toLowerCase()]=0});
   el.addEventListener("click",e=>{const b=e.target.closest("[data-lc]");if(!b)return;const a=b.dataset.lc;
     if(a==="close")close();else if(a==="use")use();else if(a==="pc")panel(!W.panel||W.ordOn||W.shopOn);else if(a==="xp")panel(false);
-    else if(a==="fp")setFp(!W.fp);else if(a==="sbuy"||a==="sride")shopAct(a,b);else if(a==="lcogo"||a==="lcox"||a==="lcodir")ordAct(a,b);else if(a==="snd")sndToggle();else if(a==="hire"){const e=lcHire(CITIES[W.city],b.dataset.k,+b.dataset.d);fillStaff();if(e){const m=W.panel&&W.panel.querySelector("#lc3-he");if(m)m.textContent=e}sub()}else if(a==="ord")ordPanel();else if(a==="ride"){const L=L0();ride(L.ride?"":(W.lastRide&&L.veh.includes(W.lastRide)?W.lastRide:L.veh[L.veh.length-1]));if(L.ride)W.lastRide=L.ride}else if(a==="zin")zoomBy(-1);else if(a==="zout")zoomBy(1);else if(a==="find")findG(b.dataset.g,false);else if(arr(a,b))return;else if(a==="go")findG(b.dataset.g,true)});
+    else if(a==="fp")setFp(!W.fp);else if(a==="sbuy"||a==="sride")shopAct(a,b);else if(a==="lcogo"||a==="lcox"||a==="lcodir")ordAct(a,b);else if(a==="snd")sndToggle();else if(a==="hire"){const e=lcHire(CITIES[W.city],b.dataset.k,+b.dataset.d);crew();fillStaff();if(e){const m=W.panel&&W.panel.querySelector("#lc3-he");if(m)m.textContent=e}sub()}else if(a==="ord")ordPanel();else if(a==="ride"){const L=L0();ride(L.ride?"":(W.lastRide&&L.veh.includes(W.lastRide)?W.lastRide:L.veh[L.veh.length-1]));if(L.ride)W.lastRide=L.ride}else if(a==="zin")zoomBy(-1);else if(a==="zout")zoomBy(1);else if(a==="find")findG(b.dataset.g,false);else if(arr(a,b))return;else if(a==="go")findG(b.dataset.g,true)});
   el.addEventListener("input",e=>{if(e.target.id==="lc3-q")fillTable();else if(e.target.id==="lco-q")W.of.q=+e.target.value});
   el.addEventListener("change",e=>{const id=e.target.id;if(id==="lco-src"){W.of.src=+e.target.value;W.of.q=0;fillOrd()}else if(id==="lco-g"){W.of.g=e.target.value;W.of.q=0;fillOrd()}else if(id==="lco-v")W.of.v=+e.target.value});
   loadThree().then(T=>{if(!W.on||W.el!==el)return;build(T);W.raf=requestAnimationFrame(loop);if(W.cv)W.cv.focus()}).catch(()=>{close();toast("Couldn't load the 3D logistics center. Check your connection and try again.")})}
