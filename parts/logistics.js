@@ -3,13 +3,16 @@
    Layout: x runs across the hall (bays), z runs down its length. The entrance, loading dock and central computer are at the +z end; rack rows go towards -z,
    one row per level, so the building gets longer with every upgrade. Controls match the bunker: W/S forward/back, A/D strafe, arrows or drag to turn, E use. */
 (function(){
-const BW=2.6,BAYS=LCBAYS,HW=BAYS*BW/2+4.5,ROWP=4.8,RACKD=1.3,RACKH=4.5,DOCK=24,MAXR=80,LVH=1.45;
+const BW=2.6,BAYS=LCBAYS,ROWP=4.8,RACKD=1.3,RACKH=4.5,DOCK=24,MAXR=130,LVH=1.45,RPB=26,BPITCH=BAYS*BW+5;
+/* rows A–Z run down the middle block; AA–AZ start a new block on the right, BA–BZ on the left, then further right, further left... (Mark, 2026-11-05) */
+const blkX=b=>b?(b%2?1:-1)*Math.ceil(b/2)*BPITCH:0,rowX=r=>blkX(Math.floor(r/RPB));
+let HW=BAYS*BW/2+4.5;
 const W={zoom:4.6,cd:4.6,fp:false,pitch:0,el:null,on:false,T:null,ren:null,scene:null,cam:null,av:null,legs:null,walkT:0,p:{x:0,z:0,yaw:0},keys:{},joy:null,near:null,panel:null,raf:0,last:0,city:null,rows:0,len:0,beacon:null,find:null};
 const esc=t=>String(t).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
-const rowZ=r=>-(r*ROWP)-ROWP/2;            // centre line of rack row r
-const bayX=b=>-BAYS*BW/2+BW/2+b*BW;          // centre of bay b
+const rowZ=r=>-((r%RPB)*ROWP)-ROWP/2;            // centre line of rack row r
+const bayX=(b,r)=>rowX(r||0)-BAYS*BW/2+BW/2+b*BW;          // centre of bay b
 const zEnd=()=>DOCK;                          // the entrance wall
-const zBack=()=>-(W.rows*ROWP)-2;             // the back wall
+const zBack=()=>-(Math.min(W.rows,RPB)*ROWP)-2;             // the back wall
 function css(){if(document.getElementById("lc3-css"))return;const s=document.createElement("style");s.id="lc3-css";s.textContent=`
 .lc3{position:fixed;inset:0;z-index:2147483000;background:#0b0f14;font:13px system-ui,sans-serif;color:#e2e8f0;overflow:hidden;touch-action:none;user-select:none}
 .lc3 canvas{display:block;width:100%;height:100%;outline:none}
@@ -106,11 +109,11 @@ function build(T){W.T=T;const el=W.el,L=L0(),c=CITIES[W.city];let ren;try{ren=ne
   ren.toneMapping=T.ACESFilmicToneMapping;ren.toneMappingExposure=1.05;ren.outputEncoding=T.sRGBEncoding;
   const sc=new T.Scene();sc.background=new T.Color(0x2a2f36);W.scene=sc;W.cam=new T.PerspectiveCamera(62,1,.1,400);
   sc.add(new T.HemisphereLight(0xfff4e0,0x5b5f66,1.05));const dl=new T.DirectionalLight(0xfff1d6,.55);dl.position.set(8,30,14);sc.add(dl);sc.add(new T.AmbientLight(0xffffff,.12));
-  W.rows=Math.min(MAXR,L.lv);const z1=zEnd(),z0=zBack(),len=z1-z0,zm=(z1+z0)/2;W.len=len;sc.fog=new T.Fog(0x2a2f36,40,Math.max(70,Math.min(180,len+30)));
+  W.rows=Math.min(MAXR,L.lv);W.nb=Math.ceil(W.rows/RPB)||1;{let m=0;for(let b=0;b<W.nb;b++)m=Math.max(m,Math.abs(blkX(b)));HW=BAYS*BW/2+4.5+m}const z1=zEnd(),z0=zBack(),len=z1-z0,zm=(z1+z0)/2;W.len=len;sc.fog=new T.Fog(0x2a2f36,40,Math.max(70,Math.min(180,len+30)));
   const room=new T.Group();sc.add(room);W.room=room;const WH=10;
   // polished concrete slab with saw-cut joints, worn patches and tyre marks; painted walkway and aisle lines
   const fm=new T.MeshStandardMaterial({map:tx(T,"floor",HW*2/6,len/6),roughness:.55,metalness:.05});const fl0=new T.Mesh(new T.PlaneGeometry(HW*2,len),fm);fl0.rotation.x=-Math.PI/2;fl0.position.set(0,0,zm);room.add(fl0);
-  for(const x of [-BAYS*BW/2-1.7,BAYS*BW/2+1.7])ofBox(T,room,.1,.008,len-1,0xeab308,x,0,zm,{r:.8});
+  for(let b=0;b<W.nb;b++)for(const x of [-BAYS*BW/2-1.7,BAYS*BW/2+1.7])ofBox(T,room,.1,.008,len-1,0xeab308,blkX(b)+x,0,zm,{r:.8});
   ofBox(T,room,HW*2-1,.008,.1,0xeab308,0,0,-.5,{r:.8});ofBox(T,room,HW*2-1,.008,.1,0xeab308,0,0,z1-11,{r:.8});
   for(let i=0;i<12;i++)ofBox(T,room,.5,.009,1.6,0xf8fafc,-3+i*.55,0,-1.3,{r:.8}); // pedestrian crossing
   ofBox(T,room,1.4,.009,len-14,0x15803d,-HW+1.1,0,zm-6,{r:.9}); // green walkway along the wall
@@ -125,10 +128,10 @@ function build(T){W.T=T;const el=W.el,L=L0(),c=CITIES[W.city];let ren;try{ren=ne
   const rf=new T.Mesh(new T.PlaneGeometry(HW*2+.6,len+.6),new T.MeshStandardMaterial({map:tx(T,"roof",HW*2/3,len/3),roughness:.8,metalness:.3,side:T.DoubleSide}));rf.rotation.x=Math.PI/2;rf.position.set(0,WH+.02,zm);room.add(rf);
   for(let z=z0+7.5;z<z1-2;z+=9)for(const x of [-9,9]){const s=new T.Mesh(new T.PlaneGeometry(4,2.4),new T.MeshBasicMaterial({color:0xe0f2fe}));s.rotation.x=Math.PI/2;s.position.set(x,WH-.01,z);room.add(s)}
   const lampM=new T.MeshStandardMaterial({color:0x374151,roughness:.4,metalness:.8}),glow=new T.MeshBasicMaterial({color:0xfffbeb});
-  for(let z=z0+5;z<z1-1;z+=4.8)for(const x of [-BAYS*BW/2-1.7,0,BAYS*BW/2+1.7]){const c0=new T.Mesh(new T.CylinderGeometry(.08,.5,.45,14,1,true),lampM);c0.position.set(x,WH-2.6,z);room.add(c0);const d=new T.Mesh(new T.CircleGeometry(.45,14),glow);d.rotation.x=Math.PI/2;d.position.set(x,WH-2.83,z);room.add(d);ofBox(T,room,.02,2.4,.02,0x111827,x,WH-2.4,z)}
+  for(let z=z0+5;z<z1-1;z+=4.8)for(let b=0;b<W.nb;b++)for(const x of [-BAYS*BW/2-1.7,0,BAYS*BW/2+1.7].map(v=>v+blkX(b))){const c0=new T.Mesh(new T.CylinderGeometry(.08,.5,.45,14,1,true),lampM);c0.position.set(x,WH-2.6,z);room.add(c0);const d=new T.Mesh(new T.CircleGeometry(.45,14),glow);d.rotation.x=Math.PI/2;d.position.set(x,WH-2.83,z);room.add(d);ofBox(T,room,.02,2.4,.02,0x111827,x,WH-2.4,z)}
   // three dock doors with sectional roll-up doors, dock levelers, bumpers and traffic lights
   const doorM=new T.MeshStandardMaterial({map:tx(T,"door",1,1),roughness:.5,metalness:.4});
-  for(let i=0;i<3;i++){const dx=-HW+5.5+i*7.5;const dr=new T.Mesh(new T.PlaneGeometry(3.6,4.2),doorM);dr.position.set(dx,2.1+1.2,z1-.01);dr.rotation.y=Math.PI;room.add(dr);
+  for(let i=0;i<3;i++){const dx=-7.5+i*7.5;const dr=new T.Mesh(new T.PlaneGeometry(3.6,4.2),doorM);dr.position.set(dx,2.1+1.2,z1-.01);dr.rotation.y=Math.PI;room.add(dr);
     ofBox(T,room,.25,4.4,.2,0xfacc15,dx-1.95,1.2,z1-.12);ofBox(T,room,.25,4.4,.2,0xfacc15,dx+1.95,1.2,z1-.12);ofBox(T,room,4.1,.3,.25,0x1f2937,dx,5.6,z1-.12);
     ofBox(T,room,3.4,.06,2.2,0x52525b,dx,0,z1-1.2,{r:.5,m:.6});for(const s of [-1.3,1.3])ofBox(T,room,.35,.5,.25,0x111111,dx+s,.9,z1-.15);
     for(const [k,cl] of [[0,0xef4444],[1,0x22c55e]])ofCyl(T,room,.09,.09,.04,cl,dx+2.4,3.3-k*.25,z1-.15,{e:cl,ei:i===1?k:1-k}).rotation.x=Math.PI/2;
@@ -165,16 +168,16 @@ function buildRacks(T){const room=W.room,c=CITIES[W.city],lay=lcLayout(c),R=W.ro
   const upG=new T.BoxGeometry(.09,RACKH,.11),bmG=new T.BoxGeometry(BAYS*BW,.12,.1),dkG=new T.BoxGeometry(BAYS*BW,.04,RACKD);
   const nUp=R*(BAYS+1)*2,nBm=R*3*2,nDk=R*3,up=new T.InstancedMesh(upG,frame,nUp),bm=new T.InstancedMesh(bmG,beam,nBm),dk=new T.InstancedMesh(dkG,new T.MeshStandardMaterial({map:tx(T,"mesh",BAYS*2,1),color:0xd1d5db,roughness:.5,metalness:.6,transparent:true,alphaTest:.4}),nDk);
   const M=new T.Matrix4();let iu=0,ib=0,id=0;
-  for(let r=0;r<R;r++){const z=rowZ(r);for(let b=0;b<=BAYS;b++)for(const s of [-1,1]){M.makeTranslation(-BAYS*BW/2+b*BW,RACKH/2,z+s*RACKD/2);up.setMatrixAt(iu++,M)}
-    for(let l=0;l<3;l++){const y=.12+l*LVH;for(const s of [-1,1]){M.makeTranslation(0,y,z+s*RACKD/2);bm.setMatrixAt(ib++,M)}M.makeTranslation(0,y+.06,z);dk.setMatrixAt(id++,M)}}
+  for(let r=0;r<R;r++){const z=rowZ(r);for(let b=0;b<=BAYS;b++)for(const s of [-1,1]){M.makeTranslation(rowX(r)-BAYS*BW/2+b*BW,RACKH/2,z+s*RACKD/2);up.setMatrixAt(iu++,M)}
+    for(let l=0;l<3;l++){const y=.12+l*LVH;for(const s of [-1,1]){M.makeTranslation(rowX(r),y,z+s*RACKD/2);bm.setMatrixAt(ib++,M)}M.makeTranslation(rowX(r),y+.06,z);dk.setMatrixAt(id++,M)}}
   room.add(up,bm,dk);
   // row letter signs hanging at both ends of each row, bay numbers on the beams of row fronts
-  for(let r=0;r<R;r++){const z=rowZ(r),n="ROW "+lcRowName(r);for(const x of [-BAYS*BW/2-.9,BAYS*BW/2+.9])sign(T,room,[n],1.5,.6,x,RACKH+.6,z,x<0?Math.PI/2:-Math.PI/2,{bg:"#facc15",fg:"#111",fs:64,w:256,h:100})}
-  if(R)for(let b=0;b<BAYS;b++)sign(T,room,[String(b+1)],.5,.32,bayX(b),RACKH+.25,rowZ(0)+RACKD/2+.06,0,{bg:"#111827",fg:"#fde68a",w:128,h:80,fs:60});
+  for(let r=0;r<R;r++){const z=rowZ(r),n="ROW "+lcRowName(r);for(const x of [-BAYS*BW/2-.9,BAYS*BW/2+.9])sign(T,room,[n],1.5,.6,rowX(r)+x,RACKH+.6,z,x<0?Math.PI/2:-Math.PI/2,{bg:"#facc15",fg:"#111",fs:64,w:256,h:100})}
+  for(let r=0;r<R;r+=RPB)for(let b=0;b<BAYS;b++)sign(T,room,[String(b+1)],.5,.32,bayX(b,r),RACKH+.25,rowZ(r)+RACKD/2+.06,0,{bg:"#111827",fg:"#fde68a",w:128,h:80,fs:60});
   // goods: each bay holds two pallet positions per shelf level; fill decides how many levels are used.
   // Cartons are shrink-wrapped, grain/ore/coal sit in bulk bags, liquids in drums, metals and machines in timber crates.
   const P={pal:[],carton:[],wrap:[],bag:[],drum:[],crate:[]};
-  for(const B of lay.bays){if(B.row>=R)continue;const kd=kindOf(B.g),lv=Math.max(1,Math.ceil(B.f*3-1e-9)),x=bayX(B.bay),z=rowZ(B.row),tint=tintOf(B.g);
+  for(const B of lay.bays){if(B.row>=R)continue;const kd=kindOf(B.g),lv=Math.max(1,Math.ceil(B.f*3-1e-9)),x=bayX(B.bay,B.row),z=rowZ(B.row),tint=tintOf(B.g);
     for(let l=0;l<lv;l++){const y=.2+l*LVH,part=l===lv-1?Math.max(.34,(B.f*3)-(lv-1)):1;
       for(const dx of [-.62,.62]){if(dx>0&&part<.5)continue;const px0=x+dx;P.pal.push([px0,y,z,1,1,1]);const y1=y+.144;
         if(kd==="carton"){const h=.5+.6*Math.min(1,part);P.carton.push([px0,y1,z,1,h,1]);P.wrap.push([px0,y1,z,1.03,h+.02,1.03])}
@@ -190,12 +193,12 @@ function buildRacks(T){const room=W.room,c=CITIES[W.city],lay=lcLayout(c),R=W.ro
   inst(new T.CylinderGeometry(.25,.25,.88,16),new T.MeshStandardMaterial({map:tx(T,"drum",1,1),roughness:.4,metalness:.55}),P.drum,true);
   inst(new T.BoxGeometry(1.12,1,.95),new T.MeshStandardMaterial({map:tx(T,"crate",1,1),roughness:.9}),P.crate);
   // rack-end safety barriers and upright protectors
-  for(let r=0;r<R;r++)for(const x of [-BAYS*BW/2-.35,BAYS*BW/2+.35]){ofBox(T,room,.12,.9,RACKD+.4,0xfacc15,x,0,rowZ(r),{r:.5});for(let k=0;k<3;k++)ofBox(T,room,.13,.12,RACKD+.42,0x111111,x,.2+k*.28,rowZ(r),{r:.5})}
+  for(let r=0;r<R;r++)for(const x0 of [-BAYS*BW/2-.35,BAYS*BW/2+.35]){const x=rowX(r)+x0;ofBox(T,room,.12,.9,RACKD+.4,0xfacc15,x,0,rowZ(r),{r:.5});for(let k=0;k<3;k++)ofBox(T,room,.13,.12,RACKD+.42,0x111111,x,.2+k*.28,rowZ(r),{r:.5})}
   // product labels over the first bay of each product
-  for(const it of lay.items){if(it.row>=R)continue;sign(T,room,[G[it.g][0],gq(it.q)+" · "+fmtT(it.t)],BW-.2,.62,bayX(it.bay),RACKH-.35,rowZ(it.row)+RACKD/2+.08,0,{bg:"#f8fafc",fg:"#0f172a",w:384,h:120,fs:42})}
-  if(L0().lv>MAXR)sign(T,room,["Rows "+lcRowName(MAXR)+"+ in the annex","See the computer for every location"],8,1.3,0,3,zBack()+.3,0,{w:1024,h:180,bg:"#7c2d12",fg:"#fff"})}
+  for(const it of lay.items){if(it.row>=R)continue;sign(T,room,[G[it.g][0],gq(it.q)+" · "+fmtT(it.t)],BW-.2,.62,bayX(it.bay,it.row),RACKH-.35,rowZ(it.row)+RACKD/2+.08,0,{bg:"#f8fafc",fg:"#0f172a",w:384,h:120,fs:42})}
+  if(L0().lv>MAXR)sign(T,room,["Rows "+lcRowName(MAXR)+"+ in the annex","See the computer for every location"],8,1.3,0,6.5,zBack()+.3,0,{w:1024,h:180,bg:"#7c2d12",fg:"#fff"})}
 function blocked(x,z,cam){const r=cam?.15:.32;if(x<-HW+r||x>HW-r||z<zBack()+r||z>zEnd()-r)return true;
-  for(let i=0;i<W.rows;i++){const zz=rowZ(i);if(Math.abs(z-zz)<RACKD/2+r&&Math.abs(x)<BAYS*BW/2+r)return true}
+  for(let i=0;i<W.rows;i++){const zz=rowZ(i);if(Math.abs(z-zz)<RACKD/2+r&&Math.abs(x-rowX(i))<BAYS*BW/2+r)return true}
   if(!cam&&Math.abs(x)<1.7+r&&Math.abs(z-W.pcz)<.6+r)return true;{const ox=HW-5,oz=zEnd()-15.5;if(x>ox-3.5-r&&z>oz-3-r&&z<oz+3+r&&!(z>oz+2.6&&x<ox-1.5)&&(x<ox-3.4+r||z<oz-2.9+r||(z>oz+2.9-r&&x>ox-1.5)||Math.abs(x-ox)<1.1+r&&Math.abs(z-oz-2.4)<.35+r))return true}
   for(const [cx,cz,hw,hd] of [[-HW+4,zEnd()-4.5,3,1.2],[HW-4,zEnd()-4.5,3,1.2],[HW-11,zEnd()-4.6,3,1.2],[5,zEnd()-7.5,1.1,1.1],[-HW+7.75,zEnd()-9,4.5,.6],[HW-8,zEnd()-9,3.8,.6],[-1.25,zEnd()-3.2,2.9,.6]].slice(0,cam?4:7))if(Math.abs(x-cx)<hw+r&&Math.abs(z-cz)<hd+r)return true;return false}
 function nearest(){const P=W.p;if(Math.abs(P.x)<2.6&&Math.abs(P.z-W.pcz)<1.6)return {k:"pc",n:"🖥 Use the central computer"};if(P.z>zEnd()-1.4&&Math.abs(P.x)<HW)return {k:"exit",n:"🚪 Leave the building"};return null}
@@ -209,7 +212,7 @@ function panel(on){if(W.panel){W.panel.remove();W.panel=null}if(!on){if(W.cv)W.c
 function fillTable(){const t=W.panel&&W.panel.querySelector("#lc3-tb");if(!t)return;const c=CITIES[W.city],q=(W.panel.querySelector("#lc3-q").value||"").trim().toLowerCase(),lay=lcLayout(c);
   const rows=lay.items.filter(it=>!q||G[it.g][0].toLowerCase().includes(q)||(q.length<=2&&/^[a-z]+$/.test(q)?lcRowName(it.row).toLowerCase()===q||(it.loc.toLowerCase().match(/row ([a-z]+)/g)||[]).some(r=>r.slice(4)===q):it.loc.toLowerCase().includes(q)));
   t.innerHTML=rows.length?`<table><thead><tr><th>Product</th><th>Qty</th><th class="c-w">Weight</th><th>Location</th><th class="c-t">Type</th><th></th></tr></thead><tbody>${rows.map(it=>`<tr><td class="n">${esc(G[it.g][0])}</td><td>${gq(it.q)}</td><td class="c-w">${fmtT(it.t)}</td><td>${esc(it.loc)}</td><td class="c-t">${KN[kindOf(it.g)]}</td><td style="white-space:nowrap"><button class="mini" data-lc="find" data-g="${esc(it.g)}">Find</button><button class="mini" data-lc="go" data-g="${esc(it.g)}" style="background:#15803d">Walk there</button></td></tr>`).join("")}</tbody></table>`:`<p style="color:#94a3b8">${lay.items.length?"No match.":"The warehouse is empty. Ship goods to "+esc(c.name)+" and they'll be listed here with their row and bay."}</p>`}
-function findG(g,go){const c=CITIES[W.city],it=lcLayout(c).items.find(x=>x.g===g);if(!it)return;const x=bayX(it.bay),z=rowZ(it.row);
+function findG(g,go){const c=CITIES[W.city],it=lcLayout(c).items.find(x=>x.g===g);if(!it)return;const x=bayX(it.bay,it.row),z=rowZ(it.row);
   if(it.row>=W.rows){toast(`${G[g][0]} is in ${it.loc} (annex)`);return}
   W.find={x,z,t:performance.now()};W.beacon.visible=true;W.beacon.position.set(x,RACKH+1.4,z);const f=W.el.querySelector(".lc3-find");f.hidden=false;f.textContent=`📍 ${G[g][0]}: ${it.loc}`;
   if(go){const az=z+RACKD/2+1.2;W.p={x,z:az,yaw:0};panel(false)}else panel(false)}
