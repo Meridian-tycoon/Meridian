@@ -6361,13 +6361,15 @@ function polSetTax(t){const p=pol(),C=GOVCFG,now=Date.now();if(!polLeader())retu
    each race needs 95% approval, Campaign + Marketing heads hired in the HQ office, a law firm you own there, and campaign funding. Winning the Leader race takes the country. */
 const bidLaw=n=>ctyCities(n).some(c=>hasT(S.own[c.id],"lawfirm"));
 const bidStage=n=>{const b=pol().bid;return b&&b.c===n?b.r:0};
-const bidCost=n=>Math.round(polCost(bidStage(n),n)*GOVCFG.bidFund*(1-presFx("cost")));
-const bidChance=n=>{const p=pol(),C=GOVCFG,O=C.offices[bidStage(n)];return Math.max(.1,Math.min(.85,O.win+.2+C.annexStepWin*Object.keys(p.ctrl).length+(p.appr-50)/200))};
-function bidWhy(n){const p=pol(),C=GOVCFG;if(p.appr<C.bidAppr)return `Needs ${C.bidAppr}% approval (you have ${Math.round(p.appr)}%)`;
+const bidCost=n=>bidFree(n)?0:Math.round(polCost(bidStage(n),n)*GOVCFG.bidFund*(1-presFx("cost")));
+const bidChance=n=>{if(bidFree(n))return 1;const p=pol(),C=GOVCFG,O=C.offices[bidStage(n)];return Math.max(.1,Math.min(.85,O.win+.2+C.annexStepWin*Object.keys(p.ctrl).length+(p.appr-50)/200))};
+/* the dev account and moderators skip the takeover election rules (Mark, 2026-11-05): no approval, heads, law firm, funding or cooldown, and they always win */
+const bidFree=n=>{if(devGod()||polImmune())return true;try{const u=typeof ON!=="undefined"&&ON.user&&ON.user.uid;return !!u&&(isMod(u,n)||isMod(u,pol().c))}catch(e){return false}};
+function bidWhy(n){const p=pol(),C=GOVCFG;if(bidFree(n))return "";if(p.appr<C.bidAppr)return `Needs ${C.bidAppr}% approval (you have ${Math.round(p.appr)}%)`;
   if(!ofHas("camp")||!ofHas("mkt"))return "Hire Campaign and Marketing heads in your HQ office";if(!bidLaw(n))return `Own a law firm in ${n}`;
   const c=bidCost(n);if(S.cash<c)return `Campaign funding is ${fmt(c)}`;return ""}
 function polAnnex(n){const p=pol(),C=GOVCFG,now=Date.now();if(!polLeader()||n===p.c||p.ctrl[n]||!COUNTRIES.includes(n))return;
-  if(!devGod()&&now<p.acd)return toast("Campaign cooldown: "+fmtDur(p.acd-now));const why=bidWhy(n);if(why)return toast(why);
+  if(!bidFree(n)&&now<p.acd)return toast("Campaign cooldown: "+fmtDur(p.acd-now));const why=bidWhy(n);if(why)return toast(why);
   if(!p.bid||p.bid.c!==n)p.bid={c:n,r:0};const r=p.bid.r,O=C.offices[r],cost=bidCost(n),ch=bidChance(n);S.cash-=cost;
   if(Math.random()<ch){if(r<C.offices.length-1){p.bid.r=r+1;logPol(`You won the ${O.n} race in ${n}. Next: ${C.offices[r+1].n}`)}
     else{p.bid=null;p.ctrl[n]={since:now,loy:C.loyStart};p.appr=Math.min(95,p.appr+C.annexAppr);logPol(`You won the Leader election in ${n}: it joined your sphere of influence`);if(typeof confetti==="function")confetti(80,innerWidth/2,innerHeight/3)}}
