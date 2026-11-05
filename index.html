@@ -481,7 +481,7 @@ function evalPart(__src){return eval(__src)}
 /* shared loader for parts/<name>.js: fetched once, cached; partApi(name) is null until it has loaded */
 const PARTS={};
 function partLoad(n){const p=PARTS[n]||(PARTS[n]={api:null,p:null});if(p.api)return Promise.resolve(p.api);if(p.p)return p.p;
-  return p.p=fetch("parts/"+n+".js?v=12").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
+  return p.p=fetch("parts/"+n+".js?v=13").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
 function partApi(n){const p=PARTS[n];return p?p.api:null}
 /* Online players (Firebase). Paste your Firebase web app config object here, e.g.
    const FIREBASE_CONFIG={apiKey:"...",authDomain:"...",projectId:"...",storageBucket:"...",messagingSenderId:"...",appId:"..."};
@@ -14292,7 +14292,7 @@ function LCO(id){if(!S.lc||typeof S.lc!=="object"||Array.isArray(S.lc))S.lc={};c
   L.lv=Math.max(1,Math.floor(+L.lv)||1);if(!L.inv||typeof L.inv!=="object")L.inv={};for(const g in L.inv)if(!G[g]||!(L.inv[g]>0))delete L.inv[g];
   if(!Array.isArray(L.ord))L.ord=[];L.ord=L.ord.filter((g,i,a)=>L.inv[g]>0&&a.indexOf(g)===i);for(const g in L.inv)if(!L.ord.includes(g))L.ord.push(g);
   L.rx=L.rx===0?0:1;L.ax=L.ax?1:0;if(L.log&&!Array.isArray(L.log))L.log=[];
-  if(!Array.isArray(L.veh))L.veh=[];L.veh=L.veh.filter((v,i,a)=>LCVEH[v]&&a.indexOf(v)===i);if(!L.veh.includes(L.ride))L.ride="";if(!L.upg||typeof L.upg!=="object"||Array.isArray(L.upg))L.upg={};for(const k in L.upg){const t=Math.floor(+L.upg[k]);if(!LCUPG[k]||!(t>0))delete L.upg[k];else L.upg[k]=Math.min(t,LCUPG[k].max)}if(!(L.spent>0))L.spent=0;L.staff=Math.max(0,Math.min(LCW.max1,Math.floor(+L.staff)||0));L.mgr=L.mgr?1:0;if(!L.mgr)L.staff=Math.min(L.staff,LCW.max0);if(!(L.jobs>0))L.jobs=0;
+  if(!Array.isArray(L.veh))L.veh=[];L.veh=L.veh.filter((v,i,a)=>LCVEH[v]&&a.indexOf(v)===i);if(!L.veh.includes(L.ride))L.ride="";if(!L.upg||typeof L.upg!=="object"||Array.isArray(L.upg))L.upg={};for(const k in L.upg){const t=Math.floor(+L.upg[k]);if(!LCUPG[k]||!(t>0))delete L.upg[k];else L.upg[k]=Math.min(t,LCUPG[k].max)}if(!(L.spent>0))L.spent=0;L.staff=Math.max(0,Math.min(LCW.max1,Math.floor(+L.staff)||0));L.mgr=L.mgr?1:0;if(!L.mgr)L.staff=Math.min(L.staff,LCW.max0);if(!Array.isArray(L.xp))L.xp=[];L.xp=L.xp.map(Number).filter(x=>isFinite(x)).slice(0,L.staff);while(L.xp.length<L.staff)L.xp.push(S.hour||0);if(!(L.jobs>0))L.jobs=0;
   if(!L.pin||typeof L.pin!=="object"||Array.isArray(L.pin))L.pin={};for(const g in L.pin){const v=Math.floor(+L.pin[g]);if(!(L.inv[g]>0)||!(v>=0))delete L.pin[g];else L.pin[g]=v}return L}
 const lcHas=c=>!!(c&&LCO(c.id));
 const lcCap=c=>{const L=LCO(c.id);return L?L.lv*LCROW*(1+.25*(L.upg.rack||0)):0};
@@ -14371,14 +14371,17 @@ function lcoDrop(v,d){const o=lcoList().find(x=>x.id===v.cargo.lco),g=v.cargo.g,
 /* staff (Mark, 2026-11-05): warehouse workers and a manager, paid by the hour like other upkeep.
    L.staff = workers, L.mgr = 1 when a manager is hired, L.jobs = forklift jobs the player finished by hand.
    Workers make center orders turn around faster; the manager adds to that, allows a bigger crew and pays more for hands-on jobs. */
-const LCW={wk:500,mgr:3000,max0:3,max1:20,per:.025,mgrB:.1,job:1500};
-const lcWageC=c=>{const L=LCO(c.id);return L?((L.staff||0)*LCW.wk+(L.mgr?LCW.mgr:0))*PRICE[c.size]:0};
+const LCW={wkMin:19,wkMax:29,xpDays:3,mgr:3000,max0:3,max1:50,per:.01,mgrB:.1,job:1500};
+// Worker pay is a flat $19-$29/hr: +$1 for every 3 game days on the job, so the cap is reached after 30 days.
+const lcWkPay=h=>Math.min(LCW.wkMax,LCW.wkMin+Math.floor(Math.max(0,(S.hour||0)-h)/LCW.xpDays));
+const lcWorkerWages=L=>(L.xp||[]).reduce((a,h)=>a+lcWkPay(h),0);
+const lcWageC=c=>{const L=LCO(c.id);return L?lcWorkerWages(L)+(L.mgr?LCW.mgr*PRICE[c.size]:0):0};
 function lcWages(){let w=0;for(const id in (S.lc||{}))if(CITIES[id]&&!unhOn(CITIES[id]))w+=lcWageC(CITIES[id]);return w}
 const lcMaxStaff=c=>{const L=LCO(c.id);return L&&L.mgr?LCW.max1:LCW.max0};
 const lcSpeed=c=>{const L=LCO(c.id);return L?Math.min(.5,(L.staff||0)*LCW.per+(L.mgr?LCW.mgrB:0)):0}; // share of trip time saved
 const lcJobPay=c=>{const L=LCO(c.id);return Math.round(LCW.job*PRICE[c.size]*(L&&L.mgr?1.5:1))};
-function lcHire(c,k,d){const L=LCO(c.id);if(!L)return "";if(k==="mgr"){L.mgr=d>0?1:0;if(!L.mgr)L.staff=Math.min(L.staff||0,LCW.max0);lcLog(c,L.mgr?"Hired a warehouse manager":"Let the warehouse manager go");save();return ""}
-  const n=Math.max(0,Math.min(lcMaxStaff(c),(L.staff||0)+d));if(n===(L.staff||0))return d>0?`Hire a manager to grow past ${LCW.max0} workers`:"";L.staff=n;lcLog(c,d>0?`Hired a worker (${n} on staff)`:`Let a worker go (${n} on staff)`);save();return ""}
+function lcHire(c,k,d){const L=LCO(c.id);if(!L)return "";if(k==="mgr"){L.mgr=d>0?1:0;if(!L.mgr){L.staff=Math.min(L.staff||0,LCW.max0);L.xp=(L.xp||[]).slice(0,L.staff)}lcLog(c,L.mgr?"Hired a warehouse manager":"Let the warehouse manager go");save();return ""}
+  const n=Math.max(0,Math.min(lcMaxStaff(c),(L.staff||0)+d));if(n===(L.staff||0))return d>0?`Hire a manager to grow past ${LCW.max0} workers`:"";L.xp=L.xp||[];if(n>(L.staff||0))L.xp.push(S.hour||0);else L.xp.pop();L.staff=n;lcLog(c,d>0?`Hired a worker (${n} on staff)`:`Let a worker go (${n} on staff)`);save();return ""}
 function lcJobDone(c){const L=LCO(c.id);if(!L)return 0;const p=lcJobPay(c);S.cash+=p;L.jobs=(L.jobs||0)+1;lcLog(c,`Forklift job done: +${fmt(p)}`);save();return p}
 function lcUnpin(c,g){const L=LCO(c.id);if(L){delete L.pin[g];save()}}
 function lcHtml(c){const L=LCO(c.id);
