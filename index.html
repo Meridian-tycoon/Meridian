@@ -14337,7 +14337,7 @@ function lcoList(){if(!Array.isArray(S.lco))S.lco=[];return S.lco}
 const lcoIdle=v=>v.city!=null&&!v.arr&&!v.route&&!v.job&&!v.lco&&!v.cargo&&!v.al&&v.hm==null;
 function lcoVehicles(src,dst){return (S.fleet||[]).filter(v=>v.city===src.id&&lcoIdle(v)&&VEH[v.type]&&(vcls(v.type)==="plane"||vcls(v.type)==="truck"&&landmass(src)===landmass(dst)))}
 function lcoNew(dst,srcId,g,q,vid){const src=CITIES[srcId],Ls=src&&LCO(src.id);if(!LCO(dst.id))return "No logistics center here";if(!Ls||src===dst)return "Pick another city with a logistics center";
-  if(!G[g]||!(Ls.inv[g]>0))return `That center has no ${G[g]?G[g][0].toLowerCase():"stock"}`;q=Math.min(+q||0,Ls.inv[g]);if(!(q>=.01))return "Enter an amount";
+  if(!G[g]||!(Ls.inv[g]>0))return `That center has no ${G[g]?G[g][0].toLowerCase():"stock"}`;q=+q||0;if(!(q>=.01))return "Enter an amount";
   const v=(S.fleet||[]).find(x=>x.id===+vid);if(!v||!lcoVehicles(src,dst).includes(v))return `Pick an idle vehicle parked in ${src.name}`;
   S.lcoN=(S.lcoN||0)+1;const o={id:S.lcoN,from:src.id,to:dst.id,g,q:Math.round(q*100)/100,done:0,v:v.id,st:"run",at:Date.now(),trips:0,why:""};lcoList().unshift(o);S.lco=S.lco.filter((x,i)=>x.st==="run"||i<40);v.lco=o.id;
   lcLog(dst,`Order #${o.id}: ${gq(o.q)} ${G[g][0].toLowerCase()} requested from ${src.name}`);lcLog(src,`Order #${o.id}: ${gq(o.q)} ${G[g][0].toLowerCase()} to ship to ${dst.name}`);lcoStep(v,Date.now());save();return ""}
@@ -14349,9 +14349,10 @@ function lcoStep(v,t){const o=lcoList().find(x=>x.id===v.lco);if(!o){v.lco=0;ret
   if(o.st==="run"&&!(LCO(o.from)&&LCO(o.to)))lcoEnd(o,"cancel");
   const left=o.q-o.done,src=LCO(o.from),have=src?src.inv[o.g]||0:0;
   if(v.city===o.from){if(o.st!=="run"){v.lco=0;return}if(left<.01){lcoEnd(o,"done");v.lco=0;return}
-    const take=Math.min(left,capV(v,o.g),have);if(take<.01){lcoEnd(o,"short");v.lco=0;return}
+    /* Mark: never close early; wait at the source until a full load (or the last bit of the order) is in stock */
+    const need=Math.min(left,capV(v,o.g));if(have+1e-9<need){o.why=`Waiting for stock: ${gq(have)} / ${gq(need)} for a full load`;return}const take=need;
     lcSub(A,o.g,take);if(!depart(v,A,B,null,t,{g:o.g,q:take,lco:o.id})){lcAdd(A,o.g,take);o.why="Waiting for fuel money";return}o.why="";o.trips++;return}
-  if(o.st==="run"&&(left<.01||have<.01))lcoEnd(o,left<.01?"done":"short");
+  if(o.st==="run"&&left<.01)lcoEnd(o,"done");
   /* at the destination (or anywhere else): drive back empty to the source depot, which is the vehicle's home */
   if(!depart(v,CITIES[v.city]||B,A,null,t))o.why="Waiting for fuel money";else o.why=""}
 function lcoDrop(v,d){const o=lcoList().find(x=>x.id===v.cargo.lco),g=v.cargo.g,q=v.cargo.q;let fit=0;if(LCO(d.id)){fit=Math.min(q,Math.floor(lcRoom(d)/tpu(g)*100)/100);if(fit>0)lcAdd(d,g,fit)}
