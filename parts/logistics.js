@@ -155,16 +155,17 @@ function lifeLights(snap,dt){const k=W.nk=snap?(isNight()?1:0):W.nk+((isNight()?
   const bg=new W.T.Color(0x2a2f36).lerp(new W.T.Color(0x0b1020),k);if(W.scene){W.scene.background=bg;if(W.scene.fog)W.scene.fog.color=bg}if(W.skyM)W.skyM.color.set(0xe0f2fe).lerp(new W.T.Color(0x111827),k)}
 function lifeStep(dt,t){if(!W.wk)return;const P=W.p,night=isNight();
   W.wk.forEach((w,i)=>{w.g.visible=!night||i%2===0;if(!w.g.visible)return;
-    if(w.wait>0){w.wait-=dt;if(w.legs){w.legs[0].rotation.x=0;w.legs[1].rotation.x=0}return}
+    if(w.wait>0){w.wait-=dt;if(w.legs){w.legs[0].rotation.x=0;w.legs[1].rotation.x=0}if(w.wait<=0&&w.fork&&w.fx!=null){w.back=1.2;w.beep=0}return}
+    // forklift backs out of a stop before driving on; the alarm only sounds while it reverses
+    if(w.back>0){w.back-=dt;const st=1.2*dt;w.x-=w.fx*st;w.z-=w.fz*st;w.g.position.set(w.x,0,w.z);if((w.beep-=dt)<0){w.beep=.5;const dd=Math.hypot(w.x-P.x,w.z-P.z);if(dd<14)snd("beep",1-dd/14)}if(w.back<=0)route(w);return}
     const p=w.path[0];if(!p){route(w);return}const dx=p.x-w.x,dz=p.z-w.z,d=Math.hypot(dx,dz);
     if(d<.15){w.path.shift();if(!w.path.length){w.wait=2+Math.random()*5;}return}
-    const st=Math.min(d,w.sp*dt);w.x+=dx/d*st;w.z+=dz/d*st;w.g.position.set(w.x,0,w.z);w.g.rotation.y=Math.atan2(-dx,-dz);
-    if(w.legs){w.ph+=dt*9;const sw=Math.sin(w.ph)*.5;w.legs[0].rotation.x=sw;w.legs[1].rotation.x=-sw}
-    if(w.fork&&(w.beep-=dt)<0){w.beep=2.5+Math.random()*2;const dd=Math.hypot(w.x-P.x,w.z-P.z);if(dd<14)snd("beep",1-dd/14)}});
+    const st=Math.min(d,w.sp*dt);w.x+=dx/d*st;w.z+=dz/d*st;w.g.position.set(w.x,0,w.z);w.g.rotation.y=Math.atan2(-dx,-dz);w.fx=dx/d;w.fz=dz/d;
+    if(w.legs){w.ph+=dt*9;const sw=Math.sin(w.ph)*.5;w.legs[0].rotation.x=sw;w.legs[1].rotation.x=-sw}});
   // truck cycle: idle → reversing in → docked (door up) → pulling out
   const K=W.tk;if(K){const z1=zEnd(),door=W.doors&&W.doors[K.dock],now=performance.now();
     if(K.st==="idle"&&now>W.tkT){K.dock=W.jobDock!=null?W.jobDock:Math.floor(Math.random()*3);W.jobDock=null;K.st="in";K.z=z1+40;K.g.visible=true}
-    if(K.st==="in"){K.z=Math.max(z1+.25,K.z-dt*5);if((K.bp=(K.bp||0)-dt)<0){K.bp=.6;snd("rev",.9)}if(K.z<=z1+.25){K.st="dock";K.t=now+15000}}
+    if(K.st==="in"){K.z=Math.max(z1+.25,K.z-dt*5);if((K.bp=(K.bp||0)-dt)<0){K.bp=.6;const dd=Math.hypot(-7.5+K.dock*7.5-P.x,K.z-P.z);if(dd<30)snd("rev",.9*(1-dd/30))}if(K.z<=z1+.25){K.st="dock";K.t=now+15000}}
     else if(K.st==="dock"){if(now>K.t)K.st="out"}
     else if(K.st==="out"){K.z+=dt*6;if(K.z>z1+42){K.st="idle";K.g.visible=false;W.tkT=now+12000+Math.random()*20000}}
     if(K.st!=="idle"){K.g.position.set(-7.5+K.dock*7.5,0,K.z);const open=K.st==="dock"?1:K.st==="in"?Math.max(0,1-(K.z-z1)/12):Math.max(0,1-(K.z-z1)/6);
