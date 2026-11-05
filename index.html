@@ -481,7 +481,7 @@ function evalPart(__src){return eval(__src)}
 /* shared loader for parts/<name>.js: fetched once, cached; partApi(name) is null until it has loaded */
 const PARTS={};
 function partLoad(n){const p=PARTS[n]||(PARTS[n]={api:null,p:null});if(p.api)return Promise.resolve(p.api);if(p.p)return p.p;
-  return p.p=fetch("parts/"+n+".js?v=4").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
+  return p.p=fetch("parts/"+n+".js?v=5").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
 function partApi(n){const p=PARTS[n];return p?p.api:null}
 /* Online players (Firebase). Paste your Firebase web app config object here, e.g.
    const FIREBASE_CONFIG={apiKey:"...",authDomain:"...",projectId:"...",storageBucket:"...",messagingSenderId:"...",appId:"..."};
@@ -14267,7 +14267,8 @@ const lcUp=(c,lv)=>Math.round(60000*PRICE[c.size]*Math.pow(lv,1.2)); // price fr
 function LCO(id){if(!S.lc||typeof S.lc!=="object"||Array.isArray(S.lc))S.lc={};const L=S.lc[id];if(!L||typeof L!=="object")return null;
   L.lv=Math.max(1,Math.floor(+L.lv)||1);if(!L.inv||typeof L.inv!=="object")L.inv={};for(const g in L.inv)if(!G[g]||!(L.inv[g]>0))delete L.inv[g];
   if(!Array.isArray(L.ord))L.ord=[];L.ord=L.ord.filter((g,i,a)=>L.inv[g]>0&&a.indexOf(g)===i);for(const g in L.inv)if(!L.ord.includes(g))L.ord.push(g);
-  L.rx=L.rx===0?0:1;L.ax=L.ax?1:0;if(L.log&&!Array.isArray(L.log))L.log=[];return L}
+  L.rx=L.rx===0?0:1;L.ax=L.ax?1:0;if(L.log&&!Array.isArray(L.log))L.log=[];
+  if(!L.pin||typeof L.pin!=="object"||Array.isArray(L.pin))L.pin={};for(const g in L.pin){const v=Math.floor(+L.pin[g]);if(!(L.inv[g]>0)||!(v>=0))delete L.pin[g];else L.pin[g]=v}return L}
 const lcHas=c=>!!(c&&LCO(c.id));
 const lcCap=c=>{const L=LCO(c.id);return L?L.lv*LCROW:0};
 const lcUsed=c=>{const L=LCO(c.id);let t=0;if(L)for(const g in L.inv)t+=L.inv[g]*tpu(g);return t};
@@ -14287,13 +14288,25 @@ function lcMkt(c){const a=S.lst.filter(l=>l.city===c.id&&l.src==="lc"&&l.q>=.01)
   try{const e=PMXS().esc;for(const id in e){const x=e[id];if(x.c===c.id&&x.src==="lc"&&x.q>0)a.push({g:x.g,q:x.q,p:x.px,w:"Other players",sold:0,id:""})}}catch(err){}return a}
 const lcRowName=i=>{let s="";i++;while(i>0){i--;s=String.fromCharCode(65+i%26)+s;i=Math.floor(i/26)}return s};
 /* where everything sits: products in arrival order fill row A bay 1, 2... then row B. Each bay holds LCBAY tonnes. */
-function lcLayout(c){const L=LCO(c.id),out=[],bays=[];if(!L)return {items:out,bays};let s=0;const tot=L.lv*LCBAYS;
-  for(const g of L.ord){const q=L.inv[g];if(!(q>0))continue;const t=q*tpu(g),nb=Math.max(1,Math.ceil(t/LCBAY-1e-9)),s0=Math.min(s,tot-1);
-    for(let i=0;i<nb&&s<tot;i++,s++)bays.push({g,row:Math.floor(s/LCBAYS),bay:s%LCBAYS,f:Math.min(1,(t-i*LCBAY)/LCBAY)});
-    const s1=Math.max(s0,Math.min(s,tot)-1),r0=Math.floor(s0/LCBAYS),r1=Math.floor(s1/LCBAYS);
-    const loc=r0===r1?`Row ${lcRowName(r0)} · bay${s1>s0?"s":""} ${s0%LCBAYS+1}${s1>s0?"–"+(s1%LCBAYS+1):""}`:`Row ${lcRowName(r0)} bay ${s0%LCBAYS+1} → Row ${lcRowName(r1)} bay ${s1%LCBAYS+1}`;
-    out.push({g,q,t,row:r0,bay:s0%LCBAYS,loc,cont:G[g][2]==="raw"||tpu(g)>=2})}
+/* where everything sits. Products the player pinned (L.pin[g] = start bay index) go there first; the rest fill the free bays in list order (L.ord).
+   Each bay holds LCBAY tonnes; a product that needs several bays takes the next free ones. */
+function lcLayout(c){const L=LCO(c.id),out=[],bays=[];if(!L)return {items:out,bays};const tot=L.lv*LCBAYS,used=new Uint8Array(tot),slots={};
+  const need=g=>Math.max(1,Math.ceil(L.inv[g]*tpu(g)/LCBAY-1e-9));
+  for(const g of L.ord){const p=L.pin[g];if(p==null)continue;const a=slots[g]=[];for(let s=Math.min(p,tot-1);s<tot&&a.length<need(g);s++)if(!used[s]){used[s]=1;a.push(s)}}
+  let s=0;for(const g of L.ord){const a=slots[g]||(slots[g]=[]);while(a.length<need(g)&&s<tot){if(!used[s]){used[s]=1;a.push(s)}s++}a.sort((x,y)=>x-y)}
+  for(const g of L.ord){const a=slots[g],q=L.inv[g];if(!a.length)continue;const t=q*tpu(g);a.forEach((sl,i)=>bays.push({g,row:Math.floor(sl/LCBAYS),bay:sl%LCBAYS,f:Math.min(1,(t-i*LCBAY)/LCBAY)}));
+    const s0=a[0],s1=a[a.length-1],r0=Math.floor(s0/LCBAYS),r1=Math.floor(s1/LCBAYS),split=s1-s0!==a.length-1;
+    const loc=(r0===r1?`Row ${lcRowName(r0)} · bay${s1>s0?"s":""} ${s0%LCBAYS+1}${s1>s0?"–"+(s1%LCBAYS+1):""}`:`Row ${lcRowName(r0)} bay ${s0%LCBAYS+1} → Row ${lcRowName(r1)} bay ${s1%LCBAYS+1}`)+(split?" (split)":"");
+    out.push({g,q,t,row:r0,bay:s0%LCBAYS,loc,pin:L.pin[g]!=null,cont:G[g][2]==="raw"||tpu(g)>=2})}
   return {items:out,bays}}
+const lcRowIdx=t=>{t=String(t||"").trim().toUpperCase();if(!/^[A-Z]{1,3}$/.test(t))return -1;let n=0;for(const ch of t)n=n*26+(ch.charCodeAt(0)-64);return n-1};
+/* reorganising (central computer): move a product up/down the fill order, sort everything, or pin a product to a row and bay */
+function lcMove(c,g,d){const L=LCO(c.id);if(!L)return;const i=L.ord.indexOf(g),j=i+d;if(i<0||j<0||j>=L.ord.length)return;[L.ord[i],L.ord[j]]=[L.ord[j],L.ord[i]];save()}
+function lcSort(c,k){const L=LCO(c.id);if(!L)return;const T={raw:0,mid:1,fin:2},nm=g=>G[g][0].toLowerCase();
+  L.ord.sort(k==="type"?(a,b)=>(T[G[a][2]]??3)-(T[G[b][2]]??3)||nm(a).localeCompare(nm(b)):k==="weight"?(a,b)=>L.inv[b]*tpu(b)-L.inv[a]*tpu(a):(a,b)=>nm(a).localeCompare(nm(b)));L.pin={};save();toast("Warehouse re-arranged")}
+function lcPin(c,g,row,bay){const L=LCO(c.id);if(!L||!(L.inv[g]>0))return "Nothing to move";const r=lcRowIdx(row),b=Math.floor(+bay)-1;
+  if(r<0||r>=L.lv)return `Pick a row from A to ${lcRowName(L.lv-1)}`;if(!(b>=0&&b<LCBAYS))return `Pick a bay from 1 to ${LCBAYS}`;L.pin[g]=r*LCBAYS+b;save();return ""}
+function lcUnpin(c,g){const L=LCO(c.id);if(L){delete L.pin[g];save()}}
 function lcHtml(c){const L=LCO(c.id);
   if(!L)return `<div class="sec">Logistics center</div><div class="list"><div class="row"><div class="n">Open a logistics center</div><div class="d">A separate depot for goods sent between your cities. Shipments to ${E2(c.name)} unload here first: containers, pallets and a central computer that lists every product's row and bay. Starts with ${fmtT(LCROW)}; every upgrade adds a row and makes the building bigger, with no level limit. You can walk around inside.</div><button class="buy" data-act="lcopen" ${S.cash<lcCost(c)?"disabled":""}>Open ${fmt(lcCost(c))}</button></div></div>`;
   const cap=lcCap(c),used=lcUsed(c),pct=Math.min(100,used/cap*100),lay=lcLayout(c),wh=hasWh(c),winv=S.inv[c.id]||{},whG=wh?GK.filter(g=>winv[g]>=1):[];
