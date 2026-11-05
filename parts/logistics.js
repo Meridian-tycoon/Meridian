@@ -4,7 +4,7 @@
    one row per level, so the building gets longer with every upgrade. Controls match the bunker: W/S forward/back, A/D strafe, arrows or drag to turn, E use. */
 (function(){
 const BW=2.6,BAYS=LCBAYS,HW=BAYS*BW/2+4.5,ROWP=4.8,RACKD=1.3,RACKH=4.5,DOCK=24,MAXR=80,LVH=1.45;
-const W={el:null,on:false,T:null,ren:null,scene:null,cam:null,av:null,legs:null,walkT:0,p:{x:0,z:0,yaw:0},keys:{},joy:null,near:null,panel:null,raf:0,last:0,city:null,rows:0,len:0,beacon:null,find:null};
+const W={zoom:4.6,cd:4.6,fp:false,pitch:0,el:null,on:false,T:null,ren:null,scene:null,cam:null,av:null,legs:null,walkT:0,p:{x:0,z:0,yaw:0},keys:{},joy:null,near:null,panel:null,raf:0,last:0,city:null,rows:0,len:0,beacon:null,find:null};
 const esc=t=>String(t).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
 const rowZ=r=>-(r*ROWP)-ROWP/2;            // centre line of rack row r
 const bayX=b=>-BAYS*BW/2+BW/2+b*BW;          // centre of bay b
@@ -60,22 +60,24 @@ function tx(T,k,rx,ry){let base=TXC[k];if(!base){const cv=document.createElement
 /* a staged pallet at the dock: a mix of loads waiting for put-away */
 function stage(T,room,x,z,i){const k=["carton","bag","crate","carton"][i%4];ofBox(T,room,1.2,.144,1,0xb9894f,x,0,z,{r:.9});
   const m=new T.Mesh(new T.BoxGeometry(1.1,k==="bag"?.95:1.1,.95),new T.MeshStandardMaterial({map:tx(T,k,1,1),roughness:.85}));m.position.set(x,.144+(k==="bag"?.475:.55),z);room.add(m)}
+function setFp(on){W.fp=!!on;W.pitch=0;if(W.av)W.av.visible=!W.fp;const b=W.el&&W.el.querySelector('[data-lc="fp"]');if(b)b.textContent=W.fp?"🎥 3rd person":"👁 1st person"}
+function zoomBy(dir,amt){if(W.fp){if(dir>0)setFp(false);return}const z=W.zoom*Math.pow(1.18,dir*(amt||1));if(z<1.6){setFp(true);return}W.zoom=Math.max(1.6,Math.min(14,z))}
 function L0(){return W.city!=null?LCO(W.city):null}
 function open(cid){if(W.on)return;const c=CITIES[cid],L=c&&LCO(cid);if(!L)return toast("No logistics center here");css();W.on=true;W.city=cid;
   const el=W.el=document.createElement("div");el.className="lc3";el.setAttribute("role","dialog");el.setAttribute("aria-label","Logistics center in "+c.name);
   if(matchMedia("(pointer:coarse)").matches||"ontouchstart" in window)el.classList.add("touch");
-  el.innerHTML=`<div class="lc3-load">Opening the logistics center…</div><div class="lc3-top"><div><b>📦 LOGISTICS CENTER · ${esc(c.name.toUpperCase())}</b><small id="lc3-sub"></small></div><button class="lc3-btn g" data-lc="pc">🖥 Inventory</button><button class="lc3-btn" data-lc="close">Exit</button></div>
-  <div class="lc3-help">W/S forward/back · A/D strafe · ←/→ or drag to turn · Shift run · E use · Esc exit</div><div class="lc3-joy"><i></i></div><div class="lc3-act"><button class="lc3-btn" data-lc="use" hidden></button></div><div class="lc3-find" hidden></div>`;
+  el.innerHTML=`<div class="lc3-load">Opening the logistics center…</div><div class="lc3-top"><div><b>📦 LOGISTICS CENTER · ${esc(c.name.toUpperCase())}</b><small id="lc3-sub"></small></div><button class="lc3-btn g" data-lc="pc">🖥 Inventory</button><button class="lc3-btn g" data-lc="fp" title="First-person view (V)">👁 1st person</button><button class="lc3-btn g" data-lc="zin" title="Zoom in (+ or mouse wheel)" aria-label="Zoom in">＋</button><button class="lc3-btn g" data-lc="zout" title="Zoom out (−)" aria-label="Zoom out">－</button><button class="lc3-btn" data-lc="close">Exit</button></div>
+  <div class="lc3-help">W/S forward/back · A/D strafe · ←/→ or drag to turn · wheel/± zoom · V first person · Shift run · E use · Esc exit</div><div class="lc3-joy"><i></i></div><div class="lc3-act"><button class="lc3-btn" data-lc="use" hidden></button></div><div class="lc3-find" hidden></div>`;
   document.body.appendChild(el);W.btn=el.querySelector('[data-lc="use"]');W.keys={};W.joy=null;W.near=null;W.panel=null;W.find=null;
   const joy=el.querySelector(".lc3-joy"),kn=joy.firstChild,jr=56;let jid=null;
   const jm=e=>{const r=joy.getBoundingClientRect();let dx=e.clientX-(r.left+jr),dy=e.clientY-(r.top+jr);const m=Math.hypot(dx,dy);if(m>jr){dx*=jr/m;dy*=jr/m}kn.style.left=36+dx+"px";kn.style.top=36+dy+"px";W.joy={x:dx/jr,y:dy/jr}};
   joy.addEventListener("pointerdown",e=>{e.stopPropagation();jid=e.pointerId;joy.setPointerCapture(jid);jm(e)});joy.addEventListener("pointermove",e=>{if(e.pointerId===jid)jm(e)});
   const je=()=>{jid=null;W.joy=null;kn.style.left="36px";kn.style.top="36px"};joy.addEventListener("pointerup",je);joy.addEventListener("pointercancel",je);
-  el.tabIndex=-1;el.addEventListener("keydown",e=>{if(e.target.closest("input,textarea,select")){if(e.key==="Escape")panel(false);return}const k=e.key.toLowerCase();if(k==="e"||k==="enter"){use();e.preventDefault();return}if(k==="escape"){if(W.panel)panel(false);else close();return}W.keys[k]=1;if(k.startsWith("arrow")||k===" ")e.preventDefault()});
+  el.tabIndex=-1;el.addEventListener("keydown",e=>{if(e.target.closest("input,textarea,select")){if(e.key==="Escape")panel(false);return}const k=e.key.toLowerCase();if(k==="v"){setFp(!W.fp);return}if(k==="+"||k==="="){zoomBy(-1);return}if(k==="-"||k==="_"){zoomBy(1);return}if(k==="e"||k==="enter"){use();e.preventDefault();return}if(k==="escape"){if(W.panel)panel(false);else close();return}W.keys[k]=1;if(k.startsWith("arrow")||k===" ")e.preventDefault()});
   el.addEventListener("keyup",e=>{W.keys[e.key.toLowerCase()]=0});
   el.addEventListener("click",e=>{const b=e.target.closest("[data-lc]");if(!b)return;const a=b.dataset.lc;
     if(a==="close")close();else if(a==="use")use();else if(a==="pc")panel(!W.panel);else if(a==="xp")panel(false);
-    else if(a==="find")findG(b.dataset.g,false);else if(a==="go")findG(b.dataset.g,true)});
+    else if(a==="fp")setFp(!W.fp);else if(a==="zin")zoomBy(-1);else if(a==="zout")zoomBy(1);else if(a==="find")findG(b.dataset.g,false);else if(a==="go")findG(b.dataset.g,true)});
   el.addEventListener("input",e=>{if(e.target.id==="lc3-q")fillTable()});
   loadThree().then(T=>{if(!W.on||W.el!==el)return;build(T);W.raf=requestAnimationFrame(loop);if(W.cv)W.cv.focus()}).catch(()=>{close();toast("Couldn't load the 3D logistics center. Check your connection and try again.")})}
 function close(){if(!W.on)return;W.on=false;cancelAnimationFrame(W.raf);W.raf=0;
@@ -95,7 +97,12 @@ const GCOL={raw:[0xb45309,0x1d4ed8,0x15803d,0xb91c1c,0x7c3aed,0x0e7490],mid:[0x9
 function gcol(g,i){const t=G[g][2],a=GCOL[t==="raw"?"raw":t==="mid"?"mid":"fin"];let h=0;for(const ch of g)h=(h*31+ch.charCodeAt(0))>>>0;return a[(h+i)%a.length]}
 function build(T){W.T=T;const el=W.el,L=L0(),c=CITIES[W.city];let ren;try{ren=new T.WebGLRenderer({antialias:(devicePixelRatio||1)<1.5,powerPreference:"low-power"})}catch(e){close();toast("3D isn't available on this device.");return}
   ren.setPixelRatio(Math.min(1.5,devicePixelRatio||1));W.ren=ren;W._w=W._h=0;const cv=ren.domElement;cv.tabIndex=0;cv.setAttribute("aria-label","3D logistics center. W A S D to move, E to use.");el.insertBefore(cv,el.firstChild);W.cv=cv;const ld=el.querySelector(".lc3-load");if(ld)ld.remove();
-  let drag=null;cv.addEventListener("pointerdown",e=>{drag={x:e.clientX,id:e.pointerId};cv.focus()});cv.addEventListener("pointermove",e=>{if(drag&&drag.id===e.pointerId){W.p.yaw-=(e.clientX-drag.x)*.006;drag.x=e.clientX}});const du=()=>{drag=null};cv.addEventListener("pointerup",du);cv.addEventListener("pointercancel",du);
+  /* drag to look (horizontal turns; vertical tilts in first person); two fingers pinch to zoom; wheel zooms */
+  const pts=new Map();let pinch=0;cv.addEventListener("pointerdown",e=>{pts.set(e.pointerId,{x:e.clientX,y:e.clientY});try{cv.setPointerCapture(e.pointerId)}catch(_){}cv.focus();if(pts.size===2){const [a,b]=[...pts.values()];pinch=Math.hypot(a.x-b.x,a.y-b.y)}});
+  cv.addEventListener("pointermove",e=>{const o=pts.get(e.pointerId);if(!o)return;if(pts.size===2){o.x=e.clientX;o.y=e.clientY;const [a,b]=[...pts.values()],d=Math.hypot(a.x-b.x,a.y-b.y);if(pinch){W.zoom=Math.max(1.6,Math.min(14,W.zoom*pinch/d));if(W.fp&&pinch/d>1.15)setFp(false)}pinch=d;return}
+    W.p.yaw-=(e.clientX-o.x)*.006;if(W.fp)W.pitch=Math.max(-1.1,Math.min(1.1,W.pitch-(e.clientY-o.y)*.005));o.x=e.clientX;o.y=e.clientY});
+  const du=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=0};cv.addEventListener("pointerup",du);cv.addEventListener("pointercancel",du);
+  cv.addEventListener("wheel",e=>{e.preventDefault();zoomBy(e.deltaY>0?1:-1,Math.min(3,Math.abs(e.deltaY)/100))},{passive:false});
   ren.toneMapping=T.ACESFilmicToneMapping;ren.toneMappingExposure=1.05;ren.outputEncoding=T.sRGBEncoding;
   const sc=new T.Scene();sc.background=new T.Color(0x2a2f36);W.scene=sc;W.cam=new T.PerspectiveCamera(62,1,.1,400);
   sc.add(new T.HemisphereLight(0xfff4e0,0x5b5f66,1.05));const dl=new T.DirectionalLight(0xfff1d6,.55);dl.position.set(8,30,14);sc.add(dl);sc.add(new T.AmbientLight(0xffffff,.12));
@@ -145,7 +152,7 @@ function build(T){W.T=T;const el=W.el,L=L0(),c=CITIES[W.city];let ren;try{ren=ne
   ofBox(T,pc,.6,.04,.25,0x111827,0,.88,-.25);pc.position.set(0,0,z1-15);room.add(pc);W.pcz=z1-15;
   sign(T,room,["CENTRAL INVENTORY"],2.6,.5,0,2.75,z1-15.1,0,{bg:"#14532d",fg:"#dcfce7"});
   buildRacks(T);
-  const av=W.av=person(T,0x1f2937);W.legs=av.userData.legs;sc.add(av);W.p={x:0,z:z1-6,yaw:0};
+  const av=W.av=person(T,0x1f2937);W.legs=av.userData.legs;sc.add(av);W.p={x:0,z:z1-6,yaw:0};W.cd=W.zoom;setFp(W.fp);
   const bc=W.beacon=new T.Mesh(new T.ConeGeometry(.5,1.1,16),new T.MeshBasicMaterial({color:0x22c55e,transparent:true,opacity:.85}));bc.rotation.x=Math.PI;bc.visible=false;sc.add(bc);
   sub()}
 function screenTex(T,i){const L=L0(),c=CITIES[W.city],lay=lcLayout(c),cv=document.createElement("canvas");cv.width=512;cv.height=320;const g=cv.getContext("2d");g.fillStyle="#04140b";g.fillRect(0,0,512,320);g.fillStyle="#4ade80";g.font="bold 30px monospace";
@@ -187,10 +194,10 @@ function buildRacks(T){const room=W.room,c=CITIES[W.city],lay=lcLayout(c),R=W.ro
   // product labels over the first bay of each product
   for(const it of lay.items){if(it.row>=R)continue;sign(T,room,[G[it.g][0],gq(it.q)+" · "+fmtT(it.t)],BW-.2,.62,bayX(it.bay),RACKH-.35,rowZ(it.row)+RACKD/2+.08,0,{bg:"#f8fafc",fg:"#0f172a",w:384,h:120,fs:42})}
   if(L0().lv>MAXR)sign(T,room,["Rows "+lcRowName(MAXR)+"+ in the annex","See the computer for every location"],8,1.3,0,3,zBack()+.3,0,{w:1024,h:180,bg:"#7c2d12",fg:"#fff"})}
-function blocked(x,z){const r=.32;if(x<-HW+r||x>HW-r||z<zBack()+r||z>zEnd()-r)return true;
+function blocked(x,z,cam){const r=cam?.15:.32;if(x<-HW+r||x>HW-r||z<zBack()+r||z>zEnd()-r)return true;
   for(let i=0;i<W.rows;i++){const zz=rowZ(i);if(Math.abs(z-zz)<RACKD/2+r&&Math.abs(x)<BAYS*BW/2+r)return true}
-  if(Math.abs(x)<1.7+r&&Math.abs(z-W.pcz)<.6+r)return true;{const ox=HW-5,oz=zEnd()-15.5;if(x>ox-3.5-r&&z>oz-3-r&&z<oz+3+r&&!(z>oz+2.6&&x<ox-1.5)&&(x<ox-3.4+r||z<oz-2.9+r||(z>oz+2.9-r&&x>ox-1.5)||Math.abs(x-ox)<1.1+r&&Math.abs(z-oz-2.4)<.35+r))return true}
-  for(const [cx,cz,hw,hd] of [[-HW+4,zEnd()-4.5,3,1.2],[HW-4,zEnd()-4.5,3,1.2],[HW-11,zEnd()-4.6,3,1.2],[5,zEnd()-7.5,1.1,1.1],[-HW+7.75,zEnd()-9,4.5,.6],[HW-8,zEnd()-9,3.8,.6],[-1.25,zEnd()-3.2,2.9,.6]])if(Math.abs(x-cx)<hw+r&&Math.abs(z-cz)<hd+r)return true;return false}
+  if(!cam&&Math.abs(x)<1.7+r&&Math.abs(z-W.pcz)<.6+r)return true;{const ox=HW-5,oz=zEnd()-15.5;if(x>ox-3.5-r&&z>oz-3-r&&z<oz+3+r&&!(z>oz+2.6&&x<ox-1.5)&&(x<ox-3.4+r||z<oz-2.9+r||(z>oz+2.9-r&&x>ox-1.5)||Math.abs(x-ox)<1.1+r&&Math.abs(z-oz-2.4)<.35+r))return true}
+  for(const [cx,cz,hw,hd] of [[-HW+4,zEnd()-4.5,3,1.2],[HW-4,zEnd()-4.5,3,1.2],[HW-11,zEnd()-4.6,3,1.2],[5,zEnd()-7.5,1.1,1.1],[-HW+7.75,zEnd()-9,4.5,.6],[HW-8,zEnd()-9,3.8,.6],[-1.25,zEnd()-3.2,2.9,.6]].slice(0,cam?4:7))if(Math.abs(x-cx)<hw+r&&Math.abs(z-cz)<hd+r)return true;return false}
 function nearest(){const P=W.p;if(Math.abs(P.x)<2.6&&Math.abs(P.z-W.pcz)<1.6)return {k:"pc",n:"🖥 Use the central computer"};if(P.z>zEnd()-1.4&&Math.abs(P.x)<HW)return {k:"exit",n:"🚪 Leave the building"};return null}
 function use(){const n=W.near;if(!n)return;if(n.k==="pc")panel(true);else if(n.k==="exit")close()}
 function sub(){const c=CITIES[W.city],L=L0(),s=W.el&&W.el.querySelector("#lc3-sub");if(s&&L)s.textContent=`Level ${L.lv} · ${fmtT(lcUsed(c))} / ${fmtT(lcCap(c))} · ${L.ord.length} products`}
@@ -214,8 +221,11 @@ function step(dt,t){const P=W.p,k=W.keys,busy=!!W.panel;let f=0,s=0,turn=0;
   if(m>.05){const sp=(k.shift?7:4)*Math.min(1,m)*dt/m,fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw),rx=Math.cos(P.yaw),rz=-Math.sin(P.yaw),dx=(fx*f+rx*s)*sp,dz=(fz*f+rz*s)*sp;
     if(!blocked(P.x+dx,P.z))P.x+=dx;if(!blocked(P.x,P.z+dz))P.z+=dz;moving=true;W.av.rotation.y=Math.atan2(-(fx*f+rx*s),-(fz*f+rz*s))}
   W.walkT=moving?W.walkT+dt*10:0;const sw=Math.sin(W.walkT)*.5;W.legs[0].rotation.x=sw;W.legs[1].rotation.x=-sw;W.av.position.set(P.x,moving?Math.abs(Math.sin(W.walkT))*.04:0,P.z);
-  let D=4.6;const camHit=(x,z)=>x<-HW+.9||x>HW-.9||z<zBack()+.5||z>zEnd()-.5||blocked(x,z);while(D>1.2&&camHit(P.x+Math.sin(P.yaw)*D,P.z+Math.cos(P.yaw)*D))D-=.2;const cx=P.x+Math.sin(P.yaw)*D,cz=P.z+Math.cos(P.yaw)*D;
-  W.cam.position.set(cx,3.1,cz);W.cam.lookAt(P.x-Math.sin(P.yaw)*1.5,1.1,P.z-Math.cos(P.yaw)*1.5);
+  if(W.fp){const fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw),cp=Math.cos(W.pitch);W.cam.position.set(P.x,1.62,P.z);W.cam.lookAt(P.x+fx*cp,1.62+Math.sin(W.pitch),P.z+fz*cp)}
+  else{/* march from the player outwards and stop before the first wall, rack or object, so the camera never ends up inside or behind something */
+    const sx=Math.sin(P.yaw),sz=Math.cos(P.yaw),hit=(x,z)=>x<-HW+.6||x>HW-.6||z<zBack()+.4||z>zEnd()-.4||blocked(x,z,1);let D=W.zoom;for(let d=.4;d<=W.zoom;d+=.1)if(hit(P.x+sx*d,P.z+sz*d)){D=Math.max(.5,d-.35);break}
+    W.cd=D<W.cd?D:W.cd+(D-W.cd)*Math.min(1,dt*6);const cd=W.cd,cy=Math.min(8.5,1.7+cd*.32),cx=P.x+sx*cd,cz=P.z+sz*cd,la=Math.max(.6,1.5-cd*.1);
+    W.cam.position.set(cx,cy,cz);W.cam.lookAt(P.x-sx*la,1.1,P.z-sz*la)}
   if(W.find){W.beacon.position.y=RACKH+1.4+Math.sin(t/250)*.25;W.beacon.rotation.y+=dt*2;if(Math.hypot(P.x-W.find.x,P.z-W.find.z)<2.4&&t-W.find.t>1500){W.find=null;W.beacon.visible=false;W.el.querySelector(".lc3-find").hidden=true}}
   const n=W.near=nearest();if(W.btn){if(n&&!W.panel){W.btn.hidden=false;if(W.btn.textContent!==n.n+" (E)")W.btn.textContent=n.n+" (E)"}else W.btn.hidden=true}
   if(((t/2000)|0)!==W._st){W._st=(t/2000)|0;sub();if(W.scr)W.scr.forEach((m,i)=>{m.material.map.dispose();m.material.map=screenTex(W.T,i);m.material.needsUpdate=true})}}
