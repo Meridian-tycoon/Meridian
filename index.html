@@ -2943,7 +2943,7 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
   return{id:"meridian-models",type:"custom",renderingMode:"3d",setFogR,setWx,sync,setOrigin,addChunk,removeChunk,resetDetail,ready,count,stats,
     onAdd(mp,gl){map=mp;loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;
       scene=new T.Scene();cam=new T.Camera();group=new T.Group();scene.add(group);hemi=new T.HemisphereLight(0xffffff,0x667788,.85);sun=new T.DirectionalLight(0xffffff,.8);sun.position.set(.4,1,.6);scene.add(hemi,sun);sync();mp.triggerRepaint()}).catch(e=>console.warn("3d models off",e))},
-    render(gl,args){if(!T||!group)return;const z=map.getZoom();if(z<11.6)return;
+    render(gl,args){if(!T||!group||bgPaused())return;const z=map.getZoom();if(z<11.6)return;
       const dk=dark3d(),wx=wxCur&&lyOn("wx")?.7:1;hemi.intensity=(dk?.35:.85)*wx;sun.intensity=(dk?.3:.8)*wx;
       {const nw=performance.now();if(!SUNV||nw-sunT>5000){sunT=nw;SUNV=sun3d(map.getCenter().lat)}
         if(!dk){const w=SUNV.warm;sun.position.set(SUNV.x,SUNV.y,SUNV.z);sun.color.setRGB(1,1-.2*w,1-.42*w);hemi.color.setRGB(1,1-.06*w,1-.16*w);sun.intensity*=(.75+.35*SUNV.y)}else{sun.position.set(.4,1,.6);sun.color.setRGB(.72,.8,1);hemi.color.setRGB(.82,.86,1)}}
@@ -3054,6 +3054,9 @@ function renderPins(){clearPins();setModels([]);if(!inStreet)return;ensurePositi
 /* ---------- placing a purchase on the map ---------- */
 const PLACE_SEL='[data-buy],[data-rent],[data-act="land"],[data-act="leaseland"],[data-act="wh"],[data-act="whmove"],[data-act="lcopen"],[data-act="lcmove"],[data-prop="buy"],[data-hq="open"],[data-life="rent"],[data-life="buy"]';
 let placing=null,bypass=false;
+/* while you're inside a walk-in 3D building (logistics center, HQ office) the street view behind it is covered: stop drawing its 3D city, cars, rain and walkers so the building gets the whole GPU */
+function bgPaused(){return document.body.classList.contains("lc3-on")||(typeof OFC!=="undefined"&&!!OFC.on)}
+new MutationObserver(()=>{if(!bgPaused())try{MM.triggerRepaint()}catch(e){}}).observe(document.body,{attributes:true,attributeFilter:["class"]});
 sheet.addEventListener("click",e=>{if(!HAS_STREET||bypass)return;const b=e.target.closest(PLACE_SEL);if(!b||b.disabled||b.dataset.arm||!sel)return;
   // "Open another": extra units share the first unit's spot (S.pos is per type per city), so buy straight away
   if(b.dataset.buy&&(S.own[sel.id]||{})[b.dataset.buy])return;
@@ -3150,7 +3153,7 @@ function drawStorms(ctx,C){const now=Date.now(),t=performance.now()/1000;
 /* keep storms animated while one is on screen */
 let wxRaf=0,wxLast=0;
 function wxLoop(t){const G=gfx();if(G.wx&&activeStorms().length&&!inStreet&&document.visibilityState==="visible"&&t-wxLast>G.wx){wxLast=t;draw()}
-  if(inStreet){if(t-wxSt>15){wxSt=t;drawRain(t)}}else if(rainOn){wctx.setTransform(1,0,0,1,0,0);wctx.clearRect(0,0,wxCv.width,wxCv.height);rainOn=false;wxCv.hidden=true}wxRaf=requestAnimationFrame(wxLoop)}
+  if(inStreet){if(bgPaused()){}else if(t-wxSt>15){wxSt=t;drawRain(t)}}else if(rainOn){wctx.setTransform(1,0,0,1,0,0);wctx.clearRect(0,0,wxCv.width,wxCv.height);rainOn=false;wxCv.hidden=true}wxRaf=requestAnimationFrame(wxLoop)}
 let wxSt=0;wxRaf=requestAnimationFrame(wxLoop);
 /* rain over the street map when the city is under a storm */
 const wxCv=$("#wx"),wctx=wxCv.getContext("2d");let drops=[],rainOn=false,boltT=0;
@@ -3364,7 +3367,7 @@ function drawTraffic(ctx,C){const t=Date.now()/1000;ctx.save();
 /* keep the globe moving gently while it's on screen */
 let ambLast=0;
 function ambLoop(t){const G=gfx();if(G.amb&&!inStreet&&document.visibilityState==="visible"&&t-ambLast>G.amb&&!MM.isMoving()&&!sheet.classList.contains("full")){ambLast=t;draw()}
-  if(inStreet){if(t-ambSt>15){ambSt=t;drawStreetLife(t)}}else if(walkers.length||pops2.length){walkers=[];pops2=[];actx.setTransform(1,0,0,1,0,0);actx.clearRect(0,0,amb.width,amb.height)}requestAnimationFrame(ambLoop)}
+  if(inStreet){if(bgPaused()){}else if(t-ambSt>15){ambSt=t;drawStreetLife(t)}}else if(walkers.length||pops2.length){walkers=[];pops2=[];actx.setTransform(1,0,0,1,0,0);actx.clearRect(0,0,amb.width,amb.height)}requestAnimationFrame(ambLoop)}
 let ambSt=0,ambClr=false;requestAnimationFrame(ambLoop);
 /* street view: customers walking into your open businesses, coins when they buy */
 const amb=$("#amb"),actx=amb.getContext("2d");let walkers=[],pops2=[],lastSpawn=0;
@@ -15168,7 +15171,7 @@ function scySeen(){const now=Date.now();if(scyDev())return scyOn()||(S.scy&&S.sc
 function scyLayer(){let T=null,ren=null,scene=null,cam=null,key="";return {id:"scythe-sat",type:"custom",renderingMode:"3d",
   onAdd(mp,gl){loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;cam=new T.Camera();scene=new T.Scene();
     scene.add(new T.AmbientLight(0x8899aa,.7));const sun=new T.DirectionalLight(0xfff1dd,1.2);sun.position.set(5,8,6);scene.add(sun);mp.triggerRepaint()}).catch(e=>console.warn("scythe 3d off",e))},
-  render(gl,args){if(!T||!scene||!MM.transform.getMatrixForModel)return;const k=scySeen();if(k==null)return;if(!scyG||k!==key){if(scyG)scene.remove(scyG);scyG=scyModel(T,scyFromKey(k));scene.add(scyG);key=k}
+  render(gl,args){if(!T||!scene||!MM.transform.getMatrixForModel||bgPaused())return;const k=scySeen();if(k==null)return;if(!scyG||k!==key){if(scyG)scene.remove(scyG);scyG=scyModel(T,scyFromKey(k));scene.add(scyG);key=k}
     const now=SCYF.on&&SCYF.t?SCYF.t:Date.now(),p=scyWhere(now),z=MM.getZoom(),sc=SCYV.sc*Math.max(.35,Math.pow(2,1.4-z))*(p.alt<SCYV.alt?.4+.6*p.alt/SCYV.alt:1);scyG.rotation.y=p.alt<SCYV.alt?0:now/4000;scyG.userData.ring.rotation.z=now/1000;
     const mm=new T.Matrix4().fromArray(MM.transform.getMatrixForModel([p.lon,p.lat],p.alt)).scale(new T.Vector3(sc,sc,sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
     cam.projectionMatrix=new T.Matrix4().fromArray(args.defaultProjectionData?args.defaultProjectionData.mainMatrix:args).multiply(mm);ren.resetState();ren.render(scene,cam);MM.triggerRepaint()}}}
