@@ -5963,10 +5963,11 @@ function exiListen(uid){const db=ON.db;
   EX.sub.f=db.collection("exfill").where("to","==",uid).onSnapshot(q=>{const a=[];q.forEach(d=>a.push(Object.assign({id:d.id},d.data()||{})));EXI.fills=a;exiCollect()},()=>{})}
 /* owner: apply each fill to cash (buys pay the owner, sells cost the owner) */
 function exiCollect(){if(!exiOwner())return;for(const o of EXI.fills){if(EXI.busy[o.id])continue;EXI.busy[o.id]=1;const ref=ON.db.collection("exfill").doc(o.id);
-  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)throw new Error("gone");t.delete(ref);const pr=Math.max(-1e15,Math.min(1e15,Math.round(+d.data().pr||0)));if(pr)S.expool=(+S.expool||0)+pr;   // the buyer's purchase money goes into (or a sale comes out of) the exchange account pool
-    if(pr<0){const bn=Math.round(-pr*EXSBB);S.expool+=bn;S.exbn=(+S.exbn||0)+bn;o.bn=bn}   // sell-back bonus (Mark, 2026-11-03): the game adds EXSBB (50%) of each sale back into the owner's account holds
-    return Math.max(-1e15,Math.min(1e15,Math.round(+d.data().amt||0)))})
-    .then(v=>{delete EXI.busy[o.id];if(v<0)v=Math.max(v,-Math.max(0,S.cash));   // a sale to the exchange never takes the owner below 0 cash
+  ON.db.runTransaction(async t=>{const d=await t.get(ref);if(!d.exists)throw new Error("gone");t.delete(ref);   // no save-state changes in here: Firestore can rerun this function, which used to add the same fill to the pool more than once
+    return{pr:Math.max(-1e15,Math.min(1e15,Math.round(+d.data().pr||0))),v:Math.max(-1e15,Math.min(1e15,Math.round(+d.data().amt||0)))}})
+    .then(({pr,v})=>{delete EXI.busy[o.id];if(pr)S.expool=(+S.expool||0)+pr;   // the buyer's purchase money goes into (or a sale comes out of) the exchange account pool
+      if(pr<0){const bn=Math.round(-pr*EXSBB);S.expool+=bn;S.exbn=(+S.exbn||0)+bn;o.bn=bn}   // sell-back bonus (Mark, 2026-11-03): the game adds EXSBB (50%) of each sale back into the owner's account holds
+      if(v<0)v=Math.max(v,-Math.max(0,S.cash));   // a sale to the exchange never takes the owner below 0 cash
       S.cash+=v;if(v>0)S.earned=(S.earned||0)+v;const x=exFix();if(x){x.sold=(x.sold||0)+(v>0?v:0);x.bought=(x.bought||0)+(v<0?-v:0)}
       toast(v>=0?`🏛 ${o.byName||"A player"} traded ${fq(+o.q||0)} ${o.s} on your exchange: +${fmt(v)} fee${o.bn?`, +${fmt(o.bn)} sell-back bonus to your accounts`:""}`:`🏛 ${o.byName||"A player"} sold ${fq(+o.q||0)} ${o.s} to your exchange: −${fmt(-v)}`);save();hud();if(MKD.open)mkdRender()},()=>{delete EXI.busy[o.id]})}}
 /* change one stock's quantity in world/exinv inside a transaction; f(cur) returns the new quantity or throws */
