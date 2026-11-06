@@ -720,7 +720,12 @@ const rentBase=(b,c)=>Math.round(b.gross*.85*(b.k==="airport"||b.k==="airline"?(
 const bizRent=(b,c)=>{const r=Math.round(cost(b,c)*RENT);return b.tr?Math.max(0,Math.min(r,Math.round(Math.min(rentBase(b,c),potential(b,c,1))*.8))):r};
 function rentTotal(){let r=0;for(const id in S.lease||{})for(const k in S.lease[id]){if(!S.lease[id][k]||!(S.own[id]||{})[k]||unhOn(CITIES[id]))continue;r+=bizRent(BIZ.find(b=>b.k===k),CITIES[id])}
   for(const s of S.sites||[])if(s.lease&&!unhOn(CITIES[s.city]))r+=Math.round(plotPrice(CITIES[s.city],zoneOf(s)||"farm",s.size)*RENT);return r}
-function totals(){let inc=0,assets=0;
+/* totals() walks every business; big empires (thousands of units) made it ~12 ms and it runs many times a second.
+   Reuse the last result for up to 1 s while cash, debt and ids are unchanged (any buy, sale or upgrade moves cash) */
+let _totK="",_totT=0,_totV=null;
+function totals(){const k=S.cash+"|"+S.debt+"|"+S.nid+"|"+S.hour,n=Date.now();if(_totV&&k===_totK&&n-_totT<1000)return Object.assign({},_totV);
+  const r=_totals();_totK=k;_totT=n;_totV=r;return Object.assign({},r)}
+function _totals(){let inc=0,assets=0;
   for(const c of CITIES){const o=S.own[c.id];if(!o)continue;
     for(const b of BIZ){const lv=o[b.k];if(!lv)continue;inc+=uSum(c.id,b.k,l=>profit(b,c,l));
       let v=isLeased(c,b.k)?cost(b,c)*FIT:cost(b,c);for(let l=1;l<lv;l++)v+=upCost(b,c,l);assets+=v*0.75;for(const l of XU(c.id,b.k))assets+=uVal(b,c,l,0)}}
@@ -932,7 +937,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{_cssC=
 /* one overlay redraw per frame; MapLibre's own frames redraw it in step so nothing lags behind the camera */
 let _drawPend=false;function draw(){if(_drawPend)return;_drawPend=true;requestAnimationFrame(()=>{_drawPend=false;drawNow();try{wwarBan()}catch(e){}})}
 MM.on("render",()=>drawNow());
-let _lpT=0,_lp={};function labelProfit(c){const n=Date.now();if(n-_lpT>1000){_lpT=n;_lp={}}return _lp[c.id]??=cityProfit(c)+S.sites.filter(st=>st.city===c.id&&siteOp(st)).reduce((a,st)=>a+siteEst(st),0)}
+let _lpT=0,_lp={},_lpS={};function labelProfit(c){const n=Date.now();if(n-_lpT>1000){_lpT=n;_lp={};_lpS={};for(const st of S.sites)if(siteOp(st))_lpS[st.city]=(_lpS[st.city]||0)+siteEst(st)}return _lp[c.id]??=cityProfit(c)+(_lpS[c.id]||0)}
 function drawNow(){applyView();syncCam();const z=MM.getZoom();
   const C={sea:css("--sea"),land:css("--land"),border:css("--border"),ink:css("--ink"),own:css("--own"),acc:css("--accent"),good:css("--good"),bad:css("--bad"),muted:css("--muted"),space:css("--space"),panel:css("--panel")};C.halo=C.panel+"cc";
   ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -941,8 +946,10 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   const [cx,cy]=proj.translate(),R=proj.scale();
   // shipments in transit (great-circle routes, clipped to the visible side)
   const now=Date.now();
+  // big fleets share routes: draw each route line once, then just the vehicle markers (was one curved path per vehicle every frame)
+  {const seen=new Set();ctx.beginPath();for(const v of S.fleet){if(!v.arr)continue;const rk=v.from+">"+v.dest;if(seen.has(rk))continue;seen.add(rk);const a=CITIES[v.from],b=CITIES[v.dest];path({type:"LineString",coordinates:[[a.lon,a.lat],[b.lon,b.lat]]})}
+    if(seen.size){ctx.setLineDash([4,4]);ctx.strokeStyle=C.acc;ctx.lineWidth=1.4;ctx.stroke();ctx.setLineDash([])}}
   for(const v of S.fleet){if(!v.arr)continue;const a=CITIES[v.from],b=CITIES[v.dest],t=Math.min(1,(now-v.dep)/(v.arr-v.dep));
-    ctx.beginPath();path({type:"LineString",coordinates:[[a.lon,a.lat],[b.lon,b.lat]]});ctx.setLineDash([4,4]);ctx.strokeStyle=C.acc;ctx.lineWidth=1.4;ctx.stroke();ctx.setLineDash([]);
     const g=d3.geoInterpolate([a.lon,a.lat],[b.lon,b.lat])(t);if(!visible(g[0],g[1]))continue;const [x,y]=proj(g);
     ctx.fillStyle=C.acc;if(vcls(v.type)==="truck")ctx.fillRect(x-4,y-3,8,6);else if(vcls(v.type)==="ship"){ctx.beginPath();ctx.moveTo(x-6,y-2);ctx.lineTo(x+6,y-2);ctx.lineTo(x+3,y+3);ctx.lineTo(x-3,y+3);ctx.fill()}
     else{ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.fill()}}
