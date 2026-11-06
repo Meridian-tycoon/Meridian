@@ -5444,23 +5444,24 @@ function rvHtml(){if(!devGod())return"";const l=(typeof ON!=="undefined"&&ON.pla
   const sel="font:inherit;padding:6px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink);min-width:0";
   return `<div class="row"><div class="n">☠ Revive or 💰 grant cash</div><div class="d">Pick a player. Revive brings back someone killed by a nuke, H-bomb or ICBM (only if they didn't press "Start a new game"). Grant adds cash. Both land the next time their game is open and signed in.</div>
   <span style="display:flex;flex-wrap:wrap;gap:6px;grid-column:1/3;padding-top:6px;align-items:center"><select id="rvsel" style="${sel};max-width:100%">${l.map(p=>`<option value="${onEsc(p.uid)}">${onEsc(String(p.name||"Player").slice(0,40))}</option>`).join("")}</select><button class="buy" data-dev="revive" ${l.length?"":"disabled"}>Revive</button>
-  <input id="gcamt" type="text" inputmode="decimal" placeholder="Amount, e.g. 8e18" style="${sel};width:150px"><button class="buy" data-dev="grant" ${l.length?"":"disabled"}>Grant</button></span></div>`}
+  <input id="gcamt" type="text" inputmode="decimal" placeholder="Amount, e.g. 8e18" style="${sel};width:150px"><button class="buy" data-dev="grant" ${l.length?"":"disabled"}>Grant</button><button class="buy up" data-dev="setcash" ${l.length?"":"disabled"}>Set cash</button></span></div>`}
 function rvSend(){const db=wcBE(),e=$("#rvsel");if(!devGod()||!db)return toast("Sign in with the developer account to revive players");const uid=e&&e.value;if(!uid)return;const nm=e.options[e.selectedIndex].text;
   db.collection("revive").doc(uid).set({by:ON.user.uid,at:firebase.firestore.FieldValue.serverTimestamp()}).then(()=>toast(`☠→❤ ${nm} will be revived next time their game is open`)).catch(x=>toast("Couldn't send revive: "+(x&&x.code||x)))}
 const RV={at:0};
 function rvTick(){try{if(!S.dead)return;const db=wcBE(),now=Date.now();if(!db||now-RV.at<15000)return;RV.at=now;const ref=db.collection("revive").doc(ON.user.uid);
   ref.get().then(d=>{if(!d.exists||!S.dead)return;const c=S.dead.name;delete S.dead;if(S.need)S.need.h=Math.max(S.need.h||0,50);S.log.unshift("❤ The developer brought you back to life after the strike on "+c);S.log=S.log.slice(0,3);save();ref.delete().catch(()=>{});const g=$("#gameover");if(g)g.remove();toast("❤ You've been revived. Welcome back!");try{hud()}catch(e){}}).catch(()=>{})}catch(e){}}
 setInterval(rvTick,3000);
-function gcSend(){const db=wcBE(),e=$("#rvsel"),a=+String(($("#gcamt")||{}).value||"").replace(/[,$\s]/g,"");if(!devGod()||!db)return toast("Sign in with the developer account to grant cash");const uid=e&&e.value;if(!uid)return;
-  if(!(a>0&&isFinite(a)))return toast("Type an amount, e.g. 8e18");const nm=e.options[e.selectedIndex].text,ref=db.collection("grant").doc(uid);
-  db.runTransaction(t=>t.get(ref).then(d=>{const o=d.exists?+(d.data().amt)||0:0;t.set(ref,{amt:o+a,by:ON.user.uid,at:firebase.firestore.FieldValue.serverTimestamp()})})).then(()=>toast(`💰 ${fmt(a)} will reach ${nm} next time their game is open`)).catch(x=>toast("Couldn't send grant: "+(x&&x.code||x)))}
+function gcSend(set){const db=wcBE(),e=$("#rvsel"),a=+String(($("#gcamt")||{}).value||"").replace(/[,$\s]/g,"");if(!devGod()||!db)return toast("Sign in with the developer account to grant cash");const uid=e&&e.value;if(!uid)return;
+  if(!(a>=0&&isFinite(a))||(!set&&!(a>0)))return toast("Type an amount, e.g. 8e15");const nm=e.options[e.selectedIndex].text,ref=db.collection("grant").doc(uid);
+  (set?ref.set({set:a,amt:0,by:ON.user.uid,at:firebase.firestore.FieldValue.serverTimestamp()}):db.runTransaction(t=>t.get(ref).then(d=>{const v=d.exists?d.data():{};t.set(ref,Object.assign({},v,{amt:(+v.amt||0)+a,by:ON.user.uid,at:firebase.firestore.FieldValue.serverTimestamp()}))}))).then(()=>toast(set?`💰 ${nm}'s cash will be set to ${fmt(a)} next time their game is open`:`💰 ${fmt(a)} will reach ${nm} next time their game is open`)).catch(x=>toast("Couldn't send grant: "+(x&&x.code||x)))}
 const GC={at:0,busy:0};
 function gcTick(){try{const db=wcBE(),now=Date.now();if(!db||GC.busy||now-GC.at<20000)return;GC.at=now;const ref=db.collection("grant").doc(ON.user.uid);GC.busy=1;
-  ref.get().then(d=>{if(!d.exists){GC.busy=0;return}const a=+(d.data().amt)||0;return ref.delete().then(()=>{GC.busy=0;if(!(a>0&&isFinite(a)))return;S.cash=(+S.cash||0)+a;S.log.unshift("💰 The developer granted you "+fmt(a));S.log=S.log.slice(0,3);save();toast("💰 The developer granted you "+fmt(a));try{hud()}catch(e){}})}).catch(()=>{GC.busy=0})}catch(e){}}
+  ref.get().then(d=>{if(!d.exists){GC.busy=0;return}const v=d.data()||{},a=+v.amt||0,st=typeof v.set==="number"&&isFinite(v.set)&&v.set>=0?v.set:null;return ref.delete().then(()=>{GC.busy=0;if(st==null&&!(a>0&&isFinite(a)))return;if(st!=null)S.cash=st;if(a>0&&isFinite(a))S.cash=(+S.cash||0)+a;const t=st!=null?"💰 The developer set your cash to "+fmt(S.cash):"💰 The developer granted you "+fmt(a);S.log.unshift(t);S.log=S.log.slice(0,3);save();toast(t);try{hud()}catch(e){}})}).catch(()=>{GC.busy=0})}catch(e){}}
 setInterval(gcTick,5000);
 function devAct(b){const k=b.dataset.dev;
   if(k==="revive")return rvSend();
   if(k==="grant")return gcSend();
+  if(k==="setcash")return gcSend(1);
   if(k==="mprate"||k==="mpon"||k==="mpnow"||k==="mpwd"||k==="mpall"){if(!devGod())return toast("Sign in with the developer account to use the money printer");const m=MP();
     if(k==="mprate"){mpTick();m.r=Math.max(0,Math.min(MPR.length-1,+b.dataset.i||0));toast(`Money printer set to ${fmt(MPR[m.r])} every ${mpU(m)[0]}`)}
     else if(k==="mpon"){mpTick();m.on=m.on?0:1;m.at=Date.now();toast(m.on?"🖨 Money printer on":"Money printer off")}
