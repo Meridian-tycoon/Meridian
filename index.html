@@ -626,7 +626,9 @@ const PTKEY="meridian-playtest",PTVER="pt1";
 const PTP={on:false,name:"",id:"",asked:false,lastDay:0};try{Object.assign(PTP,JSON.parse(localStorage.getItem(PTKEY)||"{}"))}catch(e){}
 if(!PTP.id)PTP.id=Math.random().toString(36).slice(2,8);
 const ptSave=()=>{try{localStorage.setItem(PTKEY,JSON.stringify(PTP))}catch(e){}};ptSave();
-const save=()=>{if(save.lock)return;try{if(typeof ensurePositions==="function")ensurePositions();localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}try{if(typeof onSaved==="function")onSaved()}catch(e){}};
+/* tmemo: remember a result until the current task ends (one tick, one render), so big empires don't redo the same per-city math for every unit */
+function tmemo(ns,k,f){const T=tmemo.T||(tmemo.T=new Map());if(!tmemo.armed){tmemo.armed=true;queueMicrotask(()=>{T.clear();tmemo.armed=false})}let m=T.get(ns);if(!m)T.set(ns,m=new Map());if(m.has(k))return m.get(k);const v=f();m.set(k,v);return v}
+const save=()=>{if(tmemo.T)tmemo.T.clear();if(save.lock)return;try{if(typeof ensurePositions==="function")ensurePositions();localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}try{if(typeof onSaved==="function")onSaved()}catch(e){}};
 
 const cost=(b,c)=>Math.round(b.cost*1.3*PRICE[c.size]);
 // carts climb faster (1.7x per level) so upgrades never pay back quicker than a new cart; others keep 1.4x
@@ -638,7 +640,7 @@ const upCost=(b,c,lv)=>Math.round(cost(b,c)*0.8*Math.pow(isCart(b.k)?1.5:1.4,lv-
 const UNH_DAYS=6*30;
 function unhOn(c){const u=S.unh;return !!(c&&u&&typeof u==="object"&&u[c.id]>Date.now())}
 const unhLeft=c=>{const d=Math.max(0,Math.ceil(((S.unh||{})[c.id]-Date.now())/DAYMS));return d>=30?`${Math.floor(d/30)} mo ${d%30} d`:`${d} d`};
-function evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="function"?stormMult(c):1)*(typeof strikeMult==="function"?strikeMult(c):1)*(typeof dmgMult==="function"?dmgMult(c):1)*(typeof aimMult==="function"?aimMult(c):1)*popDem(c)*sancMult()}
+function evMult(c){return c.id==null?_evMult(c):tmemo("ev",c.id,()=>_evMult(c))}function _evMult(c){const e=S.events[c.id];return (e?e.m:1)*(typeof stormMult==="function"?stormMult(c):1)*(typeof strikeMult==="function"?strikeMult(c):1)*(typeof dmgMult==="function"?dmgMult(c):1)*(typeof aimMult==="function"?aimMult(c):1)*popDem(c)*sancMult()}
 /* rival companies */
 /* Rivals are real companies. Real figures (market cap in US$ bn, staff, founding year) are about 2025 and shown as facts only.
    Net worth is the real market cap in US dollars (rivalSeed = cap x 1e9, Apple US$3.5T). Anything that used to scale with the old squeezed net worth
@@ -3120,7 +3122,8 @@ $("#stcityb").onclick=()=>{if(stCity){openCity(stCity)}};
 const WEEK=7*24*3600000;
 function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 const WX_TEST=/[?&]wxtest/.test(location.search);
-function stormsOfWeek(w){const r=rng(w*7919+13),out=[];
+const _sow=new Map();function stormsOfWeek(w){let o=_sow.get(w);if(!o){o=_stormsOfWeek(w);if(_sow.size>8)_sow.clear();_sow.set(w,o)}return o.map(x=>({...x}))}
+function _stormsOfWeek(w){const r=rng(w*7919+13),out=[];
   const a=r()*.45,b=.5+r()*.45;                                        // one in each half of the week
   for(const f of [a,b]){const start=w*WEEK+f*WEEK,dur=(4+r()*2)*3600000,lat=-45+r()*100,lon=-180+r()*360,
     hd=r()*Math.PI*2,spd=12+r()*18;                                       // drift heading and km/h
@@ -3653,7 +3656,7 @@ function embMult(c){const n=c&&c.country;if(!n)return 1;return (1-Math.min(EMBCF
 function embFr(c,d){if(!c||!d)return 1;return embAgainst(c.country).length||embList(d.country).length?EMBCFG.fr:1}
 const WLIC_FEE=50000;
 function lawBan(c,b){return (b.k==="casino"&&law(c,"casino")===1)||(b.k==="dispensary"&&law(c,"weed")===1)}
-function lawMult(c,b){let m=[1.06,1,.9][law(c,"wage")];
+function lawMult(c,b){return c.id==null||!b.k?_lawMult(c,b):tmemo("law",c.id+"|"+b.k,()=>_lawMult(c,b))}function _lawMult(c,b){let m=[1.06,1,.9][law(c,"wage")];
   if(RETAIL.includes(b.k))m*=[1,.97,.93][law(c,"tariff")];
   if(SMALL.includes(b.k)&&law(c,"grant"))m*=1.1;if(b.k==="prison")m*=[.7,1,1.4][law(c,"police")];
   const g=gov(c.country);if(g.strike>Date.now())m*=.7;return m*embMult(c)*warMult(c)*dipMult(c)*wmdMult(c)}
@@ -7578,7 +7581,7 @@ function hrStaff(){let h="",n=0,pay=0;const btn=(a,k,t,bg,dis)=>`<button class="
   for(const id in S.own){const o=S.own[id],c=CITIES[id];if(!c)continue;const mine=BIZ.filter(b=>o[b.k]);if(!mine.length)continue;
     h+=`<div class="ph-sub" style="margin-top:10px">${c.name}</div>`;
     for(const b of mine){const key=bkey(c,b.k),st=isStaffed(c,b.k),nu=uLv(id,b.k).length,w=uSum(id,b.k,l=>bizWage(b,c,l)),a=hrAdj(c,b),sc=hrSch(c,b);n++;pay+=w;
-      h+=`<div class="ph-rows" style="margin-bottom:4px"><div><span><b>${b.n}${nu>1?" ×"+nu:""}</b></span><b style="color:${st?"#4ade80":"#f87171"}">${st?uSum(id,b.k,l=>bizStaff(b.k,l))+" staff":"Unstaffed"}</b></div>
+      h+=`<div class="ph-rows hr-row" style="margin-bottom:4px"><div><span><b>${b.n}${nu>1?" ×"+nu:""}</b></span><b style="color:${st?"#4ade80":"#f87171"}">${st?uSum(id,b.k,l=>bizStaff(b.k,l))+" staff":"Unstaffed"}</b></div>
         <div><span>Wage</span><b>${w<100?fmtc(w):fmt(w)}/hr${a?` (${a>0?"+":""}${Math.round(a*HRCFG.step*100)}%)`:""}</b></div>
         <div><span>Hours · output</span><b>${sc[0]} · ×${hrOut(c,b).toFixed(2)}</b></div>
         <div><span>Profit</span><b>${fmt(uSum(id,b.k,l=>profit(b,c,l)))}/hr</b></div></div>
@@ -13813,14 +13816,15 @@ function wcCut(go){if(!wclMine()||WCO.busy)return;if(!go){WCO.arm=Date.now();toa
     .then(o=>{WCO.busy=0;WCO.doc={off:o};done()},e=>{WCO.busy=0;toast("Couldn't end the season: "+(e&&e.code||e))})}
 function wcCutHtml(){const armed=WCO.arm&&Date.now()-WCO.arm<8000;return `<div style="margin-top:10px"><button class="buy" data-mx="wclcut" style="width:100%;${armed?"background:#b91c1c!important;border-color:#ef4444;color:#fff":""}">${armed?"Tap again: end season "+wcW()+" now":"⏭ End this season now"}</button><div style="font-size:12px;opacity:.8;margin-top:4px">Overrules the calendar: this season's votes (and your decree) take effect at once and a new season starts.</div></div>`}
 function wcRnd(w,k,i){let h=2166136261;for(const ch of w+":"+k+":"+i){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return ((h>>>0)%10000)/10000}
-function wcAI(w){const t={};for(const k of WCK){let y=0;for(let i=0;i<WCAI;i++)if(wcRnd(w,k,i)<WCR[k].p)y++;t[k]=[y,WCAI-y]}return t}
+const _wcai=new Map();function wcAI(w){let o=_wcai.get(w);if(!o){o=_wcAI(w);if(_wcai.size>8)_wcai.clear();_wcai.set(w,o)}const t={};for(const k in o)t[k]=o[k].slice();return t}
+function _wcAI(w){const t={};for(const k of WCK){let y=0;for(let i=0;i<WCAI;i++)if(wcRnd(w,k,i)<WCR[k].p)y++;t[k]=[y,WCAI-y]}return t}
 function wcAdd(t,v){if(v)for(const k of WCK)if(v[k]===1||v[k]===0)t[k][v[k]?0:1]++;return t}
 function wcMine(w){return wcS().v[w]||{}}
 function wcFresh(w){const d=WC.doc;return d&&d.season===w&&Date.now()-d.at<60*60000?d:null}
 /* tally of season w: the master's (fresh, current season) or AI + my own vote */
 function wcTally(w){const d=wcFresh(w);if(d&&d.tally)return d.tally;if(d&&w===d.season-1&&d.last)return d.last;const d1=wcFresh(w+1);if(d1&&d1.last)return d1.last;return wcAdd(wcAI(w),wcMine(w))}
 function wcPass(t){const o={};for(const k of WCK)o[k]=!!(t[k]&&t[k][0]>t[k][1]);return o}
-function wcActive(){const w=wcW(),d=wcFresh(w);if(d&&d.active)return d.active;return wclApply(wcPass(wcTally(w-1)),wclDec(w-1))}
+function wcActive(){return tmemo("wca",0,_wcActive)}function _wcActive(){const w=wcW(),d=wcFresh(w);if(d&&d.active)return d.active;return wclApply(wcPass(wcTally(w-1)),wclDec(w-1))}
 function wcOn(k){try{return !!wcActive()[k]}catch(e){return false}}
 function wcBiz(b){if(!wcOn("carbon"))return 1;if(WCDIRTY.includes(b.k))return spDev()?1:.85;return WCGREEN.includes(b.k)?1.1:1}
 function wcUp(o){if(!o||!wcOn("carbon"))return 1;if(WCDOP.includes(o.k))return spDev()?1:1.25;return WCGOP.includes(o.k)?.9:1}
@@ -15480,7 +15484,7 @@ html.th-glass[data-theme="dark"] .mx-win .bxd-con{background:rgba(11,16,32,.7);b
 /* city panel tabs: all six always fit, no sideways scroll */
 html body .tabs{overflow:visible;gap:3px;flex-wrap:wrap}html body .tabs button{flex:1 1 auto!important;min-width:auto;padding:7px 6px!important;font-size:12px!important;letter-spacing:0!important;white-space:nowrap;overflow:visible}
 .ph-wrapbtn{white-space:normal!important;line-height:1.15;min-height:36px;overflow-wrap:anywhere}
-.hr-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}.hr-grid button.buy{width:100%;min-width:0;margin:0;min-height:40px}
+.hr-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}.hr-row{content-visibility:auto;contain-intrinsic-size:auto 84px}.hr-grid{content-visibility:auto;contain-intrinsic-size:auto 92px}.hr-grid button.buy{width:100%;min-width:0;margin:0;min-height:40px}
 .ph-apphead button,.ph-top button,.ph-sz button,.ph-homebar,#statsw .sw-top button,#rank{position:relative}
 .ph-apphead button::after,.ph-top button::after,.ph-sz button::after,#statsw .sw-top button::after,#rank::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
 .ph-sz button::after{width:100%}
