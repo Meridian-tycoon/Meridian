@@ -5441,15 +5441,23 @@ setInterval(mpTick,1000);
 document.addEventListener("change",e=>{const t=e.target;if(!t||t.dataset.devsel!=="mpu"||!devOn()||!devGod())return;const m=MP();mpTick();m.u=Math.max(0,Math.min(MPU.length-1,+t.value||0));toast(`Money printer pays out every ${mpU(m)[0]}`);save();hud();reSheet()});
 /* Revive a player (Mark, 2026-11-06): developer account only. Writes revive/{uid}; that player's game clears its GAME OVER (S.dead) next time it is open and signed in, then deletes the doc. Their empire is untouched; cash lost in the strike is not refunded. */
 function rvHtml(){if(!devGod())return"";const l=(typeof ON!=="undefined"&&ON.players||[]).filter(p=>p&&p.uid).slice().sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")));
-  return `<div class="row"><div class="n">☠ Revive a player</div><div class="d">Brings back a player killed by a nuke, H-bomb or ICBM. Works the next time their game is open and signed in, as long as they didn't press "Start a new game".</div><select id="rvsel" style="max-width:100%">${l.map(p=>`<option value="${onEsc(p.uid)}">${onEsc(String(p.name||"Player").slice(0,40))}</option>`).join("")}</select><button class="buy" data-dev="revive" ${l.length?"":"disabled"}>Revive</button></div>`}
+  return `<div class="row"><div class="n">☠ Revive a player</div><div class="d">Brings back a player killed by a nuke, H-bomb or ICBM. Works the next time their game is open and signed in, as long as they didn't press "Start a new game".</div><select id="rvsel" style="max-width:100%">${l.map(p=>`<option value="${onEsc(p.uid)}">${onEsc(String(p.name||"Player").slice(0,40))}</option>`).join("")}</select><button class="buy" data-dev="revive" ${l.length?"":"disabled"}>Revive</button></div>`+`<div class="row"><div class="n">💰 Grant cash</div><div class="d">Adds cash to the player picked above. It lands the next time their game is open and signed in.</div><input id="gcamt" type="text" inputmode="decimal" placeholder="Amount, e.g. 8e18" style="max-width:100%"><button class="buy" data-dev="grant" ${l.length?"":"disabled"}>Grant</button></div>`}
 function rvSend(){const db=wcBE(),e=$("#rvsel");if(!devGod()||!db)return toast("Sign in with the developer account to revive players");const uid=e&&e.value;if(!uid)return;const nm=e.options[e.selectedIndex].text;
   db.collection("revive").doc(uid).set({by:ON.user.uid,at:firebase.firestore.FieldValue.serverTimestamp()}).then(()=>toast(`☠→❤ ${nm} will be revived next time their game is open`)).catch(x=>toast("Couldn't send revive: "+(x&&x.code||x)))}
 const RV={at:0};
 function rvTick(){try{if(!S.dead)return;const db=wcBE(),now=Date.now();if(!db||now-RV.at<15000)return;RV.at=now;const ref=db.collection("revive").doc(ON.user.uid);
   ref.get().then(d=>{if(!d.exists||!S.dead)return;const c=S.dead.name;delete S.dead;if(S.need)S.need.h=Math.max(S.need.h||0,50);S.log.unshift("❤ The developer brought you back to life after the strike on "+c);S.log=S.log.slice(0,3);save();ref.delete().catch(()=>{});const g=$("#gameover");if(g)g.remove();toast("❤ You've been revived. Welcome back!");try{hud()}catch(e){}}).catch(()=>{})}catch(e){}}
 setInterval(rvTick,3000);
+function gcSend(){const db=wcBE(),e=$("#rvsel"),a=+String(($("#gcamt")||{}).value||"").replace(/[,$\s]/g,"");if(!devGod()||!db)return toast("Sign in with the developer account to grant cash");const uid=e&&e.value;if(!uid)return;
+  if(!(a>0&&isFinite(a)))return toast("Type an amount, e.g. 8e18");const nm=e.options[e.selectedIndex].text,ref=db.collection("grant").doc(uid);
+  db.runTransaction(t=>t.get(ref).then(d=>{const o=d.exists?+(d.data().amt)||0:0;t.set(ref,{amt:o+a,by:ON.user.uid,at:firebase.firestore.FieldValue.serverTimestamp()})})).then(()=>toast(`💰 ${fmt(a)} will reach ${nm} next time their game is open`)).catch(x=>toast("Couldn't send grant: "+(x&&x.code||x)))}
+const GC={at:0,busy:0};
+function gcTick(){try{const db=wcBE(),now=Date.now();if(!db||GC.busy||now-GC.at<20000)return;GC.at=now;const ref=db.collection("grant").doc(ON.user.uid);GC.busy=1;
+  ref.get().then(d=>{if(!d.exists){GC.busy=0;return}const a=+(d.data().amt)||0;return ref.delete().then(()=>{GC.busy=0;if(!(a>0&&isFinite(a)))return;S.cash=(+S.cash||0)+a;S.log.unshift("💰 The developer granted you "+fmt(a));S.log=S.log.slice(0,3);save();toast("💰 The developer granted you "+fmt(a));try{hud()}catch(e){}})}).catch(()=>{GC.busy=0})}catch(e){}}
+setInterval(gcTick,5000);
 function devAct(b){const k=b.dataset.dev;
   if(k==="revive")return rvSend();
+  if(k==="grant")return gcSend();
   if(k==="mprate"||k==="mpon"||k==="mpnow"||k==="mpwd"||k==="mpall"){if(!devGod())return toast("Sign in with the developer account to use the money printer");const m=MP();
     if(k==="mprate"){mpTick();m.r=Math.max(0,Math.min(MPR.length-1,+b.dataset.i||0));toast(`Money printer set to ${fmt(MPR[m.r])} every ${mpU(m)[0]}`)}
     else if(k==="mpon"){mpTick();m.on=m.on?0:1;m.at=Date.now();toast(m.on?"🖨 Money printer on":"Money printer off")}
