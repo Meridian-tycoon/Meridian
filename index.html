@@ -1045,7 +1045,7 @@ function renderSheet(){sheet.classList.remove("bzv");if(mode==="sv")return;if(mo
   if(bzF.v!=="new"&&mine0.length&&!mine.length)h+=`<p class="bz-empty">None of your businesses here match “${bzF.q.replace(/[&"<>]/g,"")}”.</p>`;
   if(bzF.v==="mine"&&!mine0.length)h+=`<p class="bz-empty">You don't own anything in ${c.name} yet. <button class="bz-lnk" data-bzf="new">See what you can open</button></p>`;
   const wz=mine.length?wzInfo(c):null;
-  if(mine.length){h+=`<div class="sec">Your businesses here</div><div class="list">`;
+  if(mine.length){h+=`<button class="buy" data-act="bzdash" style="width:100%;margin:8px 0 2px;color:#fff;background:#7c3aed!important;border-color:#a78bfa">📊 Business dashboard · ${c.name}</button><div class="sec">Your businesses here</div><div class="list">`;
     for(const b of mine){const lv=o[b.k],fl=b.k==="airline"?airFlightsHr(c.id):0,p=profit(b,c,lv)+fl;const uc=upCost(b,c,lv),xs=XU(c.id,b.k),nu=1+xs.length,bc=xuCost(b,c),blk=bizBlock(b,c),ub=(i,l)=>l<MAXLV?`<button class="buy up" data-up="${b.k}|${i}" ${S.cash<upCost(b,c,l)?"disabled":""}>Upgrade ${fmt(upCost(b,c,l))}</button>`:`<button class="buy up" disabled>Maxed</button>`,sb=(i,l)=>`<button class="buy up" data-sell1="${b.k}|${i}">Sell ${fmt(uVal(b,c,l,!i&&isLeased(c,b.k)))}</button>`;
       const bzo=bzF.op[b.k]!=null?bzF.op[b.k]:mine0.length<=2,opf=opFactor(c,b);
       h+=`<div class="bz-it${bzo?" open":""}${wzRow(wz)?" bz-wz":""}"><button class="bz-hd" data-bzt="${b.k}" aria-expanded="${bzo}"><span class="bz-dot" style="background:${opf>.01?"var(--good)":"var(--bad)"}" title="${opf>.01?"Selling":"Not selling"}"></span><span class="bz-nm">${b.n}</span><span class="bz-tg">${nu>1?`×${nu} · `:""}Lv ${lv}${isLeased(c,b.k)?" · rented":""}${bizReg(c,b.k)?"":` · <b style="color:var(--bad)">unregistered</b>`}${opf>.01?"":` · <b style="color:var(--bad)">not selling</b>`}</span><span class="bz-p" style="color:${p<0?"var(--bad)":"var(--good)"}">${fmt(nu>1?cityUnitsP(b,c):p)}/hr</span><span class="bz-ch" aria-hidden="true">›</span></button><div class="bz-body">`;
@@ -1077,6 +1077,7 @@ function renderSheet(){sheet.classList.remove("bzv");if(mode==="sv")return;if(mo
   sheet.innerHTML=h;sheet.classList.add("bzv");exBind(c);baBind(c);pfCollapse(BZCKEY);
   $("#cls").onclick=closeSheet;
   sheet.querySelectorAll("[data-buy]").forEach(btn=>btn.onclick=()=>buy(c,btn.dataset.buy));
+  sheet.querySelectorAll("[data-act=bzdash]").forEach(btn=>btn.onclick=()=>bzdOpen(c));
   sheet.querySelectorAll("[data-buyn]").forEach(btn=>btn.onclick=()=>{const[k,n]=btn.dataset.buyn.split("|");buyN(c,k,+n)});
   sheet.querySelectorAll("[data-xsell]").forEach(btn=>btn.onclick=()=>{const[k,m]=btn.dataset.xsell.split("|");xSell(c,k,m==="all")});
   sheet.querySelectorAll("[data-rent]").forEach(btn=>btn.onclick=()=>{const k=btn.dataset.rent,b=BIZ.find(x=>x.k===k),p=cost(b,c)*FIT;if(S.cash<p)return;const blk=bizBlock(b,c);if(blk){toast(blk);return}
@@ -1098,6 +1099,37 @@ function renderSheet(){sheet.classList.remove("bzv");if(mode==="sv")return;if(mo
 }
 function buy(c,k){const b=BIZ.find(x=>x.k===k),p=(S.own[c.id]||{})[k]?xuCost(b,c):cost(b,c);if(S.cash<p)return;{const blk=bizBlock(b,c);if(blk){toast(blk);return}}const more=!!(S.own[c.id]||{})[k];if(!more)setTimeout(()=>{if(SUP[k])toast("Order stock to start selling. Hire staff so it runs without you.")},1900);if(S.lease[c.id]&&!more)delete S.lease[c.id][k];
   S.cash-=p;if((S.own[c.id]||{})[k]){S.xu=S.xu||{};((S.xu[c.id]=S.xu[c.id]||{})[k]=S.xu[c.id][k]||[]).push(1)}else{if(S.sched)delete S.sched[bkey(c,k)];if(S.wadj)delete S.wadj[bkey(c,k)];(S.own[c.id]=S.own[c.id]||{})[k]=1}toast(`Opened ${b.n} in ${c.name}`);bigMove(`our company opened a ${b.n.toLowerCase()} in ${c.name} for ${fmt(p)}`,p);commit()}
+/* ---------- Business dashboard (Mark, 2026-11-07): one window per city listing every business type you own there,
+   with units, levels, income and the open / upgrade / sell actions, so the city sheet stays readable ---------- */
+const BZD={open:false,el:null,c:null,note:""};
+function bzdOpen(c){if(!document.getElementById("mdx-css")){const st=document.createElement("style");st.id="mdx-css";st.textContent=DXCSS;document.head.appendChild(st)}
+  if(!document.getElementById("bzd-css")){const st=document.createElement("style");st.id="bzd-css";st.textContent=`.bzd-t{width:100%;border-collapse:collapse;font-size:13px}.bzd-t th{font-size:11px;opacity:.7;font-weight:600;text-align:left;padding:6px}.bzd-t td{padding:8px 6px;border-top:1px solid #94a3b833;vertical-align:middle}.bzd-t small{display:block;opacity:.7}.bzd-a{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}.bzd-a button{padding:5px 9px;border-radius:8px;border:1px solid #94a3b855;background:transparent;color:inherit;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}.bzd-a button.g{background:#16a34a;border-color:#16a34a;color:#fff}.bzd-a button.r{color:#dc2626;border-color:#dc262666}.bzd-a button:disabled{opacity:.4;cursor:default}.bzd-k{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0}@media(max-width:700px){.bzd-k{grid-template-columns:1fr 1fr}.bzd-t .hm{display:none}}`;document.head.appendChild(st)}
+  if(!BZD.el){const el=BZD.el=document.createElement("div");el.className="mdx-win mx-win";el.setAttribute("role","dialog");el.setAttribute("aria-label","Business dashboard");document.body.appendChild(el);
+    el.addEventListener("click",e=>{const b=e.target.closest("[data-bd]");if(!b||b.disabled)return;bzdAct(b.dataset.bd,b.dataset.k,b)});mdxMove(el,BZD)}
+  const vw=innerWidth,vh=innerHeight,el=BZD.el;if(vw<560){el.classList.add("mdx-full");Object.assign(el.style,{left:"0px",top:"0px",width:vw+"px",height:vh+"px"})}
+  else{el.classList.remove("mdx-full");const w=Math.min(1000,vw-48),h=Math.min(760,vh-48);Object.assign(el.style,mdxAt(BZD,w,h),{width:w+"px",height:h+"px"})}
+  BZD.c=c;BZD.note="";BZD.open=true;BZD.el.style.display="flex";bzdRender();clearInterval(BZD.iv);
+  BZD.iv=setInterval(()=>{if(!BZD.open)return clearInterval(BZD.iv);if(!document.hidden)bzdRender()},2000)}
+function bzdHide(){BZD.open=false;clearInterval(BZD.iv);if(BZD.el)BZD.el.style.display="none"}
+function bzdAct(a,k,btn){const c=BZD.c;if(a==="close")return bzdHide();if(!c)return;const b=BIZ.find(x=>x.k===k);
+  if(a==="up"){const n=uLv(c.id,k).length;let d=0;for(let i=0;i<n;i++){const before=S.cash;upgrade(c,k,i,1);if(S.cash<before)d++}if(d)toast(`${d} × ${b.n} upgraded in ${c.name}`);commit()}
+  else if(a==="one"){if(typeof HAS_STREET!=="undefined"&&HAS_STREET&&xMapped(c.id)<XMAP){bzdHide();openCity(c);tab="biz";renderSheet();const x=sheet.querySelector(`[data-buy="${k}"]`);if(x)x.click();return}buy(c,k)}
+  else if(a==="n"){buyN(c,k,+btn.dataset.n)}
+  else if(a==="s1"){if(XU(c.id,k).length)xSell(c,k,false);else if(confirm(`Sell your only ${b.n} in ${c.name}?`))sellOne(c,k,0)}
+  else if(a==="sall"){if(XU(c.id,k).length)xSell(c,k,true)}
+  bzdRender()}
+function bzdRender(){if(!BZD.open||!BZD.el)return;const c=BZD.c,o=S.own[c.id]||{},el=BZD.el,body=el.querySelector(".mdx-body"),sy=body?body.scrollTop:0;
+  const rows=BIZ.filter(b=>o[b.k]).map(b=>{const ls=uLv(c.id,b.k),inc=ls.reduce((a,l)=>a+profit(b,c,l),0),lo=Math.min(...ls),hi=Math.max(...ls),uc=ls.filter(l=>l<MAXLV).reduce((a,l)=>a+upCost(b,c,l),0),xc=xuCost(b,c),blk=bizBlock(b,c),on=opFactor(c,b)>.01;
+    return `<tr><td><b>${b.n}</b><small>${on?'<span style="color:#16a34a">● selling</span>':'<span style="color:#dc2626">● not selling</span>'}${bizReg(c,b.k)?"":' · <span style="color:#dc2626">unregistered</span>'}</small></td><td style="font-weight:700">×${ls.length}</td><td class="hm">Lv ${lo===hi?lo:lo+"–"+hi}</td><td style="color:#16a34a;font-weight:700;font-family:var(--mono)">${fmt(inc)}/hr</td>
+      <td><div class="bzd-a"><button data-bd="up" data-k="${b.k}" ${!uc||S.cash<upCost(b,c,lo)?"disabled":""}>${uc?"Upgrade all "+fmt(uc):"Maxed"}</button><button class="g" data-bd="one" data-k="${b.k}" ${S.cash<xc||blk?"disabled":""}>+1 ${fmt(xc)}</button>${[5,10,15,20,25].map(n=>`<button class="g" data-bd="n" data-n="${n}" data-k="${b.k}" ${S.cash<xc||blk?"disabled":""} title="${fmt(xuCostN(b,c,n))}">+${n}</button>`).join("")}<button class="r" data-bd="s1" data-k="${b.k}">Sell 1</button>${ls.length>1?`<button class="r" data-bd="sall" data-k="${b.k}">Sell ${ls.length-1} extra</button>`:""}</div></td></tr>`});
+  let n=0,inc=0,val=0;for(const b of BIZ)if(o[b.k]){const ls=uLv(c.id,b.k);n+=ls.length;for(const l of ls){inc+=profit(b,c,l);val+=uVal(b,c,l,0)}}
+  const kp=(t,v,ic)=>`<div class="mdx-card" style="padding:12px"><div style="font-size:12px;opacity:.7">${ic} ${t}</div><div style="font-size:20px;font-weight:800">${v}</div></div>`;
+  const IN=`<div class="mdx-in"><div class="mdx-hd"><h2>${dxE(c.name)} businesses <span>💼</span></h2><div class="mdx-date"><span class="mdx-live"></span>${Object.keys(o).length} types · ${n} units · cash ${fmt(S.cash)}</div></div>
+    <div class="bzd-k">${kp("Units",n,"🏪")}${kp("Income",fmt(inc)+"/hr","💰")}${kp("Sale value",fmt(val),"🏷")}${kp("City manager",S.mgr[c.id]?"Hired":"None","👔")}</div>
+    <div class="mdx-card">${rows.length?`<div class="mdx-tblw"><table class="bzd-t"><tr><th>Business</th><th>Units</th><th class="hm">Level</th><th>Income</th><th style="text-align:right">Actions</th></tr>${rows.join("")}</table></div>`:`<div class="mdx-empty">You don't own any businesses in ${dxE(c.name)} yet.</div>`}</div>
+    <p class="ph-sub" style="margin-top:8px">+1 asks you to place the building on the map. +5 to +25 place them for you. Every sell asks first.</p></div>`;
+  if(!body||BZD.cid!==c.id){BZD.cid=c.id;el.innerHTML=`<div class="mdx-bar"><span class="mdx-logo" style="background:#7c3aed;font-size:15px">💼</span><b>Business dashboard</b><button class="mdx-x" data-bd="close" aria-label="Close dashboard" style="margin-left:auto">×</button></div><div class="mdx-body">${IN}</div>`;BZD.last=IN}
+  else if(IN!==BZD.last){BZD.last=IN;body.innerHTML=IN;body.scrollTop=sy}}
 /* "Open 5/10/15/20/25" (max 25, Mark 2026-11-07): same price and rules as "Open another", repeated n times; the buildings are placed on the map automatically */
 function buyN(c,k,n){n=Math.min(25,n);const b=BIZ.find(x=>x.k===k);if(!b||!(S.own[c.id]||{})[k])return;let d=0,t=0;pendingPos=null;
   for(;d<n;d++){const p=xuCost(b,c);if(S.cash<p)break;const blk=bizBlock(b,c);if(blk){if(!d)toast(blk);break}S.cash-=p;t+=p;S.xu=S.xu||{};((S.xu[c.id]=S.xu[c.id]||{})[k]=S.xu[c.id][k]||[]).push(1)}
