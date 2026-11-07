@@ -486,7 +486,7 @@ function evalPart(__src){return eval(__src)}
 /* shared loader for parts/<name>.js: fetched once, cached; partApi(name) is null until it has loaded */
 const PARTS={};
 function partLoad(n){const p=PARTS[n]||(PARTS[n]={api:null,p:null});if(p.api)return Promise.resolve(p.api);if(p.p)return p.p;
-  return p.p=fetch("parts/"+n+".js?v=18").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
+  return p.p=fetch("parts/"+n+".js?v=19").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
 function partApi(n){const p=PARTS[n];return p?p.api:null}
 /* Online players (Firebase). Paste your Firebase web app config object here, e.g.
    const FIREBASE_CONFIG={apiKey:"...",authDomain:"...",projectId:"...",storageBucket:"...",messagingSenderId:"...",appId:"..."};
@@ -14390,13 +14390,18 @@ function lcTake(c,g,q){const L=c&&LCO(c.id);if(!L||!L.rx||!G[g]||!(q>0))return q
 /* market tracking (Mark, 2026-11-05): player market listings ship out of the city's logistics center and every move is logged on it */
 /* perishables lose this share per game day without cold storage (Mark: spoilage + night theft) */
 const LCSPOIL={beef:.04,burgers:.04,cattle:.03,bread:.03,flour:.01,wheat:.01,corn:.01,edibles:.02,medicine:.01};
-function lcDay(quiet){if(devGod())return;for(const id in (S.lc||{})){const c=CITIES[id],L=LCO(id);if(!c||!L||unhOn(c))continue;const U=L.upg||{};
-  if(!U.cold){let lost=0;for(const g in LCSPOIL)if(L.inv[g]>0){const q=L.inv[g]*LCSPOIL[g];lost+=q*px(c,g);lcSub(c,g,q)}if(lost>=1)lcLog(c,`Food spoiled: ${fmt(lost)} lost. Cold storage stops this`)}
-  const sec=U.sec||0,ch=sec>=2?0:sec?.12:.25;if(Math.random()<ch){const gs=L.ord.filter(g=>L.inv[g]>0&&G[g][2]!=="gov");if(gs.length){const g=gs[Math.floor(Math.random()*gs.length)],q=L.inv[g]*(.02+Math.random()*.04)*(sec?.5:1);
-    lcSub(c,g,q);const v=q*px(c,g);lcLog(c,`Night theft: ${gq(q)} ${G[g][0]} stolen (${fmt(v)})${sec?"":". Buy security to stop it"}`);if(!quiet)toast(`🚨 Thieves broke into your ${c.name} logistics center and took ${gq(q)} ${G[g][0]}`)}}}}
+/* catch-up cap (Mark, 2026-11-07): only the last LCCATCH missed days can spoil or be robbed. Break-ins are extremely rare (Mark). */
+const LCCATCH=3;let lcQ=0;
+function lcRep(L){const d=S.day||0;if(!L.rep||L.rep.d!==d)L.rep={d,sp:0,th:0,sold:0,job:0,jn:0,ship:0};return L.rep}
+function lcDay(quiet){if(quiet)lcQ++;else lcQ=0;const skip=quiet&&lcQ>LCCATCH;if(devGod())return;for(const id in (S.lc||{})){const c=CITIES[id],L=LCO(id);if(!c||!L||unhOn(c))continue;const U=L.upg||{};
+  if(L.rep)L.prev=L.rep;L.rep=null;const R=lcRep(L);R.wg=lcWageC(c);if(skip)continue;
+  const st=L.staff||0,sm=1-Math.min(.4,st*.02); // each worker cuts spoilage 2% (max 40%)
+  if(!U.cold){let lost=0;for(const g in LCSPOIL)if(L.inv[g]>0){const q=L.inv[g]*LCSPOIL[g]*sm;lost+=q*px(c,g);lcSub(c,g,q)}R.sp+=lost;if(lost>=1)lcLog(c,`Food spoiled: ${fmt(lost)} lost${st?` (staff saved ${Math.round((1-sm)*100)}%)`:""}. Cold storage stops this`)}
+  const sec=U.sec||0,ch=sec>=2||L.alarm===S.day?0:sec?.01:.02;if(Math.random()<ch){if(L.mgr&&Math.random()<.4){lcLog(c,"Night break-in stopped: your manager caught the thieves");continue}const gs=L.ord.filter(g=>L.inv[g]>0&&G[g][2]!=="gov");if(gs.length){const g=gs[Math.floor(Math.random()*gs.length)],q=L.inv[g]*(.02+Math.random()*.04)*(sec?.5:1);
+    lcSub(c,g,q);const v=q*px(c,g);R.th+=v;lcLog(c,`Night theft: ${gq(q)} ${G[g][0]} stolen (${fmt(v)})${sec?"":". Buy security to stop it"}`);if(!quiet)toast(`🚨 Thieves broke into your ${c.name} logistics center and took ${gq(q)} ${G[g][0]}`)}}}}
 /* sell straight from the center to the local market at the live price */
 function lcSell(c,g,q){const L=LCO(c.id);if(!L||!(L.inv[g]>0))return 0;q=Math.min(q,L.inv[g]);if(!(q>0)||noSell(g))return 0;if(G[g][2]==="gov"&&!govOK(c))return 0;
-  const v=sellGood(c,g,q);lcSub(c,g,q);S.cash+=v;S.earned=(S.earned||0)+v;lcLog(c,`Sold ${gq(q)} ${G[g][0]} for ${fmt(v)}`);save();return v}
+  const v=sellGood(c,g,q);lcSub(c,g,q);S.cash+=v;lcRep(L).sold+=v;S.earned=(S.earned||0)+v;lcLog(c,`Sold ${gq(q)} ${G[g][0]} for ${fmt(v)}`);save();return v}
 function lcLog(c,t){const L=c&&LCO(c.id);if(!L)return;if(!Array.isArray(L.log))L.log=[];L.log.unshift([Date.now(),String(t)]);L.log=L.log.slice(0,60)}
 /* goods coming back from a listing: into the logistics center when they came from it (and it still exists), else the warehouse */
 function pmBack(c,g,q,src){if(!c||!(q>0))return "warehouse";if(src==="lc"&&lcHas(c)){lcAdd(c,g,q);return "logistics center"}ensureWh(c);S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;return "warehouse"}
@@ -14460,10 +14465,15 @@ const lcWageC=c=>{const L=LCO(c.id);return L?lcWorkerWages(L)+(L.mgr?LCW.mgr*PRI
 function lcWages(){let w=0;for(const id in (S.lc||{}))if(CITIES[id]&&!unhOn(CITIES[id]))w+=lcWageC(CITIES[id]);return w}
 const lcMaxStaff=c=>{const L=LCO(c.id);return L&&L.mgr?LCW.max1:LCW.max0};
 const lcSpeed=c=>{const L=LCO(c.id);return L?Math.min(.5,(L.staff||0)*LCW.per+(L.mgr?LCW.mgrB:0)):0}; // share of trip time saved
-const lcJobPay=c=>{const L=LCO(c.id);return Math.round(LCW.job*PRICE[c.size]*(L&&L.mgr?1.5:1))};
+/* job limit (2026-11-07): 3 full-pay jobs per game day, then pay drops 30% per job down to 10% */
+const lcJobN=L=>L&&L.jd&&L.jd.d===(S.day||0)?L.jd.n:0;
+const lcJobPay=c=>{const L=LCO(c.id),n=lcJobN(L);return Math.round(LCW.job*PRICE[c.size]*(L&&L.mgr?1.5:1)*(n<3?1:Math.max(.1,Math.pow(.7,n-2))))};
 function lcHire(c,k,d){const L=LCO(c.id);if(!L)return "";if(k==="mgr"){L.mgr=d>0?1:0;if(!L.mgr){L.staff=Math.min(L.staff||0,LCW.max0);L.xp=(L.xp||[]).slice(0,L.staff)}lcLog(c,L.mgr?"Hired a warehouse manager":"Let the warehouse manager go");save();return ""}
   const n=Math.max(0,Math.min(lcMaxStaff(c),(L.staff||0)+d));if(n===(L.staff||0))return d>0?`Hire a manager to grow past ${LCW.max0} workers`:"";L.xp=L.xp||[];if(n>(L.staff||0))L.xp.push(S.hour||0);else L.xp.pop();L.staff=n;lcLog(c,d>0?`Hired a worker (${n} on staff)`:`Let a worker go (${n} on staff)`);save();return ""}
-function lcJobDone(c){const L=LCO(c.id);if(!L)return 0;const p=lcJobPay(c);S.cash+=p;L.jobs=(L.jobs||0)+1;lcLog(c,`Forklift job done: +${fmt(p)}`);save();return p}
+function lcJobDone(c,g){const L=LCO(c.id);if(!L)return 0;const p=lcJobPay(c);S.cash+=p;L.jobs=(L.jobs||0)+1;L.jd={d:S.day||0,n:lcJobN(L)+1};const R=lcRep(L);R.job+=p;R.jn++;
+  // the pallet is real: one pallet of that product ships out and sells at the local price
+  let v=0;if(g&&L.inv[g]>0&&!noSell(g)&&(G[g][2]!=="gov"||govOK(c))){const q=Math.min(L.inv[g],lcBay(c)/4/tpu(g));v=sellGood(c,g,q);lcSub(c,g,q);S.cash+=v;S.earned=(S.earned||0)+v;R.ship+=v;lcLog(c,`Forklift job: shipped ${gq(q)} ${G[g][0]} for ${fmt(v)} + ${fmt(p)} pay`)}else lcLog(c,`Forklift job done: +${fmt(p)}`);
+  save();return p+v}
 /* warehouse contracts (Mark, 2026-11-05): buyers offer contracts for the stock types a logistics center holds.
    Terms depend on the type: raw goods are big bulk orders with a long deadline and a small premium; parts (mid) are middle;
    finished goods are small rush orders with a short deadline and a big premium. Accept one, then press Deliver while the
