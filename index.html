@@ -14489,26 +14489,38 @@ function lcctOf(c){const L=LCO(c.id);if(!L)return null;if(!L.ct||typeof L.ct!=="
   return K}
 const lcctDev=()=>{try{return !!(typeof ON!=="undefined"&&ON.user&&DEV_UIDS.includes(ON.user.uid))}catch(e){return false}};
 function lcctTick(){try{lcShipTick()}catch(e){console.warn("ship",e)}const n=Date.now();for(const id in (S.lc||{})){const c=CITIES[id],L=c&&LCO(id);if(!L||!L.ct||!Array.isArray(L.ct.ac))continue;
-  L.ct.ac=L.ct.ac.filter(o=>{if(o.due>n)return true;const f=lcctDev()?0:Math.round(o.pay*o.pen);S.cash-=f;lcLog(c,`Contract #${o.id} missed: ${gq(o.q)} ${G[o.g][0].toLowerCase()}${f?` · penalty ${fmt(f)}`:""}`);toast(`📄 Contract #${o.id} in ${c.name} missed${f?`: ${fmt(f)} penalty`:""}`);return false})}}
+  L.ct.ac=L.ct.ac.filter(o=>{if(o.due>n)return true;lcShipUndo(c,o.id);const f=lcctDev()?0:Math.round(o.pay*o.pen);S.cash-=f;lcLog(c,`Contract #${o.id} missed: ${gq(o.q)} ${G[o.g][0].toLowerCase()}${f?` · penalty ${fmt(f)}`:""}`);toast(`📄 Contract #${o.id} in ${c.name} missed${f?`: ${fmt(f)} penalty`:""}`);return false})}}
 function lcctAct(c,a,id){const K=lcctOf(c),L=LCO(c.id);if(!K)return "";
-  if(a==="take"){const i=K.of.findIndex(o=>o.id===id);if(i<0)return "That offer is gone";if(K.ac.length>=3)return "You can hold 3 contracts at a time per center";const o=K.of.splice(i,1)[0],T=lcctT(o.g);o.due=Date.now()+T.d*DAYMS;o.pen=T.pen;K.ac.push(o);lcLog(c,`Contract #${o.id} accepted: ${gq(o.q)} ${G[o.g][0].toLowerCase()} for ${fmt(o.pay)}`);save();return ""}
+  if(a==="take"){const i=K.of.findIndex(o=>o.id===id);if(i<0)return "That offer is gone";if(K.ac.length>=3)return "You can hold 3 contracts at a time per center";const o=K.of.splice(i,1)[0],T=lcctT(o.g);o.due=Date.now()+T.d*DAYMS;o.pen=T.pen;K.ac.push(o);const sh=lcShipNew(c,o);lcLog(c,`Contract #${o.id} accepted: ${gq(o.q)} ${G[o.g][0].toLowerCase()} for ${fmt(o.pay)}. Loading ${sh.n} pallet${sh.n>1?"s":""} at Dock ${sh.dock+1}`);save();return ""}
   const i=K.ac.findIndex(o=>o.id===id);if(i<0)return "";const o=K.ac[i];
-  if(a==="drop"){K.ac.splice(i,1);const f=lcctDev()?0:Math.round(o.pay*o.pen);S.cash-=f;lcLog(c,`Contract #${o.id} cancelled${f?` · penalty ${fmt(f)}`:""}`);save();return ""}
-  if(a==="give"){if((L.inv[o.g]||0)+1e-9<o.q)return `Needs ${gq(o.q)} ${G[o.g][0].toLowerCase()} in the center (has ${gq(L.inv[o.g]||0)})`;if((L.ship||[]).length>=3)return "All 3 loading docks are busy. Wait for a truck to leave";
-    const it=lcLayout(c).items.find(x=>x.g===o.g),sh=lcShipNew(c,o,it);lcSub(c,o.g,o.q);K.ac.splice(i,1);lcLog(c,`Contract #${o.id}: loading ${sh.n} pallet${sh.n>1?"s":""} at Dock ${sh.dock+1}`);toast(`🚛 Contract #${o.id}: loading ${sh.n} pallet${sh.n>1?"s":""} at Dock ${sh.dock+1}. Paid when the truck arrives`);save();return ""}
+  if(a==="drop"){K.ac.splice(i,1);lcShipUndo(c,o.id);const f=lcctDev()?0:Math.round(o.pay*o.pen);S.cash-=f;lcLog(c,`Contract #${o.id} cancelled${f?` · penalty ${fmt(f)}`:""}`);save();return ""}
+  if(a==="give"){const x=lcShipOf(c,o.id);if(!x)return "";if(x.st!=="ready")return `Still loading: ${x.lp}/${x.n} pallets on the truck`;
+    x.st="road";x.dep=Date.now();K.ac.splice(i,1);lcLog(c,`Contract #${o.id}: truck left Dock ${x.dock+1}`);toast(`🚛 Contract #${o.id} truck is on the road. Paid when it arrives (${fmtDur(x.tr)})`);save();return ""}
   return ""}
 /* contract trucks (Mark, 2026-11-07): Deliver loads a truck at a free dock, one pallet at a time (you can watch it inside the center),
    then the truck drives to the buyer and you're paid when it arrives. Staff load faster. L.ship=[{id,g,q,pay,n,dock,bay,row,t0,ld,tr}] */
 const LCSHIP={pal:15000,maxPal:8,trip:DAYMS/20};
-function lcShipNew(c,o,it){const L=LCO(c.id);if(!Array.isArray(L.ship))L.ship=[];const used=L.ship.map(x=>x.dock);let dock=0;while(used.includes(dock))dock++;
-  const n=Math.max(1,Math.min(LCSHIP.maxPal,Math.ceil(o.q*tpu(o.g)/(lcBay(c)/4)-1e-9))),sp=1-lcSpeed(c);
-  const sh={id:o.id,g:o.g,q:o.q,pay:o.pay,n,dock,bay:it?it.bay:0,row:it?it.row:0,t0:Date.now(),ld:Math.round(n*LCSHIP.pal*sp),tr:Math.round(LCSHIP.trip*sp)};L.ship.push(sh);return sh}
-function lcShipTick(){const n=Date.now();for(const id in (S.lc||{})){const c=CITIES[id],L=c&&LCO(id);if(!L||!Array.isArray(L.ship)||!L.ship.length)continue;
-  L.ship=L.ship.filter(x=>{if(n<x.t0+x.ld+x.tr)return true;S.cash+=x.pay;S.earned=(S.earned||0)+x.pay;try{lcRep(L).sold+=x.pay}catch(e){}lcLog(c,`Contract #${x.id} delivered: +${fmt(x.pay)}`);toast(`📄 Contract #${x.id} truck arrived: +${fmt(x.pay)}`);save();return false})}}
-function lcShipRows(c){const L=LCO(c.id),n=Date.now();return (L&&L.ship||[]).map(x=>{const a=n-x.t0,ld=a<x.ld;return `🚛 #${x.id} ${G[x.g][0]} ${gq(x.q)} · Dock ${x.dock+1} · ${ld?`loading pallet ${Math.min(x.n,Math.floor(a/x.ld*x.n)+1)}/${x.n}`:`on the road, arrives in ${fmtDur(x.t0+x.ld+x.tr-n)}`} · ${fmt(x.pay)}`})}
+const lcShipOf=(c,id)=>{const L=LCO(c.id);return (L&&L.ship||[]).find(x=>x.id===id)};
+function lcShipNew(c,o){const L=LCO(c.id);if(!Array.isArray(L.ship))L.ship=[];const used=L.ship.map(x=>x.dock);let dock=0;while(used.includes(dock))dock++;
+  const it=lcLayout(c).items.find(x=>x.g===o.g),n=Math.max(1,Math.min(LCSHIP.maxPal,Math.ceil(o.q*tpu(o.g)/(lcBay(c)/4)-1e-9))),sp=1-lcSpeed(c);
+  const sh={id:o.id,g:o.g,q:o.q,pay:o.pay,n,lp:0,dock,bay:it?it.bay:0,row:it?it.row:0,st:"load",pt:Date.now(),pal:Math.round(LCSHIP.pal*sp),tr:Math.round(LCSHIP.trip*sp)};L.ship.push(sh);return sh}
+/* contract gone (cancelled or missed): pallets already on the truck go back on the racks */
+function lcShipUndo(c,id){const L=LCO(c.id);if(!L||!Array.isArray(L.ship))return;const x=L.ship.find(y=>y.id===id);if(!x||x.st==="road")return;if(x.lp>0)L.inv[x.g]=(L.inv[x.g]||0)+x.q/x.n*x.lp;L.ship=L.ship.filter(y=>y!==x)}
+function lcShipTick(){const n=Date.now();for(const id in (S.lc||{})){const c=CITIES[id],L=c&&LCO(id);if(!L)continue;
+  // contracts accepted before trucks existed get a truck now
+  if(L.ct&&Array.isArray(L.ct.ac))for(const o of L.ct.ac)if(!lcShipOf(c,o.id)&&(L.ship||[]).filter(x=>x.st!=="road").length<3)lcShipNew(c,o);
+  if(!Array.isArray(L.ship)||!L.ship.length)continue;
+  for(const x of L.ship){if(x.st!=="load")continue;
+    // a pallet goes on the truck every x.pal ms while the racks hold enough; otherwise the forklift waits for stock
+    while(x.st==="load"&&n-x.pt>=x.pal){const qp=x.q/x.n;if((L.inv[x.g]||0)+1e-9<qp){x.wt=1;x.pt=n;break}x.wt=0;lcSub(c,x.g,qp);x.lp++;x.pt+=x.pal;
+      if(x.lp>=x.n){x.st="ready";lcLog(c,`Contract #${x.id}: truck loaded at Dock ${x.dock+1}, ready to deliver`);toast(`✅ Contract #${x.id} in ${c.name} is loaded and ready for delivery. Press Deliver`);
+        try{if("Notification" in window&&Notification.permission==="granted"&&document.hidden)new Notification("Truck ready for delivery",{body:`Contract #${x.id} in ${c.name}: ${G[x.g][0]} loaded at Dock ${x.dock+1}`})}catch(e){}save()}}}
+  L.ship=L.ship.filter(x=>{if(x.st!=="road"||n<x.dep+x.tr)return true;S.cash+=x.pay;S.earned=(S.earned||0)+x.pay;try{lcRep(L).sold+=x.pay}catch(e){}lcLog(c,`Contract #${x.id} delivered: +${fmt(x.pay)}`);toast(`📄 Contract #${x.id} truck arrived: +${fmt(x.pay)}`);save();return false})}}
+function lcShipTxt(x){const n=Date.now();return x.st==="road"?`🚛 on the road, arrives in ${fmtDur(x.dep+x.tr-n)}`:x.st==="ready"?"✅ loaded, ready to deliver":x.wt?`⏳ waiting for stock (${x.lp}/${x.n} pallets)`:`🚛 loading pallet ${x.lp+1}/${x.n} at Dock ${x.dock+1}`}
+function lcShipRows(c){const L=LCO(c.id);return (L&&L.ship||[]).filter(x=>x.st==="road").map(x=>`#${x.id} ${G[x.g][0]} ${gq(x.q)} · ${lcShipTxt(x)} · ${fmt(x.pay)}`)}
 function lcctHtml(c){const K=lcctOf(c),L=LCO(c.id);if(!K)return "";const n=Date.now();
   let h=`<div class="sec">Contracts · ${K.ac.length}/3 active</div><div class="list">`+lcShipRows(c).map(t=>`<div class="row"><div class="d">${t}</div></div>`).join("");
-  for(const o of K.ac){const T=lcctT(o.g),ok=(L.inv[o.g]||0)+1e-9>=o.q;h+=`<div class="row own"><div class="n">${T.n} #${o.id}: ${G[o.g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(o.q)} · ${fmt(o.pay)}</span></div><div class="d">Due in ${fmtDur(o.due-n)} · you have ${gq(L.inv[o.g]||0)} · miss it: ${lcctDev()?"no penalty (dev)":fmt(Math.round(o.pay*o.pen))+" penalty"}</div><button class="buy" data-act="lcctgive" data-k="${o.id}" ${ok?"":"disabled"}>Deliver</button><button class="buy up" data-act="lcctdrop" data-k="${o.id}">Cancel</button></div>`}
+  for(const o of K.ac){const T=lcctT(o.g),X=lcShipOf(c,o.id),ok=!!X&&X.st==="ready";h+=`<div class="row own"><div class="n">${T.n} #${o.id}: ${G[o.g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(o.q)} · ${fmt(o.pay)}</span></div><div class="d">Due in ${fmtDur(o.due-n)} · ${X?lcShipTxt(X):"waiting for a dock"} · you have ${gq(L.inv[o.g]||0)} · miss it: ${lcctDev()?"no penalty (dev)":fmt(Math.round(o.pay*o.pen))+" penalty"}</div><button class="buy" data-act="lcctgive" data-k="${o.id}" ${ok?"":"disabled"}>Deliver</button><button class="buy up" data-act="lcctdrop" data-k="${o.id}">Cancel</button></div>`}
   if(!K.of.length)h+=`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">${L.ord.length?"No new offers today. New ones come in every game day.":"Store goods here to get contract offers for them."}</p>`;
   for(const o of K.of){const T=lcctT(o.g);h+=`<div class="row"><div class="n">${T.n}: ${G[o.g][0]} <span style="font-family:var(--mono);font-weight:400">${gq(o.q)} · ${fmt(o.pay)}</span></div><div class="d">${Math.round((T.pr-1)*100)}% over the local price · ${T.d} game day${T.d>1?"s":""} to deliver · ${Math.round(T.pen*100)}% penalty if missed</div><button class="buy up" data-act="lccttake" data-k="${o.id}" ${K.ac.length>=3?"disabled":""}>Accept</button></div>`}
   return h+`</div>`}
