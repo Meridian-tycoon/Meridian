@@ -966,17 +966,18 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   // shipments in transit (great-circle routes, clipped to the visible side)
   const now=Date.now();
   // big fleets share routes: draw each route line once, then just the vehicle markers (was one curved path per vehicle every frame)
-  {const seen=new Set();ctx.beginPath();for(const v of S.fleet){if(!v.arr)continue;const rk=v.from+">"+v.dest;if(seen.has(rk))continue;seen.add(rk);const a=CITIES[v.from],b=CITIES[v.dest];path({type:"LineString",coordinates:[[a.lon,a.lat],[b.lon,b.lat]]})}
+  try{
+  {const seen=new Set();ctx.beginPath();for(const v of S.fleet){if(!v.arr)continue;const rk=v.from+">"+v.dest;if(seen.has(rk))continue;seen.add(rk);const a=CITIES[v.from],b=CITIES[v.dest];if(!a||!b)continue;path({type:"LineString",coordinates:[[a.lon,a.lat],[b.lon,b.lat]]})}
     if(seen.size){ctx.setLineDash([4,4]);ctx.strokeStyle=C.acc;ctx.lineWidth=1.4;ctx.stroke();ctx.setLineDash([])}}
-  for(const v of S.fleet){if(!v.arr)continue;const a=CITIES[v.from],b=CITIES[v.dest],t=Math.min(1,(now-v.dep)/(v.arr-v.dep));
+  for(const v of S.fleet){if(!v.arr)continue;const a=CITIES[v.from],b=CITIES[v.dest];if(!a||!b)continue;const t=Math.min(1,(now-v.dep)/(v.arr-v.dep));
     const g=d3.geoInterpolate([a.lon,a.lat],[b.lon,b.lat])(t);if(!visible(g[0],g[1]))continue;const [x,y]=proj(g);
     ctx.fillStyle=C.acc;if(vcls(v.type)==="truck")ctx.fillRect(x-4,y-3,8,6);else if(vcls(v.type)==="ship"){ctx.beginPath();ctx.moveTo(x-6,y-2);ctx.lineTo(x+6,y-2);ctx.lineTo(x+3,y+3);ctx.lineTo(x-3,y+3);ctx.fill()}
-    else{ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.fill()}}
-  if(typeof drawNight==="function"&&z<11)drawTraffic(ctx,C);
+    else{ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.fill()}}}catch(e){console.warn("fleet draw",e)} // one bad vehicle must not hide every layer after it (oil rigs, allies...)
+  if(typeof drawNight==="function"&&z<11)try{drawTraffic(ctx,C)}catch(e){}
   {const d=z<6.5&&globeDisc();ctx.save();if(d){ctx.beginPath();ctx.arc(d.o.x,d.o.y,d.R,0,7);ctx.clip()}   // keep area fills on the planet's face
-  if(typeof drawStorms==="function"&&z<11)drawStorms(ctx,C);if(typeof gxDraw==="function"&&z<11)try{gxDraw(ctx)}catch(e){}
-  if(typeof drawDmg==="function")drawDmg(ctx);
-  if(typeof drawStrikes==="function")drawStrikes(ctx);
+  if(typeof drawStorms==="function"&&z<11)try{drawStorms(ctx,C)}catch(e){}if(typeof gxDraw==="function"&&z<11)try{gxDraw(ctx)}catch(e){}
+  if(typeof drawDmg==="function")try{drawDmg(ctx)}catch(e){}
+  if(typeof drawStrikes==="function")try{drawStrikes(ctx)}catch(e){}
   if(typeof drawWarSmoke==="function"&&z<11)try{drawWarSmoke(ctx)}catch(e){}
   if(typeof drawGovLine==="function"&&z<11)try{drawGovLine(ctx)}catch(e){}
   if(typeof drawEvac==="function")try{drawEvac(ctx)}catch(e){}
