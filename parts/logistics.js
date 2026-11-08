@@ -263,7 +263,7 @@ function fillSell(){const p=W.panel;if(!p||!W.slOn)return;const c=CITIES[W.city]
    <p style="color:#94a3b8;font-size:12px;margin:0 0 8px">Sells to the ${esc(c.name)} market at the live price. Big sales push the price down, so selling in parts can pay more.</p>
    ${gs.length?`<table><tbody>${rows}</tbody></table>`:`<p style="color:#94a3b8">Nothing stored here yet.</p>`}<small id="lsl-e" style="color:#86efac"></small></div>`}
 /* Stats app (Mark, 2026-11-08): last 14 game days per center: income, losses, wages, net, with a bar per day, plus what the staff and machines add */
-/* Network app (Mark, 2026-11-08): map of every center with live orders between them, stock per product, one-click balancing */
+/* Network app (Mark, 2026-11-08): map of every center with live orders between them, stock per product */
 /* map background for the Network app (Mark, 2026-11-08): the game's own country shapes, cached per view */
 function nwLand(x0,x1,y0,y1){if(typeof world==="undefined"||!world||typeof d3==="undefined")return "";const k=[x0,x1,y0,y1].map(v=>v.toFixed(1)).join();if(W.nwLand&&W.nwLand.k===k)return W.nwLand.h;
   const pr=d3.geoTransform({point(lo,la){this.stream.point((lo-x0)/(x1-x0)*600,(y1-la)/(y1-y0)*300)}}),path=d3.geoPath(pr);let d="";
@@ -279,7 +279,7 @@ function ocNet(ids){if(!ids.length)return `<p style="color:#94a3b8">No logistics
   const rows=g?cs.map(c=>{const q=LCO(c.id).inv[g]||0,mx=Math.max(1e-9,...cs.map(x=>LCO(x.id).inv[g]||0));return `<tr><td class="n">${esc(c.name)}</td><td style="width:50%"><div style="height:8px;background:#1e293b;border-radius:4px"><div style="height:8px;width:${q/mx*100}%;background:#38bdf8;border-radius:4px"></div></div></td><td>${gq(q)}<br><small style="color:#94a3b8">depot ${gq(dq(c,g))}</small></td></tr>`}).join(""):"";
   return `<svg viewBox="0 0 600 300" style="width:100%;background:#0b2545;border-radius:10px;border:1px solid #334155" role="img" aria-label="Map of your logistics centers"><defs><marker id="nwa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#38bdf8"/></marker></defs>${land}${lines}${dots}</svg>
    <small style="color:#94a3b8">Dot size and colour show how full each center is. Dashed lines are orders on the move (${run.length}).</small>
-   <h4 style="margin:10px 0 4px;color:#cbd5e1">Stock across the network</h4>${goods.length?`<div class="lc3-sort">Product: <select id="oc-nwg" aria-label="Product">${goods.map(x=>`<option value="${x}" ${x===g?"selected":""}>${esc(G[x][0])}</option>`).join("")}</select> <button class="mini" data-lc="ocbal" data-k="${g}" ${cs.some(c=>dq(c,g)>=.01)?"":"disabled"}>⚖️ Balance</button></div><table><tbody>${rows}</tbody></table><small style="color:#94a3b8">Balance moves this product from each city's depot into its logistics warehouse, as much as fits.</small>`:`<small style="color:#94a3b8">Nothing stored yet.</small>`}`}
+   <h4 style="margin:10px 0 4px;color:#cbd5e1">Stock across the network</h4>${goods.length?`<div class="lc3-sort">Product: <select id="oc-nwg" aria-label="Product">${goods.map(x=>`<option value="${x}" ${x===g?"selected":""}>${esc(G[x][0])}</option>`).join("")}</select></div><table><tbody>${rows}</tbody></table>`:`<small style="color:#94a3b8">Nothing stored yet.</small>`}`}
 function ocStats(ids){const inc=R=>(R.sold||0)+(R.ship||0)+(R.job||0),los=R=>(R.sp||0)+(R.th||0),net=R=>inc(R)-los(R)-(R.wg||0);
   return ids.map(id=>{const c=CITIES[id],L=LCO(id),H=(L.hist||[]).slice(-14),U=L.upg||{};let ti=0,tl=0,tw=0;for(const R of H){ti+=inc(R);tl+=los(R);tw+=R.wg||0}
     const mx=Math.max(1,...H.map(R=>Math.abs(net(R)))),kv=(a,b,col)=>`<div class="ocd-kv"><span>${a}</span><b style="color:${col||"#e2e8f0"}">${b}</b></div>`;
@@ -632,7 +632,6 @@ function ocAct(a,b){const O=W.oc;if(!O)return;const k=b.dataset.k;
   else if(a==="ocapp"){O.w[k]=1;O.f=k}
   else if(a==="ocmin"){O.w[k]="min";if(O.f===k)O.f=null}
   else if(a==="ocwx"){delete O.w[k];if(O.f===k)O.f=null}
-  else if(a==="ocbal"){const m=lcBalance(k);O.f="nw";sub();return fillOc(m)}
   else if(a==="octab"){if(O.w[k]==="min"||O.f!==k){O.w[k]=1;O.f=k}else{O.w[k]="min";O.f=null}}
   else{O.f="ct";const e=lcctAct(CITIES[W.ocC],a.slice(3),+k);sub();return fillOc(e)}fillOc()}
 return {open,close,_w:()=>W};
