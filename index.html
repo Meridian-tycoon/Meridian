@@ -486,7 +486,7 @@ function evalPart(__src){return eval(__src)}
 /* shared loader for parts/<name>.js: fetched once, cached; partApi(name) is null until it has loaded */
 const PARTS={};
 function partLoad(n){const p=PARTS[n]||(PARTS[n]={api:null,p:null});if(p.api)return Promise.resolve(p.api);if(p.p)return p.p;
-  return p.p=fetch("parts/"+n+".js?v=23").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
+  return p.p=fetch("parts/"+n+".js?v=24").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
 function partApi(n){const p=PARTS[n];return p?p.api:null}
 /* Online players (Firebase). Paste your Firebase web app config object here, e.g.
    const FIREBASE_CONFIG={apiKey:"...",authDomain:"...",projectId:"...",storageBucket:"...",messagingSenderId:"...",appId:"..."};
@@ -14481,12 +14481,13 @@ const lcCap=c=>{const L=LCO(c.id);return L?L.lv*LCROW*(1+.25*(L.upg.rack||0)):0}
 /* warehouse shop (Mark, 2026-11-05): a counter in the reception area of the walk-in center. Vehicles get you around faster; upgrades improve the building.
    L.veh = [owned vehicle ids], L.ride = the one you're driving (or ""), L.upg = {upgrade id: tier}. Prices scale with the city like the center itself. */
 const LCVEH={jack:{n:"Electric pallet jack",e:"🛒",sp:1.6,p:15000,d:"Ride-on jack. 1.6× walking speed."},fork:{n:"Forklift",e:"🚜",sp:2.1,p:60000,d:"Sit-down counterbalance forklift. 2.1× walking speed."},cart:{n:"Warehouse cart",e:"🛺",sp:2.8,p:110000,d:"Electric tug cart for long aisles. 2.8× walking speed."}};
-const LCUPG={rack:{n:"High-bay racking",e:"🏗",max:3,p:150000,d:"Taller racks: every bay holds 25% more per tier."},led:{n:"LED high-bay lighting",e:"💡",max:1,p:30000,d:"Brighter, whiter light across the whole floor."},sort:{n:"Auto-sorter",e:"🤖",max:1,p:90000,d:"New deliveries are filed by type (raw, parts, finished) automatically."},cold:{n:"Cold storage",e:"❄️",max:1,p:120000,d:"Refrigerated bays: food and other perishables stop spoiling."},brk:{n:"Break room",e:"☕",max:1,p:150000,d:"Coffee, couches and lockers: the crew tires 30% slower and morale rises 4 points a day."},conv:{n:"Overhead conveyors",e:"🛤",max:1,p:400000,d:"Belts carry stock over the aisles: orders turn around 10% faster and the crew tires half as fast."},robo:{n:"Robot pickers",e:"🤖",max:3,p:600000,d:"Each tier adds 2 picking robots: +8% order speed (and +5% to the speed cap) and worker wages 10% lower."},sec:{n:"Security",e:"🛡",max:2,p:80000,d:"Tier 1: CCTV cameras halve night thefts and what they take. Tier 2: night guards stop thefts."}};
+const LCUPG={rack:{n:"High-bay racking",e:"🏗",max:3,p:150000,d:"Taller racks: every bay holds 25% more per tier."},led:{n:"LED high-bay lighting",e:"💡",max:1,p:30000,d:"Brighter, whiter light across the whole floor."},sort:{n:"Auto-sorter",e:"🤖",max:1,p:90000,d:"New deliveries are filed by type (raw, parts, finished) automatically."},cold:{n:"Cold storage",e:"❄️",max:1,p:120000,d:"Refrigerated bays: food and other perishables stop spoiling."},brk:{n:"Break room",e:"☕",max:10,p:150000,pp:[15e4,75e4,25e5,75e5,2e7,5e7,1e8,2e8,35e7,5e8],d:"A real room by the racks where off-shift workers rest. Each tier: the crew tires 7% slower and morale rises (3 + tier) points a day, with more furniture. Tier 10: morale is always 100% and the crew never tires."},conv:{n:"Overhead conveyors",e:"🛤",max:1,p:400000,d:"Belts carry stock over the aisles: orders turn around 10% faster and the crew tires half as fast."},robo:{n:"Robot pickers",e:"🤖",max:3,p:600000,d:"Each tier adds 2 picking robots: +8% order speed (and +5% to the speed cap) and worker wages 10% lower."},sec:{n:"Security",e:"🛡",max:2,p:80000,d:"Tier 1: CCTV cameras halve night thefts and what they take. Tier 2: night guards stop thefts."}};
 const lcShopP=(c,base,tier)=>Math.round(base*PRICE[c.size]*(tier||1));
+const lcUpgP=(c,u,t)=>u.pp?lcShopP(c,u.pp[Math.min(t,u.pp.length-1)]):lcShopP(c,u.p,t+1); // t = tiers already owned
 const lcBay=c=>{const L=LCO(c.id);return LCBAY*(1+.25*((L&&L.upg.rack)||0))};
 function lcBuy(c,kind,id){const L=LCO(c.id);if(!L)return "No logistics center";
   if(kind==="veh"){const v=LCVEH[id];if(!v)return "Unknown item";if(L.veh.includes(id))return "Already owned";const p=lcShopP(c,v.p);if(S.cash<p)return `Needs ${fmt(p)}`;S.cash-=p;L.veh.push(id);L.ride=id;L.spent=(L.spent||0)+p;lcLog(c,`Bought from the shop: ${v.n.toLowerCase()}`)}
-  else{const u=LCUPG[id];if(!u)return "Unknown item";const t=L.upg[id]||0;if(t>=u.max)return "Fully upgraded";const p=lcShopP(c,u.p,t+1);if(S.cash<p)return `Needs ${fmt(p)}`;S.cash-=p;L.upg[id]=t+1;L.spent=(L.spent||0)+p;lcLog(c,`Installed ${u.n.toLowerCase()}${u.max>1?" tier "+(t+1):""}`);if(id==="sort")lcSort(c,"type")}
+  else{const u=LCUPG[id];if(!u)return "Unknown item";const t=L.upg[id]||0;if(t>=u.max)return "Fully upgraded";const p=lcUpgP(c,u,t);if(S.cash<p)return `Needs ${fmt(p)}`;S.cash-=p;L.upg[id]=t+1;L.spent=(L.spent||0)+p;lcLog(c,`Installed ${u.n.toLowerCase()}${u.max>1?" tier "+(t+1):""}`);if(id==="sort")lcSort(c,"type");if(id==="brk"&&t+1>=10){L.mor=100;L.fat=0}}
   save();return ""}
 const lcUsed=c=>{const L=LCO(c.id);let t=0;if(L)for(const g in L.inv)t+=L.inv[g]*tpu(g);return t};
 const lcRoom=c=>Math.max(0,lcCap(c)-lcUsed(c));
@@ -14505,8 +14506,8 @@ const LCCATCH=3;let lcQ=0;
 function lcRep(L){const d=S.day||0;if(!L.rep||L.rep.d!==d)L.rep={d,sp:0,th:0,sold:0,job:0,jn:0,ship:0};return L.rep}
 function lcDay(quiet){if(quiet)lcQ++;else lcQ=0;const skip=quiet&&lcQ>LCCATCH;if(devGod())return;for(const id in (S.lc||{})){const c=CITIES[id],L=LCO(id);if(!c||!L||unhOn(c))continue;const U=L.upg||{};
   if(L.rep){L.prev=L.rep;L.hist=(L.hist||[]).concat([L.rep]).slice(-14)}L.rep=null;const R=lcRep(L);R.wg=lcWageC(c);
-  if(L.off===(S.day||0)-1)L.fat=0;else if(L.staff)L.fat=Math.min(100,(L.fat||0)+LCW.tire*(U.conv?.5:1)*(L.lead>=0?.5:1)*(U.brk?.7:1));
-  if(L.staff){L.mor=Math.max(0,Math.min(100,(L.mor==null?70:L.mor)-3+(U.brk?4:0)+(L.bon||0)+(L.lead>=0?1:0)-((L.fat||0)>70?5:0)));
+  if(L.off===(S.day||0)-1)L.fat=0;else if(L.staff)L.fat=Math.min(100,(L.fat||0)+LCW.tire*(U.conv?.5:1)*(L.lead>=0?.5:1)*(U.brk?1-.07*Math.min(9,U.brk):1));if(U.brk>=10)L.fat=0;
+  if(L.staff){L.mor=Math.max(0,Math.min(100,(L.mor==null?70:L.mor)-3+(U.brk?3+U.brk:0)+(L.bon||0)+(L.lead>=0?1:0)-((L.fat||0)>70?5:0)));if(U.brk>=10)L.mor=100;
     if(L.mor<40&&!skip)for(let i=(L.staff||0)-1;i>=0;i--)if(lcWkLv(L.xp[i])>=3&&Math.random()<.1){const nm=L.wn[i];lcFire(c,i);lcLog(c,`${nm} quit: morale too low. Raises, a break room or a day off help`);if(!quiet)toast(`😠 ${nm} quit your ${c.name} logistics center (low morale)`)}}
   if(skip)continue;
   const st=L.staff||0,sm=1-Math.min(.4,st*.02); // each worker cuts spoilage 2% (max 40%)
