@@ -486,7 +486,7 @@ function evalPart(__src){return eval(__src)}
 /* shared loader for parts/<name>.js: fetched once, cached; partApi(name) is null until it has loaded */
 const PARTS={};
 function partLoad(n){const p=PARTS[n]||(PARTS[n]={api:null,p:null});if(p.api)return Promise.resolve(p.api);if(p.p)return p.p;
-  return p.p=fetch("parts/"+n+".js?v=27").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
+  return p.p=fetch("parts/"+n+".js?v=28").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
 function partApi(n){const p=PARTS[n];return p?p.api:null}
 /* Online players (Firebase). Paste your Firebase web app config object here, e.g.
    const FIREBASE_CONFIG={apiKey:"...",authDomain:"...",projectId:"...",storageBucket:"...",messagingSenderId:"...",appId:"..."};
@@ -11462,7 +11462,7 @@ const OFD=[["log","📦","Logistics","Runs your city managers' restocking.",1000
   ["depot","🔧","Depot","Runs the vehicle depot and fleet maintenance.",4000,"Every truck, ship and plane in your fleet is serviced back to 100% condition automatically (normal service fee), so nothing breaks down."],
   ["camp","🗳️","Campaign","Runs your election campaigns abroad.",5000,"Needed (with Marketing) to run in another country's elections."],
   /* Mark, 2026-11-09: oversees every logistics center. Only shows once you own one */
-  ["wh","🏭","Warehouse Manager","Oversees all your logistics warehouses.",6000,"Every logistics center: crew morale +2 a day, and food spoilage and night thefts are halved (grows with level)."]];
+  ["wh","🏭","Warehouse Manager","Oversees all your logistics warehouses.",6000,"Every logistics center: crew morale +2 a day, food spoilage and night thefts halved (grows with level). Keeps each product at the target you set in the Stock app, refilling from the same city's depot."]];
 const OFN=[["Ava","Liam","Noah","Mia","Zoe","Omar","Lina","Kai","Sofia","Ravi","Elena","Jonah","Priya","Mateo","Hana","Leo","Nadia","Theo","Aisha","Felix"],["Moreau","Chen","Okafor","Silva","Novak","Haddad","Tanaka","Brennan","Rossi","Kowalski","Dubois","Mensah","Lindqvist","Park","Ortiz","Reyes","Weber","Ito","Nair","Laurent"]],OFAV=["👩‍💼","👨‍💼","🧑‍💼","👩🏽‍💼","👨🏿‍💼","👩🏻‍💼","🧑🏾‍💼","👨🏽‍💼"];
 function ofS(){const o=S.off=S.off&&typeof S.off==="object"?S.off:{};o.d=o.d&&typeof o.d==="object"?o.d:{};for(const k in o.d)if(!OFD.some(x=>x[0]===k&&x[4]>0)||!o.d[k]||typeof o.d[k].nm!=="string")delete o.d[k];
   // the Exchange head is the exchange's own manager (S.exch.mgr): exists only while you own the exchange and the manager is on duty
@@ -14630,7 +14630,11 @@ function lcctOf(c){const L=LCO(c.id);if(!L)return null;if(!L.ct||typeof L.ct!=="
       S.lcctN=(S.lcctN||0)+1;const o={id:S.lcctN,g,q,pay:Math.round(q*px(c,g)*T.pr*(so?1.1:1))};if(so){o.ev=2+Math.floor(Math.random()*2);o.rec=4+Math.floor(Math.random()*3)}K.of.push(o)}}
   return K}
 const lcctDev=()=>{try{return !!(typeof ON!=="undefined"&&ON.user&&DEV_UIDS.includes(ON.user.uid))}catch(e){return false}};
-function lcctTick(){try{lcShipTick()}catch(e){console.warn("ship",e)}const n=Date.now();for(const id in (S.lc||{})){const c=CITIES[id],L=c&&LCO(id);if(!L||!L.ct||!Array.isArray(L.ct.ac))continue;
+/* Warehouse Manager task (Mark, 2026-11-09): keep each product at its "keep at" target (L.keep), taking only from the depot in the same city. Runs while the manager is hired */
+function lcKeepTick(){if(!ofHas("wh"))return;for(const id in (S.lc||{})){const c=CITIES[id],L=LCO(id);if(!c||!L||!L.keep)continue;const D=S.inv[id];
+  for(const g in L.keep){const t=+L.keep[g]||0,need=t-(L.inv[g]||0);if(!G[g]||!(need>=.01)||!D||!(D[g]>=.01))continue;const fit=Math.min(need,D[g],Math.floor(lcRoom(c)/tpu(g)*100)/100);if(!(fit>=.01))continue;
+    D[g]-=fit;if(D[g]<1e-6)delete D[g];lcAdd(c,g,fit);lcLog(c,`Warehouse Manager: refilled ${gq(fit)} ${G[g][0].toLowerCase()} from the ${c.name} depot`)}}}
+function lcctTick(){try{lcKeepTick()}catch(e){console.warn("keep",e)}try{lcShipTick()}catch(e){console.warn("ship",e)}const n=Date.now();for(const id in (S.lc||{})){const c=CITIES[id],L=c&&LCO(id);if(!L||!L.ct||!Array.isArray(L.ct.ac))continue;
   if(Array.isArray(L.ct.rc))L.ct.rc=L.ct.rc.filter(r=>{if(n<r.next||L.ct.ac.length>=LCCTMAX)return r.left>0;S.lcctN=(S.lcctN||0)+1;const T=lcctT(r.g),o={id:S.lcctN,g:r.g,q:r.q,pay:r.pay,ev:r.ev,so:r.id,due:n+T.d*DAYMS,pen:T.pen};L.ct.ac.push(o);if(lcDocksFree(L))lcShipNew(c,o);r.left--;r.next+=r.ev*DAYMS;lcLog(c,`Standing order #${r.id}: next delivery #${o.id} of ${gq(r.q)} ${G[r.g][0].toLowerCase()} (${r.left} left)`);toast(`🔁 Standing order in ${c.name}: a new delivery of ${G[r.g][0]} is loading`);return r.left>0});
   L.ct.ac=L.ct.ac.filter(o=>{if(o.due>n)return true;lcShipUndo(c,o.id);const f=lcctDev()?0:Math.round(o.pay*o.pen);S.cash-=f;lcLog(c,`Contract #${o.id} missed: ${gq(o.q)} ${G[o.g][0].toLowerCase()}${f?` · penalty ${fmt(f)}`:""}`);toast(`📄 Contract #${o.id} in ${c.name} missed${f?`: ${fmt(f)} penalty`:""}`);return false})}}
 function lcctAct(c,a,id){const K=lcctOf(c),L=LCO(c.id);if(!K)return "";
