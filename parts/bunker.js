@@ -20,6 +20,29 @@ const CRATES=[[-8,7.5,1.4],[-6.4,7.8,1.1],[7.5,7.5,1.4]];
 const B={el:null,on:false,T:null,ren:null,scene:null,cam:null,av:null,legs:null,walkT:0,p:{x:0,z:5.5,yaw:0},keys:{},joy:null,drag:null,near:null,panel:null,raf:0,last:0,others:{},ldr:[]};
 /* live presence: bunker/{uid} docs {uid,name,x,y,d,at} (x,y = position + 13/9 so they stay positive); only cleared accounts can read or write them (firestore.rules) */
 const BP={un:null,others:[],last:0,lx:0,lz:0};
+/* DEV BUILD MODE (Mark's dev account only, devGod()): press B in the bunker to place rooms and props. Saved in S.ant.bld as [type,x,z,rot].
+   Pieces: [name,w,h,d,color,y,blocks walking]. Snaps to a 0.5 m grid; walls block walking. */
+const BLD=[["Wall",2,3,.2,0x55606c,0,1],["Half wall",2,1.2,.2,0x6b7480,0,1],["Floor tile",2,.05,2,0x3b4a5a,0,0],["Desk",1.6,.8,.8,0x7c5a3a,0,1],["Crate",1,1,1,0x8a6d3b,0,1],["Ceiling light",1.5,.06,.3,0xffffff,3.9,0],["Glass wall",2,3,.08,0x67e8f9,0,1],["Door frame",2,3,.2,0x334155,0,0]];
+const bOK=()=>{try{return typeof devGod==="function"&&devGod()}catch(e){return false}};
+const bList=()=>{const a=st();if(!Array.isArray(a.bld))a.bld=[];return a.bld};
+function bMesh(T,b){const d=BLD[b[0]]||BLD[0],g=new T.Group();
+  if(b[0]===7){ofBox(T,g,.2,3,.2,d[4],-.9,0,0);ofBox(T,g,.2,3,.2,d[4],.9,0,0);ofBox(T,g,2,.4,.2,d[4],0,2.6,0)}
+  else{const m=ofBox(T,g,d[1],d[2],d[3],d[4],0,d[5],0,b[0]===5?{e:0xe0f2fe,ei:.95}:{r:.9});if(b[0]===6&&m&&m.material){m.material.transparent=true;m.material.opacity=.35}}
+  g.position.set(b[1],0,b[2]);g.rotation.y=(b[3]||0)*Math.PI/2;return g}
+function bBox(b){const d=BLD[b[0]]||BLD[0],r=(b[3]||0)%2;return{w:r?d[3]:d[1],dd:r?d[1]:d[3]}}
+function bRebuild(){const T=B.T;if(!T||!B.scene)return;if(B.bG)B.scene.remove(B.bG);B.bG=new T.Group();for(const b of bList())B.bG.add(bMesh(T,b));B.scene.add(B.bG)}
+function bSpot(){const P=B.p,q=v=>Math.round(v*2)/2;return[q(Math.max(-RW/2+1,Math.min(RW/2-1,P.x-Math.sin(P.yaw)*2.2))),q(Math.max(-RD/2+1,Math.min(RD/2-1,P.z-Math.cos(P.yaw)*2.2)))]}
+function bGhost(){const T=B.T;if(B.ghost){B.scene.remove(B.ghost);B.ghost=null}if(!B.bm||!T)return;const[x,z]=bSpot();const g=bMesh(T,[B.bt,x,z,B.br]);g.traverse(o=>{if(o.material){o.material=o.material.clone();o.material.transparent=true;o.material.opacity=.45;o.material.emissive&&o.material.emissive.setHex(0x22c55e)}});B.ghost=g;B.gk=B.bt+","+x+","+z+","+B.br;B.scene.add(g)}
+function bUI(){const h=B.el&&B.el.querySelector(".bk-bld");if(!h)return;h.hidden=!B.bm;if(!B.bm)return;h.innerHTML=`<b>🏗 BUILD MODE</b> · ${bList().length} pieces<br>${BLD.map((d,i)=>`<button class="bk-btn${i===B.bt?" on":""}" data-bk="bt" data-v="${i}">${i+1} ${d[0]}</button>`).join("")}<br><button class="bk-btn" data-bk="bput">Place (F)</button><button class="bk-btn" data-bk="brot">Rotate (R)</button><button class="bk-btn" data-bk="bdel">Remove nearest (X)</button><button class="bk-btn" data-bk="bundo">Undo (Z)</button><button class="bk-btn" data-bk="bclr">Clear all</button><button class="bk-btn" data-bk="bmode">Done (B)</button>`}
+function bAct(a,v){if(!bOK())return;const L=bList();
+  if(a==="bmode"){B.bm=!B.bm;B.bt=B.bt||0;B.br=B.br||0}
+  else if(a==="bt")B.bt=Math.max(0,Math.min(BLD.length-1,+v||0));
+  else if(a==="brot")B.br=((B.br||0)+1)%4;
+  else if(a==="bput"){if(L.length>=400)return toast("Build limit is 400 pieces");const[x,z]=bSpot();L.push([B.bt,x,z,B.br]);bRebuild();save()}
+  else if(a==="bundo"){if(L.pop()){bRebuild();save()}}
+  else if(a==="bdel"){const P=B.p;let bi=-1,bd=3;L.forEach((b,i)=>{const d=Math.hypot(P.x-b[1],P.z-b[2]);if(d<bd){bd=d;bi=i}});if(bi>=0){L.splice(bi,1);bRebuild();save()}else toast("No piece within 3 m")}
+  else if(a==="bclr"){if(!L.length||!confirm("Remove all "+L.length+" built pieces?"))return;L.length=0;bRebuild();save()}
+  B.gk=null;bGhost();bUI()}
 const onl=()=>typeof ON!=="undefined"&&ON.db&&ON.user;
 function bpSend(force){if(!onl())return;const n=Date.now(),P=B.p;if(!force&&n-BP.last<(Math.abs(P.x-BP.lx)+Math.abs(P.z-BP.lz)>.05?400:10000))return;BP.last=n;BP.lx=P.x;BP.lz=P.z;
   try{ON.db.collection("bunker").doc(ON.user.uid).set({uid:ON.user.uid,name:String(S.name||"Player").slice(0,20),x:Math.round((P.x+13)*100)/100,y:Math.round((P.z+9)*100)/100,d:Math.round(B.av?B.av.rotation.y*100:0),at:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("bunker",e))}catch(e){}}
@@ -33,6 +56,7 @@ function css(){if(document.getElementById("bk-css"))return;const s=document.crea
 .bk-top{position:absolute;top:10px;left:10px;right:10px;display:flex;gap:8px;align-items:center;pointer-events:none}.bk-top>*{pointer-events:auto}
 .bk-top div{flex:1;pointer-events:none;text-shadow:0 1px 3px #000}.bk-top b{display:block;color:#67e8f9;letter-spacing:.06em;font-size:15px}.bk-top small{color:#94a3b8;font:600 12px ui-monospace,monospace}
 .bk-btn{appearance:none;background:#0e7490;color:#fff;border:0;border-radius:999px;padding:9px 14px;font:600 13px system-ui;cursor:pointer}
+.bk-bld{position:absolute;left:10px;right:10px;bottom:150px;background:#020617d9;border:1px solid #22c55e;border-radius:12px;padding:8px;font-size:12px;line-height:2}.bk-bld b{color:#4ade80}.bk-bld .bk-btn{padding:5px 9px;margin:2px;font-size:11px;background:#1e293b}.bk-bld .bk-btn.on{background:#16a34a}
 .bk-help{position:absolute;left:10px;top:58px;font-size:11px;color:#cbd5e1cc;text-shadow:0 1px 3px #000;pointer-events:none}
 .bk-lift{position:absolute;inset:0;display:grid;place-items:center;background:#000;transition:opacity .9s;font:700 18px ui-monospace,monospace;color:#67e8f9;text-shadow:0 2px 8px #000;letter-spacing:.08em;pointer-events:none}
 .bk-load{position:absolute;inset:0;display:grid;place-items:center;font-size:15px;color:#67e8f9}
@@ -49,15 +73,15 @@ function css(){if(document.getElementById("bk-css"))return;const s=document.crea
 function open(){if(B.on)return;css();B.on=true;const el=B.el=document.createElement("div");el.className="bk-win";el.setAttribute("role","dialog");el.setAttribute("aria-label",ANT.n+" bunker");
   if(matchMedia("(pointer:coarse)").matches||"ontouchstart" in window)el.classList.add("touch");
   el.innerHTML=`<div class="bk-load">Loading the bunker…</div><div class="bk-top"><div><b>❄ ${esc(ANT.n.toUpperCase())}</b><small id="bk-sub">Classified bunker · ${devGod()?"Developer":"Moderator"} clearance</small></div><button class="bk-btn" data-bk="snd" aria-label="Bunker sound on/off" title="Bunker sound">${st().snd?"🔊":"🔇"}</button><button class="bk-btn" data-bk="close">Exit</button></div><div class="bk-lift" hidden><span>⬇ Lift descending to level −3</span></div>
-  <div class="bk-help">W/S forward/back · A/D strafe · ←/→ or drag to turn · E use · Esc exit</div><div class="bk-joy"><i></i></div><div class="bk-act"><button class="bk-btn" data-bk="use" hidden></button></div>`;
+  <div class="bk-help">W/S forward/back · A/D strafe · ←/→ or drag to turn · E use · Esc exit${bOK()?" · B build mode":""}</div><div class="bk-bld" hidden></div><div class="bk-joy"><i></i></div><div class="bk-act"><button class="bk-btn" data-bk="use" hidden></button></div>`;
   document.body.appendChild(el);B.btn=el.querySelector('[data-bk="use"]');B.p={x:0,z:5.5,yaw:0};B.keys={};B.joy=null;B.near=null;B.panel=null;
   const joy=el.querySelector(".bk-joy"),kn=joy.firstChild,jr=56;let jid=null;
   const jm=e=>{const r=joy.getBoundingClientRect();let dx=e.clientX-(r.left+jr),dy=e.clientY-(r.top+jr);const m=Math.hypot(dx,dy);if(m>jr){dx*=jr/m;dy*=jr/m}kn.style.left=36+dx+"px";kn.style.top=36+dy+"px";B.joy={x:dx/jr,y:dy/jr}};
   joy.addEventListener("pointerdown",e=>{e.stopPropagation();jid=e.pointerId;joy.setPointerCapture(jid);jm(e)});joy.addEventListener("pointermove",e=>{if(e.pointerId===jid)jm(e)});
   const je=()=>{jid=null;B.joy=null;kn.style.left="36px";kn.style.top="36px"};joy.addEventListener("pointerup",je);joy.addEventListener("pointercancel",je);
-  el.addEventListener("keydown",e=>{if(e.target.closest("input,textarea,select"))return;const k=e.key.toLowerCase();if(k==="e"||k==="enter"){use();e.preventDefault();return}if(k==="escape"){if(B.panel)panel(null);else close();return}B.keys[k]=1;if(k.startsWith("arrow")||k===" ")e.preventDefault()});
+  el.addEventListener("keydown",e=>{if(e.target.closest("input,textarea,select"))return;const k=e.key.toLowerCase();if(bOK()){const bk={b:"bmode"}[k]||(B.bm&&{f:"bput",r:"brot",x:"bdel",z:"bundo"}[k]);if(bk){bAct(bk);e.preventDefault();return}if(B.bm&&k>="1"&&k<="8"){bAct("bt",+k-1);return}}if(k==="e"||k==="enter"){use();e.preventDefault();return}if(k==="escape"){if(B.panel)panel(null);else close();return}B.keys[k]=1;if(k.startsWith("arrow")||k===" ")e.preventDefault()});
   el.addEventListener("keyup",e=>{B.keys[e.key.toLowerCase()]=0});
-  el.addEventListener("click",e=>{const b=e.target.closest("[data-bk]");if(!b)return;act(b.dataset.bk,b.dataset.v,b)});
+  el.addEventListener("click",e=>{const b=e.target.closest("[data-bk]");if(!b)return;if(/^b(mode|t|put|rot|del|undo|clr)$/.test(b.dataset.bk)){bAct(b.dataset.bk,b.dataset.v);if(B.cv)B.cv.focus();return}act(b.dataset.bk,b.dataset.v,b)});
   loadThree().then(T=>{if(!B.on||B.el!==el)return;build(T);bpListen();bpSend(1);shListen();logEntry();B.liftEnd=performance.now()+2600;B.lift=1;const lf=el.querySelector(".bk-lift");if(lf){lf.hidden=false;lf.style.opacity=1}if(st().snd)hum(true)}).catch(()=>{close();toast("Couldn't load the 3D bunker. Check your connection and try again.")})}
 function close(){if(!B.on)return;B.on=false;cancelAnimationFrame(B.raf);B.raf=0;bpStop();shStop();if(B.ac){try{B.ac.close()}catch(e){}B.ac=null}B.sit=null;
   if(B.scene)B.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();const m=o.material;if(m)(Array.isArray(m)?m:[m]).forEach(x=>{if(x.map)x.map.dispose();x.dispose()})});
@@ -116,9 +140,10 @@ function build(T){B.T=T;const el=B.el;let ren;try{ren=new T.WebGLRenderer({antia
   const av=person(T,devGod()?0x854d0e:0x1e3a8a);sc.add(av);B.av=av;B.legs=av.userData.legs;
   cv.addEventListener("pointerdown",e=>{B.drag={x:e.clientX,id:e.pointerId};cv.focus()});cv.addEventListener("pointermove",e=>{if(B.drag&&B.drag.id===e.pointerId){B.p.yaw-=(e.clientX-B.drag.x)*.006;B.drag.x=e.clientX}});
   const de=()=>{B.drag=null};cv.addEventListener("pointerup",de);cv.addEventListener("pointercancel",de);
-  B.last=performance.now();B.raf=requestAnimationFrame(loop);setTimeout(()=>cv.focus(),30)}
+  B.bm=false;B.bt=0;B.br=0;B.ghost=null;B.bG=null;bRebuild();B.last=performance.now();B.raf=requestAnimationFrame(loop);setTimeout(()=>cv.focus(),30)}
 function blocked(x,z){const r=.3;if(x<-RW/2+r||x>RW/2-r||z<-RD/2+r||z>RD/2-r)return true;for(const s of ST)if(!s.walk&&x>s.x0-r&&x<s.x1+r&&z>s.z0-r&&z<s.z1+r)return true;
-  for(const [cx,cz,w] of CRATES)if(Math.abs(x-cx)<w/2+r&&Math.abs(z-cz)<w/2+r)return true;return false}
+  for(const [cx,cz,w] of CRATES)if(Math.abs(x-cx)<w/2+r&&Math.abs(z-cz)<w/2+r)return true;
+  for(const b of (S.ant&&S.ant.bld)||[]){if(!(BLD[b[0]]||[])[6])continue;const q=bBox(b);if(Math.abs(x-b[1])<q.w/2+r&&Math.abs(z-b[2])<q.dd/2+r)return true}return false}
 function nearest(){const P=B.p;if(B.sit)return SITN;let best=null,bd=1.4;for(const s of ST){const cx=Math.max(s.x0,Math.min(P.x,s.x1)),cz=Math.max(s.z0,Math.min(P.z,s.z1)),d=Math.hypot(P.x-cx,P.z-cz);if(d<bd){bd=d;best=s}}
   for(const c of CHAIRS){const d=Math.hypot(P.x-c[0],P.z-c[1]);if(d<.75&&d<bd){bd=d;best={k:"chair",n:"Sit down",c}}}return best}
 function loop(t){if(!B.on||!B.ren){B.raf=0;return}B.raf=requestAnimationFrame(loop);if(document.hidden)return;const dt=Math.min(.05,Math.max(0,(t-B.last)/1000));B.last=t;step(dt,t);
@@ -138,6 +163,7 @@ function step(dt,t){const P=B.p,k=B.keys,T=B.T,busy=!!B.panel&&document.activeEl
     g.fillStyle="#fff";for(const f2 of B.flakes){f2.y+=f2.v*B._st;f2.x+=(30+Math.sin(t/900+f2.r)*20)*B._st;if(f2.y>128){f2.y=-2;f2.x=Math.random()*256}if(f2.x>256)f2.x-=256;g.beginPath();g.arc(f2.x,f2.y,f2.r,0,7);g.fill()}B._st=0;B.snowT.needsUpdate=true}
   others(dt);const n=nearest();if(n!==B.near){B.near=n;B.btn.hidden=!n;if(n)B.btn.textContent=n.k==="exit"?"🛫 Exit hatch (E)":n.k==="chair"||n.k==="stand"?`${n.n} (E)`:`Use ${n.n} (E)`}
   if((B._sub=(B._sub||0)+dt)>1){B._sub=0;const e=document.getElementById("bk-sub");if(e)e.textContent=`Classified bunker · ${devGod()?"Developer":"Moderator"} clearance · ${onl()?BP.others.length+1+" inside":"offline: sign in to see others"}`}
+  if(B.bm){const[x,z]=bSpot();if(B.gk!==B.bt+","+x+","+z+","+B.br)bGhost()}
   bpSend()}
 /* other cleared players: one figure + name tag each, eased toward their last sent spot */
 function others(dt){const T=B.T,seen={};for(const o of BP.others){seen[o.uid]=1;let g=B.others[o.uid];
