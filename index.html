@@ -647,7 +647,15 @@ if(!PTP.id)PTP.id=Math.random().toString(36).slice(2,8);
 const ptSave=()=>{try{localStorage.setItem(PTKEY,JSON.stringify(PTP))}catch(e){}};ptSave();
 /* tmemo: remember a result until the current task ends (one tick, one render), so big empires don't redo the same per-city math for every unit */
 function tmemo(ns,k,f){const T=tmemo.T||(tmemo.T=new Map());if(!tmemo.armed){tmemo.armed=true;queueMicrotask(()=>{T.clear();tmemo.armed=false})}let m=T.get(ns);if(!m)T.set(ns,m=new Map());if(m.has(k))return m.get(k);const v=f();m.set(k,v);return v}
-const save=()=>{if(tmemo.T)tmemo.T.clear();if(save.lock)return;try{if(typeof ensurePositions==="function")ensurePositions();localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}try{if(typeof onSaved==="function")onSaved()}catch(e){}};
+/* one shared game clock: every background job runs from a single timer, spread out so they don't all fire on the same tick.
+   {ui:true} jobs only update the screen, so they pause while the tab is hidden. */
+const CLK={j:[]};function every(ms,fn,o){const now=Date.now();CLK.j.push({ms,fn,ui:!!(o&&o.ui),next:now+ms+(CLK.j.length*97)%Math.max(250,ms)})}
+setInterval(()=>{const now=Date.now(),hid=document.hidden;for(const j of CLK.j){if(now<j.next)continue;j.next=now+j.ms;if(hid&&j.ui)continue;try{j.fn()}catch(e){console.warn("clk",e)}}},250);
+/* save: skip the write (and the online publish) when nothing changed since the last save */
+const save=()=>{if(tmemo.T)tmemo.T.clear();if(save.lock)return;let s=null;try{if(typeof ensurePositions==="function")ensurePositions();s=JSON.stringify(S);if(s!==save.last){localStorage.setItem(KEY,s);save.last=s}else s=null}catch(e){}if(s!==null){try{if(typeof onSaved==="function")onSaved()}catch(e){}}};
+/* the timed autosave waits for an idle moment so it doesn't stutter the map; closing or hiding the tab always saves */
+const saveIdle=()=>{if(saveIdle.p)return;saveIdle.p=1;const go=()=>{saveIdle.p=0;save()};window.requestIdleCallback?requestIdleCallback(go,{timeout:2000}):setTimeout(go,0)};
+addEventListener("pagehide",()=>{try{save()}catch(e){}});document.addEventListener("visibilitychange",()=>{if(document.hidden)try{save()}catch(e){}});
 
 const cost=(b,c)=>Math.round(b.cost*1.3*PRICE[c.size]);
 // carts climb faster (1.7x per level) so upgrades never pay back quicker than a new cart; others keep 1.4x
@@ -917,7 +925,7 @@ const st3t=$("#st3dt");
 const mode3d=()=>{try{const v=localStorage.getItem("meridian-3d-dark");return v==="a"?"a":v==="1"?"1":v==="0"?"0":(dark3d()?"1":"0")}catch(e){return"0"}};
 function theme3dBtn(){const m=mode3d();st3t.textContent=m==="a"?"🕒 Auto":m==="1"?"☾ Dark":"☀ Light";st3t.title="Map light: Light, Dark, or Auto (follows your local time, dark 19:00 to 06:00). Tap to change"}
 st3t.onclick=()=>{const m=mode3d(),n=m==="0"?"1":m==="1"?"a":"0";try{localStorage.setItem("meridian-3d-dark",n)}catch(e){}theme3dBtn();loadMapStyle()};
-let _auto3=null;setInterval(()=>{try{if(localStorage.getItem("meridian-3d-dark")!=="a"){_auto3=null;return}const n=nightNow();if(_auto3!==null&&_auto3!==n){_auto3=n;loadMapStyle()}_auto3=n}catch(e){}},60000);
+let _auto3=null;every(60000,()=>{try{if(localStorage.getItem("meridian-3d-dark")!=="a"){_auto3=null;return}const n=nightNow();if(_auto3!==null&&_auto3!==n){_auto3=n;loadMapStyle()}_auto3=n}catch(e){}});
 theme3dBtn();loadMapStyle();
 /* ---- the camera as the rest of the game sees it: proj(lonlat) → screen, visible(), path() for lines and areas ---- */
 let _hz=90,_ce=[0,0];
@@ -2478,7 +2486,7 @@ sheet.addEventListener("input",e=>{const t=e.target;if(t.dataset&&t.dataset.gxq)
 sheet.addEventListener("change",e=>{const t=e.target;if(t.dataset&&t.dataset.gxv)PMX.v[t.dataset.gxv]=t.value});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gx]");if(!b||!sel)return;const a=b.dataset.gx;
   if(a==="buy")gxBuy(b.dataset.id);else if(a==="cancel")gxCancel(b.dataset.id);else if(a==="list")gxList(sel)});
-setInterval(()=>{try{gxEnsure()}catch(e){}},5000);
+every(5000,()=>{try{gxEnsure()}catch(e){}});
 /* phone Market app: every player listing in the world, cheapest first per good; Buy delivers to your warehouse in that city */
 function gxPhone(){gxEnsure();const E=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
   let h=`<div class="ph-sub" style="font-weight:700">Player listings</div>`;
@@ -3298,7 +3306,7 @@ let wxSeen={};try{wxSeen=JSON.parse(localStorage.getItem("meridian-wx")||"{}")}c
 function wxNews(){for(const s of activeStorms()){if(wxSeen[s.id])continue;wxSeen[s.id]=1;try{localStorage.setItem("meridian-wx",JSON.stringify(wxSeen))}catch(e){}
   const ce=stormCenter(s),near=CITIES.filter(c=>d3.geoDistance(ce,[c.lon,c.lat])*180/Math.PI<s.rad+3).sort((a,b)=>b.size-a.size)[0];
   S.log.unshift(`Storm system forming${near?" near "+near.name:" over open ocean"} · ${Math.round((s.end-Date.now())/3600000)}h`);S.log=S.log.slice(0,3);hud()}}
-setInterval(wxNews,30000);setTimeout(wxNews,2000);
+every(30000,wxNews);setTimeout(wxNews,2000);
 if(WX_TEST)window.__wx={stormAt,activeStorms,stormCenter,cities:CITIES,get city(){return stCity},get inStreet(){return inStreet}};
 
 /* ---------- running a business: stock, staff, managers and auto-restock ---------- */
@@ -3517,7 +3525,7 @@ function worldNews(){const r=Math.random();let msg;
     msg=[`${RIVALS[i].n} posts record quarter, worth ${fmt(rv.nw)}`,c?`${RIVALS[i].n} is hiring aggressively in ${c.name}`:`Analysts say ${RIVALS[i].n} is eyeing new markets`,`Analysts say ${RIVALS[i].n} is eyeing new markets`][Math.floor(Math.random()*3)]}
   else{const c=CITIES[Math.floor(Math.random()*CITIES.length)];msg=NEWSPOOL[Math.floor(Math.random()*NEWSPOOL.length)](c)}
   S.log.unshift("World: "+msg);S.log=S.log.slice(0,3);hud()}
-setInterval(worldNews,4*60000);setTimeout(worldNews,20000);
+every(4*60000,worldNews);setTimeout(worldNews,20000);
 
 /* ---------- economy tick ---------- */
 /* real time: money accrues every second; the world (rivals, booms, chart) updates on the hour */
@@ -3708,7 +3716,7 @@ function renderResearch(){const done=TECH.filter(t=>hasTech(t.k)).length;
   sheet.querySelectorAll("[data-tech]").forEach(b=>b.onclick=()=>{const t=TK[b.dataset.tech];if(!canResearch(t)||!rsOk(t)||S.rp<t.rp||S.cash<t.cash)return;
     S.rp-=t.rp;S.cash-=t.cash;S.tech[t.k]=1;applyTechs();S.log.unshift(`Researched ${t.n}`);S.log=S.log.slice(0,3);
     toast(t.k==="marsciv"?"Mars Civilization researched. Humanity is multi-planetary.":`Researched ${t.n}`);save();hud();renderResearch();draw()})}
-function hud(){try{setApply()}catch(e){}const nb=document.querySelectorAll('#needs i');["h","f","m"].forEach((k,i)=>{const v=S.need[k];nb[i].style.width=v+"%";nb[i].style.background=v<25?"var(--bad)":v<50?"var(--accent)":"var(--good)"});let{inc,nw}=totals();for(const st of S.sites){const o=siteOp(st);if(o&&!st.why)inc+=siteEst(st)+o.up*LAND[st.size][1]}try{if(S.mb&&S.mb.crew&&typeof mbEco==="function")inc+=mbEco().day}catch(e){}   /* Mars colony income: a game day is one real hour (DAYMS) */
+function hud(){try{setApply()}catch(e){}const nb=document.querySelectorAll('#needs i');["h","f","m"].forEach((k,i)=>{const v=S.need[k];nb[i].style.width=v+"%";nb[i].style.background=v<25?"var(--bad)":v<50?"var(--accent)":"var(--good)"});let{inc,nw}=totals();const hc=hud.c||(hud.c={t:0,n:-1,v:0}),hn=Date.now();if(hn-hc.t>5000||hc.n!==S.sites.length){let v=0;for(const st of S.sites){const o=siteOp(st);if(o&&!st.why)v+=siteEst(st)+o.up*LAND[st.size][1]}hc.t=hn;hc.n=S.sites.length;hc.v=v}inc+=hc.v;try{if(S.mb&&S.mb.crew&&typeof mbEco==="function")inc+=mbEco().day}catch(e){}   /* Mars colony income: a game day is one real hour (DAYMS) */
 if(typeof tweenCash==="function")tweenCash();else $("#cash").textContent=fmt(S.cash);
   const ie=$("#inc");ie.textContent=(inc>=0?"+":"")+fmt(inc);ie.style.color=inc<0?"var(--bad)":"var(--good)";
   $("#nw").textContent=fmt(nw);if(typeof rankHud==="function")rankHud(nw);$("#day").textContent=new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})+(typeof ssnTag==="function"?ssnTag():"");
@@ -3825,7 +3833,7 @@ function pmSweep(){if(!S.gov)return;rsSweep();for(const n in S.gov){const g=S.go
     else if(d&&d.st==="denied"){S.cash+=uranFee();delete g.uReq;logGov(`${d.byName||"The government"} of ${n} refused your nuclear mining permit (fee refunded)`);toast(`Permit for ${n} refused, ${fmt(uranFee())} refunded`);ON.db.collection("permits").doc(d.id).delete().catch(()=>{})}
     else if(Date.now()-g.uReq.at>URQ.wait||(PM.got&&!d)){if(d)ON.db.collection("permits").doc(d.id).delete().catch(()=>{});uranAiDecide(n,true)}}
   PM.got=true}
-setInterval(()=>{try{if(ON.user&&S.pol&&(S.pol.r>=0?S.pol.c:null)!==PM.c)pmListen(ON.user);if(PM.got)pmSweep()}catch(e){console.warn("pm",e)}},30000);
+every(30000,()=>{try{if(ON.user&&S.pol&&(S.pol.r>=0?S.pol.c:null)!==PM.c)pmListen(ON.user);if(PM.got)pmSweep()}catch(e){console.warn("pm",e)}});
 function uranApply(n){const g=gov(n),fee=uranFee();if(g.uReq){toast("Your application is already waiting");return}
   if(urqCdOn()&&g.uDen>Date.now()){toast(`The ${n} government refused you recently. Try again in ${fmtDur(g.uDen-Date.now())}.`);return}
   if(S.cash<fee){toast(`Need ${fmt(fee)} for the permit`);return}
@@ -5547,7 +5555,7 @@ function mpHtml(){if(!devGod())return"";const m=MP(),rt=MPR[m.r]||MPR[1];
   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">${MPR.map((v,i)=>`<button class="buy${m.r===i?"":" up"}" data-dev="mprate" data-i="${i}">${fmt(v)}</button>`).join("")}<select id="mpu" data-devsel="mpu">${MPU.map((u,i)=>`<option value="${i}" ${(m.u??1)===i?"selected":""}>every ${u[0]}</option>`).join("")}</select><button class="buy" data-dev="mpon">${m.on?"Stop printing":"Start printing"}</button></div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input id="mpamt" inputmode="numeric" placeholder="Amount, e.g. 1000000000000" style="flex:1;min-width:160px"><button class="buy" data-dev="mpnow">Print to vault</button><button class="buy" data-dev="mpwd">Withdraw</button><button class="buy" data-dev="mpall" ${m.bal>0?"":"disabled"}>Withdraw all</button></div></details>`}
 function mpTick(){try{if(!devGod())return;const m=MP();if(!m.on)return;const now=Date.now(),dt=Math.min(3600000,Math.max(0,now-(m.at||now)));m.at=now;const v=Math.round((MPR[m.r]||MPR[1])*dt/mpU(m)[1]);if(v>0){m.bal=(m.bal||0)+v;m.tot=(m.tot||0)+v;const ae=document.activeElement;if(window.MPO&&mode==="sv"&&sheet.classList.contains("open")&&!(ae&&/^(INPUT|SELECT)$/.test(ae.tagName)))reSheet()}}catch(e){}}
-setInterval(mpTick,1000);
+every(1000,mpTick);
 document.addEventListener("change",e=>{const t=e.target;if(!t||t.dataset.devsel!=="mpu"||!devOn()||!devGod())return;const m=MP();mpTick();m.u=Math.max(0,Math.min(MPU.length-1,+t.value||0));toast(`Money printer pays out every ${mpU(m)[0]}`);save();hud();reSheet()});
 /* Revive a player (Mark, 2026-11-06): developer account only. Writes revive/{uid}; that player's game clears its GAME OVER (S.dead) next time it is open and signed in, then deletes the doc. Their empire is untouched; cash lost in the strike is not refunded. */
 function rvHtml(){if(!devGod())return"";const l=(typeof ON!=="undefined"&&ON.players||[]).filter(p=>p&&p.uid).slice().sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")));
@@ -5560,14 +5568,14 @@ function rvSend(){const db=wcBE(),e=$("#rvsel");if(!devGod()||!db)return toast("
 const RV={at:0};
 function rvTick(){try{if(!S.dead)return;const db=wcBE(),now=Date.now();if(!db||now-RV.at<15000)return;RV.at=now;const ref=db.collection("revive").doc(ON.user.uid);
   ref.get().then(d=>{if(!d.exists||!S.dead)return;const c=S.dead.name;delete S.dead;if(S.need)S.need.h=Math.max(S.need.h||0,50);S.log.unshift("❤ The developer brought you back to life after the strike on "+c);S.log=S.log.slice(0,3);save();ref.delete().catch(()=>{});const g=$("#gameover");if(g)g.remove();toast("❤ You've been revived. Welcome back!");try{hud()}catch(e){}}).catch(()=>{})}catch(e){}}
-setInterval(rvTick,3000);
+every(3000,rvTick);
 function gcSend(set){const db=wcBE(),e=$("#rvsel"),a=+String(($("#gcamt")||{}).value||"").replace(/[,$\s]/g,"");if(!devGod()||!db)return toast("Sign in with the developer account to grant cash");const uid=e&&e.value;if(!uid)return;
   if(!(a>=0&&isFinite(a))||(!set&&!(a>0)))return toast("Type an amount, e.g. 8e15");const nm=e.options[e.selectedIndex].text,ref=db.collection("grant").doc(uid);
   (set?ref.set({set:a,amt:0,by:ON.user.uid,at:firebase.firestore.FieldValue.serverTimestamp()}):db.runTransaction(t=>t.get(ref).then(d=>{const v=d.exists?d.data():{};t.set(ref,Object.assign({},v,{amt:(+v.amt||0)+a,by:ON.user.uid,at:firebase.firestore.FieldValue.serverTimestamp()}))}))).then(()=>toast(set?`💰 ${nm}'s cash will be set to ${fmt(a)} next time their game is open`:`💰 ${fmt(a)} will reach ${nm} next time their game is open`)).catch(x=>toast("Couldn't send grant: "+(x&&x.code||x)))}
 const GC={at:0,busy:0};
 function gcTick(){try{const db=wcBE(),now=Date.now();if(!db||GC.busy||now-GC.at<20000)return;GC.at=now;const ref=db.collection("grant").doc(ON.user.uid);GC.busy=1;
   ref.get().then(d=>{if(!d.exists){GC.busy=0;return}const v=d.data()||{},a=+v.amt||0,st=typeof v.set==="number"&&isFinite(v.set)&&v.set>=0?v.set:null;return ref.delete().then(()=>{GC.busy=0;if(st==null&&!(a>0&&isFinite(a)))return;if(st!=null)S.cash=st;if(a>0&&isFinite(a))S.cash=(+S.cash||0)+a;const t=st!=null?"💰 The developer set your cash to "+fmt(S.cash):"💰 The developer granted you "+fmt(a);S.log.unshift(t);S.log=S.log.slice(0,3);save();toast(t);try{hud()}catch(e){}})}).catch(()=>{GC.busy=0})}catch(e){}}
-setInterval(gcTick,5000);
+every(5000,gcTick);
 function devAct(b){const k=b.dataset.dev;
   if(k==="revive")return rvSend();
   if(k==="grant")return gcSend();
@@ -5656,7 +5664,7 @@ document.addEventListener("pointerdown",e=>{const b=e.target.closest("button.buy
 /* stagger rows in when you open a city or switch tabs */
 let _enterKey="";function sheetEnter(){const k=mode+":"+(sel?sel.id:"")+":"+tab;if(k===_enterKey)return;_enterKey=k;sheet.classList.remove("enter");void sheet.offsetWidth;sheet.classList.add("enter");clearTimeout(sheetEnter.t);sheetEnter.t=setTimeout(()=>sheet.classList.remove("enter"),900)}
 new MutationObserver(()=>{if(sheet.classList.contains("open"))sheetEnter();else _enterKey=""}).observe(sheet,{childList:true,attributes:true,attributeFilter:["class"]});
-setInterval(dailyCheck,30000);setTimeout(dailyCheck,1500);
+every(30000,dailyCheck);setTimeout(dailyCheck,1500);
 /* ---------- trucking: freight contracts for rival companies (HQ dashboard → Trucking page) ----------
    S.logi (lazy, sanitised by LG()): shared fleet {trucks, up{}}, board {offers, jobs, rep}, totals {done, earned, tons, late, hist[]} and one record per Trucking hub
    S.logi.hub[cityId] = {res (trucks reserved for this hub), cap (max trucks at once, 0 = no limit), pol (auto-dispatch policy, "" = default), dep, drv, last, done, earned, tons, late}.
@@ -5839,11 +5847,11 @@ function ugApp(){const u=UG(),c=ugCity(),now=Date.now(),hc=u.heat>66?"#ef4444":u
     h+=`<button class="buy up" data-ph="uga" data-a="leave" style="width:100%;margin-top:6px">Leave the gang</button>`}
   return h+`<p class="ph-sub" style="margin-top:8px">Every arrest goes on your record and can mean prison time.</p>`}
 /* live-update the Underground app in place (no re-render, so scrolling never jumps) */
-setInterval(()=>{if(!PH.open||PH.app!=="ug")return;const u=UG(),now=Date.now(),el=PH.el;
+every(1000,()=>{if(!PH.open||PH.app!=="ug")return;const u=UG(),now=Date.now(),el=PH.el;
   const bar=el.querySelector("#ugbar");if(bar){bar.style.width=u.heat+"%";bar.style.background=u.heat>66?"#ef4444":u.heat>33?"#f59e0b":"#22c55e"}
   const ht=el.querySelector("#ugheat");if(ht)ht.textContent=ugHeatTxt(u);
   el.querySelectorAll('[data-ph="ug"]').forEach(b=>{const j=UGJ.find(x=>x.k===b.dataset.k),cd=Math.max(0,(u.cd[j.k]||0)-now),lock=(j.rep&&u.rep<j.rep)||(j.gang&&(!u.gang||u.gang.m<j.gang));
-    const t=cd?"Lie low "+Math.ceil(cd/1000)+"s":lock?"Locked":"Do it";if(b.textContent!==t)b.textContent=t;b.disabled=!!(cd||lock)})},1000);
+    const t=cd?"Lie low "+Math.ceil(cd/1000)+"s":lock?"Locked":"Do it";if(b.textContent!==t)b.textContent=t;b.disabled=!!(cd||lock)})});
 /* owner shortcut: open the game with ?release to walk out of prison */
 try{if(/[?&]dev=1\b/.test(location.search))localStorage.setItem("meridian-dev","1");else if(/[?&]dev=0\b/.test(location.search))localStorage.removeItem("meridian-dev")}catch(e){}
 if(/[?&]release\b/.test(location.search)&&S.jail){S.jail=null;if(S.ug)S.ug.heat=0;save();setTimeout(()=>toast("You're free. Released from prison."),800);history.replaceState(null,"",location.pathname)}
@@ -5989,7 +5997,7 @@ function btcCrashStep(m,now,sh){const dev=typeof ON!=="undefined"&&ON.user&&devU
   if(dev&&!m.bcDone2){m.bcDone2=1;m.bc={t0:now,lf:1};S.log.unshift("Markets: Bitcoin crashes as panic selling hits");S.log=S.log.slice(0,3)}
   const t0=btcCrashT0(m);if(!t0)return;if(!m.bc||m.bc.t0!==t0)m.bc={t0,lf:1};const b=m.bc,f=btcCrashF(t0,now),live=now-m.live<5*60000&&m.liveSet&&m.liveSet.BTC;
   if(!live||!sh)m.px.BTC=Math.max(1,m.px.BTC*f/(b.lf||1));b.lf=f}
-setInterval(mktStep,10000);setInterval(mktLive,90000);setTimeout(mktLive,3000);
+every(10000,mktStep);every(90000,mktLive);setTimeout(mktLive,3000);
 const holdVal=()=>{const m=MK();let v=0;for(const s in m.hold)v+=m.hold[s].q*m.px[s];return v};
 const EXFEE=.004,PUBFEE=.01;   // trade fees (Mark, 2026-10-30): 1% on the public market, 0.4% through a player's exchange
 const fee=a=>S.exVia?EXFEE:PUBFEE;
@@ -6614,7 +6622,7 @@ function baSweep(){if(!BA.ok||!ON.user)return;const s=baS(),u=ON.user.uid,by=new
   if(ch){save();hud()}}
 function baListen(u){if(BA.un){try{BA.un()}catch(e){}BA.un=null}BA.list=[];BA.ok=false;if(!u||!ON.db)return;
   BA.un=ON.db.collection("bauc").onSnapshot(q=>{if(q.metadata&&q.metadata.fromCache)return;BA.list=q.docs.map(d=>({id:d.id,...d.data()}));BA.ok=true;baSweep();onRefresh()},e=>{})}
-setInterval(()=>{try{baSweep()}catch(e){}},30000);
+every(30000,()=>{try{baSweep()}catch(e){}});
 function baLeft(t){const s=Math.max(0,t-Date.now())/1000;return s>=3600?`${Math.floor(s/3600)} h ${Math.floor(s%3600/60)} min`:`${Math.ceil(s/60)} min`}
 // city sheet: auctions open now (this city first) + your own listings
 function baHtml(c){if(!ON.db||!ON.user)return"";const u=ON.user.uid,s=baS(),now=Date.now(),L=BA.list.filter(a=>a.st==="open"&&(now<a.end||a.uid===u||a.hb===u)).sort((a,b)=>(b.c===c.id)-(a.c===c.id)||a.end-b.end).slice(0,15);
@@ -7490,7 +7498,7 @@ function scHtml(btn){const f=scS(),now=Date.now(),day=rigFuelDay(),act=f.sc.filt
   h+=act.length?`<div class="mdx-rows">${act.map(c=>`<div><span>📜 <b>${dxE(c.co)}</b> · ${fmtN(c.q)} fuel/day at ${fmt(c.px)}<br><small>${c.left} of ${c.d} days left · next delivery in ${fmtDur(c.next-now)} · earned ${fmt(c.paid)}${c.miss?` · <b style="color:#ef4444">${c.miss}/${SCCFG.strikes} short days</b>`:""}</small></span></div>`).join("")}</div>`:"";
   h+=f.so.length?`<div class="mdx-rows">${f.so.map(o=>{const pr=Math.round((o.px/rigPx("fuel")-1)*100);return `<div><span>🏢 <b>${dxE(o.co)}</b> offers ${o.d===3?"a short-term":o.d===7?"a weekly":"a monthly"} deal: ${fmtN(o.q)} fuel/day for ${o.d} days<br><small>${fmt(o.px)}/unit (+${pr}%) · ${fmt(o.q*o.px*o.d)} total${o.d>=30?" + signing bonus "+fmt(o.q*o.px):""} · offer ends in ${fmtDur(o.exp-now)}</small></span>${btn("scsign",o.id,"Sign",act.length>=SCCFG.act,"#1d4ed8")}</div>`}).join("")}</div>`:`<div class="mdx-empty">No supply offers right now. Companies send new ones every few hours.</div>`;
   return h+`<div class="mdx-note">Fuel is taken from your rigs once a game day. A short day costs a 50% penalty on what's missing; ${SCCFG.strikes} short days break the deal (penalty = ${SCCFG.breakDays} days of supply).</div></div>`}
-setInterval(()=>{try{fxTick(Date.now());foEnsure()}catch(e){}try{scTick(Date.now())}catch(e){console.warn("sc",e)}},5000);
+every(5000,()=>{try{fxTick(Date.now());foEnsure()}catch(e){}try{scTick(Date.now())}catch(e){console.warn("sc",e)}});
 function fxHtml(){const now=Date.now(),f=fx(),have=rigFuel(),uid=foOk()&&ON.user.uid,whs=Object.keys(S.wh||{}).filter(i=>S.wh[i]!=null&&CITIES[i]).map(i=>CITIES[i]);
   const btn=(a,k,t,dis,bg)=>`<button class="mdx-pill" data-rx="${a}" data-v="${dxE(String(k))}" ${dis?"disabled":""} style="border:0;cursor:pointer;color:#fff;background:${bg||"#0f766e"};opacity:${dis?.5:1}">${t}</button>`;
   const sel=(id,v,opts,ph)=>`<select data-fo="${id}" style="max-width:100%">${ph?`<option value="">${ph}</option>`:""}${opts.map(([k,t])=>`<option value="${dxE(String(k))}"${String(k)===String(v)?" selected":""}>${dxE(t)}</option>`).join("")}</select>`;
@@ -7782,7 +7790,7 @@ function dxTick(){if(!S||!S.own)return;const d=dxS(),now=Date.now();dxN++;
       for(const k in by){const e=by[k];if(e.rev>0)dxTx({d:"Hourly sales",s:e.c.name,ty:"inc",a:e.rev,ra:e.rr});if(e.wage>0)dxTx({d:"Payroll",s:e.c.name,ty:"exp",a:-e.wage,ra:-e.rw})}}
     d.lh=hr;d.h.push({t:hr,day:S.day,a:[Math.round(A.rev),Math.round(A.exp),Math.round(A.net),A.n],r:[Math.round(R.rev),Math.round(R.exp),Math.round(R.net),R.n],cash:Math.round(S.cash)});if(d.h.length>48)d.h.splice(0,d.h.length-48)}
   if(DX.open){const A=dxData(false),R=dxData(true);DX.samples.push({t:now,a:[A.rev,A.exp,A.net,A.n],r:[R.rev,R.exp,R.net,R.n],cash:S.cash});if(DX.samples.length>150)DX.samples.shift();dxRender()}}
-setInterval(()=>{try{dxTick()}catch(e){console.warn("dash",e)}},2000);
+every(2000,()=>{try{dxTick()}catch(e){console.warn("dash",e)}});
 /* ---------- window ---------- */
 const DXCSS=`.mdx-win{--dxbg:#f4f6fb;--dxcard:#fff;--dxink:#0f172a;--dxink2:#334155;--dxink3:#475569;--dxmut:#64748b;--dxmut2:#94a3b8;--dxline:#e6eaf2;--dxsoft:#f1f5f9;--dxtint:#eff4ff;--dxhov:#dbe7ff;position:fixed;z-index:50;display:flex;flex-direction:column;background:var(--dxbg);border-radius:18px;box-shadow:0 30px 80px rgba(15,23,42,.35),0 0 0 1px rgba(15,23,42,.08);overflow:hidden;font-family:Figtree,ui-sans-serif,system-ui,sans-serif;color:var(--dxink);min-width:300px;min-height:360px}
 .mdx-win *{box-sizing:border-box}
@@ -9977,7 +9985,7 @@ function gateSync(){const need=onEnabled()&&!ON.user&&!isGuest();let ov=document
         ON.draft={e:"",p:"",n:""};save()}
     }catch(x){GATE.err=String(x&&x.message||x).replace(/^Firebase:\s*/,"").slice(0,160)}GATE.busy=false;gateSync()})}
 if(onEnabled())gateSync();
-if(onEnabled()){onInit();setInterval(()=>{if(ON.user){onPublish(false);wrPublish(false);try{botTick()}catch(e){console.warn("bot",e)}}},15000)}
+if(onEnabled()){onInit();every(15000,()=>{if(ON.user){onPublish(false);wrPublish(false);try{botTick()}catch(e){console.warn("bot",e)}}})}
 /* ---------- cloud save: private copy of this slot's save at saves/{uid} so the account works on other devices ---------- */
 const CS={doc:null,checked:false,pending:null,last:0,lastStr:"",busy:false,err:""},CSPART=600000,CSBAK="meridian-cloud-backup";
 const csMetaKey=()=>"meridian-cloud-meta-"+SLOT;
@@ -10257,7 +10265,7 @@ function frSweep(){if(!ON.user||!ON.db||!FR.got)return;const now=Date.now(),x=FS
     else if(v.done&&frDoneMs(v)&&now>frDoneMs(v)+FR_CLAIM+60000){FR.infl["r"+id]=1;ON.db.collection("freight").doc(id).update({claim:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete FR.infl["r"+id];if(x.run[id]){S.cash+=r.pay;frLog({r:"earned",g:r.g,q:r.q,a:r.pay,n:"from escrow"});delete x.run[id];toast(`${r.sh} never settled: you claimed the ${fmt(r.pay)} they escrowed`);save();hud();frPaint()}},()=>{delete FR.infl["r"+id]})}
     else if(!r.done&&now>r.dl+FR_GRACE){frLog({r:"lost",g:r.g,q:r.q,a:r.pay});try{crtFrLost(id,r)}catch(e){}delete x.run[id];save();frPaint()}
     else if(!r.done&&now>=r.eta){FR.infl["r"+id]=1;ON.db.collection("freight").doc(id).update({done:window.firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{delete FR.infl["r"+id];r.done=1;toast(`Haul delivered, payment of ${fmt(r.pay)} is coming from ${r.sh}`);save();frPaint()},e=>{delete FR.infl["r"+id]})}}}
-if(onEnabled())setInterval(()=>{try{frSweep()}catch(e){console.warn("fr",e)}},15000);
+if(onEnabled())every(15000,()=>{try{frSweep()}catch(e){console.warn("fr",e)}});
 /* phone: Freight app */
 function onGate(ic,t,pts){return `<div class="on-gate"><div class="on-gate-h"><span aria-hidden="true">${ic}</span><b>${t}</b></div><ul>${pts.map(x=>`<li>${x}</li>`).join("")}</ul>${onEnabled()?`<button class="buy" data-ph="ongo" style="width:100%;min-height:42px">Sign in to play online</button><div class="ph-sub" style="margin-top:6px">Opens Saves, where the Online section has sign-in.</div>`:`<div class="ph-sub">Online play isn't available in this build.</div>`}</div>`}
 function frHtml(){if(!onEnabled()||!ON.user)return onGate("🚚","Freight board · online",["Post hauls on a shared board that other players can see.","Hire other players' trucking companies to move your goods.","Works between real players, so you need to be signed in."]);
@@ -10393,7 +10401,7 @@ function ctSweep(){if(!ON.user||!ON.db||!CT.got)return;const x=CTS(),uid=ctUid()
   if(x.mk&&!CT.infl.mk){if(CT.by[uid]){x.mk=null;x.since=x.since||Date.now();save()}else if(Date.now()-x.mk.t>120000){CT.infl.mk=1;ON.db.collection("cartels").doc(uid).get().then(s=>{delete CT.infl.mk;if(!x.mk)return;if(s.exists)x.mk=null;else{x.mk=null;S.cash+=CT_FEE;toast("Cartel not created, fee refunded")}save();hud()},()=>{delete CT.infl.mk})}}
   if(CT.mine&&CT.raid){const at=ctMs(CT.raid.at);if(at>x.seenRaid){x.seenRaid=at;if(at>=x.since-60000&&CT.raid.by!==uid){const fine=devUid(uid)?0:Math.round(Math.min(CT_RAIDFINE*Math.max(0,S.cash),CT_RAIDCAP)),t=`${CT.raid.byName||"The government"} raided ${CT.mine.name}: you paid ${fmt(fine)}; price fixing is suspended for ${fmtDur(CT_RAIDPAUSE)}`;S.cash-=fine;ctLog(t);S.log.unshift(t);S.log=S.log.slice(0,3);toast(t,"bad")}save();hud()}}
   if(x.dep||x.pay)ctTre()}
-if(onEnabled())setInterval(()=>{try{ctCalc();ctSweep()}catch(e){console.warn("ct",e)}},15000);
+if(onEnabled())every(15000,()=>{try{ctCalc();ctSweep()}catch(e){console.warn("ct",e)}});
 /* phone: Cartel app */
 function ctHtml(){if(!onEnabled()||!ON.user)return onGate("🕴","Cartel · online",["Found or join a cartel with other players.","Share a treasury, fix prices and hold turf together.","Plan in a private cartel chat."]);
   const x=CTS(),m=CT.mine,uid=ctUid(),f=CT.f,ip="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border-radius:10px;border:1px solid #ffffff44;background:#0003;color:#fff;font:inherit;font-size:16px",bt=(a,t,k,st)=>`<button class="buy" data-ph="${a}"${k!=null?` data-k="${onEsc(k)}"`:""} style="width:100%;margin-top:6px;color:#fff;${st||"background:#7f1d1d!important;border-color:#ef4444"}">${t}</button>`;
@@ -10504,7 +10512,7 @@ function tipCheck(){if(tutStep>=0||S.tut!==9||$("#tipbox"))return;const so=sheet
   if(PH.open){if(PH.app==="bank"&&tipShow("bank"))return;if(PH.app==="stocks"&&tipShow("stocks"))return;if(PH.app==="govt"&&govTab==="mil"&&tipShow("mil"))return}}
 document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("[data-tutx]");if(!b)return;const a=b.dataset.tutx;
   if(a==="next")tutShow(tutStep+1);else if(a==="skip")tutClose(1);else if(a==="tipok"){const t=$("#tipbox");if(t)t.remove();setTimeout(tipCheck,300)}else if(a==="replay"){e.stopPropagation();closeSheet();tutStart()}else if(a==="dvguide"){e.stopPropagation();closeSheet();if(typeof DV!=="undefined"&&DV.open)dvClose();if(PH.open){PH.open=false;phRender()}tutStart("dv")}},true);
-setInterval(()=>{if(!document.hidden)tutTick()},2000);
+every(2000,()=>{if(!document.hidden)tutTick()},{ui:true});
 {let tq=0;const mo=new MutationObserver(()=>{if(tq)return;tq=setTimeout(()=>{tq=0;tipCheck()},400)});mo.observe(sheet,{childList:true});setTimeout(()=>mo.observe($("#phone"),{childList:true}),0)}
 addEventListener("resize",()=>{if(tutStep>=0)tutPlace()});
 setTimeout(()=>{if(S.tut===0&&!S.pickStart)tutShow(S.tutS)},1500);
@@ -10613,7 +10621,7 @@ function rbTick(){const R=S.rb;if(!R)return;let ch=0;for(const id in R){const c=
   if(!c||!e||e.rc!==RB.me||e.t!==j.t){delete R[id];rbjDel(id);ch=1;toast(`A new strike on ${c?c.name:"a city"} cancelled your rebuilding job. Materials lost`);continue}
   if(dmgLvl(c)<.005||dmgLeft(c)<=0){S.cash+=j.pay;delete R[id];rbjDel(id);ch=1;S.log.unshift(`Rebuilt ${c.name}: +${fmt(j.pay)}`);S.log=S.log.slice(0,3);toast(`${c.name} is rebuilt. The city paid you ${fmt(j.pay)}`)}}
   if(ch){save();try{renderSheet();hud()}catch(e){}}}
-setInterval(()=>{try{rbTick()}catch(e){console.warn("rb",e)}},30000);setTimeout(()=>{try{rbTick()}catch(e){}},4000);
+every(30000,()=>{try{rbTick()}catch(e){console.warn("rb",e)}});setTimeout(()=>{try{rbTick()}catch(e){}},4000);
 sheet.addEventListener("click",ev=>{const b=ev.target.closest("[data-rb]");if(b)rbBid(+b.dataset.rb,+b.dataset.i)});
 sheet.addEventListener("click",ev=>{const b=ev.target.closest("[data-rbx]");if(b)rbCancel(+b.dataset.rbx)});
 /* walk away from a rebuilding job: materials are lost, no pay; the city keeps its damage and rebuilds at normal speed */
@@ -11722,7 +11730,7 @@ function ishReq(i){const m=[];if(i.sz>ishSize())m.push(`city size ${i.sz}+`);if(
 function ishTick(){try{const s=ishS(),now=Date.now(),dt=Math.max(0,Math.min(now-(s.t||now),48*DAYMS));s.t=now;if(!dt)return{paid:0,done:0,open:s.fin.length};const h=dt/DAYMS;let paid=0;
   for(const f of s.fin){let p=Math.min(f.left,f.pay*h);if(f.left-p<=.5)p=f.left;f.left-=p;S.cash-=p;paid+=p}const n0=s.fin.length;s.fin=s.fin.filter(f=>f.left>.5);const done=n0-s.fin.length; // the only place loan payments are billed (capped at the balance); saleTick leaves them out of totals().inc
   const e=ishE();if(e.rp>0)S.rpP=(S.rpP||0)+e.rp*h;return{paid,done,open:s.fin.length}}catch(err){console.warn("ishTick",err);return null}}
-setInterval(ishTick,4000);
+every(4000,ishTick);
 /* ---- buying and selling ---- */
 function ishBuy(k,q,fin){const i=ishC(k);if(!i)return"Unknown item";const s=ishWk(),n=s.own[k]||0;q=Math.max(1,Math.floor(q));
   if(ishReq(i).length)return"Requirements not met";if(n+q>i.max)return`You can own at most ${i.max}`;if(q>ishLeft(i))return"Not enough stock this week";
@@ -11853,10 +11861,10 @@ function bgLabel(ctx,x,y,zs,d){const fs=Math.round(Math.max(9,9*zs)),txt=d.clock
   const w=Math.max(Math.ceil(ctx.measureText(txt).width)+10,64),h=fs+11,x0=x-w/2;ctx.globalAlpha=.88;ctx.fillStyle="#0b1220";ctx.beginPath();
   if(ctx.roundRect)ctx.roundRect(x0,y,w,h,5);else ctx.rect(x0,y,w,h);ctx.fill();ctx.globalAlpha=1;ctx.fillStyle="#fff";ctx.textAlign="center";ctx.textBaseline="top";ctx.fillText(txt,x,y+2);
   const bw=(w-12)/2,by=y+fs+5;d.sides.forEach((s,i)=>{const bx=x0+4+i*(bw+4);ctx.globalAlpha=.35;ctx.fillStyle="#8892a6";ctx.fillRect(bx,by,bw,4);ctx.globalAlpha=d.est?.7:1;ctx.fillStyle=s.col;ctx.fillRect(bx,by,bw*bgPct(s)/100,4)});ctx.restore()}
-setInterval(()=>{try{if(_cfPop){const el=document.getElementById("cfpop");if(el&&!el.hidden)bgFill(el)}
+every(2000,()=>{try{if(_cfPop){const el=document.getElementById("cfpop");if(el&&!el.hidden)bgFill(el)}
   if(PH.open&&PH.app==="govt"&&govTab==="mil"){const card=PH.el.querySelector("[data-bgsig]"),sig=bgMilKeys().map(n=>"m"+n).concat(bgInv()?["i"]:[]).join("|");
     if((card?card.dataset.bgsig:"")!==sig){if(Date.now()-(PH.touched||0)>=3000&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)))phRender()}
-    else bgFill(PH.el)}}catch(e){console.warn("bgfill",e)}},2000);
+    else bgFill(PH.el)}}catch(e){console.warn("bgfill",e)}});
 /* ---------- Settings app (device prefs in S.set; UI theme mirrored to localStorage for first paint) ---------- */
 var SET_DEF={gfx:"high",ui:"classic",fs:1,rm:0,vib:1,toast:1,tick:1,snd:0,vol:.5,fov:37,vd:0,sat:1,pfx:1,colov:1,gov:1,alarm:1};
 var SET_UI=[["classic","Classic","The original look"],["glass","Glass","Frosted dark panels, violet glow"],["ledger","Ledger","Cream paper, ink and serif type"],["command","Command","Neon HUD, cyan and magenta"]];
@@ -12316,7 +12324,7 @@ function aucApp(){const a=aucS(),on=aucOn(),w=aucWk(),lots=aucLots(w),left=aucEn
       ${on&&left>0?`<div style="display:flex;gap:6px;margin-top:6px"><input id="aucamt${o.i}" type="number" inputmode="numeric" min="${min}" step="1" placeholder="${min}" value="${AU.draft[o.i]||""}" style="flex:1;min-width:0;color:#111;background:#fff;border-radius:8px;border:1px solid #9ca3af;padding:6px"><button class="buy" data-ph="aucbid" data-k="${o.i}" style="color:#fff;background:#7c2d12!important;border-color:#f97316" ${AU.infl[o.id]?"disabled":""}>${top?"Raise":"Bid"}</button></div><div class="ph-sub">Min ${fmt(min)} · bids must beat the high by 5%</div>`:""}</div>`}
   h+=`<div class="ph-sub">Your bid is taken from cash and returned if someone outbids you. Winners collect when the week ends.</div>`;return h}
 function aucAct(a,b){if(a==="auctab")AU.tab=b.dataset.k==="mine"?"mine":"lots";else if(a==="aucbid")aucBid(+b.dataset.k)}
-setInterval(()=>{try{if(S.dead)return;aucListen();const n=Date.now();if(n-AU.last>60000||(PH.open&&PH.app==="auction"&&n-AU.last>15000)){AU.last=n;aucSweep()}}catch(e){}},5000);
+every(5000,()=>{try{if(S.dead)return;aucListen();const n=Date.now();if(n-AU.last>60000||(PH.open&&PH.app==="auction"&&n-AU.last>15000)){AU.last=n;aucSweep()}}catch(e){}});
 window.__auc={S:()=>aucS(),lots:w=>aucLots(w),wk:t=>aucWk(t),end:w=>aucEnd(w),mult:id=>aucMult(CITIES[id]),income:()=>aucIncome(),bid:i=>aucBid(i),sweep:()=>{AU.last=0;aucSweep()},check:(id,v)=>aucCheck(id,v),
   mock:be=>{AU.unsub.forEach(f=>{try{f()}catch(e){}});AU.unsub=[];AU.wkL=-1;AU.lots={};AU.be=be;aucListen()},AU};
 
@@ -12947,7 +12955,7 @@ function wevApp(){const now=Date.now(),w=wevWk(now),c=wevCur(now),e=wevKind(w),E
   return `<div class="ph-card"><b>${e.i} ${e.n}</b><span>${c?`${wevLeft(c.t1-now)} left`:"Results day"} · ${e.fx[0]}</span></div>
   <div class="ph-rows"><div><span>Your score</span><b>${wevPts(E.s[w])}</b></div><div><span>Rank</span><b>${on?(rk?"#"+rk:"—"):"offline"}</b></div>${bd?`<div><span>World goal</span><b>${Math.min(100,Math.round(bd.prog/bd.goal*100))}%</b></div>`:""}</div>
   <button class="buy" data-ph="evopen" style="width:100%;margin-top:8px;color:#fff;background:${e.col}!important;border-color:${e.col}">Open the event board</button><p class="ph-sub">${e.how}</p>`}
-setInterval(wevTick,5000);setTimeout(wevTick,1500);setInterval(()=>{if(!document.hidden&&document.getElementById("evpop"))wevRender()},3000);
+every(5000,wevTick);setTimeout(wevTick,1500);every(3000,()=>{if(!document.hidden&&document.getElementById("evpop"))wevRender()});
 window.__evt={S:()=>wevS(),WEV,cur:t=>wevCur(t),wk:t=>wevWk(t),kind:w=>wevKind0(w),tick:()=>{WEV.c.t=0;wevTick()},fx:()=>{WEV.c.t=0;return wevFx()},add:wevAdd,day:wevDay,
   mock:be=>{WEV.be=be;WEV.unsub=null;WEV.doc=null;WEV.all={};WEV.allAt={};WEV.sync={};WEV.cf={};WEV.put=0;WEV.mpub=0;WEV.busy=0;WEV.mbusy=0},reset:()=>{WEV.put=0;WEV.mpub=0;WEV.allAt={};WEV.c.t=0},open:wevOpen,pay:wevPay,gpay:wevGoalPay,board:wevBoard,master:t=>{WEV.mpub=0;wevMaster(t||Date.now())},claim:t=>wevClaim(t||Date.now()),sync:t=>wevSync(t||Date.now())};
 /* ---------- Company IPO (Stocks app > My IPO and Players tabs; design: ipo-design.md) ----------
@@ -13335,7 +13343,7 @@ function exAiTrades(x,ai,now){const st=ASSETS.filter(a=>a.t==="s");if(!st.length
     if(m.px[a.s]>0)m.px[a.s]*=1+(sell?-1:1)*imp;
     x.d.tn=(x.d.tn||0)+1;x.d.tr[f]=(x.d.tr[f]||0)+v;const ks=Object.keys(x.d.tr);if(ks.length>24){ks.sort((p,q)=>x.d.tr[p]-x.d.tr[q]);delete x.d.tr[ks[0]]}
     if(v>=5e5){x.tf.unshift({t:now,f,r:riv?1:0,me:own?1:0,s:a.s,sell:sell?1:0,v:Math.round(v),c:Math.round(v*EXC.com)});if(x.tf.length>12)x.tf.length=12}}}
-setInterval(exTick,10000);
+every(10000,exTick);
 const exViaName=()=>{const v=S.exVia;if(!v)return"";if(v==="me")return exOwn()?S.exch.name:"";const e=EX.list.find(x=>x.id===v);return e?e.name:"a player exchange"};
 function exViaHtml(){const n=exViaName();return `<div class="ph-sub" style="margin-top:6px;display:flex;gap:6px;align-items:center;justify-content:space-between"><span>🏛 ${n?`Trading on <b style="color:#fff">${devEsc(n)}</b>${S.exVia==="me"?" · 0.4% fee per trade, and you keep it":" · 0.4% fee per trade, paid to its owner"}`:"Trading on the public market · 1% fee per trade"}</span><button data-ph="app" data-k="exch" class="buy up" style="min-width:0;flex:0 0 auto;white-space:nowrap;min-height:24px;padding:2px 8px;font-size:11px;color:#fff;border-color:#ffffff55">Change</button></div>`}
 /* phone app */
@@ -14210,7 +14218,7 @@ function futHtml(){const f=FUT(),now=Date.now(),ex=futExps(now),dev=spDev();
   return h}
 function futExCard(){const f=FUT(),now=Date.now(),d=Math.floor(now/DAYMS),oi=f.pos.reduce((t,p)=>t+Math.abs(futPx(p.k,p.e,now)*FUTC.k[p.k].sz*p.n),0),vol=f.d.day===d?f.d.vol:0;
   return `<div class="mdx-card" style="margin-top:16px"><div class="mdx-ch"><h3>Commodity futures</h3><small style="margin-left:auto;color:var(--dxmut)">${FUTC.exp.join(" / ")}-day contracts · cash-settled</small></div><div class="mdx-rows">${FUTK.map(k=>`<div><span>${FUTC.k[k].ico} ${dxE(FUTC.k[k].n)}</span><b>spot ${futPxS(futSpot(k))} · 14d ${futPxS(futPx(k,futExps(now)[2],now))}</b></div>`).join("")}<div><span>Your open interest · ${f.pos.length} position${f.pos.length===1?"":"s"}</span><b>${futD(oi)}</b></div><div><span>Your futures volume today</span><b>${futD(vol)}</b></div></div></div>`}
-setInterval(()=>{try{futTick()}catch(e){}},10000);
+every(10000,()=>{try{futTick()}catch(e){}});
 /* ---------- franchising: license a business type you run in 3+ cities to AI operators elsewhere.
    S.fran = {p:{k:1} programs started, l:[{id,k,c,op,r,fee,s,e}] active deals, o:{k:{d,l:[offers]}} daily offers, log:[], tot}
    Royalties = franchisee's gross x royalty % x brand quality, paid continuously through totals().inc (franIncome). */
@@ -14266,7 +14274,7 @@ function fchHtml(c){const o=S.own[c.id]||{},f=S.fran?FRAN():null,mine=BIZ.filter
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-fr]");if(!b||!sel)return;const a=b.dataset.fr;let r="";
   if(a==="start")r=frStart(b.dataset.k);else if(a==="sign")r=frSign(b.dataset.k,+b.dataset.c);else if(a==="buy")r=frBuyout(+b.dataset.id);else if(a==="sell")r=frSell(+b.dataset.id);else if(a==="end")frEnd(+b.dataset.id);
   toast(r||({start:"Franchise program launched",sign:"Franchise deal signed",buy:"Franchise bought out: it's yours now",sell:"Franchise sold",end:"Franchise deal ended"}[a]));save();hud();renderSheet()});
-setInterval(()=>{try{frTick()}catch(e){}},10000);
+every(10000,()=>{try{frTick()}catch(e){}});
 /* HQ dashboard "Franchises" page: every franchise contract in one place (sell, buy out, end, extend, sign offers) */
 function frExtCost(x){return spDevSafe()?0:Math.round(frRoy(x)*24*3)} // ~3 real days of royalties
 function frExtend(id){const f=FRAN(),x=f.l.find(y=>y.id===id);if(!x)return"Not found";const p=frExtCost(x);if(S.cash<p)return`Need ${fmt(p)}`;S.cash-=p;x.e=Math.max(x.e,Date.now())+7*DAYMS;f.log.unshift({t:Date.now(),m:`Extended ${x.op}'s franchise in ${CITIES[x.c].name} by 7 days`});f.log.length=Math.min(f.log.length,20);return""}
@@ -14289,7 +14297,7 @@ function frnRender(){const main=DX.el&&DX.el.querySelector("#mdx-main");if(!main
 document.addEventListener("click",e=>{const b=e.target.closest("[data-frd]");if(!b||b.disabled)return;const a=b.dataset.frd,id=+b.dataset.id;let r="";
   if(a==="sell")r=frSell(id);else if(a==="ext")r=frExtend(id);else if(a==="buy")r=frBuyout(id);else if(a==="end")frEnd(id);else if(a==="start")r=frStart(b.dataset.k);else if(a==="sign")r=frSign(b.dataset.k,+b.dataset.c);
   toast(r||({sell:"Franchise sold",ext:"Contract extended 7 days",buy:"Franchise bought out: it's yours now",end:"Franchise deal ended",start:"Franchise program launched",sign:"Franchise deal signed"}[a]));save();hud();try{frnRender()}catch(_){}try{if(sel)renderSheet()}catch(_){}});
-setInterval(()=>{try{if(!document.hidden&&DX.open&&DX.page==="frn")frnRender()}catch(e){}},5000);
+every(5000,()=>{try{if(!document.hidden&&DX.open&&DX.page==="frn")frnRender()}catch(e){}});
 /* ===== Mars base (v1): an interactive Mars surface where player governments place space buildings =====
    S.mb={b:[{id,k,x,y,c,at}],seq,sel}. Local to the save for now (shared online placement is a later step).
    Only a player in office (colGov) builds; companies get in later via grant, large holding or license. */
@@ -14698,12 +14706,12 @@ function lcAct(c,a,b){const L=LCO(c.id),g=b.dataset.g;
 function lcEnter(c){partLoad("logistics").then(api=>api.open(c.id)).catch(()=>toast("The logistics center didn't load. Try again."))}
 
 let saveT=0;
-setInterval(()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();try{colTick(Date.now())}catch(e){console.warn("col",e)}try{airTick(Date.now())}catch(e){console.warn("air",e)}try{lcctTick()}catch(e){console.warn("lcct",e)}if(++saveT%5===0){save();checkGoals()}hud();
+every(1000,()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();try{colTick(Date.now())}catch(e){console.warn("col",e)}try{airTick(Date.now())}catch(e){console.warn("air",e)}try{lcctTick()}catch(e){console.warn("lcct",e)}if(++saveT%5===0){saveIdle();checkGoals()}if(document.hidden)return;hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
   $("#clk").title="Where you are";$("#clk").textContent=jailed()?"in prison · "+fmtDur(S.jail.until-Date.now()):S.trip?(S.trip.local?"on the way":(S.trip.mode==="plane"?"flying to ":"travelling to ")+CITIES[S.trip.to.city].name)+" · "+fmtDur(S.trip.arr-Date.now()):"in "+CITIES[S.loc.city].name;
   if(mode==="pf"&&saveT%5===0&&sheet.classList.contains("open")&&!(document.activeElement&&/^(SELECT|INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}
   if(sel&&mode==="city"&&saveT%5===0){if(tab==="biz")refreshButtons();else if(tab!=="hq"&&!shipForm&&!(document.activeElement&&/^(SELECT|INPUT)$/.test(document.activeElement.tagName)))renderSheet()}
-  if(S.fleet.some(v=>v.arr))draw()},1000);
+  if(S.fleet.some(v=>v.arr))draw()});
 function refreshButtons(){sheet.querySelectorAll("button.buy").forEach(b=>{const m=b.textContent.match(/\$([\d.,]+)([KMB]?)/);
   if(!m||b.dataset.fixed)return;const v=parseFloat(m[1].replace(/,/g,""))*({K:1e3,M:1e6,B:1e9}[m[2]]||1);if(!b.closest(".row")||/Maxed/.test(b.textContent))return;
   b.disabled=S.cash<v})}
@@ -14910,7 +14918,7 @@ PH.el.addEventListener("input",e=>{if(e.target.id!=="phc")return;const v=e.targe
   window.addEventListener("pointerup",e=>{if(!st||e.pointerId!==st.id)return;st=null;PH.el.classList.remove("dragging");
     if(PH.dragged){if(!PH.open){const w=PH.el.offsetWidth;PH.x=PH.x+w/2<innerWidth/2?4:innerWidth-w-4;phPlace()}phSave();setTimeout(()=>PH.dragged=false,0)}})})();
 window.addEventListener("resize",phPlace);
-setInterval(()=>{trackNews();if(document.hidden)return;if(PH.open&&PH.app==="stocks"&&document.activeElement&&document.activeElement.dataset&&document.activeElement.dataset.ipo)return;if(PH.open&&PH.app==="stocks"&&mkSel&&document.activeElement&&document.activeElement.id==="mkcq"){mkLive();return}if(PH.open&&Date.now()-(PH.touched||0)<3000)return;const gi=S.dip&&S.dip.inv?1:0,gch=gi||PH.gi;PH.gi=gi;if(!PH.open||(PH.app==="govt"&&(gch||govTab==="court"))||[null,"wallet","needs","job","weather","stocks"].includes(PH.app)||(PH.app==="travel"&&S.trip)||(PH.app==="ant"&&antFly()))phRender()},2000);
+every(2000,()=>{trackNews();if(document.hidden)return;if(PH.open&&PH.app==="stocks"&&document.activeElement&&document.activeElement.dataset&&document.activeElement.dataset.ipo)return;if(PH.open&&PH.app==="stocks"&&mkSel&&document.activeElement&&document.activeElement.id==="mkcq"){mkLive();return}if(PH.open&&Date.now()-(PH.touched||0)<3000)return;const gi=S.dip&&S.dip.inv?1:0,gch=gi||PH.gi;PH.gi=gi;if(!PH.open||(PH.app==="govt"&&(gch||govTab==="court"))||[null,"wallet","needs","job","weather","stocks"].includes(PH.app)||(PH.app==="travel"&&S.trip)||(PH.app==="ant"&&antFly()))phRender()});
 trackNews();phRender();
 /* movable windows: city sheet (desktop) + stats widget */
 function mkDrag(el,handle,key,get,set){let st=null;
@@ -14939,7 +14947,7 @@ function swRender(){SW.el.classList.toggle("folded",!SW.open);const h=S.hist||[]
 SW.el.addEventListener("click",e=>{if(!e.target.closest("[data-sw]"))return;SW.open=!SW.open;try{localStorage.setItem("mer_statsfold",SW.open?"0":"1")}catch(_){}swRender()});
 addEventListener("resize",()=>{try{phPlace()}catch(e){}try{swPlace()}catch(e){}});
 mkDrag(SW.el,".sw-top","mer_statspos",()=>({x:SW.x,y:SW.y}),(x,y)=>{SW.x=x;SW.y=y;SW.user=1;swPlace()});
-window.addEventListener("resize",swPlace);setInterval(()=>{if(!document.hidden)swRender()},2000);swRender();
+window.addEventListener("resize",swPlace);every(2000,()=>{if(!document.hidden)swRender()},{ui:true});swRender();
 
 /* ---------- travel: you are somewhere. Fly, take the train or bus, drive, or grab a taxi ---------- */
 const hasAirport=c=>c.size>=2;
@@ -15083,7 +15091,7 @@ function uiSync(){mqPump();const B=document.body.classList,so=sheet.classList.co
     if(el.classList.contains("dragging"))dx=dy=0;
     if(dx!==cx||dy!==cy){el.dataset.dx=dx;el.dataset.dy=dy;el.style.translate=dx||dy?dx/sc+"px "+dy/sc+"px":""}};
   try{dock($("#statsw"),1,0);if(PH&&PH.el)dock(PH.el,phScale()||1,PH.open)}catch(e){}}
-setInterval(()=>{if(!document.hidden)uiSync()},250);
+every(250,()=>{if(!document.hidden)uiSync()},{ui:true});
 /* new-version banner: GitHub Pages sends Last-Modified; if the live page is newer than the copy running here, show a slim Reload banner at the top (game saved first).
    Checks every minute and when the tab comes back. "Later" hides it for 10 minutes. */
 (()=>{let shown=0,nextAt=0;const base=Date.parse(document.lastModified);
@@ -15094,7 +15102,7 @@ function ask(){if(shown)return;shown=1;try{save()}catch(e){}
   document.body.appendChild(d)}
 async function chk(){if(shown||Date.now()<nextAt||document.hidden||!/^https?:/.test(location.protocol)||!Number.isFinite(base))return;
   try{const r=await fetch(location.pathname,{method:"HEAD",cache:"no-store"});const t=Date.parse(r.headers.get("last-modified")||"");let seen=0;try{seen=+sessionStorage.getItem("mv-seen")||0}catch(x){}if(Number.isFinite(t)&&t-base>5000&&t>seen){window.__verT=t;ask()}}catch(e){}}
-window.__verAsk=ask;setInterval(chk,20000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)chk()});setTimeout(chk,15000)})();
+window.__verAsk=ask;every(20000,chk);document.addEventListener("visibilitychange",()=>{if(!document.hidden)chk()});setTimeout(chk,15000)})();
 /* alerts center: every toast is kept (last 50, this browser only) and listed under a bell; the badge counts unread ones */
 const AL={k:"meridian-alerts",list:[],seen:0,open:0};
 try{const x=JSON.parse(localStorage.getItem(AL.k)||"{}");AL.list=Array.isArray(x.l)?x.l.slice(0,50):[];AL.seen=+x.s||0}catch(e){}
@@ -15151,7 +15159,7 @@ function antWatch(){try{antArrive()}catch(e){}try{if(typeof ON==="undefined"||!O
   if(!antOk())return;
   ANTW.un.push(db.collection("bchat").orderBy("at","desc").limit(1).onSnapshot(q=>q.docChanges().forEach(c=>{const v=c.doc.data()||{};if(c.type!=="added"||v.k!=="c"||v.by===u||ts(v.at)<ANTW.t0)return;toast(`📣 ${v.name||"A moderator"} called a meeting in ${ANT.n}`);try{if("Notification" in window&&Notification.permission==="granted"&&document.hidden)new Notification(`Meeting in ${ANT.n}`,{body:`${v.name||"A moderator"} called a meeting`})}catch(e){}}),()=>{}));
   ANTW.un.push(db.collection("balarm").orderBy("at","desc").limit(1).onSnapshot(q=>q.docChanges().forEach(c=>{const v=c.doc.data()||{};if(c.type!=="added"||ts(v.at)<ANTW.t0)return;toast(`🚨 Intruder alert: ${v.name||"A player"} tried to reach ${ANT.n}`)}),()=>{}))}catch(e){console.warn("antWatch",e)}}
-setInterval(antWatch,3000);
+every(3000,antWatch);
 /* ---------- Aurora airfield: secret hangar at Station Aurora (cleared accounts only). No flight paths are ever drawn for these planes. ----------
    SR-71 (Jetfire): Mach 3 recon. Cuts the flight to the station to 10 s and runs spy flights over any country.
    C-130: hidden airlift. Flies you from the station to any city (or back) with no trip line on the map, and airdrops relief to a damaged city.
@@ -15337,7 +15345,7 @@ function scyQAdd(){const a=document.getElementById("scyQa"),w=document.getElemen
 function scyQTick(){if(!scyDev()||!scyOn())return;const s=scy();if(!s.q||!s.q.length)return;const now=Date.now();let ch=0;
   s.q=s.q.filter(j=>{if(now<j.at)return true;if(now>j.at+2*DAY){ch=1;return false}const n=(s.log||[]).length,top=s.log&&s.log[0];SCY_FORCE=j.c;try{scyAct(j.a,j.k)}catch(e){}finally{SCY_FORCE=null}
     const fired=(s.log||[]).length>n||(s.log&&s.log[0]!==top);if(fired){ch=1;stNews(`⏰ Scheduled ${SCYK[j.a]||j.a} fired on ${(CITIES[j.c]||{}).name||"target"}`)}return !fired});if(ch){save();try{if(SPW.open)spRender()}catch(e){}}}
-setInterval(()=>{try{scyQTick()}catch(e){}},15000);
+every(15000,()=>{try{scyQTick()}catch(e){}});
 // mini-globe: orthographic SVG centred on the Scythe, with its ground track and your capital
 function geGlobe(){if(typeof d3==="undefined"||!d3.geoOrthographic)return "<div class='mdx-rows'><div><span>Globe needs the map library</span><b></b></div></div>";
   const now=Date.now(),w=scyWhere(now),pr=d3.geoOrthographic().scale(110).translate([120,120]).rotate([-w.lon,-w.lat]).clipAngle(90),pa=d3.geoPath(pr),gr=d3.geoGraticule().step([30,30])();
@@ -15390,7 +15398,7 @@ function geTab(){const E=dxE,s=scy(),now=Date.now(),on=scyOn(),pc=S.pol&&S.pol.c
   h+=card("🤖 Reaper AI",rows([`<div><span>Target advisor</span><b>${scyAdvisor().map(c=>E(c.name)).join(", ")}</b></div>`,`<div><span>Autopilot</span><b>${s.auto?"ON":"OFF"}</b></div>`,`<div><span>"${E(SCY.lines[Math.floor(now/6e4)%SCY.lines.length])}"</span><b></b></div>`]));
   return h+`</div>`}
 // keep the God's Eye feeds live while the tab is open (not while typing or picking a target)
-setInterval(()=>{try{if(SPW.open&&SP().tab==="ge"&&!(document.activeElement&&/SELECT|INPUT/.test(document.activeElement.tagName)))spRender()}catch(e){}},5000);
+every(5000,()=>{try{if(SPW.open&&SP().tab==="ge"&&!(document.activeElement&&/SELECT|INPUT/.test(document.activeElement.tagName)))spRender()}catch(e){}});
 document.addEventListener("click",e=>{const b=e.target.closest("[data-scy]");if(!b||b.disabled)return;e.stopPropagation();SCY_ROOT=b.closest(".mdx-body")||b.closest("#sheet")||document;try{scyAct(b.dataset.scy,b.dataset.k)}catch(err){console.warn("scy",err)}},true);
 document.addEventListener("change",e=>{if(e.target&&e.target.id==="scyT")SCY_TGT=+e.target.value;if(e.target&&/^scyQ[awc]$/.test(e.target.id))SCYQ[e.target.id]=e.target.value});
 // Satellite on the map: the 3D model (same look as the design model) orbits the globe while in orbit, once every 90 minutes
@@ -15434,7 +15442,7 @@ function scyMapTick(){try{const on=scySeen()!=null;if(S.scy&&S.scy.on&&S.scy.end
   try{scyAutoMgr()}catch(e){}
   const has=!!MM.getLayer("scythe-sat");if(on&&!has&&MM.isStyleLoaded()){scyL=scyLayer();MM.addLayer(scyL)}else if(!on&&has){MM.removeLayer("scythe-sat");scyG=null}
   if(on&&scyDev()&&Math.random()<.0015)scySay(SCY.lines[Math.floor(Math.random()*SCY.lines.length)])}catch(e){}}
-setInterval(scyMapTick,1000);
+every(1000,scyMapTick);
 // Launch / landing: the Scythe drops from its orbit spot to the capital pad (or climbs back) over SCYA.dur
 const SCYA={dur:9e3,pad:3e4};
 function scyWhere(now){const pk=scyPark(),pc=pk&&scyCtr(pk);const p=pc?{lon:pc.lon,lat:pc.lat}:scyPos(now),s=S.scy;if(!scyDev()||!s)return {lon:p.lon,lat:p.lat,alt:SCYV.alt};const b=scyBase(),a=s.anim;if(!b)return {lon:p.lon,lat:p.lat,alt:SCYV.alt};
@@ -15488,7 +15496,7 @@ function scyAutoMgr(){if(!scyDev())return;const now=Date.now();if(now-scyMgrT<SC
   if((s.drones|0)<4&&buy(SCY.drone,()=>{s.drones=(s.drones|0)+1},"replaced a drone"))did=1;
   if(did){save();try{hud()}catch(e){}}}
 
-resize();catchUp();hud();if(S.dead)showGameOver();setInterval(()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{royTick()}catch(e){}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}try{wfTick()}catch(e){}try{cabTick()}catch(e){}},1000);
+resize();catchUp();hud();if(S.dead)showGameOver();every(1000,()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{royTick()}catch(e){}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}try{wfTick()}catch(e){}try{cabTick()}catch(e){}});
 if(!S.log.length){S.log=["You start with nothing. Tap a city, open Jobs & home, rent a room and apply for work."];hud()}
 if(!world)toast("Map outline didn't load. Cities still work.");
 })();
