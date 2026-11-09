@@ -1056,7 +1056,7 @@ function closeSheet(){sel=null;sheet.classList.remove("open","full");draw()}
 function startNewGame(){save.lock=true;if(typeof CS!=="undefined")CS.busy=true;try{localStorage.removeItem(KEY)}catch(e){}location.reload()}
 /* Business tab view state (session only): v all|mine|new, s best|cheap|az, aff = affordable only, q = search, op = expanded owned rows */
 const bzF={v:"all",s:"best",aff:0,q:"",op:{}};
-function renderSheet(){sheet.classList.remove("bzv");if(mode==="sv")return;if(mode==="rs"){if(sheet.classList.contains("open"))renderResearch();return}if(mode==="pf"){if(sheet.classList.contains("open"))renderPortfolio();return}if(!sel)return;const c=sel,o=S.own[c.id]||{},ev=S.events[c.id];if(unhOn(c)){renderUnh(c);return}if(tab==="life"){renderLife(c);return}if(tab==="hq"){renderHQ(c);return}if(tab==="gov"){try{govHtml(c)}catch(e){console.warn("gov",e);sheet.innerHTML=cityHead(c)+tabsHtml()+`<p class="d" style="margin:10px 0">The Gov tab hit an error: ${String(e&&e.message||e).slice(0,160).replace(/</g,"&lt;")}. Send Claude a screenshot of this.</p>`}return}if(tab!=="biz"){renderInd(c);return}
+function renderSheet(){sheet.classList.remove("bzv");if(mode==="sv")return;if(mode==="rs")return;if(mode==="pf"){if(sheet.classList.contains("open"))renderPortfolio();return}if(!sel)return;const c=sel,o=S.own[c.id]||{},ev=S.events[c.id];if(unhOn(c)){renderUnh(c);return}if(tab==="life"){renderLife(c);return}if(tab==="hq"){renderHQ(c);return}if(tab==="gov"){try{govHtml(c)}catch(e){console.warn("gov",e);sheet.innerHTML=cityHead(c)+tabsHtml()+`<p class="d" style="margin:10px 0">The Gov tab hit an error: ${String(e&&e.message||e).slice(0,160).replace(/</g,"&lt;")}. Send Claude a screenshot of this.</p>`}return}if(tab!=="biz"){renderInd(c);return}
   let h=`<div class="shead"><div><h2>${c.name}${ev?`<span class="tag ${ev.m>1?"boom":"bust"}">${ev.m>1?"BOOM":"SLUMP"} ${ev.d}h</span>`:""}${typeof stormAt==="function"&&stormAt(c)?`<span class="tag bust">STORM</span>`:""}${dmgLvl(c)>=DMG.dead?`<span class="tag bust">DESTROYED</span>`:dmgLvl(c)>=.05?`<span class="tag bust">DAMAGED</span>`:""}</h2>
     <p>${c.country} · market size ${"●".repeat(c.size)}${"○".repeat(5-c.size)}</p></div>
     <button class="x" id="cls" aria-label="Close">×</button></div>
@@ -1325,7 +1325,58 @@ const TECH=[
  {k:"aimgmt",t:5,n:"AI management",d:"Autonomous managers run your branches. Every business earns 8% more.",rp:40000,cash:4e8,req:["quantum","smartbld"]},
  {k:"geneng",t:5,n:"Gene-edited crops",d:"Drought-proof, high-yield strains. Farms and ranches produce 20% more.",rp:18000,cash:1e8,req:["precag","quantum"]},
  {k:"selfrepair",t:5,n:"Self-repairing machinery",d:"Machines fix themselves. Upkeep of every farm, mine and factory drops 15%.",rp:30000,cash:2.5e8,req:["leanops","nanofab"]},
- {k:"asteroid",t:5,n:"Asteroid mining",d:"Ore and fuel from near-Earth rocks. Mines produce 30% more.",rp:80000,cash:2e9,req:["marsciv","deepmine"]}];
+ {k:"asteroid",t:5,n:"Asteroid mining",d:"Ore and fuel from near-Earth rocks. Mines produce 30% more.",rp:80000,cash:2e9,req:["marsciv","deepmine"]},
+ /* 50 researches added 2026-11-09: each has a small fx bonus (see techFx); none when not researched, so old saves are unchanged */
+ {k:"irrigate",t:0,n:"Drip irrigation",d:"Water straight to the roots. Farms and ranches produce 5% more.",rp:45,cash:25000,req:["mechfarm"],fx:{farm:.05}},
+ {k:"survey",t:0,n:"Geological surveying",d:"Better maps of the rock. Mines produce 5% more.",rp:50,cash:30000,fx:{mine:.05}},
+ {k:"forklift",t:0,n:"Forklift fleets",d:"Pallets stacked higher. Every depot holds 10% more.",rp:40,cash:20000,fx:{wh:.1}},
+ {k:"ledgerbk",t:0,n:"Double-entry bookkeeping",d:"Fewer payroll mistakes. Business wages drop 2%.",rp:55,cash:35000,fx:{wage:-.02}},
+ {k:"neon",t:0,n:"Neon signage",d:"Shops you can see from the street. Carts, kiosks, shops and restaurants earn 3% more.",rp:45,cash:30000,fx:{shop:.03}},
+ {k:"routemap",t:0,n:"Route mapping",d:"Shortcuts on every run. Trucks drive 5% faster.",rp:60,cash:40000,req:["logi"],fx:{truck:.05}},
+ {k:"labnote",t:0,n:"Lab notebooks",d:"Nothing gets done twice. Research labs produce 5% more points.",rp:50,cash:30000,fx:{rp:.05}},
+ {k:"toolsteel",t:0,n:"Tool steel",d:"Harder dies and drill bits. Factories produce 3% more.",rp:65,cash:45000,fx:{fac:.03}},
+ {k:"greenhs",t:1,n:"Greenhouses",d:"Crops all year round. Farms and ranches produce 6% more.",rp:150,cash:140000,req:["irrigate"],fx:{farm:.06}},
+ {k:"conveyor",t:1,n:"Conveyor belts",d:"Parts flow between stations. Factories produce 5% more.",rp:190,cash:220000,req:["toolsteel"],fx:{fac:.05}},
+ {k:"hydshore",t:1,n:"Hydraulic shoring",d:"Safer, deeper shafts. Mines produce 6% more.",rp:170,cash:190000,req:["survey"],fx:{mine:.06}},
+ {k:"barcode",t:1,n:"Barcode inventory",d:"Every pallet scanned. Every depot holds 10% more.",rp:130,cash:120000,req:["forklift"],fx:{wh:.1}},
+ {k:"franchise",t:1,n:"Franchising",d:"One playbook for every branch. Every business earns 3% more.",rp:200,cash:240000,req:["retail"],fx:{biz:.03}},
+ {k:"hvac",t:1,n:"Central HVAC",d:"Comfortable all year. Apartments, offices and hotels earn 4% more.",rp:160,cash:170000,fx:{bld:.04}},
+ {k:"telemat",t:1,n:"Fleet telematics",d:"Live tracking of every truck. Trucks drive 6% faster.",rp:180,cash:200000,req:["routemap"],fx:{truck:.06}},
+ {k:"gantry",t:1,n:"Gantry cranes",d:"Faster loading at the quay. Ships sail 8% faster.",rp:200,cash:250000,req:["container"],fx:{ship:.08}},
+ {k:"labauto",t:1,n:"Lab automation",d:"Robots run the overnight tests. Research labs produce 8% more points.",rp:220,cash:260000,req:["labnote"],fx:{rp:.08}},
+ {k:"vertfarm",t:2,n:"Vertical farming",d:"Stacked hydroponic towers. Farms and ranches produce 8% more.",rp:700,cash:1.5e6,req:["greenhs","semis"],fx:{farm:.08}},
+ {k:"autodrill",t:2,n:"Autonomous drilling",d:"Rigs that drill around the clock. Mines produce 8% more.",rp:800,cash:1.9e6,req:["hydshore","robotics"],fx:{mine:.08}},
+ {k:"print3d",t:2,n:"3D printing",d:"Tooling printed overnight. Factories produce 6% more.",rp:750,cash:1.7e6,req:["conveyor","semis"],fx:{fac:.06}},
+ {k:"cloud",t:2,n:"Cloud computing",d:"Every till and booking online. Every business earns 3% more.",rp:650,cash:1.4e6,req:["semis","franchise"],fx:{biz:.03}},
+ {k:"heatpump",t:2,n:"Heat pumps",d:"Cheap clean heat. Farm, mine and factory upkeep drops 5%.",rp:600,cash:1.2e6,req:["renew"],fx:{up:-.05}},
+ {k:"hrdata",t:2,n:"HR analytics",d:"Right people, right shifts. Business wages drop 3%.",rp:550,cash:1e6,req:["payroll"],fx:{wage:-.03}},
+ {k:"airhub",t:2,n:"Air cargo hubs",d:"Hub-and-spoke flights. Cargo planes fly 8% faster.",rp:850,cash:2.2e6,req:["aero"],fx:{plane:.08}},
+ {k:"robowh",t:2,n:"Robotic warehouses",d:"Shelf robots pack every gap. Every depot holds 15% more.",rp:800,cash:2e6,req:["barcode","robotics"],fx:{wh:.15}},
+ {k:"supercomp",t:2,n:"Supercomputing",d:"Simulations instead of trials. Research labs produce 10% more points.",rp:1000,cash:3e6,req:["labauto","semis"],fx:{rp:.1}},
+ {k:"crypto",t:3,n:"Military encryption",d:"Secure payment networks. Every business earns 3% more.",rp:1800,cash:6e6,req:["govlic","cloud"],fx:{biz:.03}},
+ {k:"millogi",t:3,n:"Military logistics",d:"Convoy planning from the army. Trucks drive 8% faster.",rp:1700,cash:5.5e6,req:["govlic","telemat"],fx:{truck:.08}},
+ {k:"composite",t:3,n:"Advanced composites",d:"Carbon fibre parts. Factories produce 5% more.",rp:2200,cash:8e6,req:["govlic","print3d"],fx:{fac:.05}},
+ {k:"hardmine",t:3,n:"Hardened mining rigs",d:"Armoured machines that never stop. Mines produce 6% more.",rp:2000,cash:7e6,req:["govlic","autodrill"],fx:{mine:.06}},
+ {k:"rations",t:3,n:"Field rations",d:"Army food contracts. Farms and ranches produce 5% more.",rp:1600,cash:5e6,req:["govlic","vertfarm"],fx:{farm:.05}},
+ {k:"milgps",t:3,n:"Military GPS",d:"Exact routes in any weather. Cargo planes fly 6% faster.",rp:1900,cash:6.5e6,req:["govlic","airhub"],fx:{plane:.06}},
+ {k:"cyberdef",t:3,n:"Cyber defence",d:"No more ransomware downtime. Farm, mine and factory upkeep drops 5%.",rp:2400,cash:9e6,req:["govlic","cloud"],fx:{up:-.05}},
+ {k:"deflab",t:3,n:"Defence laboratories",d:"Classified research grants. Research labs produce 12% more points.",rp:3000,cash:1.2e7,req:["govlic","supercomp"],fx:{rp:.12}},
+ {k:"microg",t:4,n:"Microgravity manufacturing",d:"Perfect crystals made in orbit. Factories produce 7% more.",rp:7000,cash:4e7,req:["rocketry","composite"],fx:{fac:.07}},
+ {k:"orbitag",t:4,n:"Orbital crop imaging",d:"Satellites spot every dry field. Farms and ranches produce 6% more.",rp:6500,cash:3.5e7,req:["satellites","rations"],fx:{farm:.06}},
+ {k:"prospect",t:4,n:"Prospecting satellites",d:"Ore found from orbit. Mines produce 7% more.",rp:7000,cash:4e7,req:["satellites","hardmine"],fx:{mine:.07}},
+ {k:"satnet",t:4,n:"Satellite internet",d:"Every branch online anywhere. Every business earns 4% more.",rp:9000,cash:5e7,req:["satellites","crypto"],fx:{biz:.04}},
+ {k:"reuse",t:4,n:"Reusable boosters",d:"Rockets that land. Farm, mine and factory upkeep drops 5%.",rp:8000,cash:4.5e7,req:["rocketry","cyberdef"],fx:{up:-.05}},
+ {k:"orbitlab",t:4,n:"Orbital laboratory",d:"A research station in orbit. Research labs produce 15% more points.",rp:14000,cash:9e7,req:["spaceport","deflab"],fx:{rp:.15}},
+ {k:"cryostore",t:4,n:"Cryogenic storage",d:"Rocket-grade cold tanks. Every depot holds 15% more.",rp:6000,cash:3e7,req:["rocketry","robowh"],fx:{wh:.15}},
+ {k:"suborb",t:4,n:"Suborbital freight",d:"Cargo hops over the atmosphere. Cargo planes fly 10% faster.",rp:11000,cash:7e7,req:["rocketry","milgps"],fx:{plane:.1}},
+ {k:"swarm",t:5,n:"Swarm robotics",d:"Thousands of tiny robots per line. Factories produce 8% more.",rp:35000,cash:3e8,req:["nanofab","microg"],fx:{fac:.08}},
+ {k:"synbio",t:5,n:"Synthetic biology",d:"Designed crops and herds. Farms and ranches produce 10% more.",rp:22000,cash:1.4e8,req:["geneng","orbitag"],fx:{farm:.1}},
+ {k:"mantle",t:5,n:"Mantle drilling",d:"Bores through the crust. Mines produce 10% more.",rp:28000,cash:2.2e8,req:["deepmine","prospect"],fx:{mine:.1}},
+ {k:"hyperloop",t:5,n:"Hyperloop freight",d:"Pods in vacuum tubes. Trucks drive 10% faster.",rp:20000,cash:1.5e8,req:["autofreight","millogi"],fx:{truck:.1}},
+ {k:"neural",t:5,n:"Neural interfaces",d:"Researchers think straight into the lab. Research labs produce 20% more points.",rp:45000,cash:4e8,req:["quantum","orbitlab"],fx:{rp:.2}},
+ {k:"autoops",t:5,n:"Full automation",d:"Robots run the back office. Business wages drop 5%.",rp:38000,cash:3e8,req:["aimgmt","hrdata"],fx:{wage:-.05}},
+ {k:"smartcity",t:5,n:"Smart cities",d:"Whole districts run by sensors. Apartments, offices and hotels earn 8% more.",rp:32000,cash:2.5e8,req:["smartbld","satnet"],fx:{bld:.08}},
+ {k:"antimat",t:5,n:"Antimatter reactors",d:"Energy beyond fusion. Farm, mine and factory upkeep drops 10%.",rp:60000,cash:6e8,req:["fusion","reuse"],fx:{up:-.1}}];
 const TK=Object.fromEntries(TECH.map(t=>[t.k,t]));
 const canResearch=t=>!hasTech(t.k)&&(t.req||[]).every(hasTech)&&(!t.gov||(typeof colGov==="function"&&!!colGov())||(typeof spDev==="function"&&spDev()));
 const BASEVEH=JSON.parse(JSON.stringify({truck:{cap:30,spd:400},hvtruck:{cap:60,spd:380},roadtrain:{cap:120,spd:350},ship:{cap:3000,spd:250},bulkship:{cap:8000,spd:230},plane:{cap:60,spd:2500},cargo747:{cap:1500,spd:2300}}));
@@ -1363,13 +1414,15 @@ function fupHtml(){const L=S.fleet||[];const op=window.DVVO!=null?window.DVVO:L.
     h+=`<div class="dv-veh"><div><b>${dxE(VEH[v.type].n)} #${v.id}</b><small>${st} · ${fmtT(vCap(v))}</small></div>${isTruck(v)?fupCell(v,"spd")+fupCell(v,"cap"):`<small class="dv-up2">Engine and chassis upgrades are for trucks only</small>`}
       <div><button class="lx-btn" style="border-color:#ef4444;color:#ef4444" data-dv="vsell" data-i="${v.id}" ${ok?"":'aria-disabled="true" title="Busy: sell it once it is back and off its line"'}>Sell · ${fmt(p)}</button></div></div>`}
   return h+`<small style="display:block;margin-top:8px">Upgrades stack on top of research bonuses. Selling pays back part of the price and half of what you spent on upgrades. Trips already on the road keep their old time.</small></details>`}
-function applyTechs(){const af=hasTech("autofreight")?1.2:1;for(const k in VEH){const c=VEH[k].cls;if(c==="truck"){VEH[k].spd=BASEVEH[k].spd*(hasTech("logi")?1.3:1)*af;VEH[k].cap=BASEVEH[k].cap*(hasTech("haulage")?1.2:1)}else if(c==="ship"){VEH[k].cap=BASEVEH[k].cap*(hasTech("container")?2:1);VEH[k].spd=BASEVEH[k].spd*af}else VEH[k].spd=BASEVEH[k].spd*(hasTech("aero")?1.4:1)*(hasTech("hypersonic")?1.25:1)}}
+function applyTechs(){const af=hasTech("autofreight")?1.2:1;for(const k in VEH){const c=VEH[k].cls;if(c==="truck"){VEH[k].spd=BASEVEH[k].spd*(hasTech("logi")?1.3:1)*af*techFx("truck");VEH[k].cap=BASEVEH[k].cap*(hasTech("haulage")?1.2:1)}else if(c==="ship"){VEH[k].cap=BASEVEH[k].cap*(hasTech("container")?2:1);VEH[k].spd=BASEVEH[k].spd*af*techFx("ship")}else VEH[k].spd=BASEVEH[k].spd*(hasTech("aero")?1.4:1)*(hasTech("hypersonic")?1.25:1)*techFx("plane")}}
 /* later research (retail ... asteroid): small multipliers that stack with everything else; all 1 when not researched, so old saves are unchanged */
-function techBiz(b){return (hasTech("retail")&&["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","gasstation","rest"].includes(b.k)?1.05:1)*(hasTech("smartbld")&&["apt","office","hotel"].includes(b.k)?1.06:1)*(hasTech("aimgmt")?1.08:1)}
-function techWage(){return hasTech("payroll")?.95:1}
-function techWh(){return hasTech("coldchain")?1.25:1}
-const techOut=o=>(["Farm","Ranch"].includes(o.cat)&&hasTech("mechfarm")?1.25:1)*(["Farm","Ranch"].includes(o.cat)?(hasTech("croprot")?1.1:1)*(hasTech("geneng")?1.2:1):1)*(o.cat==="Mine"&&hasTech("blasting")?1.1:1)*(o.cat==="Factory"&&!o.rp?(hasTech("leanmfg")?1.1:1)*(hasTech("twin")?1.1:1):1)*(["Farm","Ranch"].includes(o.cat)&&hasTech("precag")?1.15:1)*(o.cat==="Mine"?(hasTech("deepmine")?1.2:1)*(hasTech("asteroid")?1.3:1):1)*(o.cat==="Factory"&&hasTech("nanofab")&&!o.rp?1.15:1)*(o.rp&&hasTech("quantum")?1.25:1)*(o.cat==="Factory"&&hasTech("robotics")&&!o.rp?1.2:1)*(hasTech("marsciv")?1.25:1)*(typeof ishOut==="function"?ishOut(o):1);
-const techUp=o=>(o.cat==="Factory"&&hasTech("renew")?.75:1)*(["Farm","Ranch","Mine","Factory"].includes(o.cat)?(hasTech("maint")?.9:1)*(hasTech("selfrepair")?.85:1):1)*(["Farm","Ranch","Mine"].includes(o.cat)&&hasTech("leanops")?.85:1)*(o.cat==="Factory"&&hasTech("fusion")?.8:1)*(typeof ishUp==="function"?ishUp(o):1)*(typeof wcUp==="function"?wcUp(o):1);
+function techBiz(b){return (hasTech("retail")&&["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","gasstation","rest"].includes(b.k)?1.05:1)*(hasTech("smartbld")&&["apt","office","hotel"].includes(b.k)?1.06:1)*(hasTech("aimgmt")?1.08:1)*techFx("biz")*(["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie","kiosk","shop","gasstation","rest"].includes(b.k)?techFx("shop"):1)*(["apt","office","hotel"].includes(b.k)?techFx("bld"):1)}
+function techWage(){return (hasTech("payroll")?.95:1)*techFx("wage")}
+function techWh(){return (hasTech("coldchain")?1.25:1)*techFx("wh")}
+/* fx bonuses of the 2026-11-09 researches: product of (1+fx[key]) over researched ones, cached until S.tech changes */
+function techFx(key){const n=Object.keys(S.tech).length;if(techFx.n!==n||techFx.o!==S.tech){const c={};for(const t of TECH)if(t.fx&&S.tech[t.k])for(const f in t.fx)c[f]=(c[f]||1)*(1+t.fx[f]);techFx.c=c;techFx.n=n;techFx.o=S.tech}return techFx.c[key]||1}
+const techOut=o=>(["Farm","Ranch"].includes(o.cat)&&hasTech("mechfarm")?1.25:1)*(["Farm","Ranch"].includes(o.cat)?(hasTech("croprot")?1.1:1)*(hasTech("geneng")?1.2:1):1)*(o.cat==="Mine"&&hasTech("blasting")?1.1:1)*(o.cat==="Factory"&&!o.rp?(hasTech("leanmfg")?1.1:1)*(hasTech("twin")?1.1:1):1)*(["Farm","Ranch"].includes(o.cat)&&hasTech("precag")?1.15:1)*(o.cat==="Mine"?(hasTech("deepmine")?1.2:1)*(hasTech("asteroid")?1.3:1):1)*(o.cat==="Factory"&&hasTech("nanofab")&&!o.rp?1.15:1)*(o.rp&&hasTech("quantum")?1.25:1)*(o.cat==="Factory"&&hasTech("robotics")&&!o.rp?1.2:1)*(hasTech("marsciv")?1.25:1)*(["Farm","Ranch"].includes(o.cat)?techFx("farm"):1)*(o.cat==="Mine"?techFx("mine"):1)*(o.cat==="Factory"&&!o.rp?techFx("fac"):1)*(o.rp?techFx("rp"):1)*(typeof ishOut==="function"?ishOut(o):1);
+const techUp=o=>(o.cat==="Factory"&&hasTech("renew")?.75:1)*(["Farm","Ranch","Mine","Factory"].includes(o.cat)?(hasTech("maint")?.9:1)*(hasTech("selfrepair")?.85:1):1)*(["Farm","Ranch","Mine"].includes(o.cat)&&hasTech("leanops")?.85:1)*(o.cat==="Factory"&&hasTech("fusion")?.8:1)*(["Farm","Ranch","Mine","Factory"].includes(o.cat)?techFx("up"):1)*(typeof ishUp==="function"?ishUp(o):1)*(typeof wcUp==="function"?wcUp(o):1);
 /* research points accrue continuously but are paid out every 15 real minutes; RPX doubles all research output */
 const RPX=4,RPQ=DAYMS/4;
 function rpPay(){const q=Math.floor(Date.now()/RPQ);if(S.rpQ==null)S.rpQ=q;if(q>S.rpQ){let x=0;try{x=.15*ofP("rnd")*(S.rpP||0)}catch(e){}S.rp=(S.rp||0)+(S.rpP||0)+x;S.rpP=0;S.rpQ=q}}
@@ -3697,25 +3750,104 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-sv]");if(!b)r
   else if(a==="delacc"){DA.open=!DA.open;DA.err="";renderSaves()}
   else if(a==="delgo")delAccount();
   else if(a==="setname"){S.name=$("#svname").value.trim().slice(0,24)||undefined;renaming=false;save();renderSaves()}});
-$("#rsbtn").onclick=()=>mode==="rs"&&sheet.classList.contains("open")?closeSheet():openResearch();
-function openResearch(){mode="rs";sel=null;renderResearch();sheet.scrollTop=0;sheet.classList.add("open");draw()}
-function renderResearch(){const done=TECH.filter(t=>hasTech(t.k)).length;
-  let h=`<div class="shead"><div><h2>Research</h2><p>${done}/${TECH.length} technologies · ${S.sats?Math.floor(S.sats)+" satellites in orbit · ":""}${fmt(S.rp).replace("$","")} research points</p></div><button class="x" id="cls" aria-label="Close">×</button></div>
-  <div class="meta"><div><span>Earning </span>${rpRate().toFixed(1)} RP/hr</div><div><span>From </span>HQ + ${S.sites.filter(x=>x.op&&OP[x.op].rp).length} labs</div></div>
-  <p class="d" style="font-size:12px;color:var(--muted);margin:0 0 6px">Build research labs on industrial lots to earn points faster. Each technology costs points and cash. Points are paid every 15 minutes${S.rpP>=.1?` (next: +${Math.floor(S.rpP)} RP)`:""}.</p>`;
-  TIERS.forEach((tn,ti)=>{h+=`<div class="sec">Tier ${["I","II","III","IV","V","VI"][ti]} · ${tn}</div><div class="list">`;
-    if(ti===3){const n=rsHere(),ok=rsPermit(n),q=S.gov&&S.gov[n]&&S.gov[n].rReq;h=h.replace(/<div class="list">$/,`<p class="d" style="font-size:12px;margin:0 0 4px;color:${ok?"var(--good)":"var(--bad)"}">Tier IV and V research needs a research licence from the government of the country you are in (${n}): ${ok?"approved.":q?`waiting for ${onEsc(q.name||"the government")}.`:`apply in the Gov tab or below (${fmt(RSQ.fee)}).`}</p><div class="list">`)}
-    for(const t of TECH.filter(x=>x.t===ti)){const st=hasTech(t.k)?"done":canResearch(t)?(rsOk(t)?"open":"lic"):"locked",afford=S.rp>=t.rp&&S.cash>=t.cash;
-      const unl=OPS.filter(o=>o.req===t.k).map(o=>o.n);
-      h+=`<div class="row" style="${st==="locked"?"opacity:.55":""}"><div class="n">${st==="done"?"✓ ":""}${t.n}</div>
-      <div class="d">${t.d}${st==="locked"?` <b>Needs ${[...(t.req||[]).filter(r=>!hasTech(r)).map(r=>TK[r].n),...(t.gov&&!(typeof colGov==="function"&&colGov())?["a government office"]:[])].join(" + ")}.</b>`:""}</div>
-      ${st==="lic"?`<button class="buy up" data-rslic="1" ${S.gov&&S.gov[rsHere()]&&S.gov[rsHere()].rReq?"disabled":""}>${S.gov&&S.gov[rsHere()]&&S.gov[rsHere()].rReq?"Licence pending":"Get licence<br>"+fmt(RSQ.fee)}</button>`:st==="done"?`<span class="tag boom" style="grid-row:1/3;grid-column:2">Done</span>`:`<button class="buy${st==="open"?"":" up"}" data-tech="${t.k}" ${st!=="open"||!afford?"disabled":""}>${Math.round(t.rp).toLocaleString()} RP<br>${fmt(t.cash)}</button>`}</div>`}
-    h+=`</div>`});
-  sheet.innerHTML=h;$("#cls").onclick=closeSheet;
-  sheet.querySelectorAll("[data-rslic]").forEach(b=>b.onclick=()=>{rsApply(rsHere());save();hud();renderResearch()});
-  sheet.querySelectorAll("[data-tech]").forEach(b=>b.onclick=()=>{const t=TK[b.dataset.tech];if(!canResearch(t)||!rsOk(t)||S.rp<t.rp||S.cash<t.cash)return;
-    S.rp-=t.rp;S.cash-=t.cash;S.tech[t.k]=1;applyTechs();S.log.unshift(`Researched ${t.n}`);S.log=S.log.slice(0,3);
-    toast(t.k==="marsciv"?"Mars Civilization researched. Humanity is multi-planetary.":`Researched ${t.n}`);save();hud();renderResearch();draw()})}
+$("#rsbtn").onclick=()=>RSW.open?rsHide():openResearch();
+/* Research window (Mark, 2026-11-09): a draggable window like the Market and Bank dashboards, with the technologies laid out as a tree.
+   Columns are tiers (split into sub-columns when a tech needs another tech of the same tier), rows line children up with their parents, lines show what needs what. */
+const RSW={el:null,open:false,sel:null,pos:null,zm:.9,iv:0};
+const RSGEO={W:196,H:70,GX:46,GY:16,TOP:34,PAD:18};
+const RSFX={farm:["🌾","#16a34a"],mine:["⛏","#a16207"],fac:["🏭","#475569"],rp:["🔬","#7c3aed"],biz:["💼","#2563eb"],shop:["🛍","#db2777"],bld:["🏢","#0891b2"],wage:["💵","#059669"],wh:["📦","#b45309"],up:["🔧","#64748b"],truck:["🚚","#ea580c"],ship:["🚢","#0284c7"],plane:["✈","#4f46e5"]};
+function rsIco(t){if(t.fx){const k=Object.keys(t.fx)[0];return RSFX[k]||["•","#64748b"]}
+  const m={mechfarm:"farm",croprot:"farm",precag:"farm",geneng:"farm",blasting:"mine",deepmine:"mine",asteroid:"mine",leanmfg:"fac",twin:"fac",nanofab:"fac",robotics:"fac",quantum:"rp",semis:"rp",retail:"shop",smartbld:"bld",aimgmt:"biz",payroll:"wage",coldchain:"wh",logi:"truck",haulage:"truck",autofreight:"truck",container:"ship",aero:"plane",hypersonic:"plane",maint:"up",leanops:"up",renew:"up",fusion:"up",selfrepair:"up"};
+  if(m[t.k])return RSFX[m[t.k]];return t.t>=4?["🚀","#0f172a"]:t.t===3?["🛡","#b91c1c"]:["⚙","#334155"]}
+function rsLayout(){if(rsLayout.c)return rsLayout.c;const dep={},kids={},Y={};
+  const d=t=>dep[t.k]!=null?dep[t.k]:(dep[t.k]=Math.max(0,...(t.req||[]).map(r=>TK[r]).filter(p=>p&&p.t===t.t).map(p=>d(p)+1)));TECH.forEach(d);
+  TECH.forEach(t=>(t.req||[]).forEach(r=>(kids[r]=kids[r]||[]).push(t.k)));
+  const cols=[],band=[],cx={};TIERS.forEach((nm,ti)=>{const ts=TECH.filter(t=>t.t===ti);if(!ts.length)return;const m=Math.max(...ts.map(t=>dep[t.k]));band.push({ti,nm,c0:cols.length,n:m+1});for(let i=0;i<=m;i++){ts.filter(t=>dep[t.k]===i).forEach(t=>cx[t.k]=cols.length);cols.push(ts.filter(t=>dep[t.k]===i))}});
+  const avg=a=>{a=a.filter(k=>Y[k]!=null);return a.length?a.reduce((s,k)=>s+Y[k],0)/a.length:null};
+  /* sort a column by where it wants to sit, push overlaps down, then shift the column back up so it stays centred on its links; the last pass snaps to whole rows */
+  const place=(arr,want,snap)=>{const L=arr.map((t,i)=>({t,w:want(t),i})),hv=L.filter(o=>o.w!=null),df=hv.length?Math.max(...hv.map(o=>o.w))+1:0;L.forEach(o=>{if(o.w==null)o.w=df+o.i*.01});L.sort((a,b)=>a.w-b.w||a.i-b.i);
+    let y=-1e9;const P=L.map(o=>y=Math.max(snap?Math.round(o.w):o.w,y+1));if(!snap){const sh=Math.min(Math.min(...P),P.reduce((s,p,i)=>s+p-L[i].w,0)/P.length);P.forEach((p,i)=>P[i]=p-sh)}L.forEach((o,i)=>Y[o.t.k]=P[i])};
+  cols.forEach(c=>place(c,t=>avg(t.req||[])));
+  for(let it=0;it<3;it++){for(let i=cols.length-1;i>=0;i--)place(cols[i],t=>{const k=kids[t.k]||[];return k.length?avg(k):Y[t.k]});cols.forEach(c=>place(c,t=>(t.req||[]).length?avg(t.req):Y[t.k]))}
+  {const m0=Math.min(...Object.values(Y));for(const k in Y)Y[k]-=m0}cols.forEach(c=>place(c,t=>Y[t.k],1));
+  const mn=Math.min(...Object.values(Y));for(const k in Y)Y[k]-=mn;
+  const G=RSGEO,pos={};for(const t of TECH)pos[t.k]={x:G.PAD+cx[t.k]*(G.W+G.GX),y:G.TOP+G.PAD+Y[t.k]*(G.H+G.GY)};
+  const rows=Math.max(...Object.values(Y))+1;
+  return rsLayout.c={pos,kids,band,w:G.PAD*2+cols.length*(G.W+G.GX)-G.GX,h:G.TOP+G.PAD*2+rows*(G.H+G.GY)-G.GY}}
+function rsState(t){return hasTech(t.k)?"done":canResearch(t)?(rsOk(t)?"open":"lic"):"locked"}
+function rsCss(){if(document.getElementById("rsw-css"))return;const st=document.createElement("style");st.id="rsw-css";st.textContent=`
+.rsw-in{display:flex;flex-direction:column;height:100%;min-height:0}
+.rsw-kp{display:flex;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--dxline);background:var(--dxcard);flex:none;align-items:center}
+.rsw-kp>div{background:var(--dxsoft);border-radius:12px;padding:7px 12px;font:600 12px Figtree,sans-serif;color:var(--dxmut)}.rsw-kp>div b{display:block;font:700 16px Figtree,sans-serif;color:var(--dxink)}
+.rsw-zm{margin-left:auto;display:flex;gap:4px}.rsw-zm button{width:30px;height:30px;border-radius:9px;border:1px solid var(--dxline);background:var(--dxcard);color:var(--dxink2);cursor:pointer;font:700 15px Figtree,sans-serif}
+.rsw-lic{padding:8px 16px;font:600 12.5px Figtree,sans-serif;flex:none;border-bottom:1px solid var(--dxline)}
+.rsw-main{flex:1;display:flex;min-height:0}
+.rsw-tree{flex:1;overflow:auto;position:relative;overscroll-behavior:contain;min-width:0}
+.rsw-cv{position:relative}
+.rsw-band{position:absolute;top:0;bottom:0;border-right:1px dashed var(--dxline)}.rsw-band:nth-child(odd){background:color-mix(in srgb,var(--dxsoft) 70%,transparent)}
+.rsw-band h4{margin:0;padding:9px 12px;font:700 11px Figtree,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--dxmut);white-space:nowrap}
+.rsw-cv svg{position:absolute;left:0;top:0;pointer-events:none}
+.rsw-cv path{fill:none;stroke:var(--dxmut2);stroke-width:1.6;opacity:.55}.rsw-cv path.dn{stroke:#22c55e;opacity:.9;stroke-width:2}.rsw-cv path.op{stroke:#3b82f6;opacity:.9;stroke-width:2}.rsw-cv path.hl{stroke:#f59e0b;opacity:1;stroke-width:2.6}
+.rsw-n{position:absolute;display:grid;grid-template-columns:34px 1fr;gap:2px 9px;align-items:center;padding:8px 10px;border-radius:12px;background:var(--dxcard);border:1.5px solid var(--dxline);cursor:pointer;text-align:left;font-family:Figtree,sans-serif;color:var(--dxink);box-shadow:0 1px 3px rgba(15,23,42,.06)}
+.rsw-n:hover{border-color:var(--dxmut2)}.rsw-n i{grid-row:1/3;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-style:normal;font-size:17px}
+.rsw-n b{font:700 12.5px/1.2 Figtree,sans-serif;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.rsw-n small{font:600 11px Figtree,sans-serif;color:var(--dxmut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rsw-n.done{border-color:#22c55e;background:color-mix(in srgb,#22c55e 9%,var(--dxcard))}.rsw-n.done small{color:#16a34a}
+.rsw-n.open{border-color:#3b82f6}.rsw-n.open.ok{box-shadow:0 0 0 3px color-mix(in srgb,#3b82f6 22%,transparent)}.rsw-n.lic{border-color:#f59e0b}.rsw-n.locked{opacity:.5}
+.rsw-n.sel{outline:3px solid #f59e0b;outline-offset:1px;opacity:1}
+.rsw-side{width:300px;flex:none;border-left:1px solid var(--dxline);background:var(--dxcard);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:10px;font-family:Figtree,sans-serif}
+.rsw-side h3{margin:0;font:700 18px/1.2 Figtree,sans-serif}.rsw-side p{margin:0;font-size:13px;color:var(--dxink2);line-height:1.45}
+.rsw-tag{display:inline-block;font:700 11px Figtree,sans-serif;padding:3px 8px;border-radius:999px;background:var(--dxsoft);color:var(--dxink3)}
+.rsw-side ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:12.5px}.rsw-side li{display:flex;gap:6px;cursor:pointer}.rsw-side li:hover{text-decoration:underline}
+.rsw-side h5{margin:4px 0 0;font:700 11px Figtree,sans-serif;text-transform:uppercase;letter-spacing:.05em;color:var(--dxmut)}
+.rsw-cost{display:grid;grid-template-columns:1fr 1fr;gap:8px}.rsw-cost div{background:var(--dxsoft);border-radius:10px;padding:8px 10px;font-size:11px;color:var(--dxmut)}.rsw-cost b{display:block;font-size:15px;color:var(--dxink)}
+.rsw-go{padding:11px;border-radius:12px;border:0;background:#2563eb;color:#fff;font:700 14px Figtree,sans-serif;cursor:pointer}.rsw-go:disabled{opacity:.45;cursor:default}.rsw-go.am{background:#d97706}
+.rsw-lg{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--dxmut)}.rsw-lg span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;border:2px solid var(--c);margin-right:5px;vertical-align:-1px}
+.mdx-win.mdx-full .rsw-lg{display:none}.mdx-win.mdx-full .rsw-lic{font-size:11px;padding:6px 12px}.mdx-win.mdx-full .rsw-kp{padding:8px 12px;gap:6px}.mdx-win.mdx-full .rsw-kp>div{padding:5px 9px}.mdx-win.rsw-narrow .rsw-main{flex-direction:column}.mdx-win.rsw-narrow .rsw-side{width:auto;border-left:0;border-top:1px solid var(--dxline);max-height:46%}`;document.head.appendChild(st)}
+function openResearch(){if(!document.getElementById("mdx-css")){const st=document.createElement("style");st.id="mdx-css";st.textContent=DXCSS;document.head.appendChild(st)}rsCss();
+  if(!RSW.el){const el=RSW.el=document.createElement("div");el.className="mdx-win mx-win";el.setAttribute("role","dialog");el.setAttribute("aria-label","Research");document.body.appendChild(el);
+    el.addEventListener("click",e=>{const x=e.target.closest("[data-rs]");if(!x||x.disabled)return;const k=x.dataset.rs,v=x.dataset.k;
+      if(k==="close")return rsHide();if(k==="theme"){themeSet(themeGet()==="dark"?"light":"dark");x.innerHTML=themeIco();return}
+      if(k==="sel"){RSW.sel=v}else if(k==="zm"){RSW.zm=Math.max(.5,Math.min(1.3,Math.round((RSW.zm+ +v)*10)/10))}
+      else if(k==="lic"){rsApply(rsHere());save();hud()}
+      else if(k==="go"){const t=TK[v];if(!t||!canResearch(t)||!rsOk(t)||S.rp<t.rp||S.cash<t.cash)return;
+        S.rp-=t.rp;S.cash-=t.cash;S.tech[t.k]=1;applyTechs();S.log.unshift(`Researched ${t.n}`);S.log=S.log.slice(0,3);
+        toast(t.k==="marsciv"?"Mars Civilization researched. Humanity is multi-planetary.":`Researched ${t.n}`);save();hud();draw()}
+      renderResearch()});mdxMove(el,RSW)}
+  const vw=innerWidth,vh=innerHeight,el=RSW.el;if(vw<560){el.classList.add("mdx-full");Object.assign(el.style,{left:"0px",top:"0px",width:vw+"px",height:vh+"px"})}
+  else{el.classList.remove("mdx-full");const w=Math.min(1400,vw-48),h=Math.min(860,vh-48);Object.assign(el.style,mdxAt(RSW,w,h),{width:w+"px",height:h+"px"})}
+  el.classList.toggle("rsw-narrow",vw<900);
+  if(!RSW.sel||!TK[RSW.sel]){const o=TECH.find(t=>rsState(t)==="open"&&S.rp>=t.rp&&S.cash>=t.cash)||TECH.find(t=>rsState(t)==="open")||TECH[0];RSW.sel=o.k}
+  el.style.display="flex";RSW.open=true;RSW.first=true;renderResearch();clearInterval(RSW.iv);
+  RSW.iv=setInterval(()=>{if(!RSW.open)return clearInterval(RSW.iv);if(!document.hidden)renderResearch()},3000);
+  try{if(tutStep<0&&S.tut===9)tipShow("research")}catch(e){}}
+function rsHide(){RSW.open=false;clearInterval(RSW.iv);if(RSW.el)RSW.el.style.display="none"}
+function renderResearch(){if(!RSW.open||!RSW.el)return;const L=rsLayout(),G=RSGEO,done=TECH.filter(t=>hasTech(t.k)).length,sel=TK[RSW.sel];
+  const tr=RSW.el.querySelector(".rsw-tree"),sx=tr?tr.scrollLeft:0,sy=tr?tr.scrollTop:0,sd=RSW.el.querySelector(".rsw-side"),ss=sd?sd.scrollTop:0;
+  const hot=new Set(sel?[sel.k,...(sel.req||[]),...(L.kids[sel.k]||[])]:[]);
+  let svg="";for(const t of TECH)for(const r of t.req||[]){const a=L.pos[r],b=L.pos[t.k];if(!a||!b)continue;const x1=a.x+G.W,y1=a.y+G.H/2,x2=b.x,y2=b.y+G.H/2,mx=(x1+x2)/2;
+    const c=sel&&(t.k===sel.k||r===sel.k)?"hl":hasTech(t.k)?"dn":hasTech(r)?"op":"";svg+=`<path class="${c}" d="M${x1} ${y1}C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}"/>`}
+  const bands=L.band.map(b=>`<div class="rsw-band" style="left:${b.c0?G.PAD+b.c0*(G.W+G.GX)-G.GX/2:0}px;width:${G.PAD+(b.c0+b.n)*(G.W+G.GX)-G.GX/2-(b.c0?G.PAD+b.c0*(G.W+G.GX)-G.GX/2:0)}px"><h4>Tier ${["I","II","III","IV","V","VI"][b.ti]} · ${b.nm}</h4></div>`).join("");
+  const nodes=TECH.map(t=>{const p=L.pos[t.k],st=rsState(t),ok=S.rp>=t.rp&&S.cash>=t.cash,[ic,col]=rsIco(t);
+    const sub=st==="done"?"✓ Researched":st==="lic"?"Needs licence":st==="locked"?`Needs ${(t.req||[]).filter(r=>!hasTech(r)).map(r=>TK[r].n).join(", ")||"a government"}`:`${Math.round(t.rp).toLocaleString()} RP · ${fmt(t.cash)}`;
+    return `<button class="rsw-n ${st}${st==="open"&&ok?" ok":""}${RSW.sel===t.k?" sel":""}" data-rs="sel" data-k="${t.k}" style="left:${p.x}px;top:${p.y}px;width:${G.W}px;height:${G.H}px${hot.has(t.k)&&st==="locked"?";opacity:.85":""}" title="${t.n}"><i style="background:color-mix(in srgb,${col} 16%,transparent);color:${col}">${ic}</i><b>${t.n}</b><small>${sub}</small></button>`}).join("");
+  let side="";if(sel){const st=rsState(sel),ok=S.rp>=sel.rp&&S.cash>=sel.cash,unl=OPS.filter(o=>o.req===sel.k).map(o=>o.n),kd=(L.kids[sel.k]||[]).map(k=>TK[k]);
+    const li=(t)=>`<li data-rs="sel" data-k="${t.k}"><span style="color:${hasTech(t.k)?"#16a34a":"var(--dxmut2)"}">${hasTech(t.k)?"✓":"○"}</span>${t.n}</li>`;
+    const pend=S.gov&&S.gov[rsHere()]&&S.gov[rsHere()].rReq;
+    side=`<div><span class="rsw-tag">Tier ${["I","II","III","IV","V","VI"][sel.t]} · ${TIERS[sel.t]}</span></div><h3>${sel.n}</h3><p>${sel.d}</p>
+    ${unl.length?`<h5>Unlocks</h5><p>${unl.join(", ")}</p>`:""}
+    ${(sel.req||[]).length||sel.gov?`<h5>Needs</h5><ul>${(sel.req||[]).map(r=>li(TK[r])).join("")}${sel.gov?`<li><span>${typeof colGov==="function"&&colGov()?"✓":"○"}</span>A government office</li>`:""}</ul>`:""}
+    ${kd.length?`<h5>Leads to</h5><ul>${kd.map(li).join("")}</ul>`:""}
+    ${st==="done"?`<div class="rsw-tag" style="background:#22c55e22;color:#16a34a;font-size:13px;padding:8px 12px;text-align:center">✓ Researched</div>`:`<div class="rsw-cost"><div>Points<b style="color:${S.rp>=sel.rp?"inherit":"#dc2626"}">${Math.round(sel.rp).toLocaleString()} RP</b></div><div>Cash<b style="color:${S.cash>=sel.cash?"inherit":"#dc2626"}">${fmt(sel.cash)}</b></div></div>
+    ${st==="lic"?`<button class="rsw-go am" data-rs="lic" ${pend?"disabled":""}>${pend?"Licence pending":"Get research licence · "+fmt(RSQ.fee)}</button>`:`<button class="rsw-go" data-rs="go" data-k="${sel.k}" ${st!=="open"||!ok?"disabled":""}>${st==="locked"?"Locked":ok?"Research":"Not enough "+(S.rp<sel.rp?"points":"cash")}</button>`}`}`}
+  const n=rsHere(),lok=rsPermit(n),q=S.gov&&S.gov[n]&&S.gov[n].rReq;
+  const IN=`<div class="rsw-in"><div class="rsw-kp"><div>Researched<b>${done} / ${TECH.length}</b></div><div>Points<b>${fmt(S.rp).replace("$","")} RP</b></div><div>Earning<b>${rpRate().toFixed(1)} RP/hr</b></div><div>Labs<b>${S.sites.filter(x=>x.op&&OP[x.op].rp).length}</b></div>${S.rpP>=.1?`<div>Next payout<b>+${Math.floor(S.rpP)} RP</b></div>`:""}${S.sats?`<div>Satellites<b>${Math.floor(S.sats)}</b></div>`:""}
+    <div class="rsw-lg"><span style="--c:#22c55e">Done</span><span style="--c:#3b82f6">Ready</span><span style="--c:#f59e0b">Licence</span><span style="--c:var(--dxmut2)">Locked</span></div>
+    <div class="rsw-zm"><button data-rs="zm" data-k="-0.1" aria-label="Zoom out">−</button><button data-rs="zm" data-k="0.1" aria-label="Zoom in">+</button></div></div>
+    <div class="rsw-lic" style="color:${lok?"#16a34a":"var(--dxmut)"}">Tier IV and V research needs a research licence from the government of the country you are in (${n}): ${lok?"approved.":q?`waiting for ${onEsc(q.name||"the government")}.`:`apply in the Gov tab or from a Tier IV technology (${fmt(RSQ.fee)}).`} Points are paid every 15 minutes; build research labs on industrial lots to earn faster.</div>
+    <div class="rsw-main"><div class="rsw-tree"><div class="rsw-cv" style="width:${L.w}px;height:${L.h}px;zoom:${RSW.zm}">${bands}<svg width="${L.w}" height="${L.h}">${svg}</svg>${nodes}</div></div><div class="rsw-side">${side}</div></div></div>`;
+  RSW.el.innerHTML=`<div class="mdx-bar"><span class="mdx-logo" style="background:#7c3aed;font-size:15px">🔬</span><b>Research</b><button class="mdx-th" data-rs="theme" aria-label="Switch light or dark theme" style="margin-left:auto">${themeIco()}</button><button class="mdx-x" data-rs="close" aria-label="Close research">×</button></div><div class="mdx-body" style="overflow:hidden">${IN}</div>`;
+  const nt=RSW.el.querySelector(".rsw-tree"),ns=RSW.el.querySelector(".rsw-side");
+  if(RSW.first&&sel){RSW.first=false;const p=L.pos[sel.k];nt.scrollLeft=Math.max(0,p.x*RSW.zm-nt.clientWidth/3);nt.scrollTop=Math.max(0,p.y*RSW.zm-nt.clientHeight/3)}else{nt.scrollLeft=sx;nt.scrollTop=sy;ns.scrollTop=ss}}
 function hud(){try{setApply()}catch(e){}const nb=document.querySelectorAll('#needs i');["h","f","m"].forEach((k,i)=>{const v=S.need[k];nb[i].style.width=v+"%";nb[i].style.background=v<25?"var(--bad)":v<50?"var(--accent)":"var(--good)"});let{inc,nw}=totals();const hc=hud.c||(hud.c={t:0,n:-1,v:0}),hn=Date.now();if(hn-hc.t>5000||hc.n!==S.sites.length){let v=0;for(const st of S.sites){const o=siteOp(st);if(o&&!st.why)v+=siteEst(st)+o.up*LAND[st.size][1]}hc.t=hn;hc.n=S.sites.length;hc.v=v}inc+=hc.v;try{if(S.mb&&S.mb.crew&&typeof mbEco==="function")inc+=mbEco().day}catch(e){}   /* Mars colony income: a game day is one real hour (DAYMS) */
 if(typeof tweenCash==="function")tweenCash();else $("#cash").textContent=fmt(S.cash);
   const ie=$("#inc");ie.textContent=(inc>=0?"+":"")+fmt(inc);ie.style.color=inc<0?"var(--bad)":"var(--good)";
