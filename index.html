@@ -14664,6 +14664,8 @@ function lcLog(c,t){const L=c&&LCO(c.id);if(!L)return;if(!Array.isArray(L.log))L
 function pmBack(c,g,q,src){if(!c||!(q>0))return "warehouse";if(src==="lc"&&lcHas(c)){lcAdd(c,g,q);return "logistics center"}ensureWh(c);S.inv[c.id][g]=(S.inv[c.id][g]||0)+q;return "warehouse"}
 function lcMkt(c){const a=S.lst.filter(l=>l.city===c.id&&l.src==="lc"&&l.q>=.01).map(l=>({g:l.g,q:l.q,p:l.p,w:"NPC market",sold:l.sold||0,id:"#"+l.id}));
   try{const e=PMXS().esc;for(const id in e){const x=e[id];if(x.c===c.id&&x.src==="lc"&&x.q>0)a.push({g:x.g,q:x.q,p:x.px,w:"Other players",sold:0,id:""})}}catch(err){}return a}
+// full letter group: from row index lv to the next row ending in Z (A..Z, AA..AZ, BA..BZ ...)
+function lcRowPlan(c,L){const end=Math.ceil((L.lv+1)/26)*26-1,n=end-L.lv+1;let tot=0,k=0,kc=0;for(let i=0;i<n;i++){const p=lcUp(c,L.lv+i);tot+=p;if(k===i&&kc+p<=S.cash){kc+=p;k++}}return{end,n,tot,k,kc}}
 const lcRowName=i=>{let s="";i++;while(i>0){i--;s=String.fromCharCode(65+i%26)+s;i=Math.floor(i/26)}return s};
 /* where everything sits: products in arrival order fill row A bay 1, 2... then row B. Each bay holds LCBAY tonnes. */
 /* where everything sits. Products the player pinned (L.pin[g] = start bay index) go there first; the rest fill the free bays in list order (L.ord).
@@ -14820,7 +14822,7 @@ function lcHtml(c){const L=LCO(c.id);
    const lg=L.log||[];h+=`</div><div class="sec">Activity</div><div class="list">`+(lg.length?lg.slice(0,15).map(([t,x])=>`<div class="row"><div class="d" style="grid-column:1/-1"><span style="color:var(--muted);font-family:var(--mono)">${new Date(t).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span> · ${E2(x)}</div></div>`).join(""):`<p class="d" style="color:var(--muted);font-size:13px;padding:6px 0">No activity yet.</p>`)}
   h+=`</div>`+lcctHtml(c)+`<div class="list">
    <div class="row"><div class="n">Staff: ${L.staff||0} worker${L.staff===1?"":"s"}${L.mgr?" + manager":""}</div><div class="d">Wages ${fmt(lcWageC(c))}/hr. Orders turn around ${Math.round(lcSpeed(c)*100)}% faster. Hire and fire at the reception office inside.</div><button class="buy up" data-act="lcin">Go inside</button></div>
-   <div class="row"><div class="n">Upgrade storage · Level ${L.lv+1}</div><div class="d">+${fmtT(LCROW*(1+.25*(L.upg.rack||0)))} and a new rack row (Row ${lcRowName(L.lv)}). The building gets longer.</div><button class="buy up" data-act="lcup" ${S.cash<lcUp(c,L.lv)?"disabled":""}>${fmt(lcUp(c,L.lv))}</button></div>
+   <div class="row"><div class="n">Upgrade storage · Level ${L.lv+1}</div><div class="d">+${fmtT(LCROW*(1+.25*(L.upg.rack||0)))} and a new rack row (Row ${lcRowName(L.lv)}). The building gets longer.</div><button class="buy up" data-act="lcup" ${S.cash<lcUp(c,L.lv)?"disabled":""}>${fmt(lcUp(c,L.lv))}</button></div>${(()=>{const r=lcRowPlan(c,L);return r.n>1?`<div class="row"><div class="n">Buy full row · Rows ${lcRowName(L.lv)}–${lcRowName(r.end)}</div><div class="d">Buys every storage level up to Row ${lcRowName(r.end)} (${r.n} levels, +${fmtT(r.n*LCROW*(1+.25*(L.upg.rack||0)))}).${r.k<r.n?` You can afford ${r.k} now; it buys as many as your cash allows.`:""}</div><button class="buy up" data-act="lcuprow" ${r.k<1?"disabled":""}>${fmt(r.k<r.n?r.kc:r.tot)}</button></div>`:""})()}
    <div class="row"><div class="n">Auto-expand when full: ${L.ax?"On":"Off"}</div><div class="d">When a delivery doesn't fit, buy as many upgrades as it needs (if you have the cash). Off: the extra goes to the warehouse.</div><button class="buy up" data-act="lcax">${L.ax?"Turn off":"Turn on"}</button></div>
    <div class="row"><div class="n">Receive deliveries: ${L.rx?"On":"Off"}</div><div class="d">${L.rx?"Shipments to this city unload into the center first.":"Shipments go to the warehouse; the center only keeps what's inside."}</div><button class="buy up" data-act="lcrx">${L.rx?"Turn off":"Turn on"}</button></div>
    ${whG.length?`<div class="row"><div class="n">Store warehouse goods here</div><div class="d">Moves ${whG.length} product${whG.length>1?"s":""} from the ${E2(c.name)} warehouse into the center (as much as fits).</div><button class="buy up" data-act="lcfill">Move in</button></div>`:""}
@@ -14834,6 +14836,7 @@ function lcAct(c,a,b){const L=LCO(c.id),g=b.dataset.g;
   if(!L)return;
   if(a==="lcin"){lcEnter(c);return false}
   if(a==="lcup"){const p=lcUp(c,L.lv);if(S.cash<p)return;S.cash-=p;L.lv++;toast(`Logistics center: level ${L.lv}, Row ${lcRowName(L.lv-1)} added`)}
+  else if(a==="lcuprow"){const r=lcRowPlan(c,L);if(r.k<1)return;const a0=L.lv;S.cash-=r.kc;L.lv+=r.k;toast(`Logistics center: level ${L.lv}, Rows ${lcRowName(a0)}–${lcRowName(L.lv-1)} added`+(r.k<r.n?` (${r.n-r.k} left, out of cash)`:""))}
   else if(a==="lccttake"||a==="lcctgive"||a==="lcctdrop"||a==="lcctend"){const e=lcctAct(c,a.slice(4),+b.dataset.k);if(e)toast(e)}
   else if(a==="lcax"){L.ax=L.ax?0:1}
   else if(a==="lcrx"){L.rx=L.rx?0:1}
