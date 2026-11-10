@@ -11089,7 +11089,7 @@ function fxTier(){const t=FX().tons;let i=0;for(let k=0;k<FXT.length;k++)if(t>=F
 function fxHire(){return (.4+.6*fuelM())*(1-fxTier().disc)}
 function fxCap(){return lxc().maxJobs+lxc().maxSh+fxTier().jobs}
 /* resale: 60% of what you paid, scaled by condition; only parked, empty, idle vehicles (no job, route, Auto-line or recall) */
-const vSellP=v=>Math.round((v.paid||(VEH[v.type]||{}).cost||0)*.6*fxCond(v)/100+fupSpent(v)*.5),vSellOk=v=>!!v&&!v.arr&&!v.job&&!v.lco&&!v.route&&!v.al&&!v.cargo&&v.hm==null;
+const vSellP=v=>Math.round((v.paid||(VEH[v.type]||{}).cost||0)*.6*fxCond(v)/100+fupSpent(v)*.5),vSellOk=v=>!!v&&!v.ish&&!v.arr&&!v.job&&!v.lco&&!v.route&&!v.al&&!v.cargo&&v.hm==null;
 function fxCond(v){return v&&v.cond>=0&&v.cond<=100?+v.cond:100}
 function fxUp(v){return vPrice(v)*FXM*(1+(100-fxCond(v))/100)}
 function fxFee(v){return Math.round(vPrice(v)*FXS*(100-fxCond(v))/100*(1-fxTier().sv))}
@@ -11319,7 +11319,8 @@ function lxFleetTab(lg){const X=LX(),now=Date.now();let h="";
     else{const c=CITIES[v.city];st=c?`Idle in ${dxE(c.name)}${v.cargo?` · holding ${lxg(v.cargo.q)} ${dxE(lxN(v.cargo.g).toLowerCase())}`:""}`:"Parked";
       if(v.route){const r=v.route;tag=`<span class="lx-tag g">ROUTE</span>`;st=`Route ${dxE(CITIES[r.from].name)} ⇄ ${dxE(CITIES[r.to].name)} · ${dxE(lxN(r.g))} · at ${c?dxE(c.name):"?"}`;acts=`<button class="lx-btn" data-lx="vstop" data-id="${v.id}">Stop route</button>`}
       else if(v.job){tag=`<span class="lx-tag b">JOB</span>`;acts=`<button class="lx-btn" data-lx="vrel" data-id="${v.id}">Release</button>`}
-      else if(!v.cargo)acts=`<button class="lx-btn" data-lx="vmv" data-id="${v.id}">${mv?"Close":"Move empty…"}</button>`}
+      else if(!v.cargo)acts=`<button class="lx-btn" data-lx="vmv" data-id="${v.id}">${mv?"Close":"Move empty…"}</button>`;
+      if(v.ish&&vSellOk(Object.assign({},v,{ish:0}))){tag=`<span class="lx-tag">SHOP</span>`;acts+=`<button class="lx-btn" data-lx="vpool" data-id="${v.id}">To shared pool</button>${c&&(S.own[c.id]||{}).trucking?`<button class="lx-btn" data-lx="vctr" data-id="${v.id}">Contract truck for ${dxE(c.name)}</button>`:""}`}}
     if(v.arr&&v.job)tag=`<span class="lx-tag b">JOB</span>`;else if(v.arr&&v.route)tag=`<span class="lx-tag g">ROUTE</span>`;
     h+=`<div class="lx-it"><div class="m"><b>${V.n} #${v.id}${tag}${fxCond(v)<40?`<span class="lx-tag r">WORN</span>`:""}</b><span>${st}</span><small>${fmtT(V.cap)} (${lxg(V.cap)} units of 1 t goods) · ${V.spd} km/day · ${fmtc(V.km*fuelM())}/km · condition ${Math.round(fxCond(v))}% · upkeep ${fmtc(fxUp(v))}/day</small></div><div class="a">${acts}${!v.arr&&fxFee(v)>0&&fxCond(v)<99.5?`<button class="lx-btn" data-lx="vsvc" data-id="${v.id}" ${S.cash<fxFee(v)?"disabled":""}>Service ${fmtc(fxFee(v))}</button>`:""}</div></div>`;
     if(mv){const c=CITIES[v.city],ds=CITIES.filter(d=>d!==c&&hasWh(d)&&lxVehOK(v,c,d));h+=`<div class="lx-it" style="padding-top:0"><div class="m"><select class="lx-in" data-lxm="to">${ds.length?ds.map(d=>lxOpt(d.id,`${d.name} · ${Math.round(distKm(c,d)).toLocaleString()} km · ${fmt(vFuel(v.type,distKm(c,d),0,c,d))} fuel`,lg.mv.to)).join(""):`<option>No reachable warehouse city</option>`}</select></div><div class="a"><button class="lx-btn pri" data-lx="vgo" data-id="${v.id}" ${ds.length?"":"disabled"}>Go</button></div></div>`}}
@@ -11389,6 +11390,7 @@ function lxAct(a,b){if(a==="mnyf"){MNY.f=b.dataset.v;MNY.sel=-1;dxRender();retur
   else if(a==="vmv"){const id=+b.dataset.id;lg.mv=lg.mv&&lg.mv.id===id?null:{id,to:-1}}
   else if(a==="vgo"){const v=S.fleet.find(x=>x.id===+b.dataset.id),c=v&&CITIES[v.city],d=lg.mv&&CITIES[+lg.mv.to];
     if(v&&c&&d&&!v.arr&&!v.cargo){const why=lxBlock(c,d);if(why)lxNote(why);else if(!lxVehOK(v,c,d))lxNote("Trucks can't cross oceans.");else if(depart(v,c,d,"")){v.route=null;v.job=0;lxNote(`${VEH[v.type].n} #${v.id} is driving empty to ${d.name}.`);lg.mv=null;done=true}else lxNote("Not enough cash for fuel.")}}
+  else if(a==="vpool"||a==="vctr"){const r=ishToPool(+b.dataset.id,a==="vctr");lxNote(r||(a==="vctr"?"Truck is now a contract truck reserved for that city's Trucking company.":"Truck joined the shared trucking pool."));if(!r)done=true}
   else if(a==="vsvc"){const v=S.fleet.find(x=>x.id===+b.dataset.id);if(v){const fee=fxFee(v);if(fxService(v)){lxNote(`${VEH[v.type].n} #${v.id} serviced for ${fmtc(fee)}.`);done=true}else lxNote("Can't service that now (moving or not enough cash).")}}
   else if(a==="vsvcall"){let n=0,t=0;for(const v of S.fleet){if(v.arr||!(fxFee(v)>0))continue;const fee=fxFee(v);if(fxService(v)){n++;t+=fee}}if(n){lxNote(`Serviced ${n} vehicle${n>1?"s":""} for ${fmtc(t)}.`);done=true}else lxNote("Nothing to service or not enough cash.")}
   else if(a==="vbuy"){const k=b.dataset.k,V=VEH[k],c=CITIES[lg.bc];if(V&&c&&hasWh(c)&&S.cash>=V.cost){S.cash-=V.cost;S.fleet.push({id:S.nid++,type:k,city:c.id,paid:V.cost,cond:100});lxNote(`${V.n} ready in ${c.name}.`);done=true}}
@@ -11415,7 +11417,7 @@ function txHubCard(c,row){const l=LG(),h=HB(c.id),lv=(S.own[c.id]||{}).trucking|
   const up=k=>{const u=HU[k],n=h[k],done=n>=u.max,cs=huCost(c.id,k);return `<div class="lx-it"><div class="m"><b>${u.n}<span class="lx-tag">Lv ${n}/${u.max}</span></b><span>${u.d}</span></div><div class="a"><button class="lx-btn" data-tx="hup" data-id="${c.id}" data-k="${k}" ${done||S.cash<cs?"disabled":""}>${done?"Maxed":fmt(cs)}</button></div></div>`};
   return `<div class="mdx-card"><div class="mdx-ch"><h3>${dxE(c.name)}</h3><span class="lx-tag b">Level ${lv}</span><span class="lx-tag ${autoOn?"g":""}">${autoOn?dxE(polN):"Manual"}</span><div style="margin-left:auto" class="a"><button class="lx-btn" data-tx="go" data-c="${c.id}">Manage</button></div></div>
   <div class="lx-k"><div><span>Revenue / hr</span><b>${fmt(rev)}</b><small>business</small></div><div><span>Costs / hr</span><b>${fmt(exp)}</b><small>wages, tax, rent</small></div><div><span>Contracts / hr</span><b>${fmt(hr)}</b><small>${h.done} done · ${fmt(h.earned)} total</small></div><div><span>Profit / hr</span><b style="color:${txCol(net)}">${txSgn(net)}</b><small>${Math.round(h.tons)} t · ${txPct(h.done-h.late,h.done)} on time</small></div></div>
-  <div class="lx-it"><div class="m"><b>Trucks</b><span>${b} busy here · ${room} can start now · ${nOff} offer${nOff===1?"":"s"} on the board</span><small>${(()=>{let t=0;for(const i of ISH||[])if(i.tr)t+=(ishLoc(i.k)[c.id]||0)*i.tr;return t?`${t} Industrial Shop truck${t===1?"":"s"} sent here (reserved for this hub). `:""})()}${own?`${own} of your own vehicle${own===1?"":"s"} based here run 25% faster. `:""}${lv>1?`Level ${lv} pays ${10*(lv-1)}% more on contracts.`:"Higher levels pay more on contracts."}</small></div></div>
+  <div class="lx-it"><div class="m"><b>Trucks</b><span>${b} busy here · ${room} can start now · ${nOff} offer${nOff===1?"":"s"} on the board</span><small>${own?`${own} of your own vehicle${own===1?"":"s"} based here run 25% faster. `:""}${lv>1?`Level ${lv} pays ${10*(lv-1)}% more on contracts.`:"Higher levels pay more on contracts."}</small></div></div>
   <div class="lx-it"><div class="m"><b>Reserved for this hub</b><span>${h.res} truck${h.res===1?"":"s"} always available to it</span></div><div class="a"><button class="lx-btn" data-tx="res" data-id="${c.id}" data-d="-1" ${h.res<1?"disabled":""} aria-label="Reserve fewer trucks">−</button><button class="lx-btn" data-tx="res" data-id="${c.id}" data-d="1" ${rm+h.res>=l.trucks?"disabled":""} aria-label="Reserve more trucks">+</button></div></div>
   <div class="lx-it"><div class="m"><b>Most at once</b><span>${h.cap?h.cap+" truck"+(h.cap===1?"":"s"):"No limit (shared pool)"}</span></div><div class="a"><button class="lx-btn" data-tx="cap" data-id="${c.id}" data-d="-1" ${h.cap<1?"disabled":""} aria-label="Lower limit">−</button><button class="lx-btn" data-tx="cap" data-id="${c.id}" data-d="1" ${h.cap>=l.trucks?"disabled":""} aria-label="Raise limit">+</button></div></div>
   <div class="lx-it"><div class="m"><b>Auto-dispatch</b><span>${lvl("dispatch")?(l.auto?"Takes offers by this policy when trucks are free.":"Master switch is off (Board tab)."):"Buy Dispatch software in the Fleet tab to unlock."}</span><select class="lx-in" data-txp="${c.id}" ${lvl("dispatch")?"":"disabled"} style="margin-top:6px">${TPOL.map(p=>lxOpt(p[0],p[1],pol)).join("")}</select></div></div>${up("dep")}${up("drv")+up("dock")+up("fuel")}</div>`}
@@ -11861,11 +11863,12 @@ function ishS(){let s=S.ish;if(!s||typeof s!=="object"||Array.isArray(s))s=S.ish
   for(const i of ISH){if(i.cat!=="veh"&&i.cat!=="mac")continue;const o=s.loc[i.k];if(!own[i.k]||!o||typeof o!=="object"||Array.isArray(o))continue;let room=own[i.k];const m={};
     for(const c in o){if(!CITIES[c])continue;const n=Math.min(room,Math.floor(num(o[c],0,0,own[i.k])));if(n>0){m[c]=n;room-=n}}if(Object.keys(m).length)loc[i.k]=m}
   s.loc=loc;s.fin=(Array.isArray(s.fin)?s.fin:[]).filter(f=>f&&ISHC[f.k]&&own[f.k]&&Number.isFinite(+f.left)&&Number.isFinite(+f.pay)&&+f.left>0&&+f.pay>0).slice(0,ISH_MAXFIN).map(f=>({k:f.k,n:Math.floor(num(f.n,1,1,99)),left:+f.left,pay:+f.pay}));
+  if(!Number.isFinite(s.pl)){let t=0;for(const i of ISH)if(i.tr)t+=i.tr*(own[i.k]||0);s.pl=t}
   if(!s.rv){s.rv=1;try{const hs=hubs();for(const i of ISH){if(!i.tr||!loc[i.k])continue;for(const c in loc[i.k])if(hs.some(h=>String(h.id)===c)){const h=HB(+c);h.res=Math.min(h.res+i.tr*loc[i.k][c],LG().trucks)}}}catch(e){}} // one-time: shop trucks sent before reserving existed get reserved for their hub too
   s.v=1;s.wk=Math.floor(num(s.wk,0,0,1e9));s.t=num(s.t,Date.now(),0,1e15);s.spent=num(s.spent,0,0,1e15);ishOk=s;ishEv=-1;return s}
 function ishN(k){try{return ishS().own[k]||0}catch(e){return 0}}
 const ishDim=n=>n>0?1+ISH_DIM*(n-1):0;
-function ishTr(){let t=0;const s=ishS();for(const i of ISH)if(i.tr)t+=i.tr*(s.own[i.k]||0);try{return Math.min(t,LG().trucks)}catch(e){return t}}
+function ishTr(){const t=ishS().pl||0;try{return Math.min(t,LG().trucks)}catch(e){return t}}
 /* summed effects of everything owned (cached; ISHV is bumped on every change) */
 function ishE(){if(!ISH)return ISH_Z;const s=ishS();if(ishEc&&ishEv===ISHV&&ishOk===s)return ishEc;const e=Object.assign({},ISH_Z);
   for(const i of ISH){const n=s.own[i.k]||0;if(!n)continue;const m=ishDim(n);for(const k in i.eff){if(k==="pay"||k==="spd")continue;e[k]+=i.eff[k]*m}}
@@ -11925,11 +11928,20 @@ function ishBuy(k,q,fin){const i=ishC(k);if(!i)return"Unknown item";const s=ishW
     const debt=Math.round((tot-down)*(1+ISH_INT));S.cash-=down;s.fin.push({k,n:q,left:debt,pay:debt/ISH_TERM})}
   else{if(S.cash<tot)return`Need ${fmt(tot)}`;S.cash-=tot}
   s.own[k]=n+q;s.val[k]=(s.val[k]||0)+tot;s.st[k]=(s.st[k]||0)+q;s.spent+=tot;
-  if(i.tr){const l=LG();l.trucks=Math.min(l.trucks+i.tr*q,TRK_CEIL)}
+  if(i.tr){const c=ishHome();if(c){for(let j=0;j<i.tr*q;j++)S.fleet.push({id:S.nid++,type:ISH_VT[k]||"truck",city:c.id,paid:0,cond:100,ish:k})}else{const l=LG(),a=Math.min(i.tr*q,TRK_CEIL-l.trucks);l.trucks+=a;s.pl=(s.pl||0)+a}}
   ISHV++;return""}
+/* shop trucks arrive as idle vehicles: first Trucking hub, else an HQ city, else any city where you own a business (none = straight into the shared pool) */
+const ISH_VT={pickup:"truck",box:"truck",semi:"hvtruck",reefer:"hvtruck",roadtrain:"roadtrain",convoy:"roadtrain"};
+function ishHome(){const h=hubs();if(h.length)return h[0];for(const id in S.hq)if(S.hq[id]&&CITIES[id])return CITIES[id];return CITIES.find(c=>S.own[c.id]&&Object.keys(S.own[c.id]).length)||null}
+const ishIdle=k=>S.fleet.filter(v=>v.ish===k&&vSellOk(Object.assign({},v,{ish:0})));
+/* an idle shop truck joins the Trucking contract fleet: shared pool, or reserved for its city's Trucking company */
+function ishToPool(id,ctr){const v=S.fleet.find(x=>x.id===id),s=ishS(),l=LG();if(!v||!v.ish||!vSellOk(Object.assign({},v,{ish:0})))return"That truck is busy";if(l.trucks>=TRK_CEIL)return"The trucking fleet is full";
+  const c=CITIES[v.city];if(ctr&&!(c&&(S.own[c.id]||{}).trucking))return"No Trucking company in that city";
+  S.fleet=S.fleet.filter(x=>x!==v);l.trucks++;s.pl=(s.pl||0)+1;if(ctr){const h=HB(c.id);h.res=Math.min(h.res+1,l.trucks)}ISHV++;return""}
 function ishSell(k){const i=ishC(k),s=ishS(),n=s.own[k]||0;if(!i||!n)return"Nothing to sell";if(s.fin.some(f=>f.k===k))return"Pay off the finance deal first";
-  if(i.tr){const l=LG();if(l.trucks-i.tr<Math.max(1,l.jobs.length))return"Trucks are out on contracts";l.trucks-=i.tr}
-  if(ishStorable(i)&&s.loc[k]){const m=Object.assign({},ishLoc(k));if(n-1<ishStored(k)){const lo=ishLo(k),ix=lo.findLastIndex(x=>m[x]>0),c=ix>=0?String(lo[ix]):Object.keys(m).pop();if(ix>=0)lo.splice(ix,1);if(c){m[c]--;if(m[c]<=0)delete m[c];if(i.tr){const h=HB(+c);h.res=Math.max(0,h.res-i.tr)}}}s.loc[k]=m} // unstored units are sold first, then the most recently sent city (s.lo order, else the last-filled city)
+  if(i.tr){const l=LG(),idl=ishIdle(k),fromV=Math.min(i.tr,idl.length),fromP=i.tr-fromV;if(fromP>(s.pl||0)||(fromP&&l.trucks-fromP<Math.max(1,l.jobs.length)))return"Its trucks are busy";
+    const gone=new Set(idl.slice(0,fromV));S.fleet=S.fleet.filter(v=>!gone.has(v));if(fromP){l.trucks-=fromP;s.pl-=fromP}}
+  if(ishStorable(i)&&s.loc[k]){const m=Object.assign({},ishLoc(k));if(n-1<ishStored(k)){const lo=ishLo(k),ix=lo.findLastIndex(x=>m[x]>0),c=ix>=0?String(lo[ix]):Object.keys(m).pop();if(ix>=0)lo.splice(ix,1);if(c){m[c]--;if(m[c]<=0)delete m[c]}}s.loc[k]=m} // unstored units are sold first, then the most recently sent city (s.lo order, else the last-filled city)
   const per=(s.val[k]||0)/n;S.cash+=per*ISH_SELL;s.val[k]=per*(n-1);if(n-1<=0){delete s.own[k];delete s.val[k];delete s.loc[k];if(s.lo)delete s.lo[k]}else s.own[k]=n-1;
   for(const j of ISH)if(j.prev===k&&!s.own[k]&&s.own[j.k]){} // dependants stay: the chain only gates new purchases
   ISHV++;return""}
@@ -11943,7 +11955,7 @@ function ishStored(k){let t=0;const o=ishLoc(k);for(const c in o)t+=o[c];return 
 function ishMove(k,from,to){const i=ishC(k),s=ishS();if(!ishStorable(i)||!s.own[k])return"Nothing to move";if(!hubs().some(c=>String(c.id)===String(to)))return"Buy a Trucking company there first";
   const cur=ishLoc(k);if(from){if(!cur[from])return"Not stored there";if(String(from)===String(to))return""}else if(ishStored(k)>=s.own[k])return"All units are already stored";
   const m=s.loc[k]=Object.assign({},cur);if(from){m[from]--;if(m[from]<=0)delete m[from]}m[to]=(m[to]||0)+1;{const lo=ishLo(k),ix=from?lo.findLastIndex(x=>String(x)===String(from)):-1;if(ix>=0)lo.splice(ix,1);lo.push(+to);if(lo.length>200)lo.splice(0,lo.length-200)}
-  if(i.tr){if(from){const hf=HB(+from);hf.res=Math.max(0,hf.res-i.tr)}const ht=HB(+to);ht.res=Math.min(ht.res+i.tr,LG().trucks)} // a sent shop truck is reserved for (always available to) that hub, not left in the shared pool
+  if(i.tr){const L=ishIdle(k),vs=L.filter(v=>String(v.city)!==String(to));for(const v of vs.slice(0,i.tr))v.city=+to} // its idle trucks go to that city's idle list
   ISHV++;return""}
 function ishLocTxt(k){const s=ishS(),n=s.own[k]||0,o=ishLoc(k),p=[];for(const c in o)p.push(`${o[c]} in ${CITIES[c].name}`);const u=n-ishStored(k);if(u>0)p.push(`${u} not stored`);return p.join(" · ")}
 /* ---- UI ---- */
@@ -11963,7 +11975,7 @@ function ishStoreHtml(i,n){const hs=hubs(),o=ishLoc(i.k),u=n-ishStored(i.k),pk=I
   if(u>0)h+=`<button class="lx-btn" data-is="send" data-k="${i.k}" data-f="">Send to...</button>`;
   for(const c in o)h+=`<button class="lx-btn" data-is="send" data-k="${i.k}" data-f="${c}" title="Move one unit out of ${dxE(CITIES[c].name)}">Move 1 from ${dxE(CITIES[c].name)}</button>`;
   h+=`</div>`;
-  if(open){h+=`<div class="lx-note" style="margin-top:6px">`+(hs.length?`<b>Send 1 ${dxE(i.n.toLowerCase())}${pk.f?" from "+dxE(CITIES[pk.f]?CITIES[pk.f].name:""):""} to:</b> `+hs.map(c=>`<button class="lx-btn" data-is="to" data-k="${i.k}" data-f="${pk.f}" data-c="${c.id}">${dxE(c.name)}</button>`).join(" ")+`<br><small>Storing only records where the unit is kept; fleet, pay and output are unchanged. Moving is free. Selling works from anywhere.</small>`:`Buy a Trucking company first, then you can store vehicles and machines in that city.`)+` <button class="lx-btn" data-is="pkx">Close</button></div>`}
+  if(open){h+=`<div class="lx-note" style="margin-top:6px">`+(hs.length?`<b>Send 1 ${dxE(i.n.toLowerCase())}${pk.f?" from "+dxE(CITIES[pk.f]?CITIES[pk.f].name:""):""} to:</b> `+hs.map(c=>`<button class="lx-btn" data-is="to" data-k="${i.k}" data-f="${pk.f}" data-c="${c.id}">${dxE(c.name)}</button>`).join(" ")+`<br><small>${i.tr?"The truck parks idle in that city. From the Logistics Fleet list you can then put it in the shared pool or make it a contract truck for that city.":"Storing only records where the unit is kept; fleet, pay and output are unchanged."} Moving is free. Selling works from anywhere.</small>`:`Buy a Trucking company first, then you can store vehicles and machines in that city.`)+` <button class="lx-btn" data-is="pkx">Close</button></div>`}
   return h}
 function ishCard(i){const s=ishWk(),n=s.own[i.k]||0,left=ishLeft(i),rq=ishReq(i),q=Math.max(1,Math.min(ISS().q,i.max-n,left)),full=n>=i.max,out=left<=0;
   const tot=ishQuote(i,q),down=Math.round(tot*ISH_DOWN),fin=ISS().fin,need=fin?down:tot,can=!rq.length&&!full&&!out&&S.cash>=need&&(!fin||s.fin.length<ISH_MAXFIN);
