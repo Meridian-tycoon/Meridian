@@ -6212,9 +6212,18 @@ const fee=a=>S.exVia?EXFEE:PUBFEE;
 /* MARKET TRADE CAP: most a player can buy or sell in one stock or crypto trade, by value. Dev (DEV_UIDS) and Moderators have no cap. */
 const MKT_TRADE_CAP=800e9;
 function mktCapFree(){try{const u=ON.user&&ON.user.uid;return !!u&&(devUid(u)||!!MODERATORS[u])}catch(e){return false}}
+/* buy limits (Mark, 2026-11-10): per player, at most $500M held in one company/coin, $2B in all stocks and crypto together, and $100M bought of one company per day */
+const MKT_LIM={one:500e6,all:2e9,day:100e6};
+function mktDayBuys(){const m=MK(),d=Math.floor(Date.now()/864e5);if(!m.bd||m.bd.d!==d)m.bd={d,s:{}};return m.bd}
+function mktBuyRoom(s){if(mktCapFree())return{v:Infinity};const m=MK(),px=m.px;let all=0;for(const k in m.hold)all+=(px[k]||0)*(m.hold[k].q||0);
+  const one=(px[s]||0)*((m.hold[s]&&m.hold[s].q)||0),day=mktDayBuys().s[s]||0,r=[[MKT_LIM.one-one,`You can hold at most ${fmt(MKT_LIM.one)} of ${s}`],[MKT_LIM.all-all,`Your stocks and crypto are capped at ${fmt(MKT_LIM.all)} in total`],[MKT_LIM.day-day,`You can buy at most ${fmt(MKT_LIM.day)} of ${s} per day`]];
+  r.sort((a,b)=>a[0]-b[0]);return{v:Math.max(0,r[0][0]),why:r[0][1]}}
+/* shrink a buy to the room left; returns the new quantity (0 = blocked, with a toast) */
+function mktBuyFit(s,q,p){const a=AK[s],r=mktBuyRoom(s);if(p*q<=r.v)return q;let n=r.v/p;n=a&&a.t==="c"?Math.floor(n*1e6)/1e6:Math.floor(n);if(!(n>0)){toast(r.why);return 0}toast(r.why+`: buying ${fq(n)} instead`);return n}
+function mktBuyLog(s,v){if(mktCapFree())return;const b=mktDayBuys();b.s[s]=(b.s[s]||0)+v}
 function mktCapErr(v){return !mktCapFree()&&v>MKT_TRADE_CAP?`Trade limit is ${fmt(MKT_TRADE_CAP)} per trade`:""}
 function trade(s,q){const m=MK(),a=AK[s],p=m.px[s],h=m.hold[s]||{q:0,avg:0};if(q>0&&prodBlock(a)){toast(prodBlock(a));return}{const e=mktCapErr(p*Math.min(Math.abs(q),q>0?Infinity:h.q));if(e){toast(e);return}}
-  if(q>0){const cost=p*q*(1+fee(a));if(S.cash<cost){toast(`Need ${fmt(cost)}`);return}S.cash-=cost;m.hold[s]=h;exOnTrade(a,p*q);h.avg=(h.avg*h.q+p*q)/(h.q+q);h.q+=q;toast(`Bought ${fq(q)} ${s}`)}
+  if(q>0){q=mktBuyFit(s,q,p);if(!(q>0))return;const cost=p*q*(1+fee(a));if(S.cash<cost){toast(`Need ${fmt(cost)}`);return}S.cash-=cost;mktBuyLog(s,p*q);m.hold[s]=h;exOnTrade(a,p*q);h.avg=(h.avg*h.q+p*q)/(h.q+q);h.q+=q;toast(`Bought ${fq(q)} ${s}`)}
   else{q=Math.min(-q,h.q);if(q<=0)return;const v=p*q*(1-fee(a));S.cash+=v;exOnTrade(a,p*q);m.realized+=(p-h.avg)*q;wevAdd("tech",(p-h.avg)*q);h.q-=q;if(h.q<1e-9)delete m.hold[s];toast(`Sold ${fq(q)} ${s} for ${fmt(v)}`)}
   save();hud();phRender()}
 const fq=q=>q>=1?(+q.toFixed(q<10?3:0)).toLocaleString():(+q.toPrecision(3)).toString();
@@ -6436,8 +6445,8 @@ function exiDo(kind){if(!exOk())return toast("Sign in to trade with the exchange
   if(!own&&EX.ny.uid===ON.user.uid)return toast("Open your exchange to stock it");
   let run,ok;
   if((kind==="buy"||kind==="sell")&&!own){const e=mktCapErr(p*q);if(e)return toast(e)}
-  if(kind==="buy"){if(own)return;const cost=p*q*(1+f);if(S.cash<cost)return toast(`Need ${fmt(cost)}`);if(exiQty(s)<q-1e-9)return toast(`The exchange only has ${fq(exiQty(s))} ${s}`);
-    run=()=>exiTx(s,c=>{if(c<q-1e-9)throw new Error(`The exchange only has ${fq(c)} ${s}`);return exiRound(a,c-q)},{s,q,amt:Math.min(1e15,Math.round(p*q*EXFEE)),pr:Math.min(1e15,Math.round(p*q))});ok=()=>{S.cash-=cost;exiHold(s,q,p);const b=S.exb=S.exb||{};b[s]=(b[s]||0)+q;exiAcctPub();toast(`Bought ${fq(q)} ${s} from the exchange`)}}
+  if(kind==="buy"){if(own)return;q=mktBuyFit(s,q,p);if(!(q>0))return;const cost=p*q*(1+f);if(S.cash<cost)return toast(`Need ${fmt(cost)}`);if(exiQty(s)<q-1e-9)return toast(`The exchange only has ${fq(exiQty(s))} ${s}`);
+    run=()=>exiTx(s,c=>{if(c<q-1e-9)throw new Error(`The exchange only has ${fq(c)} ${s}`);return exiRound(a,c-q)},{s,q,amt:Math.min(1e15,Math.round(p*q*EXFEE)),pr:Math.min(1e15,Math.round(p*q))});ok=()=>{S.cash-=cost;mktBuyLog(s,p*q);exiHold(s,q,p);const b=S.exb=S.exb||{};b[s]=(b[s]||0)+q;exiAcctPub();toast(`Bought ${fq(q)} ${s} from the exchange`)}}
   else if(kind==="sell"){if(own)return;if(!hd||hd.q<q-1e-9)return toast(`You own ${hd?fq(hd.q):0} ${s}`);const sb=exiSellable(s);if(sb<q-1e-9)return toast(sb>0?`You can only sell back the ${fq(sb)} ${s} you bought from this exchange`:`You can only sell the exchange shares you bought from it`);const v=p*q*(1-f);
     run=()=>exiTx(s,c=>exiRound(a,c+q),{s,q,amt:Math.min(1e15,Math.round(p*q*EXFEE)),pr:-Math.min(1e15,Math.round(p*q))});ok=()=>{S.cash+=v;exiHold(s,-q,p);const b=S.exb=S.exb||{};b[s]=Math.max(0,(b[s]||0)-q);if(b[s]<1e-9)delete b[s];exiAcctPub();toast(`Sold ${fq(q)} ${s} to the exchange for ${fmt(v)}`)}}
   else if(kind==="stock"){if(!own)return;const cost=p*q;   // owner stock-up pays no exchange fee
