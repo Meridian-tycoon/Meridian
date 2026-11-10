@@ -11320,7 +11320,7 @@ function lxFleetTab(lg){const X=LX(),now=Date.now();let h="";
       if(v.route){const r=v.route;tag=`<span class="lx-tag g">ROUTE</span>`;st=`Route ${dxE(CITIES[r.from].name)} ⇄ ${dxE(CITIES[r.to].name)} · ${dxE(lxN(r.g))} · at ${c?dxE(c.name):"?"}`;acts=`<button class="lx-btn" data-lx="vstop" data-id="${v.id}">Stop route</button>`}
       else if(v.job){tag=`<span class="lx-tag b">JOB</span>`;acts=`<button class="lx-btn" data-lx="vrel" data-id="${v.id}">Release</button>`}
       else if(!v.cargo)acts=`<button class="lx-btn" data-lx="vmv" data-id="${v.id}">${mv?"Close":"Move empty…"}</button>`;
-      if(v.ish&&vSellOk(Object.assign({},v,{ish:0}))){tag=`<span class="lx-tag">SHOP</span>`;acts+=`<button class="lx-btn" data-lx="vpool" data-id="${v.id}">To shared pool</button>${c&&(S.own[c.id]||{}).trucking?`<button class="lx-btn" data-lx="vctr" data-id="${v.id}">Contract truck for ${dxE(c.name)}</button>`:""}`}}
+}
     if(v.arr&&v.job)tag=`<span class="lx-tag b">JOB</span>`;else if(v.arr&&v.route)tag=`<span class="lx-tag g">ROUTE</span>`;
     h+=`<div class="lx-it"><div class="m"><b>${V.n} #${v.id}${tag}${fxCond(v)<40?`<span class="lx-tag r">WORN</span>`:""}</b><span>${st}</span><small>${fmtT(V.cap)} (${lxg(V.cap)} units of 1 t goods) · ${V.spd} km/day · ${fmtc(V.km*fuelM())}/km · condition ${Math.round(fxCond(v))}% · upkeep ${fmtc(fxUp(v))}/day</small></div><div class="a">${acts}${!v.arr&&fxFee(v)>0&&fxCond(v)<99.5?`<button class="lx-btn" data-lx="vsvc" data-id="${v.id}" ${S.cash<fxFee(v)?"disabled":""}>Service ${fmtc(fxFee(v))}</button>`:""}</div></div>`;
     if(mv){const c=CITIES[v.city],ds=CITIES.filter(d=>d!==c&&hasWh(d)&&lxVehOK(v,c,d));h+=`<div class="lx-it" style="padding-top:0"><div class="m"><select class="lx-in" data-lxm="to">${ds.length?ds.map(d=>lxOpt(d.id,`${d.name} · ${Math.round(distKm(c,d)).toLocaleString()} km · ${fmt(vFuel(v.type,distKm(c,d),0,c,d))} fuel`,lg.mv.to)).join(""):`<option>No reachable warehouse city</option>`}</select></div><div class="a"><button class="lx-btn pri" data-lx="vgo" data-id="${v.id}" ${ds.length?"":"disabled"}>Go</button></div></div>`}}
@@ -11390,7 +11390,6 @@ function lxAct(a,b){if(a==="mnyf"){MNY.f=b.dataset.v;MNY.sel=-1;dxRender();retur
   else if(a==="vmv"){const id=+b.dataset.id;lg.mv=lg.mv&&lg.mv.id===id?null:{id,to:-1}}
   else if(a==="vgo"){const v=S.fleet.find(x=>x.id===+b.dataset.id),c=v&&CITIES[v.city],d=lg.mv&&CITIES[+lg.mv.to];
     if(v&&c&&d&&!v.arr&&!v.cargo){const why=lxBlock(c,d);if(why)lxNote(why);else if(!lxVehOK(v,c,d))lxNote("Trucks can't cross oceans.");else if(depart(v,c,d,"")){v.route=null;v.job=0;lxNote(`${VEH[v.type].n} #${v.id} is driving empty to ${d.name}.`);lg.mv=null;done=true}else lxNote("Not enough cash for fuel.")}}
-  else if(a==="vpool"||a==="vctr"){const r=ishToPool(+b.dataset.id,a==="vctr");lxNote(r||(a==="vctr"?"Truck is now a contract truck reserved for that city's Trucking company.":"Truck joined the shared trucking pool."));if(!r)done=true}
   else if(a==="vsvc"){const v=S.fleet.find(x=>x.id===+b.dataset.id);if(v){const fee=fxFee(v);if(fxService(v)){lxNote(`${VEH[v.type].n} #${v.id} serviced for ${fmtc(fee)}.`);done=true}else lxNote("Can't service that now (moving or not enough cash).")}}
   else if(a==="vsvcall"){let n=0,t=0;for(const v of S.fleet){if(v.arr||!(fxFee(v)>0))continue;const fee=fxFee(v);if(fxService(v)){n++;t+=fee}}if(n){lxNote(`Serviced ${n} vehicle${n>1?"s":""} for ${fmtc(t)}.`);done=true}else lxNote("Nothing to service or not enough cash.")}
   else if(a==="vbuy"){const k=b.dataset.k,V=VEH[k],c=CITIES[lg.bc];if(V&&c&&hasWh(c)&&S.cash>=V.cost){S.cash-=V.cost;S.fleet.push({id:S.nid++,type:k,city:c.id,paid:V.cost,cond:100});lxNote(`${V.n} ready in ${c.name}.`);done=true}}
@@ -11916,7 +11915,7 @@ const ISH_PB=50;let ishScC=null;
 function ishScale(i){if(!(i.eff.biz||i.eff.ret))return 1;const key=(S.day||1)+"|"+ISHV+"|"+Object.keys(S.own).length,c=ishScC&&ishScC.key===key?ishScC:(ishScC={key});if(c[i.k]==null)c[i.k]=Math.max(.1,ishWorth(i,1)*ISH_PB/i.cost);return c[i.k]}
 function ishQuote(i,q){const s=ishS(),n=s.own[i.k]||0,mk=ishMk(i.cat),sc=ishScale(i);let t=0;for(let j=0;j<q;j++)t+=i.cost*sc*mk*Math.pow(1.05,n+j);return Math.round(t*(1-ishDisc(q)))}
 function ishReq(i){const m=[];if(i.sz>ishSize())m.push(`city size ${i.sz}+`);if(i.tech&&!hasTech(i.tech))m.push(`research: ${TK[i.tech]?TK[i.tech].n:i.tech}`);if(i.prev&&!ishN(i.prev))m.push(`own ${/^[aeiou]|^ERP/i.test(ISHC[i.prev].n)?"an":"a"} ${/^[A-Z]{2}/.test(ISHC[i.prev].n)?ISHC[i.prev].n:ISHC[i.prev].n.toLowerCase()}`);return m}
-function ishTick(){try{const s=ishS(),now=Date.now(),dt=Math.max(0,Math.min(now-(s.t||now),48*DAYMS));s.t=now;if(!dt)return{paid:0,done:0,open:s.fin.length};const h=dt/DAYMS;let paid=0;
+function ishTick(){try{ishSweep();const s=ishS(),now=Date.now(),dt=Math.max(0,Math.min(now-(s.t||now),48*DAYMS));s.t=now;if(!dt)return{paid:0,done:0,open:s.fin.length};const h=dt/DAYMS;let paid=0;
   for(const f of s.fin){let p=Math.min(f.left,f.pay*h);if(f.left-p<=.5)p=f.left;f.left-=p;S.cash-=p;paid+=p}const n0=s.fin.length;s.fin=s.fin.filter(f=>f.left>.5);const done=n0-s.fin.length; // the only place loan payments are billed (capped at the balance); saleTick leaves them out of totals().inc
   const e=ishE();if(e.rp>0)S.rpP=(S.rpP||0)+e.rp*h;return{paid,done,open:s.fin.length}}catch(err){console.warn("ishTick",err);return null}}
 every(4000,ishTick);
@@ -11928,13 +11927,11 @@ function ishBuy(k,q,fin){const i=ishC(k);if(!i)return"Unknown item";const s=ishW
     const debt=Math.round((tot-down)*(1+ISH_INT));S.cash-=down;s.fin.push({k,n:q,left:debt,pay:debt/ISH_TERM})}
   else{if(S.cash<tot)return`Need ${fmt(tot)}`;S.cash-=tot}
   s.own[k]=n+q;s.val[k]=(s.val[k]||0)+tot;s.st[k]=(s.st[k]||0)+q;s.spent+=tot;
-  if(i.tr){const c=ishHome();if(c){for(let j=0;j<i.tr*q;j++)S.fleet.push({id:S.nid++,type:ISH_VT[k]||"truck",city:c.id,paid:0,cond:100,ish:k})}else{const l=LG(),a=Math.min(i.tr*q,TRK_CEIL-l.trucks);l.trucks+=a;s.pl=(s.pl||0)+a}}
+  if(i.tr){const l=LG(),a=Math.min(i.tr*q,TRK_CEIL-l.trucks);l.trucks+=a;s.pl=(s.pl||0)+a} // shop trucks always join the shared trucking pool
   ISHV++;return""}
-/* shop trucks arrive as idle vehicles: first Trucking hub, else an HQ city, else any city where you own a business (none = straight into the shared pool) */
-const ISH_VT={pickup:"truck",box:"truck",semi:"hvtruck",reefer:"hvtruck",roadtrain:"roadtrain",convoy:"roadtrain"};
-function ishHome(){const h=hubs();if(h.length)return h[0];for(const id in S.hq)if(S.hq[id]&&CITIES[id])return CITIES[id];return CITIES.find(c=>S.own[c.id]&&Object.keys(S.own[c.id]).length)||null}
 const ishIdle=k=>S.fleet.filter(v=>v.ish===k&&vSellOk(Object.assign({},v,{ish:0})));
 /* an idle shop truck joins the Trucking contract fleet: shared pool, or reserved for its city's Trucking company */
+function ishSweep(){try{for(const v of (S.fleet||[]).filter(x=>x.ish))ishToPool(v.id,false)}catch(e){}}
 function ishToPool(id,ctr){const v=S.fleet.find(x=>x.id===id),s=ishS(),l=LG();if(!v||!v.ish||!vSellOk(Object.assign({},v,{ish:0})))return"That truck is busy";if(l.trucks>=TRK_CEIL)return"The trucking fleet is full";
   const c=CITIES[v.city];if(ctr&&!(c&&(S.own[c.id]||{}).trucking))return"No Trucking company in that city";
   S.fleet=S.fleet.filter(x=>x!==v);l.trucks++;s.pl=(s.pl||0)+1;if(ctr){const h=HB(c.id);h.res=Math.min(h.res+1,l.trucks)}ISHV++;return""}
@@ -11947,7 +11944,7 @@ function ishSell(k){const i=ishC(k),s=ishS(),n=s.own[k]||0;if(!i||!n)return"Noth
   ISHV++;return""}
 function ishC(k){return ISHC[k]}
 /* ---- storage: vehicles and machines can be stored in a city where you own a Trucking company (record only, no gameplay effect) ---- */
-const ishStorable=i=>i&&(i.cat==="veh"||i.cat==="mac");
+const ishStorable=i=>i&&i.cat==="mac"; // vehicles live in the shared trucking pool, so only machines can be stored in a city
 /* units stored per hub city (cities that lost their Trucking company no longer count) */
 function ishLoc(k){const s=ishS(),o=s.loc[k]||{},r={};let room=s.own[k]||0;const hs=hubs();for(const c of hs){const n=Math.min(room,o[c.id]||0);if(n>0){r[c.id]=n;room-=n}}return r}
 function ishLo(k){const s=ishS();if(!s.lo||typeof s.lo!=="object"||Array.isArray(s.lo))s.lo={};return Array.isArray(s.lo[k])?s.lo[k]:(s.lo[k]=[])} // send order (optional): one city id per send, oldest first
