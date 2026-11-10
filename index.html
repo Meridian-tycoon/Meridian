@@ -1231,7 +1231,7 @@ function commit(){checkGoals();save();renderSheet();hud();draw();if(typeof tutTi
 /* ---------- industry: land, farms, mines, factories, warehouses, fleet ---------- */
 S.sites=S.sites||[];S.lease=S.lease||{};S.sup=S.sup||{};S.iev=S.iev||{};S.pand=S.pand||{cur:null,hist:[]};S.inv=S.inv||{};S.wh=S.wh||{};S.px=S.px||{};S.auto=S.auto||{};S.fleet=S.fleet||[];S.aline=!!S.aline;S.alPause=S.alPause&&typeof S.alPause==="object"?S.alPause:{};S.dvl=Array.isArray(S.dvl)?S.dvl:[];S.nid=S.nid||1;
 const G={wheat:["Wheat",250,"raw"],corn:["Corn",200,"raw"],cattle:["Cattle",3200,"raw"],ore:["Iron ore",110,"raw"],coal:["Coal",130,"raw"],sand:["Sand",20,"raw"],
-  flour:["Flour",500,"mid"],beef:["Beef",2400,"mid"],steel:["Steel",670,"mid"],glass:["Glass",200,"mid"],concrete:["Concrete",90,"mid"],
+  flour:["Flour",500,"mid"],beef:["Beef",2400,"mid"],steel:["Steel",670,"mid"],glass:["Glass",200,"mid"],concrete:["Concrete",90,"mid"],lime:["Limestone",25,"raw"],
   bread:["Bread",370,"fin"],burgers:["Burgers",3600,"fin"],tools:["Tools",180,"fin"],electronics:["Electronics",3300,"fin"]};
 Object.assign(G,{power:["Electricity (MWh)",45,"mid"],oil:["Crude oil",550,"raw"],fuel:["Fuel",800,"mid"],plastics:["Plastics",800,"mid"],cars:["Cars",24000,"fin"],chips:["Microchips",9100,"mid"],
   medicine:["Medicine",5700,"fin"],cannabis:["Cannabis flower",40,"raw"],prerolls:["Pre-rolls",90,"fin"],edibles:["Cannabis edibles",630,"fin"],thcoil:["THC oil & vapes",870,"fin"],aero:["Aerospace parts",72000,"mid"],robots:["Robots",34000,"fin"],
@@ -1252,7 +1252,8 @@ const OPS=[
  {k:"burger",n:"Burger plant",cat:"Factory",in:{beef:4,bread:4},out:{burgers:8},up:4800,build:380000},
  {k:"steel",n:"Steel mill",cat:"Factory",in:{ore:10,coal:5},out:{steel:6},up:750,build:51000},
  {k:"glass",n:"Glassworks",cat:"Factory",in:{sand:20,coal:4},out:{glass:12},up:500,build:32000},
- {k:"cement",n:"Cement works",cat:"Factory",in:{sand:20,coal:3},out:{concrete:15},up:400,build:28000},   // concrete for real estate builds (Mark, 2026-11-10)
+ {k:"limequarry",n:"Limestone quarry",cat:"Mine",out:{lime:15},up:160,build:5200,dep:"lime"},
+ {k:"cement",n:"Cement works",cat:"Factory",in:{lime:10,sand:10,coal:3},out:{concrete:15},up:400,build:28000},   // concrete for real estate builds: limestone + sand + coal (Mark, 2026-11-10)
  {k:"tools",n:"Tool factory",cat:"Factory",gone:1,in:{steel:4},out:{tools:4},up:120,build:12000},
  {k:"elec",n:"Electronics plant",cat:"Factory",in:{glass:4,steel:2},out:{electronics:2},up:1400,build:160000}];
 OPS.push(
@@ -1447,7 +1448,7 @@ const plotPrice=(c,z,k)=>Math.round(haPrice(c)*ZONE[z].pm*LAND[k][1]);
    COST. V.km is the running cost per km of a full load (fuel, crew, port/airport fees); an empty or part-loaded vehicle pays FUELFIX of it plus the rest in proportion to load (vFuel).
    Full-load cost per tonne-km (V.km/V.cap, x the fuel price index): truck $0.0267, ship $0.0027 (container tech halves it), plane $0.267: ship 10x cheaper than truck, plane 10x dearer (same 1:10:100 ratios as before).
    Purchase prices: truck $60K, ship $12M, plane $18M (were $15K / $250K / $360K; owned vehicles keep their old value via v.paid/vPrice). Hire fees (CARR rate) were scaled by the same 2.67x. */
-const TPU={wheat:1,corn:1,cattle:.5,ore:1,coal:1,sand:1,flour:1,beef:.4,steel:1,glass:.8,concrete:1,bread:.3,burgers:.15,tools:.5,electronics:.1,power:1,oil:1,fuel:1,plastics:.6,cars:3,chips:.05,medicine:.1,aero:2,robots:1.5,uranium:1,armored:20,drones:1.5,engines:8,satellites:5,launches:30};
+const TPU={wheat:1,corn:1,cattle:.5,ore:1,coal:1,sand:1,flour:1,beef:.4,steel:1,glass:.8,concrete:1,lime:1,bread:.3,burgers:.15,tools:.5,electronics:.1,power:1,oil:1,fuel:1,plastics:.6,cars:3,chips:.05,medicine:.1,aero:2,robots:1.5,uranium:1,armored:20,drones:1.5,engines:8,satellites:5,launches:30};
 const tpu=g=>TPU[g]>0?TPU[g]:1;
 const FUELFIX=.4,LEGSPD={truck:250,ship:120};
 /* cls = behaviour class (truck / ship / plane): routing, hub and port bonuses, wear, leg pace and icons all key off vcls(type). Bigger models are cheaper per tonne-km. */
@@ -1469,7 +1470,7 @@ const ISLAND=new Set(["Reykjavík","Auckland","Tokyo","Manila","Jakarta"].map(n=
 const landmass=c=>ISLAND.has(c.id)?"i"+c.id:c.lon<-30?"am":(c.lat<-10&&c.lon>110)?"oc":"afeu";
 const reg=c=>c.lon<-30?"am":c.lat<-10&&c.lon>100?"oc":c.lon<60&&c.lat<36&&c.lon>-20?"af":c.lon<50?"eu":"as";
 applyTechs();
-const deps=c=>c.dep||["ore","coal","sand","oil"].filter((r,i)=>((c.id*37+i*11+c.size)%7)<(r==="oil"?2:3)-(c.size>=5?1:0));
+const deps=c=>{const d=(c.dep||["ore","coal","sand","oil"].filter((r,i)=>((c.id*37+i*11+c.size)%7)<(r==="oil"?2:3)-(c.size>=5?1:0))).slice();if(!d.includes("lime")&&((c.id*29+c.size*5)%7)<3)d.push("lime");return d};   // limestone added 2026-11-10; existing deposits unchanged
 const haPrice=c=>Math.round(900*PRICE[c.size]*PRICE[c.size]);
 /* WAREHOUSE SPACE IS IN TONNES: 400 t x 2^level (a 1 t/unit good fills it exactly as the old 400 units did). Stock stays in units; stored() is its weight in tonnes (units x tpu), storedU() the unit count.
    Old saves keep their units; a warehouse already over capacity just takes no new goods (room is clamped at 0, nothing is removed). Deliveries already en route still unload (they never checked room on arrival). */
