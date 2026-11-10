@@ -2741,7 +2741,7 @@ function entities(){const out=[];
     /* every extra unit gets its own building too (Mark, 2026-11-07), up to XMAP extra buildings per city so the map stays smooth */
     for(const b of BIZ)if(S.own[id][b.k])XU(id,b.k).forEach((l,j)=>{if(nx++<XMAP)out.push({key:`biz:${id}:${b.k}:${j+1}`,c,label:b.n+" #"+(j+2),cls:"biz",tab:"biz",r:[.3,2.5],sub:"Lv "+l})})}
   for(const pr of S.props||[])out.push({key:`prop:${pr.id}`,c:CITIES[pr.city],label:PK[pr.k].n,cls:"prop",tab:"biz",r:[.4,3],sub:pr.occ?"Rented":"Vacant"});
-  for(const s of S.sites){const z=zoneOf(s)||"farm";out.push({key:`site:${s.id}`,c:CITIES[s.city],label:siteOp(s)?OP[s.op].n:(ZONE[z]||{n:"Land"}).n,cls:"site-"+z,tab:"ind",r:z==="farm"?[6,14]:z==="mine"?[5,12]:[2.5,6],sub:LAND[s.size][1]+" ha",mscale:({s:.8,m:1,l:1.25}[s.size]||1)*(1+.14*(slv(s)-1))})}
+  for(const s of S.sites){const z=zoneOf(s)||"farm";out.push({key:`site:${s.id}`,c:CITIES[s.city],label:siteOp(s)?OP[s.op].n:(ZONE[z]||{n:"Land"}).n,cls:"site-"+z,op:s.op,tab:"ind",r:z==="farm"?[6,14]:z==="mine"?[5,12]:[2.5,6],sub:LAND[s.size][1]+" ha",mscale:({s:.8,m:1,l:1.25}[s.size]||1)*(1+.14*(slv(s)-1))})}
   for(const id in S.hq)if(S.hq[id])out.push({key:`hq:${id}`,c:CITIES[id],label:"Headquarters",cls:"hq",tab:"hq",r:[0,.8]});
   for(const id in (S.lc||{})){const L=LCO(id);if(L&&CITIES[id])out.push({key:`lc:${id}`,c:CITIES[id],label:"Logistics center",cls:"wh",tab:"wh",r:[2,5],sub:"Lv "+L.lv,mscale:1+.08*Math.min(15,L.lv-1)})}
   for(const id in S.wh)if(S.wh[id]!=null)out.push({key:`wh:${id}`,c:CITIES[id],label:"Warehouse",cls:"wh",tab:"wh",r:[2,5]});
@@ -2794,7 +2794,7 @@ let pinRaf=0;try{MM.on("move",()=>{if(pinRaf||!inStreet)return;pinRaf=requestAni
 function clearPins(){for(const m of mkPins)m.remove();mkPins=[];for(const m of mkList)m.remove();mkList=[]}
 /* 3D models for the player's own buildings: a MapLibre custom layer drawn with three.js (loaded on first use) at street zoom.
    The label pins stay on top so taps still work; models are built from simple solids so no model files are needed. */
-const MODEL_KIND={biz:"shop",prop:"house",home:"house",hq:"hq",wh:"wh","site-ind":"factory","site-mine":"rig","site-farm":"farm"};
+const MODEL_KIND={biz:"shop",prop:"house",home:"house",hq:"hq",wh:"wh","site-ind":"factory","site-mine":"mine","site-farm":"farm"};
 let modelList=[],modelLayer=null;
 let lotSig="";
 function setModels(list){modelList=list;if(modelLayer)modelLayer.sync();try{MM.triggerRepaint()}catch(e){}
@@ -2823,6 +2823,28 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
     rig(){const g=new T.Group(),st=M(0x555d66),yel=M(0xe3b21c);g.add(box(24,2,24,0,0,0,M(0x77808a)));
       for(const [x,z] of [[-6,-6],[6,-6],[-6,6],[6,6]]){const l=cyl(.5,.5,38,x*.5,2,z*.5,st,6);l.rotation.set(z*-.012,0,x*.012);g.add(l)}
       const top=new T.Mesh(new T.ConeGeometry(2.8,8,4),yel);top.position.y=44;g.add(top);g.add(cyl(4,4,7,8,2,8,yel,16));return g},
+    /* one of your mines: an open pit dug in steps behind a fenced perimeter with a gate and guard hut; a digger swings in the pit and a dump truck drives up and down the ramp */
+    mine(m){const g=new T.Group(),op=m.op||"",col=/quarry/.test(op)?(/lime/.test(op)?0xd6d1c4:0xd8bf88):/ura/.test(op)?0x707560:0x8f8172,rock=M(col),deep=M(new T.Color(col).multiplyScalar(.62).getHex()),yel=M(0xe3b21c),dk=M(0x2f3640),post=M(0x9aa3ad),ura=/ura/.test(op);
+      g.add(box(30,.2,30,0,0,0,M(new T.Color(col).multiplyScalar(.85).getHex())));
+      const ring=(a,t,h,mat)=>{for(const [w,d,x,z] of [[2*a,t,0,a-t/2],[2*a,t,0,-a+t/2],[t,2*a-2*t,a-t/2,0],[t,2*a-2*t,-a+t/2,0]])g.add(box(w,h,d,x,.2,z,mat))};
+      ring(13.5,2.6,3.4,rock);ring(10.9,2.6,2.2,rock);ring(8.3,2.6,1.1,deep);g.add(box(11,.15,11,0,.2,0,deep));
+      {const r=box(11.2,.5,3,8.6,0,0,M(new T.Color(col).multiplyScalar(.75).getHex()));r.rotation.z=Math.atan2(3.4,11);r.position.y=1.9;g.add(r)}
+      for(const [x,z,s] of [[-9,-11.5,1],[-11.5,-8,.8],[11,-11,.9]]){const c=new T.Mesh(new T.ConeGeometry(2.2*s,2.6*s,7),rock);c.position.set(x,3.6+1.3*s,z);g.add(c)}
+      /* fence: posts every 3 m with top and bottom rails, a 6 m gate on the south side */
+      for(let i=-15;i<=15;i+=3)for(const [x,z] of [[i,-15],[i,15],[-15,i],[15,i]]){if(z===15&&Math.abs(x)<3)continue;g.add(cyl(.12,.12,2.6,x,0,z,post,5))}
+      for(const y of [.4,2.4]){g.add(box(30,.08,.08,0,y,-15,post));g.add(box(.08,.08,30,-15,y,0,post));g.add(box(.08,.08,30,15,y,0,post));g.add(box(12,.08,.08,-9,y,15,post));g.add(box(12,.08,.08,9,y,15,post))}
+      for(const s of [-1,1]){g.add(cyl(.22,.22,3.2,s*3,0,15,yel,6));const lf=box(2.9,1.6,.12,s*1.5,.6,15,M(0x3a3f46));g.add(lf);for(let k=0;k<3;k++)g.add(box(.35,1.6,.14,s*(.4+k*1),.6,15,yel))}
+      g.add(box(2.6,2.6,2.2,5.5,0,17,M(0xe9e4da)));g.add(box(3,.3,2.6,5.5,2.6,17,dk));g.add(box(1.2,.8,.1,5.5,1.3,18.12,M(0x5f8fb3)));
+      {const sg=box(5,1.4,.15,-6,2.2,16.2,ura?yel:M(0x1e3a5f));g.add(sg);g.add(cyl(.1,.1,2.2,-8,0,16.2,post,4));g.add(cyl(.1,.1,2.2,-4,0,16.2,post,4))}
+      if(ura){g.add(box(2.4,.3,2.4,-13,7,-13,dk));for(const [x,z] of [[-14,-14],[-12,-14],[-14,-12],[-12,-12]])g.add(cyl(.12,.12,7,x,0,z,post,4));g.add(box(2.2,1.6,2.2,-13,7.3,-13,M(0x55606b)))}
+      /* digger: tracks, cab and a boom group that swings */
+      const dg=new T.Group();dg.position.set(-2,.35,-2);dg.add(box(3.2,.8,2.6,0,0,0,dk));const up=new T.Group();up.position.y=.8;up.add(box(2.8,1.4,2.4,0,0,0,yel));up.add(box(1.2,1.1,1.2,-.6,1.4,.5,M(0x5f8fb3)));
+      const bm=box(.45,.45,4.2,0,1.2,2.6,yel);bm.rotation.x=-.5;up.add(bm);const bk=box(1.1,.9,.8,0,.5,4.6,dk);up.add(bk);dg.add(up);g.add(dg);
+      /* dump truck */
+      const tr=new T.Group();tr.add(box(3.4,1.1,1.9,0,.3,0,yel));tr.add(box(1.1,1,1.8,1.9,.3,0,M(0x5f8fb3)));const bed=box(2.6,.9,1.9,-.4,1.4,0,M(new T.Color(col).multiplyScalar(.7).getHex()));tr.add(bed);for(const [x,z] of [[-1.2,-1],[-1.2,1],[1.4,-1],[1.4,1]])tr.add(cyl(.45,.45,.4,x,0,z,dk,8).rotateX(Math.PI/2));g.add(tr);
+      const ph=((m.h||0)%1000)/1000*6.28;
+      g.userData.tick=t=>{t=t/1000+ph;up.rotation.y=Math.sin(t*.6)*1.1;bm.rotation.x=-.5+Math.sin(t*1.2)*.18;
+        const f=(Math.sin(t*.35)+1)/2;tr.position.set(3+f*11.2,.3+f*3.4,0);tr.rotation.set(0,Math.PI,Math.atan2(3.4,11.2)*(f>.02&&f<.98?1:0)*-1)};g.userData.tick(performance.now());return g},
     /* one of your shops: a small branded store, taller with its level, coloured by shop, with an awning and a sign band that light up at night */
     shop(m){const g=new T.Group(),lv=m.lv||1,fl=Math.min(3,1+Math.floor(lv/4)),pal=[0xc2410c,0x2563eb,0x16a34a,0x9333ea,0xd97706,0xdb2777,0x0891b2],c=pal[(m.h||0)%pal.length],nt=dark3d(),h=4.4*fl+.6,W=nt?0xffd98a:0;
       g.add(box(14,h,10,0,0,0,M(nt?0x3a3f48:0xd9cfc0)));g.add(box(14.8,.7,10.8,0,h,0,M(c)));
@@ -3133,9 +3155,9 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       c.m.position.set(p0[0]+dx*f,c.y!=null?c.y:.9,p0[1]+dz*f);c.m.rotation.y=-Math.atan2(dz,dx)+(c.v<0?Math.PI:0)}}
   function sync(){if(!T||!group)return;while(group.children.length)group.remove(group.children[0]);
     for(const m of modelList){const k=MODEL_KIND[m.cls];if(!k||!build[k])continue;const o=build[k](m),mc=maplibregl.MercatorCoordinate.fromLngLat([m.lon,m.lat],0),sc=mc.meterInMercatorCoordinateUnits();
-      {const dm={biz:[17,13],wh:[40,28],"site-ind":[36,26],"site-farm":[24,18],"site-mine":[30,30],hq:[28,28],home:[16,14],prop:[20,16]}[m.cls];if(dm){const [pw,pd]=dm,pm=M(0x6b7280),fm=M(0x374151);o.add(box(pw,.25,pd,0,0,0,pm));
+      {const dm={biz:[17,13],wh:[40,28],"site-ind":[36,26],"site-farm":[24,18],"site-mine":[30,30],hq:[28,28],home:[16,14],prop:[20,16]}[m.cls];if(dm&&k!=="mine"){const [pw,pd]=dm,pm=M(0x6b7280),fm=M(0x374151);o.add(box(pw,.25,pd,0,0,0,pm));
         for(const [fw,fd,fx,fz] of [[pw,.3,0,pd/2],[pw,.3,0,-pd/2],[.3,pd,pw/2,0],[.3,pd,-pw/2,0]])o.add(box(fw,1.4,fd,fx,.25,fz,fm))}}
-      if(m.k&&m.k!==1)o.scale.setScalar(m.k);o.userData={mc,sc};group.add(o)}}
+      if(m.k&&m.k!==1)o.scale.setScalar(m.k);o.userData={mc,sc,tick:o.userData.tick};group.add(o)}}
   let fogR=2500,wxCur="";const setFogR=r=>{fogR=r},setWx=w=>{wxCur=w||""};
   return{id:"meridian-models",type:"custom",renderingMode:"3d",setFogR,setWx,sync,setOrigin,addChunk,removeChunk,resetDetail,ready,count,stats,
     onAdd(mp,gl){map=mp;loadThree().then(t=>{T=t;ren=new T.WebGLRenderer({canvas:mp.getCanvas(),context:gl,antialias:true});ren.autoClear=false;
@@ -3146,9 +3168,10 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
         if(!dk){const w=SUNV.warm;sun.position.set(SUNV.x,SUNV.y,SUNV.z);sun.color.setRGB(1,1-.2*w,1-.42*w);hemi.color.setRGB(1,1-.06*w,1-.16*w);sun.intensity*=(.75+.35*SUNV.y)}else{sun.position.set(.4,1,.6);sun.color.setRGB(.72,.8,1);hemi.color.setRGB(.82,.86,1)}}
       const pm=new T.Matrix4().fromArray(args.defaultProjectionData?args.defaultProjectionData.mainMatrix:args.projectionMatrix||args);
       ren.resetState();if(det)det.visible=false;if(atmo)atmo.visible=false;
-      for(const o of group.children){const {mc,sc}=o.userData;
+      let anim=false;const tn=performance.now();for(const o of group.children){const {mc,sc}=o.userData;if(o.userData.tick&&lyOn("al")){anim=true;try{o.userData.tick(tn)}catch(e){o.userData.tick=null}}
         const m=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(sc,-sc,sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
         cam.projectionMatrix=pm.clone().multiply(m);for(const q of group.children)q.visible=q===o;ren.render(scene,cam)}
+      if(anim)map.triggerRepaint();
       if(det&&detO&&z>=15){for(const q of group.children)q.visible=false;det.visible=true;const mc=detO.mc,dm=new T.Matrix4().makeTranslation(mc.x,mc.y,mc.z).scale(new T.Vector3(detO.sc,-detO.sc,detO.sc)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
         {const f=fogU(),tr=map.transform,cp=tr&&tr.cameraPosition;if(cp&&detO){const kk=1/detO.sc,ws=512*Math.pow(2,map.getZoom());f.cam.value.set((cp[0]/ws-detO.mc.x)*kk,cp[2]/ws*kk,(cp[1]/ws-detO.mc.y)*kk)}
           const hr=new Date().getHours()+new Date().getMinutes()/60,auto=(()=>{try{return localStorage.getItem("meridian-3d-dark")==="a"}catch(e){return false}})(),warm=auto&&((hr>=17&&hr<19)||(hr>=6&&hr<8));
@@ -3241,7 +3264,7 @@ function renderPins(){clearPins();setModels([]);if(!inStreet)return;ensurePositi
   if(S.loc&&stCity&&S.loc.city===stCity.id){const tp=tripPos(Date.now()),pl=tp&&S.trip.local?tp:S.loc;const m=mkPin(pl.lat,pl.lon,"You","#be185d","You are here");m.getElement().style.zIndex=5;mkPins.push(m)}
   if(stCity&&hasAirport(stCity)){const a=airportPos(stCity);mkPins.push(mkPin(a.lat,a.lon,"Airport","#64748b",stCity.name+" airport"))}
   if(stCity){const a=stationPos(stCity);mkPins.push(mkPin(a.lat,a.lon,"Station","#64748b",stCity.name+" station"))}
-  for(const e of entities()){const p=S.pos[e.key];if(!p||!pinNear(p.lat,p.lon,_ctr))continue;let [col,txt]=PIN[e.cls]||["#333","•"];if(MODEL_KIND[e.cls]&&lyOn({biz:"mb","site-ind":"mf","site-farm":"mfa","site-mine":"mm",wh:"mw"}[e.cls]||"_")){let hh=0;for(const ch of e.key)hh=(hh*31+ch.charCodeAt(0))>>>0;modelList.push({cls:e.cls,lat:p.lat,lon:p.lon,k:e.mscale||1,lv:+String(e.sub||"").replace(/\D/g,"")||1,h:hh})}if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
+  for(const e of entities()){const p=S.pos[e.key];if(!p||!pinNear(p.lat,p.lon,_ctr))continue;let [col,txt]=PIN[e.cls]||["#333","•"];if(MODEL_KIND[e.cls]&&lyOn({biz:"mb","site-ind":"mf","site-farm":"mfa","site-mine":"mm",wh:"mw"}[e.cls]||"_")){let hh=0;for(const ch of e.key)hh=(hh*31+ch.charCodeAt(0))>>>0;modelList.push({cls:e.cls,lat:p.lat,lon:p.lon,k:e.mscale||1,lv:+String(e.sub||"").replace(/\D/g,"")||1,h:hh,op:e.op})}if(e.cls==="biz")txt=BIZTAG[e.key.split(":")[2]]||txt;
     {const ly={biz:"mb","site-ind":"mf","site-farm":"mfa","site-mine":"mm",wh:"mw"}[e.cls];if(ly&&!lyOn(ly))continue}
     mkPins.push(mkPin(p.lat,p.lon,txt,col,`${e.label}${e.sub?" · "+e.sub:""}\n${p.addr||e.c.name}`,()=>{tab=e.tab;openCity(e.c)}))}
   // rival branches in this city
