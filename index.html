@@ -6939,8 +6939,8 @@ const milEnemy=n=>Math.round(Math.max(MILCFG.enemyMin,ctyScale(n)*MILCFG.enemySt
 /* PR: rival armies doubled (matches WLCFG.k 5000); one-time lift of wars already running (S.ex2 marks it done) */
 function milEx2(){const m=S.pol&&S.pol.mil;if(S.ex2||!m)return;for(const n in m.wars||{}){const w=m.wars[n];if(w&&w.enemyMax>0){w.enemyMax*=2;w.enemyStr*=2}}S.ex2=1}
 const milGar=()=>{const m=mil();let g=0;for(const n in m.occ)g+=m.occ[n].gar||0;return g};
-function milStr(ter){const m=mil(),U=MILCFG.units;let s=0;for(const k in U){const c=k==="inf"?Math.max(0,m.units.inf-milGar()):m.units[k];s+=c*U[k].str*(ter?U[k].t[ter]:1)}return s}
-function milUpkeep(){const m=S.pol&&S.pol.mil;if(!m)return 0;let v=0;for(const k in MILCFG.units)v+=(m.units[k]||0)*MILCFG.units[k].up;return polLeader()?v*(1-presFx("upk")):v*MILCFG.reserveUp}
+function milStr(ter){const m=mil(),U=MILCFG.units;let s=0;for(const k in U){const c=k==="inf"?Math.max(0,m.units.inf-milGar()):m.units[k];s+=c*U[k].str*(ter?U[k].t[ter]:1)}return s*(1+.03*mbaLv("bar"))}
+function milUpkeep(){const m=S.pol&&S.pol.mil;if(!m)return 0;let v=0;for(const k in MILCFG.units)v+=(m.units[k]||0)*MILCFG.units[k].up;return polLeader()?v*(1-presFx("upk"))*(1-.02*mbaLv("bar")):v*MILCFG.reserveUp}
 function milOccIncome(){const m=S.pol&&S.pol.mil;if(!m||!m.occ)return 0;let v=0;for(const n in m.occ)v+=GOVCFG.share*MILCFG.occIncome*ctyScale(n)*(1-m.occ[n].resist/100);return v}
 const milCenter=n=>{const cs=ctyCities(n);return [cs.reduce((a,c)=>a+c.lon,0)/cs.length,cs.reduce((a,c)=>a+c.lat,0)/cs.length]};
 function milDist(a,b){const [x1,y1]=milCenter(a),[x2,y2]=milCenter(b),r=Math.PI/180,h=Math.sin((y2-y1)*r/2)**2+Math.cos(y1*r)*Math.cos(y2*r)*Math.sin((x2-x1)*r/2)**2;return 12742*Math.asin(Math.min(1,Math.sqrt(h)))}
@@ -7083,7 +7083,7 @@ function wpnBuild(k){const p=pol(),m=wpn(),W=WPNCFG.w[k];if(!W)return;if(!polLea
   if(NLCK.includes(k)&&nlcNeed())return toast(nlcNeed());if(!W.ok(m))return toast(`${W.n} needs ${W.need}`);if(!wpnFast()&&!WPNCFG.free.includes(k)&&m.wq.filter(q=>!WPNCFG.free.includes(q.k)).length>=WPNCFG.queue)return toast(`At most ${WPNCFG.queue} nukes/ICBMs in production`);
   const wc$=Math.round(W.cost*(typeof wcArms==="function"?wcArms():1));if(S.cash<wc$)return toast(`${W.n} costs ${fmt(wc$)}${wc$>W.cost?" (World council arms embargo)":""}`);S.cash-=wc$;
   if(wpnFast()){m.wpn[k]++;toast(`${W.n} ready in your arsenal (${devGod()?"developer":"moderator"}: instant build)`);return true}
-  m.wq.push({k,done:Date.now()+W.build*DAYMS});toast(`${W.n} in production · ready in ${fmtDur(W.build*DAYMS)}`);return true}
+  const bt=W.build*DAYMS*(1-.04*mbaLv("air"));m.wq.push({k,done:Date.now()+bt});toast(`${W.n} in production · ready in ${fmtDur(bt)}`);return true}
 // build several at once: stops at the first one that can't be built (cash, production limit) and says how many were ordered
 var _toastMute=null; // {last} while set: toast() only records the message (used by wpnBuildN)
 function wpnBuildN(k,n){const W=WPNCFG.w[k];n=Math.max(1,Math.min(99,Math.floor(+n||1)));if(n===1)return wpnBuild(k);let got=0,last="";
@@ -7203,7 +7203,7 @@ function wpnRetal(n,w,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,now=Date.now();i
   const W=WPNCFG.w[k],here=cs.find(c=>present(c));let c=cs[Math.floor(Math.random()*cs.length)];if(here&&Math.random()<BUNKCFG.aim)c=here;w.rcd=now+C.cd[k]*DAYMS;
   if(quiet)return wpnLand(n,k,c.id,1);
   // live play: announce it and let it land after a warning (bunkTick lands it)
-  const wn=BUNKCFG.warn[k]+intWarn(n);if(!Array.isArray(m.inc))m.inc=[];m.inc.push({n,k,city:c.id,t:now,at:now+wn*1000});
+  const wn=BUNKCFG.warn[k]+intWarn(n)+3*mbaLv("rad");if(!Array.isArray(m.inc))m.inc=[];m.inc.push({n,k,city:c.id,t:now,at:now+wn*1000});
   const t=`⚠ ${n} launched a ${W.n.toLowerCase()} at ${c.name}: impact in ${wn}s${wn>BUNKCFG.warn[k]?" (SIGINT early warning)":""}${present(c)?" · you are there, get to your bunker":""}`;S.log.unshift("Government: "+t);S.log=S.log.slice(0,3);milLog(m,t);toast(t);wpnAnim();try{if(!quiet)strikeAlarm(wn)}catch(e){}wmdBanner(k,`${WBN[k]}: ${n} → ${c.country} (${c.name}) · {s}`,Math.max(WMDBANNER_MS,wn*1000+1500),now+wn*1000)}
 // an enemy strike lands on city cid (n = attacker). Air defense may shoot a missile down first.
 function wpnLand(n,k,cid,quiet){const p=pol(),m=wpn(),C=WPNCFG.ret,W=WPNCFG.w[k],E=C.hit[k],c=CITIES[cid],now=Date.now();if(!W||!E||!c)return;const w=m.wars[n];
@@ -9424,7 +9424,7 @@ const flagSvg=n=>FLG[n]?`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60
 const PCAPPS=[["fin","📊","Finance","#2563eb"],["mny","💸","Money","#dc2626"],["off","👥","Office","#0e7490"],["log","📦","Logistics","#b45309"],["truck","🚚","Trucking","#15803d"],["air","✈️","Airline","#0369a1"],["ind","🏭","Industrial Shop","#7c3aed"],
   ["stocks","📈","Stocks","#16a34a"],["props","🏠","Properties","#166534"],["msg","💬","Messages","#0891b2"],["govt","🏛","Government","#7c2d12"],
   ["cal","📅","Calendar","#0e7490"],["th","🎨","Themes","#475569"],
-  ["eo","🖋","Executive Orders","#7c2d12",1],["bud","💰","Budget","#a16207",1],["poll","🗳","Polls & Elections","#1d4ed8",1],["dip","🤝","Diplomacy","#047857",1],["red","☎️","Red Phone","#b91c1c",1],["nuke","☢️","Nuclear Briefcase","#3f3f46",1],["cc","🚨","Command Center","#7f1d1d",1],["spy","🛰","Spy Feed","#1e3a8a",1],["space","🚀","Space Agency","#312e81",1],
+  ["eo","🖋","Executive Orders","#7c2d12",1],["bud","💰","Budget","#a16207",1],["poll","🗳","Polls & Elections","#1d4ed8",1],["dip","🤝","Diplomacy","#047857",1],["red","☎️","Red Phone","#b91c1c",1],["nuke","☢️","Nuclear Briefcase","#3f3f46",1],["cc","🚨","Command Center","#7f1d1d",1],["mba","🏰","Military Base","#365314",1],["spy","🛰","Spy Feed","#1e3a8a",1],["space","🚀","Space Agency","#312e81",1],
   ["pol","🗳","Politics","#1e40af",1],["mil","🪖","Military","#991b1b",1],["int","🕵️","Intelligence","#4338ca",1],["cab","🏛️","Cabinet","#9a3412",1],["wcl","🌍","World Council","#0f766e",1],["wf","🕶","Anonymous Funding","#6d28d9",1]];
 const PC={lock:true,start:false,bell:false,q:"",seen:{},msgTab:"g",say:"",t:0,focus:null};
 const pcCos=()=>Object.keys(S.hq||{}).filter(id=>S.hq[id]&&CITIES[id]).map(id=>CITIES[id]).sort((a,b)=>b.size-a.size);
@@ -9471,6 +9471,7 @@ body.ofc-desk.pcm-dx .mdx-win:not(.mx-win),body.ofc-desk.pcm-mx .mx-win,body.ofc
 body.ofc-desk.pcf-dx .mdx-win:not(.mx-win),body.ofc-desk.pcf-mx .mx-win,body.ofc-desk.pcf-ph #phone,body.ofc-desk.pcf-msg #pcmsg{z-index:52}
 .pcw{position:fixed;z-index:50;width:min(440px,calc(100vw - 24px));max-height:calc(100vh - 80px);display:flex;flex-direction:column;background:#0b1220;color:#e6ebf5;border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.12);font-family:Figtree,sans-serif;overflow:hidden}
 .pcw.pcmin{display:none!important}.pcw .hd{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#141d30;cursor:move;user-select:none}.pcw .hd b{flex:1}.pcw .hd button{border:0;background:#1c2840;color:#fff;border-radius:7px;width:28px;height:26px;cursor:pointer}
+#pcw-mba{width:min(1180px,calc(100vw - 24px))}
 .pcw .bd{overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px}.pcw .bd>*{flex-shrink:0}#pcw-cc{width:calc(100vw - 24px);height:calc(100vh - 80px);left:12px!important;top:12px!important}#pcw-cc .cc-grid.cc-free{display:block;position:relative}#pcw-cc .cc-free>.cc-p{position:absolute;max-height:none!important;box-shadow:0 6px 18px rgba(0,0,0,.4)}#pcw-cc .cc-free .cc-h{cursor:move;user-select:none;touch-action:none}#pcw-cc .cc-rz{position:sticky;align-self:flex-end;bottom:0;margin-top:auto;width:16px;height:16px;flex-shrink:0;cursor:nwse-resize;touch-action:none;background:linear-gradient(135deg,transparent 50%,rgba(255,255,255,.45) 50%);border-radius:0 0 8px 0}#pcw-cc .cc-lay{margin-left:auto;display:flex;gap:6px}@media(max-width:899px){#pcw-cc .cc-lay{display:none}}#pcw-cc .cc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px;align-items:start}#pcw-cc .cc-p[data-cc=ars]{max-height:620px}#pcw-cc .cc-p{background:#111a2e;border:1px solid rgba(255,255,255,.1);border-radius:10px;max-height:460px;overflow:auto;display:flex;flex-direction:column}#pcw-cc .cc-h{position:sticky;top:0;background:#7f1d1d;padding:6px 10px;font-weight:700;font-size:13px;z-index:1}#pcw-cc .cc-b{padding:8px;display:flex;flex-direction:column;gap:8px}#pcw-cc .cc-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border:2px solid;border-radius:10px;padding:8px}#pcw-cc .cc-s{display:flex;flex-direction:column;min-width:90px}#pcw-cc .cc-s small{font-size:10px;letter-spacing:.06em;opacity:.7}#pcw-cc .cc-s b{font-size:17px}#pcw-cc .cc-em{margin-left:auto;background:#b91c1c;color:#fff;font-weight:700}#pcw-cc .cc-inc{background:#450a0a;border-radius:8px;padding:6px 10px;font-size:13px;display:flex;flex-direction:column;gap:3px;animation:ccb 1s infinite alternate}@keyframes ccb{to{background:#7f1d1d}}#pcw-cc .cc-inc b{float:right}
 .cc-feed{margin:0 0 8px;background:rgba(15,23,42,.85);border:1px solid #7f1d1d;border-radius:8px;padding:6px 10px;font-size:13px;max-height:260px;overflow:auto}.cc-fh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}.cc-fh small,.cc-fr small{opacity:.7}.cc-fr{display:flex;gap:8px;align-items:center;padding:3px 0;border-top:1px solid rgba(127,127,127,.15)}.cc-fr>span:nth-child(2){flex:1;min-width:0}.cc-ft{font-size:10px;font-weight:700;color:#111;border-radius:4px;padding:1px 5px;flex-shrink:0}#pcw-cc .cc-q{align-items:center;flex-wrap:wrap;gap:6px}.pcw .pcd-kv{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:3px 0}
 .pw-it{border:1px solid #2a3750;border-radius:10px;padding:10px;font-size:13px;display:flex;flex-direction:column;gap:6px}.pw-it small,.pw-m{color:#9aa8bd;font-size:12px;margin:0}.pw-it.nk{border-color:#b91c1c;background:rgba(185,28,28,.12)}
@@ -9729,7 +9730,7 @@ function adSt(){const x=pres();if(!x.ad||typeof x.ad!=="object")x.ad={};if(!x.ad
 const adHas=c=>{try{const p=S.pol;if(!c||!p||p.r<0||!p.c)return false;const b=adSt().ad[c.id];return !!b&&Object.values(b).some(v=>+v>0)}catch(e){return false}};
 const ADFEE=.2; // extra shipping cost for a battery sent to a country you do not govern
 const adMine=c=>{try{const p=S.pol;return !!c&&!!p&&p.r>=0&&!!p.c&&(c.country===p.c||!!(p.ctrl&&p.ctrl[c.country]))}catch(e){return false}};
-function adCover(k,c){if(!adHas(c))return 0;const b=adSt().ad[c.id]||{};let q=1;for(const s in ADCFG.s){const y=ADCFG.s[s];if(adOk(y)&&y.k.includes(k)&&b[s]>0)q*=Math.pow(1-y.p,Math.min(ADCFG.max,b[s]))}return 1-q}
+function adCover(k,c){if(!adHas(c))return 0;const b=adSt().ad[c.id]||{};let q=1;for(const s in ADCFG.s){const y=ADCFG.s[s];if(adOk(y)&&y.k.includes(k)&&b[s]>0)q*=Math.pow(1-y.p,Math.min(ADCFG.max,b[s]))}if(b.pat>0&&adMine(c))q*=1-.03*mbaLv("pat");return 1-q}
 function adRoll(k,c,rnd){const p=adCover(k,c);if(!p)return false;const x=adSt();if(x.adc<1)return false;x.adc--;const h=(rnd!=null?rnd:Math.random())<p;x.ads.n++;if(h)x.ads.h++;return h}
 function adBuy(s){const y=ADCFG.s[s],x=adSt(),c=CITIES[ADSel];if(!adOk(y)||!c)return;if(!polLeader())return toast("Only a Leader can order air defence");const fx=adMine(c)?1:1+ADFEE,cost=Math.round(y.cost*fx);
   const b=x.ad[c.id]=x.ad[c.id]||{};if((b[s]||0)>=ADCFG.max)return toast(`${c.name} already has the maximum ${y.n} level`);if(S.cash<cost)return toast(`A ${y.n} ${fx>1?"sent to "+c.country+" ":""}costs ${fmt(cost)}`);
@@ -9765,7 +9766,7 @@ PCW.cc={t:"Command Center",ic:"🚨",r(){const q=(t,a)=>`<button class="pw-b" da
   const prot=["mar","emg"].filter(k=>PRESCFG.eo[k]&&!eoOn(k)&&!((x.eoCd[k]||0)>now));
   return `<div class="cc-top" style="border-color:${LC[lvl]}">${st("THREAT LEVEL","DEFCON "+lvl,LC[lvl])}${st("Inbound strikes",inc.length,inc.length?"#dc2626":"")}${st("Your wars",mw,mw?"#ea580c":"")}${st("World wars",ww)}${st("Approval",ap+"%",ap<40?"#dc2626":"")}<button class="pw-b cc-em" data-pw="ccprot"${prot.length&&polLeader()?"":" disabled"}>🚨 Emergency protocol</button></div>
   ${inc.length?`<div class="cc-inc">${inc.slice(0,6).map(y=>`<div>⚠ ${wfE(y[0])} from ${wfE(y[1]||"?")} → ${wfE((CITIES[y[2]]||{}).name||"sea")} <b>${Math.max(0,Math.ceil((y[3]-now)/1000))}s</b></div>`).join("")}</div>`:""}<p class="pw-m">Emergency protocol signs Martial law and State of emergency in one tap (skips any already in force or cooling down).</p>
-  ${sfFeedHtml()}<div class="pw-row cc-q"><b>Quick launch</b>${q("🪖 Military Command","mil")}${q("🕵️ Intelligence","int")}${q("🌍 World Council","wcl")}${q("🚀 Space Agency","space")}<span class="cc-lay">${pbtn("cclay",ccLay().off?"🧩 Free layout":"▦ Grid layout")}${pbtn("ccrst","↺ Reset layout")}</span></div>${(()=>{const L=ccLay(),ks=CCIDS.filter(k=>PCW[k]);CCFR=innerWidth>=900&&!L.off&&ks.every(k=>L.p[k]);return CCFR?`<div class="cc-grid cc-free" style="height:${Math.max(...ks.map(k=>L.p[k].y+L.p[k].h))+20}px">`:`<div class="cc-grid">`})()}`+CCIDS.filter(k=>PCW[k]).map(k=>{let h="";try{h=PCW[k].r()}catch(e){h="<p>Couldn't load.</p>"}const q=CCFR&&ccLay().p[k];return `<section class="cc-p" data-cc="${k}"${q?` style="left:${q.x}px;top:${q.y}px;width:${q.w}px;height:${q.h}px;z-index:${q.z||1}"`:""}><div class="cc-h">${PCW[k].ic} ${PCW[k].t}</div><div class="cc-b">${h}</div></section>`}).join("")+`</div>`},
+  ${mbaLv("rad")?`<p class="pw-m" style="color:#93c5fd">📡 Base radar L${mbaLv("rad")}: incoming strikes are spotted ${3*mbaLv("rad")}s earlier${inc.length?" (warning already added to the timers above)":""}</p>`:""}${sfFeedHtml()}<div class="pw-row cc-q"><b>Quick launch</b>${q("🪖 Military Command","mil")}${q("🏰 Military Base","mba")}${q("🕵️ Intelligence","int")}${q("🌍 World Council","wcl")}${q("🚀 Space Agency","space")}<span class="cc-lay">${pbtn("cclay",ccLay().off?"🧩 Free layout":"▦ Grid layout")}${pbtn("ccrst","↺ Reset layout")}</span></div>${(()=>{const L=ccLay(),ks=CCIDS.filter(k=>PCW[k]);CCFR=innerWidth>=900&&!L.off&&ks.every(k=>L.p[k]);return CCFR?`<div class="cc-grid cc-free" style="height:${Math.max(...ks.map(k=>L.p[k].y+L.p[k].h))+20}px">`:`<div class="cc-grid">`})()}`+CCIDS.filter(k=>PCW[k]).map(k=>{let h="";try{h=PCW[k].r()}catch(e){h="<p>Couldn't load.</p>"}const q=CCFR&&ccLay().p[k];return `<section class="cc-p" data-cc="${k}"${q?` style="left:${q.x}px;top:${q.y}px;width:${q.w}px;height:${q.h}px;z-index:${q.z||1}"`:""}><div class="cc-h">${PCW[k].ic} ${PCW[k].t}</div><div class="cc-b">${h}</div></section>`}).join("")+`</div>`},
   a(a,b,el){if(a==="ccgo"){pcApp(b.dataset.v);return}if(a==="cclay"||a==="ccrst"){const L=ccLay();if(a==="cclay")L.off=!L.off;else{L.p={};L.off=0}ccLaySave();pcwPaint("cc");return}if(a==="ccprot"){const n=Date.now(),x=pres();for(const k of ["mar","emg"])if(PRESCFG.eo[k]&&!presEoOn(k)&&!((x.eoCd[k]||0)>n))presEo(k);return}const s=b.closest("[data-cc]");if(s&&PCW[s.dataset.cc])PCW[s.dataset.cc].a(a,b,el)},
   c(t,el){const s=t.closest("[data-cc]");if(s&&PCW[s.dataset.cc]&&PCW[s.dataset.cc].c)PCW[s.dataset.cc].c(t,el)},
   i(t,el){const s=t.closest("[data-cc]");if(s&&PCW[s.dataset.cc]&&PCW[s.dataset.cc].i)PCW[s.dataset.cc].i(t,el)}};
@@ -14953,6 +14954,63 @@ function lcAct(c,a,b){const L=LCO(c.id),g=b.dataset.g;
   else if(a==="lcsell"){if(lcUsed(c)>=.05)return toast("Empty it first");if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Confirm";return false}const v=lcSellV(c);S.cash+=v;delete S.lc[c.id];delete S.pos["lc:"+c.id];toast(`Logistics center sold for ${fmt(v)}`)}}
 function lcEnter(c){partLoad("logistics").then(api=>api.open(c.id)).catch(()=>toast("The logistics center didn't load. Try again."))}
 
+/* ===== Military Base (v1): one base per player government, on open land in its own country. Device/save only (S.mbase).
+   S.mbase={lat,lon,cty,km,sz,pl,b:{k:{lv,to,done}},rp,rt}. Funded from the treasury (S.cash), like Air Defence. Effects only while you govern cty. */
+const MBACFG={minKm:40,maxKm:600,fee:500e6,plot:{c:150e6,g:1.35},lvMax:10,lvG:1.6,
+  sz:[[80,"Small",4],[150,"Medium",8],[250,"Large",14],[1e9,"Vast",20]], // nearest-city distance (km) → land size, plot cap
+  b:{bar:{n:"Barracks",ic:"🪖",c:400e6,h:2,fx:l=>`+${3*l}% army strength, −${2*l}% army upkeep`},
+     air:{n:"Airfield & Hangar",ic:"✈️",c:900e6,h:4,fx:l=>`−${4*l}% weapon production time`},
+     sil:{n:"Missile Silo",ic:"🚀",c:1.2e9,h:6,fx:l=>`${2*l} missile bays (stored)`},
+     rad:{n:"Radar",ic:"📡",c:600e6,h:3,fx:l=>`+${3*l}s warning on incoming strikes`},
+     pat:{n:"Patriot Site",ic:"🛡",c:1.5e9,h:5,fx:l=>`+${3*l}% Patriot intercept at home`},
+     dep:{n:"Depot",ic:"⛽",c:300e6,h:2,fx:l=>`${(500*l).toLocaleString("en-US")} fuel & ammo stock (stored)`},
+     lab:{n:"Research Lab",ic:"🔬",c:2e9,h:8,fx:l=>`${l} research pts/day (stored)`}}};
+const MBA={pick:0,px:null,pr:null,pc:null,path:""};
+function mbase(){let m=S.mbase;if(!m||typeof m!=="object"||Array.isArray(m))return null;if(!m.b||typeof m.b!=="object")m.b={};m.pl=Math.max(0,m.pl|0);m.rp=+m.rp||0;return m}
+// level of a finished building, only while you hold office in the base's country (never AI governments)
+function mbaLv(k){try{const m=S.mbase,p=S.pol;if(!m||!m.b||!m.b[k]||!p||!(p.r>=0)||p.c!==m.cty)return 0;return Math.max(0,Math.min(10,m.b[k].lv|0))}catch(e){return 0}}
+const mbaSz=km=>MBACFG.sz.find(s=>km<s[0]);
+const mbaCost=(k,lv)=>Math.round(MBACFG.b[k].c*Math.pow(MBACFG.lvG,lv));          // cost to reach level lv+1
+const mbaTime=(k,lv)=>Math.round(MBACFG.b[k].h*(1+.5*lv)*3600e3);                  // real ms to reach level lv+1
+const mbaPlotC=m=>Math.round(MBACFG.plot.c*Math.pow(MBACFG.plot.g,m.pl));
+const mbaUsed=m=>Object.keys(m.b).filter(k=>MBACFG.b[k]).length;
+function mbaNear(lat,lon){let best=null,d=1e9;for(const c of CITIES){const x=distKm(c,{lat,lon});if(x<d){d=x;best=c}}return [best,d]}
+function mbaPlace(lon,lat){const p=pol();if(!(p.r>=0)||!p.c)return toast("Only a player government can build a military base");if(!polLeader())return toast("Only a Leader can site the base");if(mbase())return toast("Your government already has a base");
+  const W=MBACFG,ct=typeof wtLand==="function"?wtLand([lon,lat]):null;if(ct==null)return toast("That's open sea: pick a spot on land");if(ct!==p.c)return toast(`That land is not in ${p.c}`);
+  const [c,km]=mbaNear(lat,lon);if(km<W.minKm)return toast(`Too close to ${c.name} (${Math.round(km)} km): bases need ${W.minKm} km of open land`);
+  if(S.cash<W.fee)return toast(`Siting a base costs ${fmt(W.fee)}`);const z=mbaSz(km);S.cash-=W.fee;
+  S.mbase={lat:+lat.toFixed(3),lon:+lon.toFixed(3),cty:p.c,km:Math.round(km),sz:z[1],cap:z[2],pl:0,b:{},rp:0,rt:Date.now(),at:Date.now()};MBA.pick=0;
+  const t=`🏰 Command Post established ${Math.round(km)} km from ${c.name} · ${z[1]} land, ${z[2]} plots`;toast(t);try{logGov(t)}catch(e){}save()}
+function mbaPlot(){const m=mbase();if(!m||!polLeader())return toast("Only a Leader can fund the base");if(m.pl>=m.cap)return toast(`${m.sz} land: all ${m.cap} plots are cleared. The land can't take more`);const c=mbaPlotC(m);if(S.cash<c)return toast(`The next plot costs ${fmt(c)}`);S.cash-=c;m.pl++;toast(`🚧 Plot ${m.pl}/${m.cap} cleared`);save()}
+function mbaBuild(k){const m=mbase(),B=MBACFG.b[k];if(!m||!B)return;if(!polLeader())return toast("Only a Leader can fund the base");if(pol().c!==m.cty)return toast(`The base is in ${m.cty}: you must govern it`);
+  const b=m.b[k];if(!b&&mbaUsed(m)>=m.pl)return toast("Clear a free plot first");if(b&&b.done)return toast(`${B.n} is already under construction`);const lv=b?b.lv|0:0;if(lv>=MBACFG.lvMax)return toast(`${B.n} is at max level`);
+  const c=mbaCost(k,lv);if(S.cash<c)return toast(`${B.n} level ${lv+1} costs ${fmt(c)}`);S.cash-=c;const x=m.b[k]=b||{lv:0};x.to=lv+1;x.done=Date.now()+mbaTime(k,lv);toast(`🏗 ${B.n} level ${lv+1} under construction · ${fmtDur(x.done-Date.now())}`);save()}
+function mbaTick(now){const m=S.mbase;if(!m||!m.b||typeof m.b!=="object")return;let ch=0;
+  for(const k in m.b){const x=m.b[k];if(x&&x.done&&x.done<=now){x.lv=Math.min(MBACFG.lvMax,x.to|0||(x.lv|0)+1);x.done=0;delete x.to;ch=1;const t=`🏰 ${(MBACFG.b[k]||{n:k}).n} reached level ${x.lv}`;toast(t);try{logGov(t)}catch(e){}}}
+  if(!(m.rt>0))m.rt=now;if(now-m.rt>=60000){m.rp=(+m.rp||0)+mbaLv("lab")*(now-m.rt)/DAYMS;m.rt=now}if(ch){save();try{pcwPaint("mba")}catch(e){}}}
+function mbaMap(m,p){const W=440,H=280,cty=m?m.cty:p.c,f=typeof cfFeat==="function"&&cty?cfFeat(cty):null;if(!f||typeof d3==="undefined")return `<p class="pw-m">Map is still loading…</p>`;
+  if(MBA.pc!==cty){MBA.pc=cty;MBA.pr=d3.geoEquirectangular().fitExtent([[8,8],[W-8,H-8]],f);MBA.path=d3.geoPath(MBA.pr)(f)||""}const pr=MBA.pr;
+  const cs=CITIES.filter(c=>c.country===cty).map(c=>{const q=pr([c.lon,c.lat]);if(!q)return "";const r=Math.max(1,MBACFG.minKm/111*(pr([c.lon,c.lat+1])?Math.abs(pr([c.lon,c.lat])[1]-pr([c.lon,c.lat+1])[1]):0));return `<circle cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${r.toFixed(1)}" fill="#ef4444" fill-opacity=".15"/><circle cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="2.2" fill="#93c5fd"/>`}).join("");
+  const bq=m&&pr([m.lon,m.lat]),mk=bq?`<g transform="translate(${bq[0].toFixed(1)},${bq[1].toFixed(1)})"><circle r="9" fill="none" stroke="#facc15" stroke-width="1.5"><animate attributeName="r" from="5" to="13" dur="2s" repeatCount="indefinite"/></circle><rect x="-5" y="-5" width="10" height="10" fill="#facc15" stroke="#071226"/><text y="-12" text-anchor="middle" fill="#fde68a" font-size="10" font-weight="700" paint-order="stroke" stroke="#071226" stroke-width="2">BASE</text></g>`:"";
+  return `<svg class="mba-map" data-pw="mbmap" viewBox="0 0 ${W} ${H}" style="width:100%;background:#061024;border-radius:10px;border:1px solid ${MBA.pick?"#facc15":"#1e3a5f"};cursor:${MBA.pick?"crosshair":"default"}"><path d="${MBA.path}" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1"/>${cs}${mk}</svg>`}
+// remember where on the base map the pointer clicked (capture phase, before the window's data-pw handler)
+document.addEventListener("click",e=>{const s=e.target&&e.target.closest&&e.target.closest(".mba-map");if(!s)return;const r=s.getBoundingClientRect();MBA.px=[(e.clientX-r.left)/r.width*440,(e.clientY-r.top)/r.height*280]},true);
+PCW.mba={t:"Military Base",ic:"🏰",r(){const p=pol(),m=mbase(),now=Date.now(),lead=polLeader();if(!(p.r>=0)||!p.c)return `<p class="pw-m">Hold office in a country to build a military base.</p>`;
+  const kv=(l,v,c)=>`<div class="pcd-kv"><span>${l}</span><b${c?` style="color:${c}"`:""}>${v}</b></div>`;
+  if(!m)return `<div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px"><div>${mbaMap(null,p)}</div><div><p class="pw-m">Site ONE base on open land in ${wfE(p.c)}, at least ${MBACFG.minKm} km from any city (red rings). The farther from cities, the more land and building plots you get.</p>
+    ${MBACFG.sz.map((s,i)=>kv(`${s[1]} land`,`${i?MBACFG.sz[i-1][0]:MBACFG.minKm}${s[0]<1e8?"–"+s[0]:"+"} km → ${s[2]} plots`)).join("")}${kv("Siting fee",fmt(MBACFG.fee))}
+    <div class="pw-row" style="margin-top:8px">${pbtn("mbpick",MBA.pick?"✖ Cancel placement":"📍 Choose location","",!lead)}</div>${MBA.pick?`<p class="pw-m" style="color:#fde68a">Click the map to place the Command Post.</p>`:""}${lead?"":`<p class="pw-m">Only a Leader can site the base.</p>`}</div></div>`;
+  const ok=p.c===m.cty,used=mbaUsed(m),pc=mbaPlotC(m);
+  const card=k=>{const B=MBACFG.b[k],x=m.b[k],lv=x?x.lv|0:0,bz=x&&x.done>now,mx=lv>=MBACFG.lvMax,c=mbaCost(k,lv),need=!x&&used>=m.pl;
+    return `<div style="background:#111b2e;border:1px solid ${bz?"#f59e0b":lv?"#16a34a":"#2a3750"};border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:4px"><div style="display:flex;justify-content:space-between"><b>${B.ic} ${B.n}</b><span style="color:#facc15;font-weight:700">Lv ${lv}/${MBACFG.lvMax}</span></div>
+    <small style="color:#cbd5e1">${lv?B.fx(lv):"Not built"}</small>${mx?"":`<small style="color:#94a3b8">Next: ${B.fx(lv+1)}</small>`}
+    ${bz?`<small style="color:#fbbf24">🏗 Level ${x.to} in ${fmtDur(x.done-now)}</small>`:mx?`<small style="color:#4ade80">Max level</small>`:`<button class="pw-b" data-pw="mbb" data-v="${k}" style="color:#fff"${!lead||!ok||need||S.cash<c?" disabled":""}>${lv?"⬆ Upgrade":"🏗 Build"} · ${fmt(c)} · ${fmtDur(mbaTime(k,lv))}</button>${need?`<small style="color:#f87171">Needs a free plot</small>`:""}`}</div>`};
+  return `<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:14px"><div style="display:flex;flex-direction:column;gap:6px">${mbaMap(m,p)}
+    ${kv("Location",`${wfE(m.cty)} · ${m.km} km from nearest city`)}${kv("Land size",m.sz)}${kv("Plots",`${used} built / ${m.pl} cleared / ${m.cap} max`,m.pl>=m.cap?"#f59e0b":"")}${kv("Research points",Math.floor(m.rp).toLocaleString("en-US"))}${kv("Treasury",fmt(S.cash))}
+    <button class="pw-b" data-pw="mbplot" style="color:#fff"${!lead||!ok||m.pl>=m.cap||S.cash<pc?" disabled":""}>${m.pl>=m.cap?`🚫 ${m.sz} land is full (${m.cap} plots)`:`🚧 Clear plot ${m.pl+1} · ${fmt(pc)}`}</button>
+    ${ok?"":`<p class="pw-m" style="color:#f87171">You no longer govern ${wfE(m.cty)}: the base is offline.</p>`}<p class="pw-m">🏢 Command Post (free, does not use a plot). Each building takes one plot and levels 1–${MBACFG.lvMax}; cost ×${MBACFG.lvG} per level.</p></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;align-content:start">${Object.keys(MBACFG.b).map(card).join("")}</div></div>`},
+  a(a,b){if(a==="mbpick"){MBA.pick=MBA.pick?0:1;return}if(a==="mbmap"){if(!MBA.pick||!MBA.px||!MBA.pr)return;const g=MBA.pr.invert(MBA.px);if(g)mbaPlace(g[0],g[1]);return}if(a==="mbplot")return mbaPlot();if(a==="mbb")return mbaBuild(b.dataset.v)}};
 let saveT=0;
 every(1000,()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();try{colTick(Date.now())}catch(e){console.warn("col",e)}try{airTick(Date.now())}catch(e){console.warn("air",e)}try{lcctTick()}catch(e){console.warn("lcct",e)}if(++saveT%5===0){saveIdle();checkGoals()}if(document.hidden)return;hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
@@ -15744,7 +15802,7 @@ function scyAutoMgr(){if(!scyDev())return;const now=Date.now();if(now-scyMgrT<SC
   if((s.drones|0)<4&&buy(SCY.drone,()=>{s.drones=(s.drones|0)+1},"replaced a drone"))did=1;
   if(did){save();try{hud()}catch(e){}}}
 
-resize();catchUp();hud();if(S.dead)showGameOver();every(1000,()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{royTick()}catch(e){}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}try{wfTick()}catch(e){}try{cabTick()}catch(e){}});
+resize();catchUp();hud();if(S.dead)showGameOver();every(1000,()=>{try{bunkTick()}catch(e){console.warn("bunker",e)}try{mbaTick(Date.now())}catch(e){}try{royTick()}catch(e){}try{rigTick(Date.now())}catch(e){}try{lnTick()}catch(e){}try{wfTick()}catch(e){}try{cabTick()}catch(e){}});
 if(!S.log.length){S.log=["You start with nothing. Tap a city, open Jobs & home, rent a room and apply for work."];hud()}
 if(!world)toast("Map outline didn't load. Cities still work.");
 })();
