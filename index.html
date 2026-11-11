@@ -622,7 +622,16 @@ const BIGCITY=5,isBigCity=c=>c.size>=BIGCITY;
 const CASINO_CITIES=["Montréal"],bigOK=c=>isBigCity(c)||CASINO_CITIES.includes(c.name);
 /* why a business can't be opened in a city ("" if it can). Used by every buy/rent path. */
 const CARTS=["cart","coffeecart","icecream","taco","pretzel","noodle","smoothie"],isCart=k=>CARTS.includes(k);
-function bizBlock(b,c){if(unhOn(c))return `${c.name} is uninhabitable for ${unhLeft(c)} after an ICBM strike`;if(typeof rbjActive==="function"&&rbjActive(c.id)){const oj=rbjOther(c.id);return c.name+" is being rebuilt"+(oj?" by "+oj.name:" by you")+": no new businesses until it's done"}if(b.cx!=null&&b.cx!==c.id)return `${b.n} is your own brand from ${(CITIES[b.cx]||{}).name}; it only trades there`;
+/* per-city caps (Mark, 2026-11-11): per player, per city. Businesses count every unit (first + extras) of every type;
+   industry counts built land sites by kind. Oil rigs are separate and uncapped here. Dev account exempt; old saves keep what they have. */
+const CITYCAP={biz:250,Mine:300,Ranch:300,Farm:300,oil:300,Factory:700},CAPN={biz:"businesses",Mine:"mines",Ranch:"ranches",Farm:"farms",oil:"oil wells",Factory:"factories"};
+const capDev=()=>typeof ON!=="undefined"&&ON.user&&DEV_UIDS.includes(ON.user.uid);
+function bizCount(c){const o=S.own[c.id]||{},x=(S.xu||{})[c.id]||{};let n=0;for(const k in o)if(o[k])n++;for(const k in x)n+=(x[k]||[]).length;return n}
+const opCapK=o=>o.k==="oilwell"?"oil":o.cat;
+function siteCapLeft(c,o){const ck=opCapK(o);if(!o||CITYCAP[ck]==null||capDev())return Infinity;let n=0;for(const s of S.sites||[])if(s&&s.city===c.id&&s.op&&OP[s.op]&&opCapK(OP[s.op])===ck)n++;return Math.max(0,CITYCAP[ck]-n)}
+const siteCapMsg=(c,o)=>`Max ${CITYCAP[opCapK(o)]} ${CAPN[opCapK(o)]} per city in ${c.name}`;
+const ONE_PER_CITY=["airport","rail","port"];
+function bizBlock(b,c){if(!capDev()){if(ONE_PER_CITY.includes(b.k)&&(S.own[c.id]||{})[b.k])return `Only 1 ${b.n.toLowerCase()} per city`;if(bizCount(c)>=CITYCAP.biz)return `Max ${CITYCAP.biz} businesses per city in ${c.name}`}if(unhOn(c))return `${c.name} is uninhabitable for ${unhLeft(c)} after an ICBM strike`;if(typeof rbjActive==="function"&&rbjActive(c.id)){const oj=rbjOther(c.id);return c.name+" is being rebuilt"+(oj?" by "+oj.name:" by you")+": no new businesses until it's done"}if(b.cx!=null&&b.cx!==c.id)return `${b.n} is your own brand from ${(CITIES[b.cx]||{}).name}; it only trades there`;
   if(lawBan(c,b))return b.k==="dispensary"?`Cannabis is illegal in ${c.country}`:`Gambling is banned in ${c.country}`;
   if(b.k==="dispensary"&&!(gov(c.country).wLic))return `Needs a cannabis licence in ${c.country} (Government tab, ${fmt(WLIC_FEE)})`;if(b.k==="airport"&&!hasAirport(c))return `${c.name} has no airport site`;if(b.k==="port"&&c.size<3)return "Seaports need a size 3+ city";return ""}
 
@@ -1671,7 +1680,7 @@ sheet.addEventListener("click",e=>{const b=e.target.closest("[data-tab],[data-ac
   if(b.dataset.tab){if(sel&&unhOn(sel))return;if(b.dataset.tab==="hq"&&typeof ofEnter==="function"&&!OFC.on&&sel&&hasHQ(sel)){ofEnter(hqCity(sel.country));return}tab=b.dataset.tab;shipForm=null;renderSheet();return}
   const c=sel;if(!c||unhOn(c))return;const a=b.dataset.act,id=+b.dataset.id;
   if(a==="land"){const k=b.dataset.k,z=b.dataset.z,p=plotPrice(c,z,k);if(S.cash<p)return;S.cash-=p;S.sites.push({id:S.nid++,city:c.id,size:k,type:z,op:null});ensureWh(c);toast(`Bought ${LAND[k][1]} ha of ${ZONE[z].n.toLowerCase()} in ${c.name}`);bigMove(`our company bought ${LAND[k][1]} ha of ${ZONE[z].n.toLowerCase()} land in ${c.name} for ${fmt(p)}`,p)}
-  else if(a==="build"){const s=S.sites.find(x=>x.id===id),o=OP[$("#op-"+id).value],p=o.build*LAND[s.size][1];if((o.gate==="uranium"||o.in&&o.in.uranium)&&nlcNeed()){toast(nlcNeed());return}if(o.gate==="uranium"){const w=uranNeed(c.country);if(w){toast(w);return}}if(o.weed&&law(c,"weed")===1){toast(`Cannabis is illegal in ${c.country}`);return}if(S.cash<p){toast(`Need ${fmt(p)} to build that`);return}S.cash-=p;s.op=o.k;s.k=null;toast(`${o.n} built`)}
+  else if(a==="build"){const s=S.sites.find(x=>x.id===id),o=OP[$("#op-"+id).value],p=o.build*LAND[s.size][1];if((o.gate==="uranium"||o.in&&o.in.uranium)&&nlcNeed()){toast(nlcNeed());return}if(o.gate==="uranium"){const w=uranNeed(c.country);if(w){toast(w);return}}if(o.weed&&law(c,"weed")===1){toast(`Cannabis is illegal in ${c.country}`);return}if(!siteCapLeft(c,o)){toast(siteCapMsg(c,o));return}if(S.cash<p){toast(`Need ${fmt(p)} to build that`);return}S.cash-=p;s.op=o.k;s.k=null;toast(`${o.n} built`)}
   /* fly the street camera to one of your sites (they sit km out of town), and make sure its layer is showing */
   else if(a==="siteshow"){const s=S.sites.find(x=>x.id===id);if(!s)return;ensurePositions();const p=S.pos["site:"+s.id];if(!p)return;const ly={ind:"mf",farm:"mfa",mine:"mm"}[zoneOf(s)||"farm"];if(ly&&!lyOn(ly)){S.set=S.set||{};S.set[ly]=1}
     if(!HAS_STREET){toast("Street view isn't available here");return}if(typeof closeSheet==="function")closeSheet();enterStreet({lat:p.lat,lon:p.lon},17);stCity=c;stLabel();try{renderPins()}catch(e){}save();return}
@@ -2293,7 +2302,7 @@ function pdBuyHtml(c){const d=deps(c),zs=Object.keys(ZONE).filter(z=>z!=="mine"|
     h+=`</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span style="display:flex;gap:4px;align-items:center;font-size:12px;color:var(--muted)">How many: ${[1,2,5,10,25].map(n=>`<button class="buy${q===n?"":" up"}" data-pd="bq" data-v="${n}" style="padding:4px 9px">${n}</button>`).join("")}</span><span style="flex:1;min-width:220px;font-size:13px">${o?`<b>${q>1?q+" × ":""}${o.n}</b> on ${ha} ha${q>1?" each":""}: land ${fmt(lp)} + build ${fmt(bc)} = <b>${fmt(tot)}</b>. Crew hired automatically.`:""}</span>
     <button class="buy" data-pd="bbuy" ${S.cash<tot?"disabled":""}>Buy & build ${fmt(tot)}</button><button class="buy up" data-pd="brent" ${S.cash<bc?"disabled":""}>Rent ${fmt(rent)}/hr & build ${fmt(bc)}</button></div>`}
   return h+`</div>`}
-function pdDoBuy(c,rent){const o=OP[pdO];if(!o)return;const q=pdQ,ha=LAND[pdK][1],lp=rent?0:plotPrice(c,pdZ,pdK)*q,bc=o.build*ha*q;
+function pdDoBuy(c,rent){const o=OP[pdO];if(!o)return;const cl=siteCapLeft(c,o);if(!cl){toast(siteCapMsg(c,o));return}const q=Math.min(pdQ,cl),ha=LAND[pdK][1],lp=rent?0:plotPrice(c,pdZ,pdK)*q,bc=o.build*ha*q;
   if((o.gate==="uranium"||o.in&&o.in.uranium)&&nlcNeed()){toast(nlcNeed());return}if(o.gate==="uranium"){const w=uranNeed(c.country);if(w){toast(w);return}}if(o.weed&&law(c,"weed")===1){toast(`Cannabis is illegal in ${c.country}`);return}
   if(S.cash<lp+bc){toast(`Need ${fmt(lp+bc)}`);return}S.cash-=lp+bc;for(let i=0;i<q;i++){const st={id:S.nid++,city:c.id,size:pdK,type:pdZ,op:o.k,k:null,crew:true};if(rent)st.lease=1;S.sites.push(st)}ensureWh(c);
   toast(`${q>1?q+" × ":""}${o.n} built on ${ha} ha${q>1?" each":""} in ${c.name}${rent?" (rented land)":""}. Crew hired.`);if(!rent)bigMove(`our company bought ${ha*q} ha of ${ZONE[pdZ].n.toLowerCase()} land in ${c.name} for ${fmt(lp)}`,lp);commit()}
