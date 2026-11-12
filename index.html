@@ -683,7 +683,7 @@ function tmemo(ns,k,f){const T=tmemo.T||(tmemo.T=new Map());if(!tmemo.armed){tme
 const CLK={j:[]};function every(ms,fn,o){const now=Date.now();CLK.j.push({ms,fn,ui:!!(o&&o.ui),next:now+ms+(CLK.j.length*97)%Math.max(250,ms)})}
 setInterval(()=>{const now=Date.now(),hid=document.hidden;for(const j of CLK.j){if(now<j.next)continue;j.next=now+j.ms;if(hid&&j.ui)continue;try{j.fn()}catch(e){console.warn("clk",e)}}},250);
 /* save: skip the write (and the online publish) when nothing changed since the last save */
-const save=()=>{if(tmemo.T)tmemo.T.clear();if(save.lock)return;let s=null;try{if(typeof ensurePositions==="function")ensurePositions();s=JSON.stringify(S);if(s!==save.last){lsSet(KEY,s);save.last=s;save.err=0}else s=null}catch(e){s=null;saveFail(e)}if(s!==null){try{if(typeof onSaved==="function")onSaved()}catch(e){}}};
+const save=()=>{if(tmemo.T)tmemo.T.clear();try{_totV=null}catch(e){}if(save.lock)return;let s=null;try{if(typeof ensurePositions==="function")ensurePositions();s=JSON.stringify(S);if(s!==save.last){lsSet(KEY,s);save.last=s;save.err=0}else s=null}catch(e){s=null;saveFail(e)}if(s!==null){try{if(typeof onSaved==="function")onSaved()}catch(e){}}};
 /* a refused save used to be silent, so a reload brought back an old save (lost purchases, repeat offline pay). Warn, at most once a minute */
 function saveFail(e){console.warn("save failed",e);const n=Date.now();if(n-(save.err||0)<6e4)return;save.err=n;try{toast("Couldn't save your game: this browser's storage is full. Progress since the last save will be lost on reload. Delete an unused save slot to free space.")}catch(x){}}
 /* the timed autosave waits for an idle moment so it doesn't stutter the map; closing or hiding the tab always saves */
@@ -783,8 +783,9 @@ function rentTotal(){let r=0;for(const id in S.lease||{})for(const k in S.lease[
 /* totals() walks every business; big empires (thousands of units) made it ~12 ms and it runs many times a second.
    Reuse the last result for up to 1 s while cash, debt and ids are unchanged (any buy, sale or upgrade moves cash) */
 let _totK="",_totT=0,_totV=null;
-function totals(){const k=S.cash+"|"+S.debt+"|"+S.nid+"|"+S.hour,n=Date.now();if(_totV&&k===_totK&&n-_totT<1000)return Object.assign({},_totV);
-  const r=_totals();_totK=k;_totT=n;_totV=r;return Object.assign({},r)}
+/* speed: cash is left out of the cache key (sales add cash every second, so the key never matched and big empires redid the whole sum 2-3 times a second); net worth just swaps in today's cash. save() drops the cache so buys show at once */
+function totals(){const k=S.debt+"|"+S.nid+"|"+S.hour,n=Date.now();if(_totV&&k===_totK&&n-_totT<5000)return Object.assign({},_totV,{nw:_totV.nw-_totV.c0+S.cash});
+  const r=_totals();r.c0=S.cash;_totK=k;_totT=n;_totV=r;return Object.assign({},r)}
 function _totals(){let inc=0,assets=0;
   for(const c of CITIES){const o=S.own[c.id];if(!o)continue;
     for(const b of BIZ){const lv=o[b.k];if(!lv)continue;inc+=uSum(c.id,b.k,l=>profit(b,c,l));
