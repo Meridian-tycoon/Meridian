@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#141f21">
+<link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
+<link rel="preconnect" href="https://www.gstatic.com">
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
 <script>try{var _ui=localStorage.getItem("meridian-uitheme");if(/^(glass|ledger|command)$/.test(_ui))document.documentElement.classList.add("th-"+_ui)}catch(e){}</script>
 <script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("meridian-theme")==="light"?"light":"dark")}catch(e){document.documentElement.setAttribute("data-theme","dark")}</script>
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
@@ -476,8 +479,9 @@ html.th-ledger #dcard>div{border-radius:2px;box-shadow:6px 6px 0 rgba(31,26,20,.
 /* stub so the ECharts world geometry script hands its data to us */
 window.echarts={registerMap:function(n,g){window.__WORLD=g}};
 </script>
-<script src="https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/world.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<!-- speed: world shapes and the d3 geo maths are served from our own site (no extra CDN lookups before the game can start); only the geo part of d3 is used, 80 KB instead of 280 KB -->
+<script src="vendor/world.js"></script>
+<script src="vendor/d3-geo.min.js"></script>
 <script src="vendor/maplibre-gl.js"></script>
 <script>
 (function(){
@@ -683,7 +687,7 @@ function tmemo(ns,k,f){const T=tmemo.T||(tmemo.T=new Map());if(!tmemo.armed){tme
 const CLK={j:[]};function every(ms,fn,o){const now=Date.now();CLK.j.push({ms,fn,ui:!!(o&&o.ui),next:now+ms+(CLK.j.length*97)%Math.max(250,ms)})}
 setInterval(()=>{const now=Date.now(),hid=document.hidden;for(const j of CLK.j){if(now<j.next)continue;j.next=now+j.ms;if(hid&&j.ui)continue;try{j.fn()}catch(e){console.warn("clk",e)}}},250);
 /* save: skip the write (and the online publish) when nothing changed since the last save */
-const save=()=>{if(tmemo.T)tmemo.T.clear();if(save.lock)return;let s=null;try{if(typeof ensurePositions==="function")ensurePositions();s=JSON.stringify(S);if(s!==save.last){lsSet(KEY,s);save.last=s;save.err=0}else s=null}catch(e){s=null;saveFail(e)}if(s!==null){try{if(typeof onSaved==="function")onSaved()}catch(e){}}};
+const save=()=>{if(tmemo.T)tmemo.T.clear();try{_totV=null}catch(e){}if(save.lock)return;let s=null;try{if(typeof ensurePositions==="function")ensurePositions();s=JSON.stringify(S);if(s!==save.last){lsSet(KEY,s);save.last=s;save.err=0}else s=null}catch(e){s=null;saveFail(e)}if(s!==null){try{if(typeof onSaved==="function")onSaved()}catch(e){}}};
 /* a refused save used to be silent, so a reload brought back an old save (lost purchases, repeat offline pay). Warn, at most once a minute */
 function saveFail(e){console.warn("save failed",e);const n=Date.now();if(n-(save.err||0)<6e4)return;save.err=n;try{toast("Couldn't save your game: this browser's storage is full. Progress since the last save will be lost on reload. Delete an unused save slot to free space.")}catch(x){}}
 /* the timed autosave waits for an idle moment so it doesn't stutter the map; closing or hiding the tab always saves */
@@ -783,8 +787,9 @@ function rentTotal(){let r=0;for(const id in S.lease||{})for(const k in S.lease[
 /* totals() walks every business; big empires (thousands of units) made it ~12 ms and it runs many times a second.
    Reuse the last result for up to 1 s while cash, debt and ids are unchanged (any buy, sale or upgrade moves cash) */
 let _totK="",_totT=0,_totV=null;
-function totals(){const k=S.cash+"|"+S.debt+"|"+S.nid+"|"+S.hour,n=Date.now();if(_totV&&k===_totK&&n-_totT<1000)return Object.assign({},_totV);
-  const r=_totals();_totK=k;_totT=n;_totV=r;return Object.assign({},r)}
+/* speed: cash is left out of the cache key (sales add cash every second, so the key never matched and big empires redid the whole sum 2-3 times a second); net worth just swaps in today's cash. save() drops the cache so buys show at once */
+function totals(){const k=S.debt+"|"+S.nid+"|"+S.hour,n=Date.now();if(_totV&&k===_totK&&n-_totT<5000)return Object.assign({},_totV,{nw:_totV.nw-_totV.c0+S.cash});
+  const r=_totals();r.c0=S.cash;_totK=k;_totT=n;_totV=r;return Object.assign({},r)}
 function _totals(){let inc=0,assets=0;
   for(const c of CITIES){const o=S.own[c.id];if(!o)continue;
     for(const b of BIZ){const lv=o[b.k];if(!lv)continue;inc+=uSum(c.id,b.k,l=>profit(b,c,l));
@@ -2525,10 +2530,15 @@ const PMX={on:null,ask:[],busy:{},sub:[],err:"",q:{},v:{}},PMXCFG={qMax:10000000
 function PMXS(){let s=S.gdx;if(!s||typeof s!=="object")s=S.gdx={};if(!s.esc||typeof s.esc!=="object")s.esc={};if(!Array.isArray(s.seen))s.seen=[];return s}
 const gxOn=()=>typeof ON!=="undefined"&&!!(ON.user&&ON.db);
 const gxName=()=>{try{return (onProf().name||"Tycoon").slice(0,20)}catch(e){return "Tycoon"}};
-function gxEnsure(){const uid=gxOn()?ON.user.uid:null;if(PMX.on===uid)return;for(const f of PMX.sub)try{f()}catch(e){}PMX.sub=[];PMX.ask=[];PMX.on=uid;PMX.err="";if(!uid)return;
+function gxEnsure(){const uid=gxOn()?ON.user.uid:null;if(PMX.on===uid)return;for(const f of PMX.sub)try{f()}catch(e){}PMX.sub=[];if(PMX.bun){try{PMX.bun()}catch(e){}PMX.bun=null}PMX.ask=[];PMX.on=uid;PMX.err="";if(!uid)return;
   const db=ON.db,er=w=>e=>{PMX.err="Couldn't load "+w+": "+(e&&e.code||e)};
-  PMX.sub.push(db.collection("gdask").orderBy("at","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(G[v.g]&&CITIES[v.c]&&(v.q|0)>0&&+v.px>0)a.push(Object.assign({id:d.id},v))});PMX.ask=a;gxTidy();gxRefresh()},er("player listings")));
+  gxBoard();
   PMX.sub.push(db.collection("gdsale").where("to","==",uid).onSnapshot(q=>q.forEach(d=>gxClaim(d)),er("player sales")))}
+/* speed: the 200-listing player board is only listened to while someone can see it (Market app or a city's Industry tab), and is let go 2 min after closing, so idle players stop paying for every listing change worldwide */
+function gxSeen(){try{return (typeof PH!=="undefined"&&PH.open&&PH.app==="market")||(sel&&sheet.classList.contains("open")&&tab==="ind")}catch(e){return false}}
+function gxBoard(){const uid=PMX.on;if(!uid||typeof ON==="undefined"||!ON.db){if(PMX.bun){try{PMX.bun()}catch(e){}PMX.bun=null}return}const n=Date.now();if(gxSeen())PMX.seen=n;
+  if(PMX.bun&&n-(PMX.seen||0)>120000){try{PMX.bun()}catch(e){}PMX.bun=null;return}
+  if(!PMX.bun&&n-(PMX.seen||0)<=120000)PMX.bun=ON.db.collection("gdask").orderBy("at","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(G[v.g]&&CITIES[v.c]&&(v.q|0)>0&&+v.px>0)a.push(Object.assign({id:d.id},v))});PMX.ask=a;gxTidy();gxRefresh()},e=>{PMX.err="Couldn't load player listings: "+(e&&e.code||e)})}
 function gxRefresh(){try{if(typeof PH!=="undefined"&&PH.open&&PH.app==="market"&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))phRender()}catch(e){}try{if(sel&&sheet.classList.contains("open")&&tab==="ind"&&!(document.activeElement&&sheet.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))renderSheet()}catch(e){}}
 function gxTidy(){const s=PMXS();for(const id in s.esc)if(!(s.esc[id].q>0))delete s.esc[id]}
 function gxClaim(d){const s=PMXS(),v=d.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():0,key=d.id+"@"+at;if(v.to!==PMX.on)return;
@@ -2589,7 +2599,7 @@ sheet.addEventListener("input",e=>{const t=e.target;if(t.dataset&&t.dataset.gxq)
 sheet.addEventListener("change",e=>{const t=e.target;if(t.dataset&&t.dataset.gxv)PMX.v[t.dataset.gxv]=t.value});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gx]");if(!b||!sel)return;const a=b.dataset.gx;
   if(a==="buy")gxBuy(b.dataset.id);else if(a==="cancel")gxCancel(b.dataset.id);else if(a==="list")gxList(sel)});
-every(5000,()=>{try{gxEnsure()}catch(e){}});
+every(5000,()=>{try{gxEnsure()}catch(e){}});every(1000,()=>{try{gxBoard()}catch(e){}});
 /* phone Market app: every player listing in the world, cheapest first per good; Buy delivers to your warehouse in that city */
 function gxPhone(){gxEnsure();const E=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
   let h=`<div class="ph-sub" style="font-weight:700">Player listings</div>`;
