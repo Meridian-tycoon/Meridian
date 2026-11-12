@@ -2829,7 +2829,7 @@ let pinRaf=0;try{MM.on("move",()=>{if(pinRaf||!inStreet)return;pinRaf=requestAni
 function clearPins(){for(const m of mkPins)m.remove();mkPins=[];for(const m of mkList)m.remove();mkList=[]}
 /* 3D models for the player's own buildings: a MapLibre custom layer drawn with three.js (loaded on first use) at street zoom.
    The label pins stay on top so taps still work; models are built from simple solids so no model files are needed. */
-const MODEL_KIND={biz:"shop",prop:"house",home:"house",hq:"hq",wh:"wh","site-ind":"factory","site-mine":"mine","site-farm":"farm"};
+const MODEL_KIND={mbase:"mbase",biz:"shop",prop:"house",home:"house",hq:"hq",wh:"wh","site-ind":"factory","site-mine":"mine","site-farm":"farm"};
 let modelList=[],modelLayer=null;
 let lotSig="";
 function setModels(list){modelList=list;if(modelLayer)modelLayer.sync();try{MM.triggerRepaint()}catch(e){}
@@ -2910,7 +2910,39 @@ function makeModelLayer(){let T=null,ren,scene,cam,group,hemi,sun,map,loading=fa
       g.add(box(1.6,2.3,.2,home?0:6,0,d/2+.05,M(nt?0xffe7a8:0x4a3326,{emissive:nt?W:0,emissiveIntensity:1.6})));
       if(nt)g.add(box(.7,.7,.7,home?1.8:7.6,2.6,d/2+.4,M(0xfff1c2,{emissive:0xffe08a,emissiveIntensity:2})));return g},
     farm(){const g=new T.Group();g.add(box(18,7,12,0,0,0,M(0xa8483a)));const r=box(19,1,13,0,7,0,M(0x6d4a3a));g.add(r);
-      g.add(cyl(3,3,16,13,0,0,M(0xc9ced4),16));const d=new T.Mesh(new T.SphereGeometry(3,16,8,0,Math.PI*2,0,Math.PI/2),M(0x8a9199));d.position.set(13,16,0);g.add(d);return g}};
+      g.add(cyl(3,3,16,13,0,0,M(0xc9ced4),16));const d=new T.Mesh(new T.SphereGeometry(3,16,8,0,Math.PI*2,0,Math.PI/2),M(0x8a9199));d.position.set(13,16,0);g.add(d);return g},
+    /* your military base: a fenced compound sized by land, a Command Post in the middle and one low-poly model per base building on a grid, a bit bigger per level; ones still being built show as a scaffold. Merged into one mesh per colour (few draw calls); Low graphics drops the small details */
+    mbase(m){const g=new T.Group(),lo=m.low,H=m.half||80,D=M(0x6b7d5a),fe=M(0x9aa3ad),con=M(0xa8a29e),ol=M(0x4d5d3a),dk=M(0x2f3640),wh=M(0xe5e7eb),rd=M(0xb91c1c),sc=M(0xf59e0b),tar=M(0x3f4247);
+      g.add(box(2*H,.2,2*H,0,0,0,D));g.add(box(8,.25,H,0,0,H/2,tar));
+      const st=lo?16:8;for(let i=-H;i<=H;i+=st)for(const [x,z] of [[i,-H],[i,H],[-H,i],[H,i]]){if(z===H&&Math.abs(x)<6)continue;g.add(box(.25,3,.25,x,0,z,fe))}
+      for(const y of lo?[2.6]:[1,2.6]){g.add(box(2*H,.12,.12,0,y,-H,fe));g.add(box(.12,.12,2*H,-H,y,0,fe));g.add(box(.12,.12,2*H,H,y,0,fe));g.add(box(H-6,.12,.12,-(H+6)/2,y,H,fe));g.add(box(H-6,.12,.12,(H+6)/2,y,H,fe))}
+      if(!lo)for(const [x,z] of [[-H,-H],[H,-H],[-H,H],[H,H]]){g.add(box(2,9,2,x,0,z,ol));g.add(box(3.4,2.2,3.4,x,9,z,con))}
+      g.add(box(2.4,3.4,2.4,-8,0,H,con));
+      /* Command Post */
+      g.add(box(18,7,14,0,0,0,con));g.add(box(19,.6,15,0,7,0,dk));g.add(box(.3,9,.3,6,7.6,4,fe));if(!lo)g.add(box(6,1,1,0,3,7.1,M(0x5f8fb3)));
+      const B={
+        bar(){const q=new T.Group();for(const z of [-7,0,7])q.add(box(24,4.5,5,0,0,z,ol));return q},
+        air(){const q=new T.Group();q.add(box(70,.25,9,0,0,0,tar));for(let i=-30;i<=30;i+=10)q.add(box(4,.1,.6,i,.25,0,wh));q.add(box(16,8,12,10,0,13,fe));q.add(box(16.4,.5,12.4,10,8,13,dk));return q},
+        sil(){const q=new T.Group();q.add(box(14,.6,14,0,0,0,con));q.add(cyl(4,4,.8,0,.6,0,dk,lo?8:16));if(!lo)q.add(box(1.4,3,1.4,5.6,0,5.6,ol));return q},
+        rad(){const q=new T.Group();q.add(box(5,4,5,0,0,0,wh));q.add(cyl(.5,.5,6,0,4,0,fe,6));const d=new T.Mesh(new T.SphereGeometry(4.5,lo?8:14,6,0,Math.PI*2,0,Math.PI/2.4),wh);d.rotation.x=-1.1;d.position.set(0,11,0);q.add(d);return q},
+        pat(){const q=new T.Group();for(const x of [-5,5]){q.add(box(4,1.4,7,x,0,0,ol));const t=box(3,3,5,x,1.4,0,ol);t.rotation.x=-.6;t.position.y=3.4;q.add(t)}if(!lo)q.add(box(3,2.4,3,0,0,-7,dk));return q},
+        dep(){const q=new T.Group();for(const [x,z] of [[-6,-4],[0,-4],[6,-4],[-6,4],[0,4],[6,4]].slice(0,lo?3:6))q.add(cyl(2.4,2.4,5,x,0,z,z<0?wh:M(0x7c8a6a),lo?8:12));return q},
+        lab(){const q=new T.Group();q.add(box(16,6,10,0,0,0,wh));q.add(box(16.4,.4,10.4,0,6,0,M(0x1e3a5f)));q.add(cyl(3,3,2,4,6.4,0,wh,lo?8:14));return q}};
+      /* the airfield takes the back strip; the rest fill a 2x3 grid either side of the access road */
+      const GR=[[-.6,-.4],[.6,-.4],[-.6,.15],[.6,.15],[-.6,.65],[.6,.65]];let i=0;
+      for(const k of ["air","bar","sil","rad","pat","dep","lab"]){const b=(m.bl||{})[k];if(!b||!B[k])continue;
+        let xx=0,zz=-H+12;if(k!=="air"){const p=GR[i++%6];xx=p[0]*H;zz=p[1]*H}
+        if(b.lv>0){const q=B[k]();q.scale.setScalar(1+.04*b.lv);q.position.set(xx,0,zz);g.add(q);if(b.up&&!lo)g.add(box(3,10,3,xx+10,0,zz+8,sc))}
+        else{/* under construction: a slab and an orange scaffold outline */
+          g.add(box(18,.4,14,xx,0,zz,con));for(const [a,c2] of [[-9,-7],[9,-7],[-9,7],[9,7]])g.add(box(.3,8,.3,xx+a,0,zz+c2,sc));
+          for(const y of lo?[8]:[4,8]){g.add(box(18,.25,.25,xx,y,zz-7,sc));g.add(box(18,.25,.25,xx,y,zz+7,sc));g.add(box(.25,.25,14,xx-9,y,zz,sc));g.add(box(.25,.25,14,xx+9,y,zz,sc))}}}
+      return mergeCol(g)}};
+  /* bake a group of simple meshes into one mesh per colour (used by the military base) */
+  function mergeCol(g){g.updateMatrixWorld(true);const bk={};g.traverse(o=>{if(!o.isMesh)return;const key=o.material.color.getHex()+"/"+(o.material.side||0);let ge=o.geometry.clone().applyMatrix4(o.matrixWorld);if(ge.index)ge=ge.toNonIndexed();(bk[key]||(bk[key]={m:o.material,g:[]})).g.push(ge)});
+    const out=new T.Group();for(const key in bk){const L0=bk[key].g;let n=0;for(const x of L0)n+=x.attributes.position.count;const P=new Float32Array(n*3),N=new Float32Array(n*3);let o=0;
+      for(const x of L0){const p=x.attributes.position.array;P.set(p,o);if(!x.attributes.normal)x.computeVertexNormals();N.set(x.attributes.normal.array,o);o+=p.length;x.dispose()}
+      const ge=new T.BufferGeometry();ge.setAttribute("position",new T.BufferAttribute(P,3));ge.setAttribute("normal",new T.BufferAttribute(N,3));out.add(new T.Mesh(ge,bk[key].m))}
+    g.traverse(o=>{if(o.isMesh)o.geometry.dispose()});return out}
 
   /* generated buildings near the camera: tiers on towers, setback crowns on mid-rise, pitched roofs on houses, window grids fitted to each wall.
      Built from the map's own footprints into three merged meshes (one per wall style, plus roofs); positions are metres from a local origin so nothing jitters. */
@@ -3320,6 +3352,7 @@ function renderPins(){clearPins();setModels([]);if(!inStreet)return;ensurePositi
     mkPins.push(mkPin(p.lat,p.lon,RIVALS[i].n.split(" ")[0],RIVALS[i].col,`${RIVALS[i].n} branch`))});
   // other players' placed businesses here (Layers → Others' shops, or the street-bar toggle)
   if(stCity&&lyOn("ob"))try{for(const p of botAll()){if(ON.user&&p.uid===ON.user.uid)continue;const nm=String(p.name||"Player").slice(0,20),col=/^#[0-9a-fA-F]{6}$/.test(p.col||"")?p.col:"#64748b";for(const x of obPins(p,stCity)){const m=mkPin(x.lat,x.lon,BIZTAG[x.b.k]||"•",col,`${nm} · ${x.b.n}`,null,"own");m.getElement().querySelector("span").dataset.own=nm;m.getElement().style.opacity=.9;mkPins.push(m);{let hh=0;for(const ch of nm+x.b.k)hh=(hh*31+ch.charCodeAt(0))>>>0;modelList.push({cls:"biz",lat:x.lat,lon:x.lon,k:1,lv:1,h:hh})}}}}catch(e){}
+  try{const mb=mbaModel();if(mb&&pinNear(mb.lat,mb.lon,_ctr))modelList.push(mb)}catch(e){}
   setModels(modelList);
   if(stCity&&!placing)renderListings(stCity)}
 /* ---------- placing a purchase on the map ---------- */
@@ -15019,12 +15052,26 @@ PCW.mba={t:"Military Base",ic:"🏰",r(){const p=pol(),m=mbase(),now=Date.now(),
     ${bz?`<small style="color:#fbbf24">🏗 Level ${x.to} in ${fmtDur(x.done-now)}</small>`:mx?`<small style="color:#4ade80">Max level</small>`:`<button class="pw-b" data-pw="mbb" data-v="${k}" style="color:#fff"${!lead||!ok||need||S.cash<c?" disabled":""}>${lv?"⬆ Upgrade":"🏗 Build"} · ${fmt(c)} · ${fmtDur(mbaTime(k,lv))}</button>${need?`<small style="color:#f87171">Needs a free plot</small>`:""}`}</div>`};
   return `<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:14px"><div style="display:flex;flex-direction:column;gap:6px">${mbaMap(m,p)}
     ${kv("Location",`${wfE(m.cty)} · ${m.km} km from nearest city`)}${kv("Land size",m.sz)}${kv("Plots",`${used} built / ${m.pl} cleared / ${m.cap} max`,m.pl>=m.cap?"#f59e0b":"")}${kv("Research points",Math.floor(m.rp).toLocaleString("en-US"))}${kv("Treasury",fmt(S.cash))}
-    <button class="pw-b" data-pw="mbplot" style="color:#fff"${!lead||!ok||m.pl>=m.cap||S.cash<pc?" disabled":""}>${m.pl>=m.cap?`🚫 ${m.sz} land is full (${m.cap} plots)`:`🚧 Clear plot ${m.pl+1} · ${fmt(pc)}`}</button>
+    <button class="pw-b" data-pw="mbview" style="color:#fff">🗺 View in street view</button><button class="pw-b" data-pw="mbplot" style="color:#fff"${!lead||!ok||m.pl>=m.cap||S.cash<pc?" disabled":""}>${m.pl>=m.cap?`🚫 ${m.sz} land is full (${m.cap} plots)`:`🚧 Clear plot ${m.pl+1} · ${fmt(pc)}`}</button>
     ${ok?"":`<p class="pw-m" style="color:#f87171">You no longer govern ${wfE(m.cty)}: the base is offline.</p>`}<p class="pw-m">🏢 Command Post (free, does not use a plot). Each building takes one plot and levels 1–${MBACFG.lvMax}; cost ×${MBACFG.lvG} per level.</p></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;align-content:start">${Object.keys(MBACFG.b).map(card).join("")}</div></div>`},
-  a(a,b){if(a==="mbpick"){MBA.pick=MBA.pick?0:1;return}if(a==="mbmap"){if(!MBA.pick||!MBA.px||!MBA.pr)return;const g=MBA.pr.invert(MBA.px);if(g)mbaPlace(g[0],g[1]);return}if(a==="mbplot")return mbaPlot();if(a==="mbb")return mbaBuild(b.dataset.v)}};
+  a(a,b){if(a==="mbpick"){MBA.pick=MBA.pick?0:1;return}if(a==="mbmap"){if(!MBA.pick||!MBA.px||!MBA.pr)return;const g=MBA.pr.invert(MBA.px);if(g)mbaPlace(g[0],g[1]);return}if(a==="mbview")return mbaView();if(a==="mbplot")return mbaPlot();if(a==="mbb")return mbaBuild(b.dataset.v)}};
+/* Military base in 3D: the street view draws it as a model (see build.mbase) when the camera is near; a marker on the world map flies you there */
+const MBA_HALF={Small:70,Medium:95,Large:125,Vast:150};
+function mbaModel(){const m=mbase();if(!m||!isFinite(m.lat)||!isFinite(m.lon))return null;const bl={},now=Date.now();
+  for(const k in m.b){const x=m.b[k];if(!x)continue;const lv=Math.max(0,Math.min(10,x.lv|0));if(lv||x.done)bl[k]={lv,up:!!(x.done&&x.done>now)}}
+  return{cls:"mbase",lat:m.lat,lon:m.lon,h:0,half:MBA_HALF[m.sz]||80,bl,low:!!(S.set&&S.set.gfx==="low")}}
+function mbaSig(){const x=mbaModel();return x?JSON.stringify([x.lat,x.lon,x.half,x.bl,x.low]):""}
+let mbaMk=null,mbaMkSig="",mbaSg="";
+function mbaView(){const m=mbase();if(!m)return toast("You have no military base yet");if(!HAS_STREET)return toast("Street view isn't available here");
+  try{if(typeof closeSheet==="function")closeSheet()}catch(e){}const c=mbaNear(m.lat,m.lon)[0];enterStreet({lat:m.lat,lon:m.lon},17.6);if(c){stCity=c;stLabel()}try{MM.easeTo({pitch:55,duration:800})}catch(e){}setTimeout(()=>{try{renderPins()}catch(e){}},400);toast("🏰 Flying to your military base")}
+/* keeps the world-map marker and the 3D compound in step with the save (cheap: compares a small signature each second) */
+function mbaSync(){try{const m=mbase(),k=m?m.lat+","+m.lon:"";if(k!==mbaMkSig){mbaMkSig=k;if(mbaMk){mbaMk.remove();mbaMk=null}
+    if(m){const el=document.createElement("div");el.className="mpin mba-pin";el.title="Your military base · click to view in street view";el.innerHTML='<span style="background:#4d5d3a;color:#fff;border:2px solid #facc15;border-radius:8px;padding:2px 6px;font:700 12px system-ui;cursor:pointer;white-space:nowrap">🏰 Base</span>';
+      el.addEventListener("click",e=>{e.stopPropagation();mbaView()});mbaMk=new maplibregl.Marker({element:el,anchor:"bottom"}).setLngLat([m.lon,m.lat]).addTo(MM)}}
+  const sg=mbaSig();if(sg!==mbaSg){mbaSg=sg;if(inStreet)renderPins()}}catch(e){}}
 let saveT=0;
-every(1000,()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();try{colTick(Date.now())}catch(e){console.warn("col",e)}try{airTick(Date.now())}catch(e){console.warn("air",e)}try{lcctTick()}catch(e){console.warn("lcct",e)}if(++saveT%5===0){saveIdle();checkGoals()}if(document.hidden)return;hud();
+every(1000,()=>{if(S.dead)return;if(saveT%10===0)accrue();else{const n=Date.now();if(S.shopT)runShops(Math.max(0,n-S.shopT)/DAYMS);saleTick(n)}checkApp();ptTick();try{colTick(Date.now())}catch(e){console.warn("col",e)}try{airTick(Date.now())}catch(e){console.warn("air",e)}try{lcctTick()}catch(e){console.warn("lcct",e)}if(++saveT%5===0){saveIdle();checkGoals()}mbaSync();if(document.hidden)return;hud();
   const sec=Math.max(0,Math.ceil(((S.hour+1)*DAYMS-Date.now())/1000));
   $("#clk").title="Where you are";$("#clk").textContent=jailed()?"in prison · "+fmtDur(S.jail.until-Date.now()):S.trip?(S.trip.local?"on the way":(S.trip.mode==="plane"?"flying to ":"travelling to ")+CITIES[S.trip.to.city].name)+" · "+fmtDur(S.trip.arr-Date.now()):"in "+CITIES[S.loc.city].name;
   if(mode==="pf"&&saveT%5===0&&sheet.classList.contains("open")&&!(document.activeElement&&/^(SELECT|INPUT)$/.test(document.activeElement.tagName))){const y=sheet.scrollTop;renderSheet();sheet.scrollTop=y}
