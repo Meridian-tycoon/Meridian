@@ -5266,6 +5266,17 @@ function moneyPage(){const R=moneyRows(),{inc,out}=mnyHist(R),net=inc-out,mx=Mat
   <div class="mdx-card"><h3 style="margin:0 0 6px">Income vs costs</h3>${mnyChart()}</div>
   <div class="mdx-card"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">${fb("all","All")}${fb("out","Costs")}${fb("in","Income")}</div>`+
   L.map(([n,v,i])=>{const sel=MNY.sel===i,tot=v<0?out:inc;return `<div data-lx="mnyr" data-v="${i}" style="cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:6px 0;border-top:1px solid rgba(127,127,127,.18)${sel?";background:rgba(127,127,127,.08)":""}"><span>${n}</span><b style="font-family:var(--mono);color:${v<0?"var(--bad)":"var(--good)"}">${m(v)}</b><i style="grid-column:1/3;height:4px;border-radius:2px;width:${Math.max(1,Math.abs(v)/mx*100).toFixed(1)}%;background:${v<0?"var(--bad)":"var(--good)"};opacity:.6"></i>${sel?`<small style="grid-column:1/3;color:var(--muted)">${tot>0?Math.round(Math.abs(v)/tot*100):0}% of your ${v<0?"costs":"income"} · ${m(v)} per game day (1 real hour) · ${m(v*24)} per real day</small>`:""}</div>`}).join("")+`</div>`}
+/* HQ dashboard "Contracts log" tab (Mark, 2026-11-12): the Manager contracts log (S.lcml) for every logistics center, with totals per city */
+function mclPage(){const E=S.lcml||[],ic={acc:"🤝",road:"🚛",paid:"💰",miss:"❌",skip:"⏭️"},by={};let net=0,nP=0,nM=0;
+  for(const e of E){const b=by[e[1]]=by[e[1]]||{v:0,n:0};b.n++}const T=S.lcmlT||{net:0,paid:0,miss:0,by:{}};net=T.net;nP=T.paid;nM=T.miss;for(const id in T.by){(by[id]=by[id]||{v:0,n:0}).v=T.by[id]}
+  const nm=id=>CITIES[id]?dxE(CITIES[id].name):"?";
+  let h=`<div class="lx-k"><div><span>Net from managers</span><b>${fmt(net)}</b><small>all time</small></div><div><span>Delivered</span><b>${nP}</b><small>all time</small></div><div><span>Missed</span><b>${nM}</b><small>all time</small></div></div>`;
+  if(!E.length)return h+`<div class="mdx-card"><div class="mdx-empty">No auto contracts yet. Hire a warehouse manager at a logistics center and turn on "Manager runs contracts".</div></div>`;
+  h+=`<div class="mdx-card"><h3>By center</h3>`+Object.keys(by).sort((a,b)=>by[b].v-by[a].v).map(id=>`<div class="lx-it"><div class="m"><b>${nm(id)}</b><span>${fmt(by[id].v)} · ${by[id].n} entr${by[id].n===1?"y":"ies"}</span></div></div>`).join("")+`</div>`;
+  return h+`<div class="mdx-card"><h3>Log</h3>`+E.slice(0,300).map(([t,id,k,x])=>`<div class="lx-it"><div class="m"><b>${ic[k]||""} ${nm(id)}</b><span>${dxE(x)}</span><small>${new Date(t).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</small></div></div>`).join("")+`</div>`}
+function mclRender(){const main=DX.el&&DX.el.querySelector("#mdx-main");if(!main)return;DX.el.classList.add("lx-on");
+  DX.el.querySelectorAll("[data-lx=page]").forEach(b=>b.classList.toggle("on",b.dataset.v==="mcl"));if(main.dataset.mode!=="mcl"){main.dataset.mode="mcl";main._lxh=""}
+  let h;try{h=mclPage()}catch(e){console.warn("mcl",e);h=`<div class="mdx-card"><div class="mdx-empty">The contracts log hit a snag (${dxE(e.message)}).</div></div>`}if(h!==main._lxh){main._lxh=h;main.innerHTML=h}}
 function mnyRender(){const main=DX.el&&DX.el.querySelector("#mdx-main");if(!main)return;DX.el.classList.add("lx-on");
   const dt=DX.el.querySelector("#mdx-dt");if(dt)dt.textContent=`Day ${S.day||1} · next day in ${dxIn((S.hour+1)*DAYMS-Date.now())}`;
   DX.el.querySelectorAll("[data-lx=page]").forEach(b=>b.classList.toggle("on",b.dataset.v==="mny"));if(main.dataset.mode!=="mny"){main.dataset.mode="mny";main._lxh=""}
@@ -8628,7 +8639,7 @@ function intDash(){const hd=`<div class="mdx-hd"><h2>Intelligence Agency <span>�
   return hd+`<div class="mdx-kpis">${kp("Operations",x.n,`${x.n?Math.round(x.ok/x.n*100):0}% success`,"#e0e7ff","#4338ca","🕵️")}${kp("Spy networks",nets.length,`${nets.reduce((a,c)=>a+x.net[c],0)} asset levels`,"#dcfce7","#16a34a","🕴️")}${kp("Counter-intel",intCiOn()?"On":"Off",intCiOn()?fmtDur(x.ci-now)+" left":"home unshielded","#fef3c7","#d97706","🛡️")}${kp("Intel files",files,files?"active dossiers":"none open","#fee2e2","#dc2626","📁")}</div>
   <div class="mdx-grid"><div class="mdx-col mdx-c1">${dossier}</div><div class="mdx-col mdx-c2">${opsCard}${logCard}</div><div class="mdx-col mdx-c3">${threat}${netCard}</div></div>`}
 /* dashboard pages: any page added later goes into DXPAGES; the Industrial Shop is always appended last, so it is always the right-most tab */
-const DXPAGES=[["fin","Finance"],["mny","Money"],["off","Office"],["frn","Franchises"],["log","Logistics"],["truck","Trucking"],["air","Airline"]],DXLAST=["ind","Industrial Shop"];
+const DXPAGES=[["fin","Finance"],["mny","Money"],["off","Office"],["frn","Franchises"],["log","Logistics"],["mcl","Contracts log"],["truck","Trucking"],["air","Airline"]],DXLAST=["ind","Industrial Shop"];
 const dxPageList=()=>DXPAGES.filter(p=>p[0]!==DXLAST[0]).concat([DXLAST]);
 const dxPageOk=v=>dxPageList().some(p=>p[0]===v);
 function dxPageBtns(){return dxPageList().map(p=>`<button data-lx="page" data-v="${p[0]}" class="${(dxPageOk(DX.page)?DX.page:"fin")===p[0]?"on":""}">${p[1]}</button>`).join("")}
@@ -8682,7 +8693,7 @@ function dxTipShow(el){const box=DX.el&&DX.el.querySelector("#mdx-bars");if(!box
   const br=box.getBoundingClientRect(),r=el.getBoundingClientRect(),w=t.offsetWidth;let x=r.right-br.left+6;if(x+w>br.width)x=r.left-br.left-w-6;if(x<0)x=Math.max(0,Math.min(br.width-w,r.left-br.left+r.width/2-w/2));t.style.left=x+"px"}
 const dxAgo=t=>{const s=Math.max(0,(Date.now()-t)/1000);return s<60?"just now":s<3600?Math.round(s/60)+" min ago":(s/3600).toFixed(1)+" days ago"};
 const dxIn=ms=>ms<=0?"now":ms<60000?Math.ceil(ms/1000)+"s":ms<DAYMS?Math.ceil(ms/60000)+" min":(ms/DAYMS).toFixed(1)+" days";
-function dxRender(){if(!DX.open||!DX.el)return;if(DX.page==="log"){lxRender();return}if(DX.page==="truck"){txRender();return}if(DX.page==="air"){axRender();return}if(DX.page==="off"){ofRender();return}if(DX.page==="mny"){mnyRender();return}if(DX.page==="frn"){frnRender();return}if(DX.page==="ind"){isRender();return}const reg=!!DX.reg,T=dxData(reg),main=DX.el.querySelector("#mdx-main");if(!main)return;
+function dxRender(){if(!DX.open||!DX.el)return;if(DX.page==="log"){lxRender();return}if(DX.page==="truck"){txRender();return}if(DX.page==="air"){axRender();return}if(DX.page==="off"){ofRender();return}if(DX.page==="mny"){mnyRender();return}if(DX.page==="mcl"){mclRender();return}if(DX.page==="frn"){frnRender();return}if(DX.page==="ind"){isRender();return}const reg=!!DX.reg,T=dxData(reg),main=DX.el.querySelector("#mdx-main");if(!main)return;
   const dt=DX.el.querySelector("#mdx-dt");if(dt)dt.textContent=`Day ${S.day||1} · next day in ${dxIn((S.hour+1)*DAYMS-Date.now())}`;
   DX.el.querySelectorAll("[data-dx=reg]").forEach(b=>b.classList.toggle("on",(b.dataset.v==="1")===reg));
   if(!T.n){if(main.dataset.mode!=="empty"){main.dataset.mode="empty";DX.sig=null}const any=dxData(false).n;
@@ -9443,7 +9454,7 @@ const flagSvg=n=>FLG[n]?`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60
    notification bell, Messages app and a taskbar with one tab per open window (minimise / restore / focus).
    Company apps use DX (business dashboard) pages, government apps use MX (Military dashboard) pages, phone apps open the
    phone as a desktop window. The taskbar company switcher sets DX.co (HQ country), which filters dxData while the desktop is open. */
-const PCAPPS=[["fin","📊","Finance","#2563eb"],["mny","💸","Money","#dc2626"],["off","👥","Office","#0e7490"],["log","📦","Logistics","#b45309"],["truck","🚚","Trucking","#15803d"],["air","✈️","Airline","#0369a1"],["ind","🏭","Industrial Shop","#7c3aed"],
+const PCAPPS=[["fin","📊","Finance","#2563eb"],["mny","💸","Money","#dc2626"],["off","👥","Office","#0e7490"],["log","📦","Logistics","#b45309"],["mcl","📒","Contracts log","#7c3aed"],["truck","🚚","Trucking","#15803d"],["air","✈️","Airline","#0369a1"],["ind","🏭","Industrial Shop","#7c3aed"],
   ["stocks","📈","Stocks","#16a34a"],["props","🏠","Properties","#166534"],["msg","💬","Messages","#0891b2"],["govt","🏛","Government","#7c2d12"],
   ["cal","📅","Calendar","#0e7490"],["th","🎨","Themes","#475569"],
   ["eo","🖋","Executive Orders","#7c2d12",1],["bud","💰","Budget","#a16207",1],["poll","🗳","Polls & Elections","#1d4ed8",1],["dip","🤝","Diplomacy","#047857",1],["red","☎️","Red Phone","#b91c1c",1],["nuke","☢️","Nuclear Briefcase","#3f3f46",1],["cc","🚨","Command Center","#7f1d1d",1],["mba","🏰","Military Base","#365314",1],["spy","🛰","Spy Feed","#1e3a8a",1],["space","🚀","Space Agency","#312e81",1],
@@ -14907,7 +14918,9 @@ function lcctTick(){try{lcKeepTick()}catch(e){console.warn("keep",e)}try{lcAutoT
 const LCAU={every:30000,free:1};
 /* Manager contracts log (Mark, 2026-11-12): every auto contract across all centers. S.lcml=[[ms,cityId,kind,text,pay]], newest first,
    last 200 entries or 30 game days. kind: acc|road|paid|miss|skip. S.lcmlIds marks contracts the manager took. */
-function lcmlAdd(c,k,t,v){if(!Array.isArray(S.lcml))S.lcml=[];const n=Date.now();S.lcml.unshift([n,c.id,k,String(t),v||0]);S.lcml=S.lcml.filter(e=>n-e[0]<30*DAYMS).slice(0,200)}
+function lcmlAdd(c,k,t,v){if(!Array.isArray(S.lcml))S.lcml=[];const n=Date.now();S.lcml.unshift([n,c.id,k,String(t),v||0]);S.lcml=S.lcml.slice(0,1000);
+  /* all-time totals (Mark, 2026-11-12): never reset, kept apart from the entry list so the save stays small */
+  const T=S.lcmlT=S.lcmlT||{net:0,paid:0,miss:0,acc:0,by:{}};T.net+=v||0;if(k==="paid")T.paid++;if(k==="miss")T.miss++;if(k==="acc")T.acc++;T.by[c.id]=(T.by[c.id]||0)+(v||0)}
 const lcmlMine=id=>!!(S.lcmlIds&&S.lcmlIds[id]);
 function lcAutoTick(){const n=Date.now();for(const id in (S.lc||{})){const c=CITIES[id],L=c&&LCO(id);if(!L||!L.mgr||!L.au)continue;
   for(const x of (L.ship||[]))if(x.st==="ready"&&L.ct&&(L.ct.ac||[]).some(o=>o.id===x.id)){lcctAct(c,"give",x.id);lcLog(c,`Manager sent contract #${x.id} on the road`);lcmlAdd(c,"road",`#${x.id} ${G[x.g][0]} sent on the road`)}
@@ -14950,8 +14963,8 @@ function lcShipTxt(x){const n=Date.now();return x.st==="road"?`🚛 on the road,
 function lcShipRows(c){const L=LCO(c.id);return (L&&L.ship||[]).filter(x=>x.st==="road").map(x=>`#${x.id} ${G[x.g][0]} ${gq(x.q)} · ${lcShipTxt(x)} · ${fmt(x.pay)}`)}
 function lcmlHtml(c){const L=LCO(c.id),all=!!L.mlAll,E=(S.lcml||[]).filter(e=>all||e[1]===c.id),net=E.reduce((s,e)=>s+(e[4]||0),0),ic={acc:"🤝",road:"🚛",paid:"💰",miss:"❌",skip:"⏭️"};
   if(!(S.lcml||[]).length)return "";
-  return `<details class="row" style="display:block"><summary class="n" style="cursor:pointer">📒 Manager contracts log · ${E.length} entr${E.length===1?"y":"ies"} · net ${fmt(net)}</summary>
-  <div class="d" style="margin:6px 0"><button class="buy up" data-act="lcmlall">${all?"Show this city only":"Show all centers"}</button> Last 30 game days, up to 200 entries.</div>`+
+  return `<details class="row" style="display:block"><summary class="n" style="cursor:pointer">📒 Manager contracts log · ${E.length} entr${E.length===1?"y":"ies"} · net ${fmt(all?(S.lcmlT||{}).net||0:((S.lcmlT||{}).by||{})[c.id]||0)} all time</summary>
+  <div class="d" style="margin:6px 0"><button class="buy up" data-act="lcmlall">${all?"Show this city only":"Show all centers"}</button> All-time totals; the newest 1000 entries are kept.</div>`+
   E.slice(0,60).map(([t,id,k,x])=>`<div class="d" style="padding:2px 0"><span style="color:var(--muted);font-family:var(--mono)">${new Date(t).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span> ${ic[k]||""} ${all&&CITIES[id]?`<b>${E2(CITIES[id].name)}</b> `:""}${E2(x)}</div>`).join("")+`</details>`}
 function lcctHtml(c){const K=lcctOf(c),L=LCO(c.id);if(!K)return "";const n=Date.now();
   let h=`<div class="sec">Contracts · ${K.ac.length}/${LCCTMAX} active</div><div class="list">`+(L.mgr?`<div class="row"><div class="n">🤝 Manager runs contracts: ${L.au?"on":"off"}</div><div class="d">${L.au?"Your manager accepts one-off offers you already have the stock for (best pay first, 1 slot kept free for you) and sends loaded trucks on their way. Standing orders stay your call.":"Turn on to let your manager accept contracts you can fill and deliver them for you."}</div><button class="buy ${L.au?"up":""}" data-act="lcctauto">${L.au?"Turn off":"Turn on"}</button></div>`+lcmlHtml(c):`<div class="row"><div class="d">Hire a warehouse manager (reception office inside) and they can run contracts for you.</div></div>`)+lcShipRows(c).map(t=>`<div class="row"><div class="d">${t}</div></div>`).join("");
