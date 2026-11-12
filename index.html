@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#141f21">
+<link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
+<link rel="preconnect" href="https://www.gstatic.com">
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
 <script>try{var _ui=localStorage.getItem("meridian-uitheme");if(/^(glass|ledger|command)$/.test(_ui))document.documentElement.classList.add("th-"+_ui)}catch(e){}</script>
 <script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("meridian-theme")==="light"?"light":"dark")}catch(e){document.documentElement.setAttribute("data-theme","dark")}</script>
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
@@ -476,8 +479,9 @@ html.th-ledger #dcard>div{border-radius:2px;box-shadow:6px 6px 0 rgba(31,26,20,.
 /* stub so the ECharts world geometry script hands its data to us */
 window.echarts={registerMap:function(n,g){window.__WORLD=g}};
 </script>
-<script src="https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/world.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<!-- speed: world shapes and the d3 geo maths are served from our own site (no extra CDN lookups before the game can start); only the geo part of d3 is used, 80 KB instead of 280 KB -->
+<script src="vendor/world.js"></script>
+<script src="vendor/d3-geo.min.js"></script>
 <script src="vendor/maplibre-gl.js"></script>
 <script>
 (function(){
@@ -2526,10 +2530,15 @@ const PMX={on:null,ask:[],busy:{},sub:[],err:"",q:{},v:{}},PMXCFG={qMax:10000000
 function PMXS(){let s=S.gdx;if(!s||typeof s!=="object")s=S.gdx={};if(!s.esc||typeof s.esc!=="object")s.esc={};if(!Array.isArray(s.seen))s.seen=[];return s}
 const gxOn=()=>typeof ON!=="undefined"&&!!(ON.user&&ON.db);
 const gxName=()=>{try{return (onProf().name||"Tycoon").slice(0,20)}catch(e){return "Tycoon"}};
-function gxEnsure(){const uid=gxOn()?ON.user.uid:null;if(PMX.on===uid)return;for(const f of PMX.sub)try{f()}catch(e){}PMX.sub=[];PMX.ask=[];PMX.on=uid;PMX.err="";if(!uid)return;
+function gxEnsure(){const uid=gxOn()?ON.user.uid:null;if(PMX.on===uid)return;for(const f of PMX.sub)try{f()}catch(e){}PMX.sub=[];if(PMX.bun){try{PMX.bun()}catch(e){}PMX.bun=null}PMX.ask=[];PMX.on=uid;PMX.err="";if(!uid)return;
   const db=ON.db,er=w=>e=>{PMX.err="Couldn't load "+w+": "+(e&&e.code||e)};
-  PMX.sub.push(db.collection("gdask").orderBy("at","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(G[v.g]&&CITIES[v.c]&&(v.q|0)>0&&+v.px>0)a.push(Object.assign({id:d.id},v))});PMX.ask=a;gxTidy();gxRefresh()},er("player listings")));
+  gxBoard();
   PMX.sub.push(db.collection("gdsale").where("to","==",uid).onSnapshot(q=>q.forEach(d=>gxClaim(d)),er("player sales")))}
+/* speed: the 200-listing player board is only listened to while someone can see it (Market app or a city's Industry tab), and is let go 2 min after closing, so idle players stop paying for every listing change worldwide */
+function gxSeen(){try{return (typeof PH!=="undefined"&&PH.open&&PH.app==="market")||(sel&&sheet.classList.contains("open")&&tab==="ind")}catch(e){return false}}
+function gxBoard(){const uid=PMX.on;if(!uid||typeof ON==="undefined"||!ON.db){if(PMX.bun){try{PMX.bun()}catch(e){}PMX.bun=null}return}const n=Date.now();if(gxSeen())PMX.seen=n;
+  if(PMX.bun&&n-(PMX.seen||0)>120000){try{PMX.bun()}catch(e){}PMX.bun=null;return}
+  if(!PMX.bun&&n-(PMX.seen||0)<=120000)PMX.bun=ON.db.collection("gdask").orderBy("at","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(G[v.g]&&CITIES[v.c]&&(v.q|0)>0&&+v.px>0)a.push(Object.assign({id:d.id},v))});PMX.ask=a;gxTidy();gxRefresh()},e=>{PMX.err="Couldn't load player listings: "+(e&&e.code||e)})}
 function gxRefresh(){try{if(typeof PH!=="undefined"&&PH.open&&PH.app==="market"&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))phRender()}catch(e){}try{if(sel&&sheet.classList.contains("open")&&tab==="ind"&&!(document.activeElement&&sheet.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))renderSheet()}catch(e){}}
 function gxTidy(){const s=PMXS();for(const id in s.esc)if(!(s.esc[id].q>0))delete s.esc[id]}
 function gxClaim(d){const s=PMXS(),v=d.data()||{},at=v.at&&v.at.toMillis?v.at.toMillis():0,key=d.id+"@"+at;if(v.to!==PMX.on)return;
@@ -2590,7 +2599,7 @@ sheet.addEventListener("input",e=>{const t=e.target;if(t.dataset&&t.dataset.gxq)
 sheet.addEventListener("change",e=>{const t=e.target;if(t.dataset&&t.dataset.gxv)PMX.v[t.dataset.gxv]=t.value});
 sheet.addEventListener("click",e=>{const b=e.target.closest("[data-gx]");if(!b||!sel)return;const a=b.dataset.gx;
   if(a==="buy")gxBuy(b.dataset.id);else if(a==="cancel")gxCancel(b.dataset.id);else if(a==="list")gxList(sel)});
-every(5000,()=>{try{gxEnsure()}catch(e){}});
+every(5000,()=>{try{gxEnsure()}catch(e){}});every(1000,()=>{try{gxBoard()}catch(e){}});
 /* phone Market app: every player listing in the world, cheapest first per good; Buy delivers to your warehouse in that city */
 function gxPhone(){gxEnsure();const E=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
   let h=`<div class="ph-sub" style="font-weight:700">Player listings</div>`;
