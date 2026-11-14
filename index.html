@@ -2540,8 +2540,8 @@ function gxEnsure(){const uid=gxOn()?ON.user.uid:null;if(PMX.on===uid)return;for
   PMX.sub.push(db.collection("gdsale").where("to","==",uid).onSnapshot(q=>q.forEach(d=>gxClaim(d)),er("player sales")))}
 /* speed: the 200-listing player board is only listened to while someone can see it (Market app or a city's Industry tab), and is let go 2 min after closing, so idle players stop paying for every listing change worldwide */
 function gxSeen(){try{return (typeof PH!=="undefined"&&PH.open&&PH.app==="market")||(sel&&sheet.classList.contains("open")&&tab==="ind")}catch(e){return false}}
-function gxBoard(){const uid=PMX.on;if(!uid||typeof ON==="undefined"||!ON.db){if(PMX.bun){try{PMX.bun()}catch(e){}PMX.bun=null}return}const n=Date.now();if(gxSeen())PMX.seen=n;
-  if(PMX.bun&&n-(PMX.seen||0)>120000){try{PMX.bun()}catch(e){}PMX.bun=null;return}
+function gxBoard(){const uid=PMX.on;if(!uid||typeof ON==="undefined"||!ON.db){if(PMX.bun){try{PMX.bun()}catch(e){}PMX.bun=null;PMX.ask=[]}return}const n=Date.now();if(gxSeen())PMX.seen=n;
+  if(PMX.bun&&n-(PMX.seen||0)>120000){try{PMX.bun()}catch(e){}PMX.bun=null;PMX.ask=[];return}
   if(!PMX.bun&&n-(PMX.seen||0)<=120000)PMX.bun=ON.db.collection("gdask").orderBy("at","desc").limit(200).onSnapshot(q=>{const a=[];q.forEach(d=>{const v=d.data()||{};if(G[v.g]&&CITIES[v.c]&&(v.q|0)>0&&+v.px>0)a.push(Object.assign({id:d.id},v))});PMX.ask=a;gxTidy();gxRefresh()},e=>{PMX.err="Couldn't load player listings: "+(e&&e.code||e)})}
 function gxRefresh(){try{if(typeof PH!=="undefined"&&PH.open&&PH.app==="market"&&!(document.activeElement&&PH.el.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))phRender()}catch(e){}try{if(sel&&sheet.classList.contains("open")&&tab==="ind"&&!(document.activeElement&&sheet.contains(document.activeElement)&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)))renderSheet()}catch(e){}}
 function gxTidy(){const s=PMXS();for(const id in s.esc)if(!(s.esc[id].q>0))delete s.esc[id]}
@@ -3668,6 +3668,7 @@ const RSG={gasstation:["fuel",1],cart:["beef",.00025],taco:["beef",.0002],rest:[
   shop:["flour",.002],coffeecart:["plastics",.00002],kiosk:["plastics",.00002],smoothie:["plastics",.00002],icecream:["plastics",.00002]};
 const REALPX={wheat:250,corn:200,flour:500,beef:2400,ore:110,coal:130,oil:550,fuel:800,plastics:800};
 function gxRestock(c,b,key,q,gp){const m=RSG[b.k];if(!m||q<1||!gxOn())return false;const [g,per]=m,cap=REALPX[g]*1.1;gxEnsure();const uid=ON.user.uid;
+  if(!PMX.bun)return false; /* board not live: its list may be stale, so use the game supplier (bug fix 2026-11-14) */
   const lots=PMX.ask.filter(a=>a.c===c.id&&a.g===g&&a.uid!==uid&&+a.px<=cap&&!PMX.busy["l:"+a.id]).sort((x,y)=>x.px-y.px);if(!lots.length)return false;
   const a=lots[0],n=Math.min(Math.max(1,Math.ceil(q*per-1e-9)),a.q|0),px=+a.px,amt=Math.round(n*px*100)/100;if(n<1||S.cash<amt)return false;
   if(gp&&gp.dep>0)gasTake(c,key,{dep:gp.dep,buy:0,p:gp.p});
@@ -3677,7 +3678,7 @@ function gxRestock(c,b,key,q,gp){const m=RSG[b.k];if(!m||q<1||!gxOn())return fal
       if((v.q|0)===n)tx.delete(ar);else tx.update(ar,{q:(v.q|0)-n});tx.set(sr,{to:v.uid,by:uid,byName:gxName(),ask:a.id,c:c.id,g,q:n,px,amt:n*px,at:FV.serverTimestamp()})})
     .then(()=>{end();S.stock[key]=(S.stock[key]||0)+n/per;const msg=`Manager bought ${gq(n)} ${G[g][0].toLowerCase()} from ${String(a.name||"a player").slice(0,20)} for ${b.n} in ${c.name}: ${fmt(amt)}`;
       S.log.unshift(msg);S.log=S.log.slice(0,3);save();hud()},
-      ()=>{end();S.cash+=amt;save();hud()});
+      ()=>{end();S.cash+=amt;PMX.ask=PMX.ask.filter(x=>x.id!==a.id);save();hud()}); // a gone or changed lot is dropped so the next tick tries another lot or the supplier
   return true}
 /* ---------- stock alerts: tiered low / critical / empty notices ----------
    Every stocked business (SUP types) gets a tier from the hours of stock left at its current selling speed:
@@ -5205,7 +5206,7 @@ function agHour(quiet){const m=S.pol&&S.pol.mil;if(!m||!m.agar)return;const a=m.
   let over=agTot()+Object.values(m.occ||{}).reduce((s,o)=>s+(o.gar||0),0)-m.units.inf; // losses at the front come out of garrisons abroad first
   for(const n of Object.keys(a)){if(over>0){const c=Math.min(a[n],over);a[n]-=c;over-=c}
     if(!a[n]){delete a[n];continue}if(!als.has(n)){agHome(n,quiet?"":"alliance ended");continue}
-    S.cash+=a[n]*MILCFG.units.inf.up*AGCFG.fee;x.rel[n]=Math.min(AGCFG.relCap,(x.rel[n]||0)+AGCFG.rel*a[n]/MILCFG.batch/24)}}
+    S.cash+=a[n]*MILCFG.units.inf.up*AGCFG.fee;x.rel[n]=Math.min(AGCFG.relCap,(x.rel[n]||0)+AGCFG.rel*a[n]/MILCFG.batch)}}
 function agDefend(ws,quiet){const pc=dipPlayerC(),a=(S.pol&&S.pol.mil&&S.pol.mil.agar)||{};if(!pc)return;
   for(const n in a){if(!a[n])continue;for(const w of ws){if(w.l<3||(w.a!==n&&w.b!==n)||w.a===pc||w.b===pc||w.inv||(w.al&&w.al[pc]))continue;const s=w.a===n?"a":"b",en=s==="a"?w.b:w.a;if(en===pc)continue;
     w.al=w.al||{};w.al[pc]=s;w.at=w.at||{};w.at[pc]=wlPT();if(!quiet)try{wlMarch(w,pc,s)}catch(e){}logGov(`🛡 Your garrison in ${n} fights back against ${en}: your army joins the defence`);if(!quiet)toast(`🛡 ${en} attacked ${n}: your garrison there pulls your army into the defence`)}}}
@@ -14669,7 +14670,7 @@ function frSign(k,cid){const b=BIZ.find(y=>y.k===k),f=FRAN();if(!b||!f.p[k])retu
   f.log.unshift({t:now,m:`${o.op} opened a ${b.n} in ${CITIES[cid].name} (+${fmt(o.fee)} fee)`});f.log.length=Math.min(f.log.length,20);return""}
 function frBuyCost(x){const b=BIZ.find(y=>y.k===x.k),c=CITIES[x.c];return b&&c?Math.round(cost(b,c)*1.1):0}
 function frBuyout(id){const f=FRAN(),i=f.l.findIndex(x=>x.id===id);if(i<0)return"Not found";const x=f.l[i],b=BIZ.find(y=>y.k===x.k),c=CITIES[x.c],p=spDevSafe()?0:frBuyCost(x);if(S.cash<p)return`Need ${fmt(p)}`;
-  if(b.co&&typeof hasHQ==="function"&&!hasHQ(c))return"Company-only business: you need an HQ there";
+  if(!b||!c)return"Not found";if(b.co&&typeof hasHQ==="function"&&!hasHQ(c))return"Company-only business: you need an HQ there";{const blk=bizBlock(b,c);if(blk)return blk}
   S.cash-=p;f.l.splice(i,1);(S.own[c.id]=S.own[c.id]||{})[x.k]=Math.max(1,S.own[c.id][x.k]||0);f.log.unshift({t:Date.now(),m:`Bought out ${x.op}'s ${b.n} in ${c.name}`});return""}
 function frSellVal(x){const h=Math.min(21*24,Math.max(0,(x.e-Date.now())/3600000));return Math.round(frRoy(x)*h*3.45)} // 3x (remaining royalties, counted up to 21 days, + 15% profit)
 function frSell(id){const f=FRAN(),i=f.l.findIndex(x=>x.id===id);if(i<0)return"Not found";const x=f.l[i],v=frSellVal(x);if(v<=0)return"Nothing left to sell";
@@ -15777,7 +15778,7 @@ function scyHtml(n){if(!scyDev()||!S.pol||S.pol.c!==n)return "";const s=scy(),no
   const cd=k=>s.cd[k]>now?` (${fmtDur(s.cd[k]-now)})`:"";
   h+=R("Fuel",`Refuel adds 7 days for ${fmt(5e9)}. The Space manager can do this for you (Mission control › Colonies › Space manager › Scythe).`,B("fuel","⛽ Refuel · $5B",S.cash<5e9));
   h+=R(`In orbit · Favor ${Math.floor(s.fav)}/100`,`Fuel left ${fmtDur(s.end-now)} · ${scyDaysUp()} days up · Favor +${SCY.favDay+Math.min(10,scyDaysUp())}/day.${s.calm>now?` 🌤 Calm active ${fmtDur(s.calm-now)}.`:""}${Object.keys(s.shel).filter(k=>s.shel[k]>now).map(k=>` 🛡 ${k} sheltered ${fmtDur(s.shel[k]-now)}.`).join("")}`);
-  h+=`<div class="row"><div class="n">Target</div><div class="d"><select id="scyT" style="max-width:100%">${CITIES.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}"${c.id===SCY_TGT?" selected":""}>${c.name}, ${c.country}</option>`).join("")}</select></div></div>`;
+  h+=`<div class="row"><div class="n">Target</div><div class="d"><select id="scyT" style="max-width:100%">${((t)=>CITIES.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}"${c.id===t?" selected":""}>${c.name}, ${c.country}</option>`).join(""))(geTgt())}</select></div></div>`;
   h+=R("Reap",`Send a disaster at the target city (Favor ${SCY.reap.f}, once a day).`,Object.keys(SCY.kinds).map(k=>B("reap",SCY.kinds[k]+cd("reap"),s.fav<SCY.reap.f||s.cd.reap>now,k)).join(" "));
   h+=R("Shelter",`Shield the target's country from disasters for 48h (Favor ${SCY.shel.f}).`,B("shel","Shelter",s.fav<SCY.shel.f));
   h+=R("Calm",`No natural disasters anywhere for 12h (Favor ${SCY.calm.f}).`,B("calm","Calm the world",s.fav<SCY.calm.f||(!scyInf()&&s.calm>now)));
