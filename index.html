@@ -1003,7 +1003,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{_cssC=
 /* one overlay redraw per frame; MapLibre's own frames redraw it in step so nothing lags behind the camera */
 let _drawPend=false;function draw(){if(_drawPend)return;_drawPend=true;requestAnimationFrame(()=>{_drawPend=false;drawNow();try{wwarBan()}catch(e){}})}
 MM.on("render",()=>drawNow());
-let _lpT=0,_lp={},_lpS={};function labelProfit(c){const n=Date.now();if(n-_lpT>1000){_lpT=n;_lp={};_lpS={};for(const st of S.sites)if(siteOp(st))_lpS[st.city]=(_lpS[st.city]||0)+siteEst(st)}return _lp[c.id]??=cityProfit(c)+(_lpS[c.id]||0)}
+let _lpT=0,_lp={},_lpS={};function labelProfit(c){const n=Date.now();if(n-_lpT>1000){_lpT=n;_lp={};_lpS={};for(const st of S.sites)if(siteOp(st))_lpS[st.city]=(_lpS[st.city]||0)+siteEst(st)}return _lp[c.id]??=cityProfit(c)+(_lpS[c.id]||0)+cityRent(c)}
 function drawNow(){applyView();syncCam();const z=MM.getZoom();
   const C={sea:css("--sea"),land:css("--land"),border:css("--border"),ink:css("--ink"),own:css("--own"),acc:css("--accent"),good:css("--good"),bad:css("--bad"),muted:css("--muted"),space:css("--space"),panel:css("--panel")};C.halo=C.panel+"cc";
   ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -1050,7 +1050,7 @@ function drawNow(){applyView();syncCam();const z=MM.getZoom();
   for(const c of CITIES){if(dotA<=.02||!visible(c.lon,c.lat)){c.sx=c.sy=-1e4;continue}const [x,y]=proj([c.lon,c.lat]);c.sx=x;c.sy=y;
     const edge=1-Math.min(1,d3.geoDistance([c.lon,c.lat],_ce)/(_hz*Math.PI/180))*.6;   // fade toward the horizon
     ctx.globalAlpha=Math.max(.35,edge)*dotA;
-    const owned=(S.own[c.id]&&Object.keys(S.own[c.id]).length)||hasWh(c);const r=(2.5+c.size*.9)*Math.min(1.6,.85+V.k*.08);
+    const owned=(S.own[c.id]&&Object.keys(S.own[c.id]).length)||hasWh(c)||labelProfit(c)>0;const r=(2.5+c.size*.9)*Math.min(1.6,.85+V.k*.08);
     const ev=S.events[c.id];
     S.rivals.forEach((rv,i)=>{if(rv.cities.includes(c.id)){ctx.fillStyle=RIVALS[i].col;ctx.fillRect(x-r-6-i*6,y+r+2,5,5)}});
     if(ev){ctx.beginPath();ctx.arc(x,y,r+5,0,7);ctx.strokeStyle=ev.m>1?C.good:C.bad;ctx.lineWidth=1.5;ctx.stroke()}
@@ -2095,8 +2095,9 @@ const askRent=pr=>Math.round(mktRent(pr)*pr.pct/100);
 const fillP=pct=>pct<=60?.9:pct<=75?.45:pct<=100?.15:.04;
 const leaveP=pct=>pct<=75?.005:pct<=100?.015:.06;
 function propIncome(){let m=1;try{m=1+.08*ofP("re")}catch(e){}return propIncome0()*m}
-/* rent your rented-out property in one city earns per hour, with the same boosts as propIncome (used for the floating income label over the city name) */
-function cityRent(c){let m=1;try{m=1+.08*ofP("re")}catch(e){}return S.props.reduce((a,pr)=>a+(pr.city===c.id&&pr.occ&&!unhOn(c)?askRent(pr)*(typeof rentLaw==="function"?rentLaw(c):1)*(typeof dmgMult==="function"?dmgMult(c):1):0),0)*m}
+/* rent your rented-out property and finished towers/malls in one city earns per hour, with the same boosts as propIncome (used for the floating income label over the city name) */
+function cityRent(c){let m=1;try{m=1+.08*ofP("re")}catch(e){}const sk=S.sky&&Array.isArray(S.sky.l)?S.sky.l.reduce((a,pj)=>a+(pj.city===c.id?skyRent(pj):0),0):0;
+  return (S.props.reduce((a,pr)=>a+(pr.city===c.id&&pr.occ&&!unhOn(c)?askRent(pr)*(typeof rentLaw==="function"?rentLaw(c):1)*(typeof dmgMult==="function"?dmgMult(c):1):0),0)+sk)*m}
 function propIncome0(){return S.props.reduce((a,pr)=>a+(pr.occ&&!unhOn(CITIES[pr.city])?askRent(pr)*(typeof rentLaw==="function"?rentLaw(CITIES[pr.city]):1)*(typeof dmgMult==="function"?dmgMult(CITIES[pr.city]):1):0),0)}
 const propSell=(P,c)=>Math.round(propCost(P,c)*Math.min(.95,.8*(typeof flipMk==="function"?flipMk(c):1))); // capped below the fixed buy price so buy-then-sell in a hot market can't loop money // resale follows the local property market (see flipping)
 function propVal(pr){const P=PK[pr.k],c=CITIES[pr.city];return propSell(P,c)+(pr.furn?Math.round(P.furn*PRICE[c.size]*.5):0)} // resale + furniture at half price
