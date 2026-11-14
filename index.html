@@ -2095,6 +2095,8 @@ const askRent=pr=>Math.round(mktRent(pr)*pr.pct/100);
 const fillP=pct=>pct<=60?.9:pct<=75?.45:pct<=100?.15:.04;
 const leaveP=pct=>pct<=75?.005:pct<=100?.015:.06;
 function propIncome(){let m=1;try{m=1+.08*ofP("re")}catch(e){}return propIncome0()*m}
+/* rent your rented-out property in one city earns per hour, with the same boosts as propIncome (used for the floating income label over the city name) */
+function cityRent(c){let m=1;try{m=1+.08*ofP("re")}catch(e){}return S.props.reduce((a,pr)=>a+(pr.city===c.id&&pr.occ&&!unhOn(c)?askRent(pr)*(typeof rentLaw==="function"?rentLaw(c):1)*(typeof dmgMult==="function"?dmgMult(c):1):0),0)*m}
 function propIncome0(){return S.props.reduce((a,pr)=>a+(pr.occ&&!unhOn(CITIES[pr.city])?askRent(pr)*(typeof rentLaw==="function"?rentLaw(CITIES[pr.city]):1)*(typeof dmgMult==="function"?dmgMult(CITIES[pr.city]):1):0),0)}
 const propSell=(P,c)=>Math.round(propCost(P,c)*Math.min(.95,.8*(typeof flipMk==="function"?flipMk(c):1))); // capped below the fixed buy price so buy-then-sell in a hot market can't loop money // resale follows the local property market (see flipping)
 function propVal(pr){const P=PK[pr.k],c=CITIES[pr.city];return propSell(P,c)+(pr.furn?Math.round(P.furn*PRICE[c.size]*.5):0)} // resale + furniture at half price
@@ -3822,7 +3824,7 @@ function simDay(quiet){const{nw}=totals();try{wrDay(nw,quiet)}catch(e){console.w
   if(Math.random()<1-Math.pow(.99,1/24)){const pool=S.sites.length&&Math.random()<.6?[...new Set(S.sites.map(x=>x.city))]:CITIES.map(c=>c.id);const id=pool[Math.floor(Math.random()*pool.length)];
     if(!S.iev[id]){const ks=Object.keys(IEV),t=ks[Math.floor(Math.random()*ks.length)];S.iev[id]={t,d:2+Math.floor(Math.random()*5)};
       if(!quiet&&S.sites.some(x=>x.city==id)){S.log.unshift(`${IEV[t].n} in ${CITIES[id].name} (${S.iev[id].d}h)`);S.log=S.log.slice(0,3)}}}
-  if(!quiet)for(const c of CITIES){const p=S.own[c.id]?cityProfit(c):0;if(p)pops.push({c,v:p,t:performance.now()})}
+  if(!quiet)for(const c of CITIES){const p=(S.own[c.id]?cityProfit(c):0)+cityRent(c);if(p)pops.push({c,v:p,t:performance.now()})}
   if(!wrShared())S.rivals.forEach((r,i)=>{r.nw=Math.min(NWCAP,Math.round(r.nw*(1.001+Math.random()*.003)+2000*rvk(i))); // one simDay = one game day; capped so it stays finite
     if(Math.random()<.06&&r.cities.length<Math.min(RIVAL_MAXC,5+Math.floor(r.nw/rvk(i)/120000))){const mine=CITIES.filter(c=>S.own[c.id]&&!r.cities.includes(c.id));const opts=mine.length&&Math.random()<.1?mine:CITIES.filter(c=>!r.cities.includes(c.id));if(!opts.length)return;const c=opts[Math.floor(Math.random()*opts.length)];
       r.cities.push(c.id);if(!quiet&&S.own[c.id]){S.log.unshift(`${RIVALS[i].n} opened in your city ${c.name}`);S.log=S.log.slice(0,3)}}});
