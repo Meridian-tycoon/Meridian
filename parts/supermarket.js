@@ -9,7 +9,7 @@ function css(){if(document.getElementById("sm3-css"))return;const s=document.cre
 .sm3{position:fixed;inset:0;z-index:2147483000;background:#0b0f14;font:13px system-ui,sans-serif;color:#e2e8f0;overflow:hidden;touch-action:none;user-select:none}
 .sm3 canvas{display:block;width:100%;height:100%;outline:none}
 .sm3-top{position:absolute;top:0;left:0;right:0;padding:10px;background:linear-gradient(#020617d9,#02061700);display:flex;gap:8px;align-items:center}
-.sm3-top div{flex:1;text-shadow:0 1px 3px #000}.sm3-top b{display:block;color:#fbbf24;font-size:15px}.sm3-top small{color:#cbd5e1}
+.sm3-top div{flex:1;text-shadow:0 1px 3px #000}.sm3-top b{display:block;color:#fbbf24;font-size:15px}.sm3-top small{display:inline-block;margin-top:2px;padding:2px 8px;border-radius:999px;background:#0f172acc;color:#f1f5f9;text-shadow:none;font-weight:600}
 .sm3-btn{appearance:none;background:#b45309;color:#fff;border:0;border-radius:999px;padding:9px 14px;font:600 13px system-ui;cursor:pointer}.sm3-btn.g{background:#334155;color:#fff}.sm3-btn.on{background:#16a34a}
 .sm3-help{position:absolute;left:10px;top:58px;font-size:11px;color:#f1f5f9;background:#020617a6;padding:3px 8px;border-radius:6px;pointer-events:none}
 .sm3-joy{position:absolute;left:22px;bottom:26px;width:112px;height:112px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35);touch-action:none;display:none}
@@ -54,11 +54,11 @@ function drawFx(T,fg,f,c,t){const d=SM_FX[f.k],cap=Math.max(1,smCap(c,t)),fr=g=>
 function build(){const T=W.T,c=city(),t=smS(c),tr=SM_TIER[t.tier],[w,d]=SM_DIM[t.tier]||SM_DIM[0],hw=W.hw=w/2,hd=W.hd=d/2;
   if(W.world){W.scene.remove(W.world);W.world.traverse(o=>{if(o.geometry)o.geometry.dispose();const m=o.material;if(m){if(m.map)m.map.dispose();m.dispose()}})}
   const g=W.world=new T.Group();W.scene.add(g);W.obst=[];const ob=(x0,x1,z0,z1)=>W.obst.push({x0,x1,z0,z1});
-  ofBox(T,g,w,.05,d,0xe5e7eb,0,-.05,0,{r:.5});ofBox(T,g,w,.05,d,0xf8fafc,0,3.6,0);
+  ofBox(T,g,w,.05,d,0xe5e7eb,0,-.05,0,{r:.5});W.ceil=[ofBox(T,g,w,.05,d,0xf8fafc,0,3.6,0)];
   ofBox(T,g,w,3.6,.2,0xfef3c7,0,0,-hd);ofBox(T,g,.2,3.6,d,0xfef3c7,-hw,0,0);ofBox(T,g,.2,3.6,d,0xfef3c7,hw,0,0);
   ofBox(T,g,(w-3)/2,3.6,.2,0xfef3c7,-(w+3)/4,0,hd);ofBox(T,g,(w-3)/2,3.6,.2,0xfef3c7,(w+3)/4,0,hd);ofBox(T,g,3,.6,.2,0xfef3c7,0,3,hd);
   sign(T,g,[`🛒 ${tr.n.toUpperCase()}`,c.name],4,1.2,0,2.6,hd-.15,0,{bg:"#166534",w:384,h:128});
-  for(let x=-hw+2;x<hw;x+=4)for(let z=-hd+2;z<hd;z+=4)ofBox(T,g,1.6,.04,.3,0xffffff,x,3.52,z,{e:0xffffff,ei:.9});
+  for(let x=-hw+2;x<hw;x+=4)for(let z=-hd+2;z<hd;z+=4)W.ceil.push(ofBox(T,g,1.6,.04,.3,0xffffff,x,3.52,z,{e:0xffffff,ei:.9}));
   // checkouts: one lane per cashier, split left/right of a 3 m walkway from the door so the middle is never blocked
   const nc=Math.max(0,Math.min(12,t.st.cash|0)),zc=hd-3,lw=1.6,per=Math.max(1,Math.floor((hw-2.3)/lw)),shown=Math.min(nc,per*2);
   for(let i=0;i<shown;i++){const sd=i%2?1:-1,j=Math.floor(i/2),x=sd*(1.5+lw/2+j*lw);ofBox(T,g,.6,.9,1.6,0x334155,x,0,zc);ofBox(T,g,.5,.3,.3,0x0f172a,x,.9,zc-.4);const p=person(T,0x16a34a);p.position.set(x-.55,0,zc);p.rotation.y=Math.PI/2;g.add(p);ob(x-.35,x+.35,zc-.85,zc+.85)}
@@ -135,7 +135,7 @@ function loop(ts){if(!W.on)return;W.raf=requestAnimationFrame(loop);const dt=Mat
     P.yaw+=tn*dt*2.4;const sp=(K.shift?6:3.2)*f*dt;if(sp){const nx=P.x-Math.sin(P.yaw)*sp,nz=P.z-Math.cos(P.yaw)*sp;if(!blocked(nx,P.z))P.x=nx;if(!blocked(P.x,nz))P.z=nz}
     const mv=Math.abs(f)>.05;W.walkT=mv?W.walkT+dt*10:0}else W.walkT=0;
   const sw=Math.sin(W.walkT)*.5;W.legs[0].rotation.x=sw;W.legs[1].rotation.x=-sw;W.av.position.set(P.x,0,P.z);W.av.rotation.y=P.yaw+Math.PI;
-  if(W.bm){const m=Math.max(W.hw,W.hd);W.cam.position.set(0,m*1.55+3,W.hd+m*.75);W.cam.lookAt(0,0,-.5)}
+  if(W.ceil)for(const o of W.ceil)o.visible=!W.bm;if(W.bm){const m=Math.max(W.hw,W.hd);W.cam.position.set(0,m*1.55+3,W.hd+m*.75);W.cam.lookAt(0,0,-.5)}
   else{W.cam.position.set(P.x+Math.sin(P.yaw)*4.2,2.9,P.z+Math.cos(P.yaw)*4.2);W.cam.lookAt(P.x,1.1,P.z)}
   if(W.world)W.world.children.forEach(o=>{if(o.userData&&o.userData.wk){const u=ts/1000+o.userData.ph;o.position.z+=Math.sin(u*.6)*.01;const l=o.userData.legs;l[0].rotation.x=Math.sin(u*6)*.4;l[1].rotation.x=-l[0].rotation.x}});
   const n=W.bm||W.pk?null:nearest(),key=x=>x?x.k+x.f+"/"+x.s+x.n:"";if(key(n)!==key(W.near)){W.near=n;W.btn.hidden=!n;if(n)W.btn.textContent=n.n+" (E)"}
