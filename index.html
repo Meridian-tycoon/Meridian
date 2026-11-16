@@ -15374,7 +15374,10 @@ const SMG=["bread","flour","sugar","rice","pasta","beef","pork","chicken","burge
 const SM_TIER=[{n:"Mini-mart",slots:12,fx:10,m:1,cash:2,stock:1,up:0},{n:"Supermarket",slots:24,fx:18,m:1.6,cash:5,stock:3,up:220000},{n:"Hypermarket",slots:35,fx:30,m:2.3,cash:10,stock:6,up:650000}];
 const SM_MK=[{n:"Discount",p:.85},{n:"Low",p:.93},{n:"Normal",p:1},{n:"High",p:1.15},{n:"Premium",p:1.3}];
 const SM_ADD={bakery:{n:"Bakery",ic:"🥖",cost:40000,g:["bread","flour","sugar","butter","eggs"]},deli:{n:"Deli counter",ic:"🧀",cost:60000,g:["cheese","beef","pork","chicken","cmeat","butter"]},freezer:{n:"Freezer aisle",ic:"🧊",cost:80000,g:["burgers","chicken","beef","yoghurt","milk","butter","veg"]}};
-const SM_JOB={cash:{n:"Cashiers",w:110},stock:{n:"Stockers",w:100},sec:{n:"Security guards",w:130},mgr:{n:"Store manager",w:420}};
+const SM_JOB={cash:{n:"Cashiers",w:130},stock:{n:"Stockers",w:125},sec:{n:"Security guards",w:160},mgr:{n:"Store manager",w:320}};
+/* staff skill levels 1-5 (t.sl): pay +25%/level; one-off training fee per worker = 5 days of base pay x current level */
+const SM_SLMAX=5,smSL=(t,k)=>Math.max(1,Math.min(SM_SLMAX,Math.floor(+((t.sl||{})[k])||1))),smPay=(t,k,P,l)=>SM_JOB[k].w*P*(1+.25*((l||smSL(t,k))-1)),smTrainFee=(t,k,P)=>Math.round(SM_JOB[k].w*P*5*smSL(t,k)*Math.max(1,+t.st[k]||0));
+function smSkFx(k,l){return k==="cash"?`serves like ${(1+.15*(l-1)).toFixed(2)} cashiers, +${3*(l-1)}% sales`:k==="stock"?`works like ${(1+.15*(l-1)).toFixed(2)} stockers, +${3*(l-1)}% sales${l>=2?", 2nd restock after sales":""}`:k==="sec"?`theft risk ×${(.4*(1-.15*(l-1))).toFixed(2)}`:`+${8+2*(l-1)}% sales`}
 const SM_RIV=["FreshCo","ValuMart","Greenbasket","MegaSave","Daily Harvest","PriceRite","Kwik Grocer","Urban Pantry"];
 /* store fixtures (shelf units). Footprint w (x) by d (z) in metres at rotation 0; sl = goods slots; cold = what it keeps cold (f fridge, z freezer). */
 const SM_DIM=[[14,12],[20,16],[28,22]];
@@ -15388,7 +15391,7 @@ function smFav(c){const a=[],id=c.id;for(let k=0;a.length<4&&k<60;k++){const g=S
 function smRival(c){return {n:SM_RIV[Math.floor(smRnd(c.id,3)*SM_RIV.length)],base:Math.min(.4,.08+.04*c.size+smRnd(c.id,5)*.12)}}
 function smS(c){S.smkt=S.smkt&&typeof S.smkt==="object"?S.smkt:{};let t=S.smkt[c.id];if(!t||typeof t!=="object")t=S.smkt[c.id]={};
   if(!t.sh||typeof t.sh!=="object")t.sh={};if(!Array.isArray(t.ls))t.ls=SMG.slice(0,12);if(t.tier==null)t.tier=0;if(t.mk==null)t.mk=2;
-  if(!t.st||typeof t.st!=="object")t.st={};const tr=SM_TIER[t.tier]||SM_TIER[0];if(t.st.cash==null)t.st.cash=tr.cash;if(t.st.stock==null)t.st.stock=tr.stock;if(t.st.sec==null)t.st.sec=0;if(t.st.mgr==null)t.st.mgr=0;
+  if(!t.st||typeof t.st!=="object")t.st={};const tr=SM_TIER[t.tier]||SM_TIER[0];if(t.st.cash==null)t.st.cash=tr.cash;if(t.st.stock==null)t.st.stock=tr.stock;if(t.st.sec==null)t.st.sec=0;if(t.st.mgr==null)t.st.mgr=0;if(!t.sl||typeof t.sl!=="object")t.sl={};for(const k in SM_JOB)t.sl[k]=smSL(t,k);
   if(!t.add||typeof t.add!=="object")t.add={};if(!t.ct||typeof t.ct!=="object")t.ct={};if(t.dep==null)t.dep=1;if(t.rv==null)t.rv=smRival(c).base;
   if(!Array.isArray(t.rep))t.rep=[];t.loy=t.loy?1:0;t.mem=+t.mem||0;t.sb=t.sb?1:0;t.pu=+t.pu||0;t.pcd=+t.pcd||0;t.war=+t.war||0;t.wcd=+t.wcd||0;
   t.ls=t.ls.filter(g=>G[g]);if(!Array.isArray(t.lay)){t.fid=1;smAutoLay(t)}
@@ -15429,15 +15432,15 @@ const smLv=c=>((S.own||{})[c.id]||{}).smkt||0;
 const smChain=()=>{let n=0;for(const id in (S.own||{}))if(S.own[id]&&S.own[id].smkt)n++;return n};
 const smCap=(c,t)=>Math.round(30*SM_TIER[t.tier].m*(1+.3*(Math.max(1,smLv(c))-1)));
 const smIn=t=>t.ls.filter(g=>(t.sh[g]||0)>=.5);
-function smStaffF(t){const tr=SM_TIER[t.tier];return Math.min(1,t.st.cash/tr.cash,t.st.stock/tr.stock)}
+function smStaffF(t){const tr=SM_TIER[t.tier];return Math.min(1,t.st.cash*(1+.15*(smSL(t,"cash")-1))/tr.cash,t.st.stock*(1+.15*(smSL(t,"stock")-1))/tr.stock)}
 function smCust(t){const p=SM_MK[t.mk].p;return Math.pow(p,-2.2)*(t.sb?.95:1)*(S.day<t.pu?1.4:1)}
 /* sales multiplier, explained part by part (smParts) so the panel can show it */
 function smParts(c){const t=smS(c),tr=SM_TIER[t.tier],inS=smIn(t),n=inS.length,v=n/tr.slots,p=SM_MK[t.mk].p,fav=smFav(c),f=smStaffF(t),ch=smChain();
   let add=1;for(const k in SM_ADD)if(t.add[k]){const gs=SM_ADD[k].g;add*=1+.12*gs.filter(g=>inS.includes(g)).length/gs.length}
-  const r={variety:.35+.85*v+(v>=1?.25:0),size:tr.m,price:(p-.6)/.4*Math.pow(p,-2.2),staff:.35+.65*f,mgr:t.st.mgr?1.08:1,fav:1+.05*fav.filter(g=>inS.includes(g)).length,addons:add,
+  const r={variety:.35+.85*v+(v>=1?.25:0),size:tr.m,price:(p-.6)/.4*Math.pow(p,-2.2),staff:.35+.65*f,skill:(t.st.cash?1+.03*(smSL(t,"cash")-1):1)*(t.st.stock?1+.03*(smSL(t,"stock")-1):1),mgr:t.st.mgr?1.08+.02*(smSL(t,"mgr")-1):1,fav:1+.05*fav.filter(g=>inS.includes(g)).length,addons:add,
     layout:n?inS.reduce((a,g)=>a+smGF(t,g),0)/n:1,promo:S.day<t.pu?1.22:1,brand:1+Math.min(.3,.06*(ch-1)),own:t.sb?1.08:1,loyal:1+.15*t.mem,rival:(1-t.rv)*(S.day<t.war?.85:1)};return r}
 function smMult(c){if(!S.smkt||!S.smkt[c.id])return .35*(1-smRival(c).base);let m=1;const r=smParts(c);for(const k in r)m*=r[k];return m}
-function smWage(c){if(!S.smkt||!S.smkt[c.id])return 0;const t=S.smkt[c.id],st=t.st||{},P=PRICE[c.size]||1;let w=0;for(const k in SM_JOB)w+=(+st[k]||0)*SM_JOB[k].w*P;return w+(t.loy?SM_LOY_FEE*P:0)}
+function smWage(c){if(!S.smkt||!S.smkt[c.id])return 0;const t=S.smkt[c.id],st=t.st||{},P=PRICE[c.size]||1;let w=0;for(const k in SM_JOB)w+=(+st[k]||0)*smPay(t,k,P);return w+(t.loy?SM_LOY_FEE*P:0)}
 /* stock moves */
 function smPull(c,t,g){const inv=S.inv[c.id];if(!inv||!(inv[g]>0))return 0;const q=Math.min(inv[g],smCap(c,t)-(t.sh[g]||0));if(q<=0)return 0;inv[g]-=q;if(inv[g]<1e-6)delete inv[g];t.sh[g]=(t.sh[g]||0)+q;return q}
 function smBuy(c,t,g,fee){const q=Math.floor(smCap(c,t)-(t.sh[g]||0));if(q<1)return 0;const b=buyGood(c,g,q),v=b.v*(1+(fee||0));if(S.cash<v)return -1;S.cash-=v;b.commit();t.sh[g]=(t.sh[g]||0)+q;return v}
@@ -15446,7 +15449,8 @@ function smHour(quiet){if(!S.smkt)return;for(const id in S.smkt){const c=CITIES[
     let ctSp=0;for(const g in t.ct)if(t.ct[g]&&t.ls.includes(g)){const v=smBuy(c,t,g,SM_CT_FEE);if(v>0)ctSp+=v}
     const inS=smIn(t),fav=smFav(c),cu=smCust(t)*(.35+.65*smStaffF(t))*(1-t.rv)*(1+.15*t.mem),q0=.15*(1+.55*(lv-1))*Math.sqrt(tr.m)*cu;let units=0,top="",tq=0;
     for(const g of inS){const q=Math.min(t.sh[g],q0*(fav.includes(g)?1.3:1)*smGF(t,g));t.sh[g]-=q;units+=q;if(q>tq){tq=q;top=g}}
-    let th="";const pth=.05*(t.st.sec>0?.4:1)*(hasT(S.own[id],"secfirm")?.5:1);if(inS.length&&Math.random()<pth){const g=inS[Math.floor(Math.random()*inS.length)],q=t.sh[g]*(.1+Math.random()*.15);t.sh[g]-=q;th=`${Math.round(q)} ${G[g][0].toLowerCase()}`;if(!quiet){S.log.unshift(`🛒 Shoplifters took ${th} from your supermarket in ${c.name}`);S.log=S.log.slice(0,3)}}
+    let th="";const pth=.05*(t.st.sec>0?.4*(1-.15*(smSL(t,"sec")-1)):1)*(hasT(S.own[id],"secfirm")?.5:1);if(inS.length&&Math.random()<pth){const g=inS[Math.floor(Math.random()*inS.length)],q=t.sh[g]*(.1+Math.random()*.15);t.sh[g]-=q;th=`${Math.round(q)} ${G[g][0].toLowerCase()}`;if(!quiet){S.log.unshift(`🛒 Shoplifters took ${th} from your supermarket in ${c.name}`);S.log=S.log.slice(0,3)}}
+    if(t.dep&&t.st.stock>0&&smSL(t,"stock")>=2)for(const g of t.ls)smPull(c,t,g);
     const base=smRival(c).base;if(t.mk<2){if(S.day>=t.war&&S.day>=t.wcd&&t.rv>.03){t.war=S.day+3;t.wcd=S.day+10;if(!quiet)toast(`⚔ ${smRival(c).n} started a price war in ${c.name}`)}t.rv=Math.max(.02,t.rv-.012*(2-t.mk))}else t.rv=Math.min(base,t.rv+.006);
     t.mem=t.loy?Math.min(1,t.mem+.08*(t.mk<=2?1:.5)):Math.max(0,t.mem-.2);
     for(const g in t.sh)if(t.sh[g]<.01)delete t.sh[g];
@@ -15481,6 +15485,7 @@ function smAct(a,g,el){const c=SMW.c;if(!c)return;const t=smS(c),tr=SM_TIER[t.ti
   else if(a==="mk")t.mk=Math.max(0,Math.min(4,+el.value));
   else if(a==="dep")t.dep=t.dep?0:1;
   else if(a==="hire"||a==="fire"){const k=g;const mx=k==="mgr"?1:k==="sec"?6:tr[k]*2+2;t.st[k]=Math.max(0,Math.min(mx,(+t.st[k]||0)+(a==="hire"?1:-1)))}
+  else if(a==="train"){const k=g,l=smSL(t,k);if(!SM_JOB[k])return;if(l>=SM_SLMAX)m="Already fully trained";else if(!(t.st[k]>0))m="Hire someone first";else{const f=smTrainFee(t,k,P);if(S.cash<f)m="Not enough cash";else{S.cash-=f;t.sl[k]=l+1;m=`${SM_JOB[k].n} trained to level ${l+1} for ${fmt(f)}. Pay now ${fmt(smPay(t,k,P))}/day each.`}}}
   else if(a==="tier"){const nx=SM_TIER[t.tier+1];if(nx){const cst=Math.round(nx.up*P);if(S.cash<cst)m="Not enough cash";else{S.cash-=cst;t.tier++;t.st.cash=Math.max(t.st.cash,nx.cash);t.st.stock=Math.max(t.st.stock,nx.stock);m=`Upgraded to a ${nx.n}: bigger hall, up to ${nx.fx} fixtures. Staff topped up.`}}}
   else if(a==="add"){const d=SM_ADD[g],cst=Math.round(d.cost*P);if(!t.add[g]){if(S.cash<cst)m="Not enough cash";else{S.cash-=cst;t.add[g]=1;smFixLay(c,t);m=`${d.n} added`}}}
   else if(a==="promo"){const cst=Math.round(SM_PROMO_FEE*P);if(S.day<t.pcd)m="Promotion on cooldown";else if(S.cash<cst)m="Not enough cash";else{S.cash-=cst;t.pu=S.day+1;t.pcd=S.day+7;m="Flyers are out: +40% customers for a day, at thinner margins"}}
@@ -15489,7 +15494,7 @@ function smAct(a,g,el){const c=SMW.c;if(!c)return;const t=smS(c),tr=SM_TIER[t.ti
   SMW.msg=m;try{save()}catch(e){}smRender();try{if(typeof hud==="function")hud();renderSheet()}catch(e){}}
 function smRender(){const c=SMW.c,el=SMW.el;if(!c||!el)return;const t=smS(c),tr=SM_TIER[t.tier],P=PRICE[c.size]||1,lv=smLv(c),b=BIZ.find(x=>x.k==="smkt"),pr=profit(b,c,lv),r=smParts(c),fav=smFav(c),rv=smRival(c),inv=S.inv[c.id]||{},cap=smCap(c,t),inS=smIn(t);
   const kv=(a,v)=>`<div class="kv"><span>${a}</span><b>${v}</b></div>`,pct=x=>(x>=1?"+":"")+Math.round((x-1)*100)+"%";
-  const lab={variety:"Shelf variety",size:"Store size",price:"Pricing",staff:"Staffing",mgr:"Manager",fav:"Local favourites",layout:"Shelf layout",addons:"Add-on counters",promo:"Promotion",brand:"Chain brand",own:"Store brand",loyal:"Loyalty card",rival:`Rival ${rv.n}`};
+  const lab={variety:"Shelf variety",size:"Store size",price:"Pricing",staff:"Staffing",skill:"Staff training",mgr:"Manager",fav:"Local favourites",layout:"Shelf layout",addons:"Add-on counters",promo:"Promotion",brand:"Chain brand",own:"Store brand",loyal:"Loyalty card",rival:`Rival ${rv.n}`};
   let h=`<header><b>🛒 ${tr.n} · ${smEsc(c.name)} · Lv ${lv}</b><span class="note">${smEsc(SMW.msg)}</span><button data-sm="x">Close</button></header><div class="bd">`;
   // column 1: overview + report
   h+=`<section><h4>Overview</h4><div class="big">${fmt(pr)}/hr</div><small>Profit after wages. Stock you buy is paid when you buy it.</small>`;
@@ -15507,8 +15512,8 @@ function smRender(){const c=SMW.c,el=SMW.el;if(!c||!el)return;const t=smS(c),tr=
   const nx=SM_TIER[t.tier+1];
   h+=`<section><h4>Pricing</h4><select data-smc="mk">${SM_MK.map((x,i)=>`<option value="${i}"${i===t.mk?" selected":""}>${x.n} (${x.p<1?"−":"+"}${Math.round(Math.abs(x.p-1)*100)}% vs market)</option>`).join("")}</select><br><small>Higher prices earn more per sale but bring fewer customers. Undercutting (Discount/Low) starts a short price war with ${rv.n} and slowly wins their share.</small>
     <h4 style="margin-top:12px">Staff</h4>`;
-  for(const k in SM_JOB){const need=k==="cash"||k==="stock"?tr[k]:0;h+=`<div class="kv"><span>${SM_JOB[k].n}${need?` (need ${need})`:""} · ${fmt(SM_JOB[k].w*P)}/hr each</span><span><button data-sm="fire" data-g="${k}"${t.st[k]>0?"":" disabled"}>−</button> <b>${t.st[k]}</b> <button data-sm="hire" data-g="${k}">+</button></span></div>`}
-  h+=`<small>Too few cashiers or stockers caps sales. Guards and a Security firm in ${smEsc(c.name)} cut shoplifting.</small>
+  for(const k in SM_JOB){const need=k==="cash"||k==="stock"?tr[k]:0;const l=smSL(t,k),fee=smTrainFee(t,k,P);h+=`<div class="kv"><span>${SM_JOB[k].n}${need?` (need ${need})`:""} · <b>Lv ${l}</b> · ${fmt(smPay(t,k,P))}/day (1 real hour) each<br><small>Now: ${smSkFx(k,l)}${l<SM_SLMAX?` · Lv ${l+1}: ${fmt(smPay(t,k,P,l+1))}/day, ${smSkFx(k,l+1)}`:" · max level"}</small></span><span style="white-space:nowrap;flex-shrink:0;margin-left:6px"><button data-sm="train" data-g="${k}"${l>=SM_SLMAX||!(t.st[k]>0)||S.cash<fee?" disabled":""}>${l>=SM_SLMAX?"Max":`Train · ${fmt(fee)}`}</button> <button data-sm="fire" data-g="${k}"${t.st[k]>0?"":" disabled"}>−</button> <b>${t.st[k]}</b> <button data-sm="hire" data-g="${k}">+</button></span></div>`}
+  h+=`<small>Too few cashiers or stockers caps sales. Guards and a Security firm in ${smEsc(c.name)} cut shoplifting. Training raises pay 25% per level (max 5) and makes that role work better.</small>
     <h4 style="margin-top:12px">Store size & counters</h4>${nx?`<button class="g" data-sm="tier"${S.cash<nx.up*P?" disabled":""}>Upgrade to ${nx.n} (${nx.fx} fixtures, sales ×${nx.m}) · ${fmt(nx.up*P)}</button>`:"<small>Hypermarket: the biggest size.</small>"}
     <div class="row">${Object.entries(SM_ADD).map(([k,d])=>t.add[k]?`<button disabled>${d.ic} ${d.n} ✓</button>`:`<button data-sm="add" data-g="${k}"${S.cash<d.cost*P?" disabled":""}>${d.ic} ${d.n} · ${fmt(d.cost*P)}</button>`).join("")}</div><small>Counters lift sales up to +12% each when their goods are on the shelves.</small>
     <h4 style="margin-top:12px">Marketing</h4><div class="row"><button data-sm="promo"${S.day<t.pcd?" disabled":""}>📣 Weekly deal flyer · ${fmt(SM_PROMO_FEE*P)}</button><small>${S.day<t.pu?"Running today":S.day<t.pcd?`Ready on day ${t.pcd}`:"Ready"}</small></div>
