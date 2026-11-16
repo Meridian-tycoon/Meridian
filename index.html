@@ -491,7 +491,7 @@ function evalPart(__src){return eval(__src)}
 /* shared loader for parts/<name>.js: fetched once, cached; partApi(name) is null until it has loaded */
 const PARTS={};
 function partLoad(n){const p=PARTS[n]||(PARTS[n]={api:null,p:null});if(p.api)return Promise.resolve(p.api);if(p.p)return p.p;
-  return p.p=fetch("parts/"+n+".js?v=28").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
+  return p.p=fetch("parts/"+n+".js?v=29").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(s=>p.api=evalPart(s)).catch(e=>{p.p=null;console.warn(n+" load",e);throw e})}
 function partApi(n){const p=PARTS[n];return p?p.api:null}
 /* Online players (Firebase). Paste your Firebase web app config object here, e.g.
    const FIREBASE_CONFIG={apiKey:"...",authDomain:"...",projectId:"...",storageBucket:"...",messagingSenderId:"...",appId:"..."};
@@ -15371,11 +15371,17 @@ function mbaSync(){try{const m=mbase(),k=m?m.lat+","+m.lon:"";if(k!==mbaMkSig){m
    UI: smRowHtml (Business tab row), smOpen (management window), smEnter (walk-in 3D store, parts/supermarket.js). */
 const smEsc=x=>String(x).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
 const SMG=["bread","flour","sugar","rice","pasta","beef","pork","chicken","burgers","cheese","butter","yoghurt","milk","eggs","fruit","veg","canned","cbeans","ccorn","cmeat","cbeef","soup","snacks","salt","coffee","softdrinks","juice","water","wine","soap","detergent","tpaper","paper","clothes","batteries"];
-const SM_TIER=[{n:"Mini-mart",slots:12,m:1,cash:2,stock:1,up:0},{n:"Supermarket",slots:24,m:1.6,cash:5,stock:3,up:220000},{n:"Hypermarket",slots:35,m:2.3,cash:10,stock:6,up:650000}];
+const SM_TIER=[{n:"Mini-mart",slots:12,fx:10,m:1,cash:2,stock:1,up:0},{n:"Supermarket",slots:24,fx:18,m:1.6,cash:5,stock:3,up:220000},{n:"Hypermarket",slots:35,fx:30,m:2.3,cash:10,stock:6,up:650000}];
 const SM_MK=[{n:"Discount",p:.85},{n:"Low",p:.93},{n:"Normal",p:1},{n:"High",p:1.15},{n:"Premium",p:1.3}];
 const SM_ADD={bakery:{n:"Bakery",ic:"🥖",cost:40000,g:["bread","flour","sugar","butter","eggs"]},deli:{n:"Deli counter",ic:"🧀",cost:60000,g:["cheese","beef","pork","chicken","cmeat","butter"]},freezer:{n:"Freezer aisle",ic:"🧊",cost:80000,g:["burgers","chicken","beef","yoghurt","milk","butter","veg"]}};
 const SM_JOB={cash:{n:"Cashiers",w:110},stock:{n:"Stockers",w:100},sec:{n:"Security guards",w:130},mgr:{n:"Store manager",w:420}};
 const SM_RIV=["FreshCo","ValuMart","Greenbasket","MegaSave","Daily Harvest","PriceRite","Kwik Grocer","Urban Pantry"];
+/* store fixtures (shelf units). Footprint w (x) by d (z) in metres at rotation 0; sl = goods slots; cold = what it keeps cold (f fridge, z freezer). */
+const SM_DIM=[[14,12],[20,16],[28,22]];
+const SM_FX={shelf:{n:"Standard shelf",ic:"🗄",w:.9,d:3,sl:2,cost:4000,tip:"2 goods, one per side"},fridge:{n:"Fridge",ic:"🥛",w:.9,d:2.4,sl:2,cost:12000,cold:"f",tip:"2 goods; dairy needs one"},freezer:{n:"Freezer chest",ic:"🧊",w:1.1,d:2,sl:2,cost:9000,cold:"z",tip:"2 goods; meat and burgers need one"},endcap:{n:"End-cap display",ic:"⭐",w:.9,d:1,sl:1,cost:3000,tip:"1 good, +15% sales for it"},produce:{n:"Produce stand",ic:"🍎",w:1.6,d:1.6,sl:2,cost:5000,tip:"2 goods; fruit, veg and bread +10%"}};
+const SM_COLD={milk:"f",cheese:"f",butter:"f",yoghurt:"f",burgers:"z",beef:"z",pork:"z",chicken:"z"};
+const SM_PROD=["fruit","veg","bread"];
+const SM_FX_REFUND=.5;
 const SM_PROMO_FEE=3000,SM_SB_FEE=25000,SM_LOY_FEE=180,SM_CT_FEE=.05;
 const smRnd=(id,k)=>{const x=Math.sin((id+1)*9301+k*49297)*233280;return x-Math.floor(x)};
 function smFav(c){const a=[],id=c.id;for(let k=0;a.length<4&&k<60;k++){const g=SMG[Math.floor(smRnd(id,k+7)*SMG.length)];if(!a.includes(g))a.push(g)}return a}
@@ -15385,7 +15391,40 @@ function smS(c){S.smkt=S.smkt&&typeof S.smkt==="object"?S.smkt:{};let t=S.smkt[c
   if(!t.st||typeof t.st!=="object")t.st={};const tr=SM_TIER[t.tier]||SM_TIER[0];if(t.st.cash==null)t.st.cash=tr.cash;if(t.st.stock==null)t.st.stock=tr.stock;if(t.st.sec==null)t.st.sec=0;if(t.st.mgr==null)t.st.mgr=0;
   if(!t.add||typeof t.add!=="object")t.add={};if(!t.ct||typeof t.ct!=="object")t.ct={};if(t.dep==null)t.dep=1;if(t.rv==null)t.rv=smRival(c).base;
   if(!Array.isArray(t.rep))t.rep=[];t.loy=t.loy?1:0;t.mem=+t.mem||0;t.sb=t.sb?1:0;t.pu=+t.pu||0;t.pcd=+t.pcd||0;t.war=+t.war||0;t.wcd=+t.wcd||0;
-  if(t.ls.length>tr.slots)t.ls=t.ls.slice(0,tr.slots);t.ls=t.ls.filter(g=>G[g]);return t}
+  t.ls=t.ls.filter(g=>G[g]);if(!Array.isArray(t.lay)){t.fid=1;smAutoLay(t)}
+  t.lay=t.lay.filter(f=>f&&typeof f==="object"&&SM_FX[f.k]);let mx=+t.fid||1;
+  for(const f of t.lay){const sl=SM_FX[f.k].sl;f.g=(Array.isArray(f.g)?f.g:[]).slice(0,sl).map(g=>g&&G[g]?g:null);while(f.g.length<sl)f.g.push(null);f.r=(+f.r||0)&3;f.x=+f.x||0;f.z=+f.z||0;if(!f.i)f.i=mx++;mx=Math.max(mx,f.i+1)}
+  t.fid=mx;smSyncLs(t);return t}
+/* ---- fixtures & layout ---- */
+const smSlots=t=>t.lay.reduce((a,f)=>a+SM_FX[f.k].sl,0);
+function smSyncLs(t){const s=[];for(const f of t.lay)for(const g of f.g)if(g&&!s.includes(g))s.push(g);t.ls=s}
+function smFxR(f){const d=SM_FX[f.k],o=f.r&1,hx=(o?d.d:d.w)/2,hz=(o?d.w:d.d)/2;return {x0:f.x-hx,x1:f.x+hx,z0:f.z-hz,z1:f.z+hz}}
+/* floor zones fixtures may not use: front strip (checkouts + entrance), back counters, office PC corner */
+function smZones(t){const [w,d]=SM_DIM[t.tier]||SM_DIM[0],hw=w/2,hd=d/2,z=[],bx=[-hw/2,0,hw/2];["bakery","deli","freezer"].forEach((k,i)=>{if(t.add&&t.add[k])z.push({x0:bx[i]-1.9,x1:bx[i]+1.9,z0:-hd,z1:-hd+1.9})});z.push({x0:hw-2.3,x1:hw,z0:-hd,z1:-hd+3.4});return {hw,hd,z,front:hd-4.2}}
+function smFits(t,f,gap){const r=smFxR(f),Z=smZones(t),g=gap||0;if(r.x0<-Z.hw+.25||r.x1>Z.hw-.25||r.z0<-Z.hd+.25||r.z1>Z.front)return false;
+  for(const o of Z.z)if(r.x0<o.x1&&r.x1>o.x0&&r.z0<o.z1&&r.z1>o.z0)return false;
+  for(const o of t.lay){if(o===f||o.i===f.i)continue;const q=smFxR(o);if(r.x0<q.x1+g&&r.x1>q.x0-g&&r.z0<q.z1+g&&r.z1>q.z0-g)return false}return true}
+function smSpot(t,f,gap){const Z=smZones(t);for(let x=-Z.hw+.5;x<Z.hw;x+=.5)for(let z=-Z.hd+.5;z<Z.front;z+=.5){f.x=x;f.z=z;if(smFits(t,f,gap))return true}return false}
+/* first layout for a new store or an old save: the goods already on sale go on free fixtures (cold goods into fridges/freezers) */
+function smAutoLay(t){t.lay=[];t.fid=t.fid||1;const need={fridge:[],freezer:[],shelf:[]},fx=(SM_TIER[t.tier]||SM_TIER[0]).fx;
+  for(const g of t.ls){const c=SM_COLD[g];(c==="f"?need.fridge:c==="z"?need.freezer:need.shelf).push(g)}
+  for(const k in need){const gs=need[k],sl=SM_FX[k].sl;for(let i=0;i<gs.length;i+=sl){if(t.lay.length>=fx)break;const f={i:t.fid++,k,x:0,z:0,r:0,g:gs.slice(i,i+sl)};while(f.g.length<sl)f.g.push(null);if(smSpot(t,f,1.2)||smSpot(t,f,0))t.lay.push(f)}}
+  smSyncLs(t)}
+/* a newly bought counter can cover fixtures: move them, or refund them in full if no room */
+function smFixLay(c,t){for(const f of t.lay.slice()){if(smFits(t,f))continue;const o={x:f.x,z:f.z};if(!smSpot(t,f,.6)&&!smSpot(t,f,0)){f.x=o.x;f.z=o.z;t.lay=t.lay.filter(x=>x!==f);S.cash+=smFxCost(c,f.k);smDrop(c,t,f.g)}}}
+const smFxCost=(c,k)=>Math.round(SM_FX[k].cost*(PRICE[c.size]||1));
+/* goods no longer on any shelf: stock back to the depot, contract cancelled */
+function smDrop(c,t,gs){smSyncLs(t);let m="";for(const g of gs){if(!g||t.ls.includes(g))continue;delete t.ct[g];const q=t.sh[g]||0;if(q>0){const inv=S.inv[c.id]=S.inv[c.id]||{};inv[g]=(inv[g]||0)+q;delete t.sh[g];m+=`${Math.round(q)} ${G[g][0].toLowerCase()} went back to your depot. `}}return m}
+function smSave(){try{save()}catch(e){}try{if(typeof hud==="function")hud()}catch(e){}try{if(SMW.el&&SMW.c&&SMW.el.style.display!=="none")smRender()}catch(e){}}
+function smFxAdd(c,k,x,z,r){const t=smS(c),d=SM_FX[k],tr=SM_TIER[t.tier];if(!d)return {m:"Unknown fixture"};if(t.lay.length>=tr.fx)return {m:`A ${tr.n} holds at most ${tr.fx} fixtures. Upgrade the store for more floor space.`};
+  const f={i:t.fid,k,x,z,r:r&3,g:Array(d.sl).fill(null)};if(!smFits(t,f))return {m:"That spot is blocked"};const v=smFxCost(c,k);if(S.cash<v)return {m:"Not enough cash"};S.cash-=v;t.fid++;t.lay.push(f);smSave();return {ok:1,m:`${d.n} bought for ${fmt(v)}`}}
+function smFxMove(c,i,x,z,r){const t=smS(c),f=t.lay.find(o=>o.i===i);if(!f)return {m:"Gone"};const n={i,k:f.k,x,z,r:r&3};if(!smFits(t,n))return {m:"That spot is blocked"};f.x=x;f.z=z;f.r=r&3;smSave();return {ok:1,m:""}}
+function smFxSell(c,i){const t=smS(c),f=t.lay.find(o=>o.i===i);if(!f)return {m:"Gone"};const v=Math.round(smFxCost(c,f.k)*SM_FX_REFUND);t.lay=t.lay.filter(o=>o!==f);S.cash+=v;const m=smDrop(c,t,f.g);smSave();return {ok:1,m:`Sold the ${SM_FX[f.k].n.toLowerCase()} for ${fmt(v)}. ${m}`}}
+function smSlotSet(c,i,s,g){const t=smS(c),f=t.lay.find(o=>o.i===i);if(!f||s<0||s>=f.g.length)return {m:"Gone"};const old=f.g[s];f.g[s]=g&&G[g]?g:null;const m=smDrop(c,t,[old]);if(f.g[s]&&t.dep)smPull(c,t,f.g[s]);smSave();return {ok:1,m}}
+/* best free slot for a good (management window checkbox) */
+function smFree(t,g){const cd=SM_COLD[g];let best=null,bs=-1;for(const f of t.lay)f.g.forEach((x,i)=>{if(x)return;const d=SM_FX[f.k],s=(cd?(d.cold===cd?3:0):(d.cold?0:2))+(f.k==="endcap"?1:0);if(s>bs){bs=s;best=[f,i]}});return best}
+/* how well a good's best placement sells: end-cap +15%, produce stand +10% (fruit/veg/bread), near the entrance +6%, cold goods outside the right fridge/freezer 60% */
+function smGF(t,g){const front=((SM_DIM[t.tier]||SM_DIM[0])[1]/2)-4.2;let b=0;for(const f of t.lay){if(!f.g.includes(g))continue;const d=SM_FX[f.k],cd=SM_COLD[g];let m=1;if(f.k==="endcap")m*=1.15;if(f.k==="produce"&&SM_PROD.includes(g))m*=1.1;if(f.z>front-4)m*=1.06;if(cd&&d.cold!==cd)m*=.6;if(m>b)b=m}return b||1}
 const smLv=c=>((S.own||{})[c.id]||{}).smkt||0;
 const smChain=()=>{let n=0;for(const id in (S.own||{}))if(S.own[id]&&S.own[id].smkt)n++;return n};
 const smCap=(c,t)=>Math.round(30*SM_TIER[t.tier].m*(1+.3*(Math.max(1,smLv(c))-1)));
@@ -15396,7 +15435,7 @@ function smCust(t){const p=SM_MK[t.mk].p;return Math.pow(p,-2.2)*(t.sb?.95:1)*(S
 function smParts(c){const t=smS(c),tr=SM_TIER[t.tier],inS=smIn(t),n=inS.length,v=n/tr.slots,p=SM_MK[t.mk].p,fav=smFav(c),f=smStaffF(t),ch=smChain();
   let add=1;for(const k in SM_ADD)if(t.add[k]){const gs=SM_ADD[k].g;add*=1+.12*gs.filter(g=>inS.includes(g)).length/gs.length}
   const r={variety:.35+.85*v+(v>=1?.25:0),size:tr.m,price:(p-.6)/.4*Math.pow(p,-2.2),staff:.35+.65*f,mgr:t.st.mgr?1.08:1,fav:1+.05*fav.filter(g=>inS.includes(g)).length,addons:add,
-    promo:S.day<t.pu?1.22:1,brand:1+Math.min(.3,.06*(ch-1)),own:t.sb?1.08:1,loyal:1+.15*t.mem,rival:(1-t.rv)*(S.day<t.war?.85:1)};return r}
+    layout:n?inS.reduce((a,g)=>a+smGF(t,g),0)/n:1,promo:S.day<t.pu?1.22:1,brand:1+Math.min(.3,.06*(ch-1)),own:t.sb?1.08:1,loyal:1+.15*t.mem,rival:(1-t.rv)*(S.day<t.war?.85:1)};return r}
 function smMult(c){if(!S.smkt||!S.smkt[c.id])return .35*(1-smRival(c).base);let m=1;const r=smParts(c);for(const k in r)m*=r[k];return m}
 function smWage(c){if(!S.smkt||!S.smkt[c.id])return 0;const t=S.smkt[c.id],P=PRICE[c.size]||1;let w=0;for(const k in SM_JOB)w+=(+t.st[k]||0)*SM_JOB[k].w*P;return w+(t.loy?SM_LOY_FEE*P:0)}
 /* stock moves */
@@ -15406,14 +15445,14 @@ function smHour(quiet){if(!S.smkt)return;for(const id in S.smkt){const c=CITIES[
     if(t.dep)for(const g of t.ls)smPull(c,t,g);
     let ctSp=0;for(const g in t.ct)if(t.ct[g]&&t.ls.includes(g)){const v=smBuy(c,t,g,SM_CT_FEE);if(v>0)ctSp+=v}
     const inS=smIn(t),fav=smFav(c),cu=smCust(t)*(.35+.65*smStaffF(t))*(1-t.rv)*(1+.15*t.mem),q0=.15*(1+.55*(lv-1))*Math.sqrt(tr.m)*cu;let units=0,top="",tq=0;
-    for(const g of inS){const q=Math.min(t.sh[g],q0*(fav.includes(g)?1.3:1));t.sh[g]-=q;units+=q;if(q>tq){tq=q;top=g}}
+    for(const g of inS){const q=Math.min(t.sh[g],q0*(fav.includes(g)?1.3:1)*smGF(t,g));t.sh[g]-=q;units+=q;if(q>tq){tq=q;top=g}}
     let th="";const pth=.05*(t.st.sec>0?.4:1)*(hasT(S.own[id],"secfirm")?.5:1);if(inS.length&&Math.random()<pth){const g=inS[Math.floor(Math.random()*inS.length)],q=t.sh[g]*(.1+Math.random()*.15);t.sh[g]-=q;th=`${Math.round(q)} ${G[g][0].toLowerCase()}`;if(!quiet){S.log.unshift(`🛒 Shoplifters took ${th} from your supermarket in ${c.name}`);S.log=S.log.slice(0,3)}}
     const base=smRival(c).base;if(t.mk<2){if(S.day>=t.war&&S.day>=t.wcd&&t.rv>.03){t.war=S.day+3;t.wcd=S.day+10;if(!quiet)toast(`⚔ ${smRival(c).n} started a price war in ${c.name}`)}t.rv=Math.max(.02,t.rv-.012*(2-t.mk))}else t.rv=Math.min(base,t.rv+.006);
     t.mem=t.loy?Math.min(1,t.mem+.08*(t.mk<=2?1:.5)):Math.max(0,t.mem-.2);
     for(const g in t.sh)if(t.sh[g]<.01)delete t.sh[g];
     const b=BIZ.find(x=>x.k==="smkt");t.rep.unshift({d:S.day,p:Math.round(profit(b,c,lv)),u:Math.round(units),top,th,ct:Math.round(ctSp),n:inS.length});t.rep=t.rep.slice(0,7)}}
 /* Business tab row */
-function smRowHtml(c){const t=smS(c),tr=SM_TIER[t.tier],n=smIn(t).length;return `<span>🛒 ${tr.n} · ${n}/${tr.slots} goods on the shelves · ${SM_MK[t.mk].n} prices${S.day<t.pu?" · promo on":""}</span><br><span style="display:inline-flex;gap:6px;margin:4px 0"><button class="buy up" data-smk="open">🛒 Manage store</button><button class="buy up" data-smk="walk">🚶 Walk in (3D)</button></span><br>`}
+function smRowHtml(c){const t=smS(c),tr=SM_TIER[t.tier],n=smIn(t).length;return `<span>🛒 ${tr.n} · ${n}/${smSlots(t)} goods on the shelves · ${SM_MK[t.mk].n} prices${S.day<t.pu?" · promo on":""}</span><br><span style="display:inline-flex;gap:6px;margin:4px 0"><button class="buy up" data-smk="open">🛒 Manage store</button><button class="buy up" data-smk="walk">🚶 Walk in (3D)</button></span><br>`}
 function smEnter(c){if(!smLv(c))return toast("Open a supermarket here first");partLoad("supermarket").then(api=>api.open(c.id)).catch(()=>toast("The supermarket didn't load. Try again."))}
 /* management window: wide 3-column layout on desktop, one column on phones */
 const SMW={el:null,c:null,msg:""};
@@ -15434,22 +15473,23 @@ function smOpen(c){if(!smLv(c))return toast("Open a supermarket here first");smC
 function smClose(){if(SMW.el)SMW.el.style.display="none";SMW.c=null}
 function smAct(a,g,el){const c=SMW.c;if(!c)return;const t=smS(c),tr=SM_TIER[t.tier],P=PRICE[c.size]||1;let m="";
   if(a==="x")return smClose();
-  if(a==="ls"){if(el.checked){if(t.ls.length>=tr.slots){el.checked=false;m=`All ${tr.slots} shelf slots are used. Upgrade the store for more.`}else t.ls.push(g)}else{t.ls=t.ls.filter(x=>x!==g);delete t.ct[g];const q=t.sh[g]||0;if(q>0){const inv=S.inv[c.id]=S.inv[c.id]||{};inv[g]=(inv[g]||0)+q;delete t.sh[g];m=`${Math.round(q)} ${G[g][0].toLowerCase()} went back to your depot`}}}
+  if(a==="walk"){smClose();return smEnter(c)}
+  if(a==="ls"){if(el.checked){const fr=smFree(t,g);if(!fr){el.checked=false;m="No free shelf slot. Walk in (3D) and press B to buy shelf units."}else{fr[0].g[fr[1]]=g;smSyncLs(t);m=`${G[g][0]} put on a ${SM_FX[fr[0].k].n.toLowerCase()}`}}else{for(const f of t.lay)f.g=f.g.map(x=>x===g?null:x);m=smDrop(c,t,[g])}}
   else if(a==="ct"){if(el.checked)t.ct[g]=1;else delete t.ct[g]}
   else if(a==="pull"){let n=0;for(const x of (g?[g]:t.ls))n+=smPull(c,t,x);m=n?`Moved ${Math.round(n)} units from your depot to the shelves`:"Nothing to move: your depot here has none of these goods"}
   else if(a==="buy"){let v=0,short=0;for(const x of (g?[g]:t.ls)){const r=smBuy(c,t,x,0);if(r<0)short=1;else v+=r}m=v?`Bought stock for ${fmt(v)}`:short?"Not enough cash":"Shelves are already full"}
   else if(a==="mk")t.mk=Math.max(0,Math.min(4,+el.value));
   else if(a==="dep")t.dep=t.dep?0:1;
   else if(a==="hire"||a==="fire"){const k=g;const mx=k==="mgr"?1:k==="sec"?6:tr[k]*2+2;t.st[k]=Math.max(0,Math.min(mx,(+t.st[k]||0)+(a==="hire"?1:-1)))}
-  else if(a==="tier"){const nx=SM_TIER[t.tier+1];if(nx){const cst=Math.round(nx.up*P);if(S.cash<cst)m="Not enough cash";else{S.cash-=cst;t.tier++;t.st.cash=Math.max(t.st.cash,nx.cash);t.st.stock=Math.max(t.st.stock,nx.stock);m=`Upgraded to a ${nx.n}: ${nx.slots} shelf slots. Staff topped up.`}}}
-  else if(a==="add"){const d=SM_ADD[g],cst=Math.round(d.cost*P);if(!t.add[g]){if(S.cash<cst)m="Not enough cash";else{S.cash-=cst;t.add[g]=1;m=`${d.n} added`}}}
+  else if(a==="tier"){const nx=SM_TIER[t.tier+1];if(nx){const cst=Math.round(nx.up*P);if(S.cash<cst)m="Not enough cash";else{S.cash-=cst;t.tier++;t.st.cash=Math.max(t.st.cash,nx.cash);t.st.stock=Math.max(t.st.stock,nx.stock);m=`Upgraded to a ${nx.n}: bigger hall, up to ${nx.fx} fixtures. Staff topped up.`}}}
+  else if(a==="add"){const d=SM_ADD[g],cst=Math.round(d.cost*P);if(!t.add[g]){if(S.cash<cst)m="Not enough cash";else{S.cash-=cst;t.add[g]=1;smFixLay(c,t);m=`${d.n} added`}}}
   else if(a==="promo"){const cst=Math.round(SM_PROMO_FEE*P);if(S.day<t.pcd)m="Promotion on cooldown";else if(S.cash<cst)m="Not enough cash";else{S.cash-=cst;t.pu=S.day+1;t.pcd=S.day+7;m="Flyers are out: +40% customers for a day, at thinner margins"}}
   else if(a==="sb"){if(t.sb)t.sb=0;else{const cst=Math.round(SM_SB_FEE*P);if(smChain()<2)m="Own supermarkets in 2+ cities to launch a store brand";else if(S.cash<cst)m="Not enough cash";else{S.cash-=cst;t.sb=1;m="Store-brand range launched"}}}
   else if(a==="loy")t.loy=t.loy?0:1;
   SMW.msg=m;try{save()}catch(e){}smRender();try{if(typeof hud==="function")hud();renderSheet()}catch(e){}}
 function smRender(){const c=SMW.c,el=SMW.el;if(!c||!el)return;const t=smS(c),tr=SM_TIER[t.tier],P=PRICE[c.size]||1,lv=smLv(c),b=BIZ.find(x=>x.k==="smkt"),pr=profit(b,c,lv),r=smParts(c),fav=smFav(c),rv=smRival(c),inv=S.inv[c.id]||{},cap=smCap(c,t),inS=smIn(t);
   const kv=(a,v)=>`<div class="kv"><span>${a}</span><b>${v}</b></div>`,pct=x=>(x>=1?"+":"")+Math.round((x-1)*100)+"%";
-  const lab={variety:"Shelf variety",size:"Store size",price:"Pricing",staff:"Staffing",mgr:"Manager",fav:"Local favourites",addons:"Add-on counters",promo:"Promotion",brand:"Chain brand",own:"Store brand",loyal:"Loyalty card",rival:`Rival ${rv.n}`};
+  const lab={variety:"Shelf variety",size:"Store size",price:"Pricing",staff:"Staffing",mgr:"Manager",fav:"Local favourites",layout:"Shelf layout",addons:"Add-on counters",promo:"Promotion",brand:"Chain brand",own:"Store brand",loyal:"Loyalty card",rival:`Rival ${rv.n}`};
   let h=`<header><b>🛒 ${tr.n} · ${smEsc(c.name)} · Lv ${lv}</b><span class="note">${smEsc(SMW.msg)}</span><button data-sm="x">Close</button></header><div class="bd">`;
   // column 1: overview + report
   h+=`<section><h4>Overview</h4><div class="big">${fmt(pr)}/hr</div><small>Profit after wages. Stock you buy is paid when you buy it.</small>`;
@@ -15457,11 +15497,11 @@ function smRender(){const c=SMW.c,el=SMW.el;if(!c||!el)return;const t=smS(c),tr=
   h+=kv("Customers vs normal",Math.round(smCust(t)*100)+"%")+kv("Rival market share",Math.round(t.rv*100)+"%"+(S.day<t.war?" · price war!":""));
   h+=`<h4 style="margin-top:12px">Daily sales report</h4>${t.rep.length?`<table><tr><th>Day</th><th>Profit</th><th>Units</th><th>Best seller</th></tr>${t.rep.map(x=>`<tr><td>${x.d}</td><td>${fmt(x.p)}</td><td>${x.u}</td><td>${x.top?(GIC[x.top]||"")+" "+G[x.top][0]:"-"}${x.th?` <small>· stolen: ${smEsc(x.th)}</small>`:""}${x.ct?` <small>· contracts ${fmt(x.ct)}</small>`:""}</td></tr>`).join("")}</table>`:"<small>The first report arrives at the end of the day (next real hour).</small>"}</section>`;
   // column 2: shelves
-  h+=`<section><h4>Shelves · ${inS.length}/${tr.slots} stocked · ${t.ls.length}/${tr.slots} slots used</h4><div class="row"><button class="g" data-sm="pull">📦 Restock all from depot</button><button data-sm="buy">🛒 Buy all from market</button><button data-sm="dep">${t.dep?"✓ Auto-restock from depot each day":"Auto-restock from depot: off"}</button></div>
+  h+=`<section><h4>Shelves · ${inS.length} stocked · ${t.lay.reduce((a,f)=>a+f.g.filter(x=>x).length,0)}/${smSlots(t)} slots used · aim ${tr.slots}+ goods</h4><div class="row"><small>${t.lay.length}/${tr.fx} fixtures. Buy, move and fill shelf units inside the store.</small><button data-sm="walk">🔨 Walk in & arrange (B)</button></div><div class="row"><button class="g" data-sm="pull">📦 Restock all from depot</button><button data-sm="buy">🛒 Buy all from market</button><button data-sm="dep">${t.dep?"✓ Auto-restock from depot each day":"Auto-restock from depot: off"}</button></div>
     <small>⭐ = ${smEsc(c.name)} shoppers love it (+5% sales each, sell 30% faster). Contract = buy it back to full every day at market price +${SM_CT_FEE*100}%.</small>
     <table><tr><th>On sale</th><th>Good</th><th>Shelf</th><th>Depot</th><th>Market</th><th>Contract</th><th></th></tr>`;
   for(const g of SMG){const on=t.ls.includes(g),q=t.sh[g]||0,mp=G[g][1]*cityF(c,g)*((S.px[c.id]||{})[g]||1)*1.15;
-    h+=`<tr><td><input type="checkbox" data-smc="ls" data-g="${g}"${on?" checked":""}></td><td>${GIC[g]||""} ${G[g][0]}${fav.includes(g)?" ⭐":""}</td><td>${on?`${Math.floor(q)}/${cap}`:"-"}</td><td>${Math.floor(inv[g]||0)}</td><td>${fmtc(mp)}</td><td><input type="checkbox" data-smc="ct" data-g="${g}"${t.ct[g]?" checked":""}${on?"":" disabled"}></td><td>${on?`<button data-sm="pull" data-g="${g}"${inv[g]>0?"":" disabled"}>Depot</button> <button data-sm="buy" data-g="${g}">Buy</button>`:""}</td></tr>`}
+    h+=`<tr><td><input type="checkbox" data-smc="ls" data-g="${g}"${on?" checked":""}></td><td>${GIC[g]||""} ${G[g][0]}${fav.includes(g)?" ⭐":""}${on&&smGF(t,g)<.9?` <small style="color:#fb923c">needs ${SM_COLD[g]==="f"?"fridge":"freezer"}</small>`:""}</td><td>${on?`${Math.floor(q)}/${cap}`:"-"}</td><td>${Math.floor(inv[g]||0)}</td><td>${fmtc(mp)}</td><td><input type="checkbox" data-smc="ct" data-g="${g}"${t.ct[g]?" checked":""}${on?"":" disabled"}></td><td>${on?`<button data-sm="pull" data-g="${g}"${inv[g]>0?"":" disabled"}>Depot</button> <button data-sm="buy" data-g="${g}">Buy</button>`:""}</td></tr>`}
   h+=`</table></section>`;
   // column 3: store
   const nx=SM_TIER[t.tier+1];
@@ -15469,7 +15509,7 @@ function smRender(){const c=SMW.c,el=SMW.el;if(!c||!el)return;const t=smS(c),tr=
     <h4 style="margin-top:12px">Staff</h4>`;
   for(const k in SM_JOB){const need=k==="cash"||k==="stock"?tr[k]:0;h+=`<div class="kv"><span>${SM_JOB[k].n}${need?` (need ${need})`:""} · ${fmt(SM_JOB[k].w*P)}/hr each</span><span><button data-sm="fire" data-g="${k}"${t.st[k]>0?"":" disabled"}>−</button> <b>${t.st[k]}</b> <button data-sm="hire" data-g="${k}">+</button></span></div>`}
   h+=`<small>Too few cashiers or stockers caps sales. Guards and a Security firm in ${smEsc(c.name)} cut shoplifting.</small>
-    <h4 style="margin-top:12px">Store size & counters</h4>${nx?`<button class="g" data-sm="tier"${S.cash<nx.up*P?" disabled":""}>Upgrade to ${nx.n} (${nx.slots} slots, sales ×${nx.m}) · ${fmt(nx.up*P)}</button>`:"<small>Hypermarket: the biggest size.</small>"}
+    <h4 style="margin-top:12px">Store size & counters</h4>${nx?`<button class="g" data-sm="tier"${S.cash<nx.up*P?" disabled":""}>Upgrade to ${nx.n} (${nx.fx} fixtures, sales ×${nx.m}) · ${fmt(nx.up*P)}</button>`:"<small>Hypermarket: the biggest size.</small>"}
     <div class="row">${Object.entries(SM_ADD).map(([k,d])=>t.add[k]?`<button disabled>${d.ic} ${d.n} ✓</button>`:`<button data-sm="add" data-g="${k}"${S.cash<d.cost*P?" disabled":""}>${d.ic} ${d.n} · ${fmt(d.cost*P)}</button>`).join("")}</div><small>Counters lift sales up to +12% each when their goods are on the shelves.</small>
     <h4 style="margin-top:12px">Marketing</h4><div class="row"><button data-sm="promo"${S.day<t.pcd?" disabled":""}>📣 Weekly deal flyer · ${fmt(SM_PROMO_FEE*P)}</button><small>${S.day<t.pu?"Running today":S.day<t.pcd?`Ready on day ${t.pcd}`:"Ready"}</small></div>
     <div class="row"><button data-sm="loy">${t.loy?"✓ Loyalty card on":"Start loyalty card"}</button><small>${fmt(SM_LOY_FEE*P)}/hr · members ${Math.round(t.mem*100)}% (up to +15%)</small></div>
