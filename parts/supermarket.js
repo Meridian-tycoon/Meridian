@@ -15,6 +15,7 @@ function css(){if(document.getElementById("sm3-css"))return;const s=document.cre
 .sm3-joy{position:absolute;left:22px;bottom:26px;width:112px;height:112px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35);touch-action:none;display:none}
 .sm3-joy i{position:absolute;left:36px;top:36px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.8);pointer-events:none}.sm3.touch .sm3-joy{display:block}.sm3.touch .sm3-help{display:none}
 .sm3-act{position:absolute;left:50%;bottom:22px;transform:translateX(-50%)}
+@media(max-width:700px){.sm3-top{flex-wrap:wrap;gap:6px;padding:8px}.sm3-top div{flex:1 1 100%;min-width:0}.sm3-top b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}.sm3-top small{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}.sm3-top .sm3-btn{flex:1 1 0;padding:7px 6px;font-size:12px;white-space:nowrap}.sm3-help{top:auto;bottom:8px;right:10px;left:10px;text-align:center;font-size:10px}.sm3.bm .sm3-help{display:none}.sm3-pk{top:104px}}
 .sm3-pal{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);background:#0f172aee;border:1px solid #334155;border-radius:12px;padding:8px 10px;display:none;max-width:calc(100% - 24px)}
 .sm3.bm .sm3-pal{display:block}.sm3.bm .sm3-act,.sm3.bm .sm3-joy{display:none}
 .sm3-pal .r{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}.sm3-pal button{font:600 12px system-ui;padding:6px 9px;border-radius:8px;border:1px solid #475569;background:#1e293b;color:#f1f5f9;cursor:pointer}
