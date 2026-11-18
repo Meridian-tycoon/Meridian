@@ -15651,8 +15651,10 @@ function icsFull(){return ICSCFG.mul*Object.keys(MBK).filter(k=>k!=="ics").reduc
 function icsReady(){const g=colGov();if(!g)return "Only a player government can run a command station";
   const col=S.col&&COLS().list.some(x=>x.p==="mars"&&x.c===g&&x.lv>=COLCFG.lvMax),m=S.mb,base=m&&m.crew&&Array.isArray(m.b)&&m.b.length>=ICSCFG.needB&&mbLife().hab>0;
   return col||base?"":`Needs a finished Mars colony (level ${COLCFG.lvMax}) or a Mars base with ${ICSCFG.needB}+ buildings and a habitat`}
-function icsOre(){const g=colGov();return g&&S.col?COLS().list.filter(x=>x.c===g).reduce((t,x)=>t+(+x.ore||0),0):0}
-function icsTake(q){const g=colGov();for(const x of COLS().list.filter(x=>x.c===g).sort((a,b)=>b.ore-a.ore)){if(q<=0)break;const t=Math.min(q,x.ore);x.ore-=t;q-=t;try{colPut(x,1)}catch(e){}}}
+function icsMbOre(){const st=S.mb&&S.mb.store,o=st&&st.ore;return o?Object.values(o).reduce((t,v)=>t+(+v||0),0):0}
+function icsOre(){const g=colGov();if(!g)return 0;return (S.col?COLS().list.filter(x=>x.c===g).reduce((t,x)=>t+(+x.ore||0),0):0)+icsMbOre()}
+function icsTake(q){const g=colGov();const st=S.mb&&S.mb.store,o=st&&st.ore;if(o)for(const k of Object.keys(o).sort((a,b)=>o[b]-o[a])){if(q<=0)break;const t=Math.min(q,+o[k]||0);o[k]-=t;q-=t}
+  if(q>0&&S.col)for(const x of COLS().list.filter(x=>x.c===g).sort((a,b)=>b.ore-a.ore)){if(q<=0)break;const t=Math.min(q,x.ore);x.ore-=t;q-=t;try{colPut(x,1)}catch(e){}}}
 function icsCost(lv){return lv?{cash:Math.round(icsFull()*ICSCFG.upMul*lv),ore:ICSCFG.oreUp*lv}:{cash:icsFull(),ore:ICSCFG.ore}}   // lv = current level (0 = build)
 function icsUpk(lv){return ICSCFG.upk*lv}
 function icsBuild(){const why=icsReady();if(why)return toast(why);const x=ICS(),lv=x?x.lv:0;if(lv>=ICSCFG.lvMax)return toast("Already at the top level");const c=icsCost(lv);
