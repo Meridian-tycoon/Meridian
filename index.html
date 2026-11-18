@@ -14861,7 +14861,11 @@ const MBCFG={max:500,refund:.5,gap:2,ship:{cash:2e9,ln:4,fuel:2000,days:7},ls:2,
 const MBK={hab:["Habitat dome","🫧",2e11,"Pressurised glass dome where colonists live"],lander:["Lander pad","🚀",1.5e11,"Supply ships land here: +10% colony income each (up to 5)"],
   green:["Greenhouse dome","🌱",3e11,"Green-lit dome growing food"],solar:["Solar array","🔆",1e11,"Powers 4 factories, drills, greenhouses, labs or rover garages. Short on power, colony income drops"],
   ice:["Ice drill","🧊",2.5e11,"Drill rig pulling water ice from the regolith"],lab:["Research station","🔬",4e11,"Science grants: your terraforming funding costs 5% less each (up to 25%)"],
-  mast:["Comms mast","📡",1.2e11,"Sells Mars news and media rights to Earth: +10% colony income each (up to 3)"],oxy:["Oxygen factory","🫁",3e11,"Splits CO₂ and ice into breathable air. Each one keeps 2 habitats alive"],food:["Food factory","🥫",2.5e11,"Processes greenhouse crops into rations. Each one (or greenhouse) feeds 2 habitats"],rover:["Rover garage","🛞",1.8e11,"Rovers prospect the surface: +$200M a day each (needs power)"]};
+  mast:["Comms mast","📡",1.2e11,"Sells Mars news and media rights to Earth: +10% colony income each (up to 3)"],oxy:["Oxygen factory","🫁",3e11,"Splits CO₂ and ice into breathable air. Each one keeps 2 habitats alive"],food:["Food factory","🥫",2.5e11,"Processes greenhouse crops into rations. Each one (or greenhouse) feeds 2 habitats"],rover:["Rover garage","🛞",1.8e11,"Rovers prospect the surface: +$200M a day each (needs power)"],
+  ics:["Command Station","🛰️",0,"Interplanetary Command Station: one per government. Opens the galaxy map; upgrade it here or in Mission control"]};   // ics: price comes from icsCost (cash + colony ore), see mbCost
+// what placing a building costs in cash right now (the Command Station uses the station price, or is free when an old save already owns an unplaced one)
+function mbCost(k){return k==="ics"?(ICS()?0:icsCost(0).cash):MBK[k][2]}
+function icsPlaced(){return MB().b.some(b=>b.k==="ics")}
 // upgrades: every Mars building levels 1..MBUP.max; level n costs base × MBUP.mul^(n-1); each level adds MBUP.eff of the building's base effect
 const MBUP={max:12,mul:3,eff:.5};
 function mbLv(b){const l=Math.floor(+b.lv||1);return Math.max(1,Math.min(MBUP.max,l))}
@@ -14871,7 +14875,7 @@ function mbSpent(b){let t=MBK[b.k][2];for(let l=1;l<mbLv(b);l++)t+=MBK[b.k][2]*M
 function mbBig(n){n=+n||0;for(const[d,u]of[[1e15,"Q"],[1e12,"T"],[1e9,"B"]])if(n>=d)return "$"+(+(n/d).toFixed(2))+u;return mbB(n)}
 function mbCnt(){const c={},top={};MB().b.forEach(b=>{c[b.k]=(c[b.k]||0)+mbW(b);(top[b.k]=top[b.k]||[]).push(mbW(b))});
   const capd=(k,n)=>(top[k]||[]).sort((a,b)=>b-a).slice(0,n).reduce((a,x)=>a+x,0);c.landerC=capd("lander",MBCFG.landerMax);c.mastC=capd("mast",MBCFG.mastMax);c.labC=capd("lab",MBCFG.labMax);return c}
-function mbUpgrade(id){const m=MB(),b=m.b.find(x=>x.id===id);if(!b)return;if(!colGov()&&!spDev()&&!mbLicOk())return toast("Only a player government or a licensed company can upgrade Mars buildings");
+function mbUpgrade(id){const m=MB(),b=m.b.find(x=>x.id===id);if(!b)return;if(b.k==="ics"){icsBuild();try{mgCard(id)}catch(e){}return}if(!colGov()&&!spDev()&&!mbLicOk())return toast("Only a player government or a licensed company can upgrade Mars buildings");
   if(mbLv(b)>=MBUP.max)return toast("Already at max level");const c=mbUpCost(b);if(!(S.cash>=c))return toast(`Level ${mbLv(b)+1} needs ${mbBig(c)} in cash`);
   if(MG.arm!==id){MG.arm=id;clearTimeout(MG.armT);MG.armT=setTimeout(()=>{MG.arm=null;try{mgDash();mgCard(MG.cardId)}catch(e){}},4000);try{mgDash();mgCard(id)}catch(e){}return}MG.arm=null;S.cash-=c;b.lv=mbLv(b)+1;mbPub();toast(`${MBK[b.k][1]} ${MBK[b.k][0]} upgraded to level ${b.lv}`);save();hud();spRefresh();mgSync();mgCard(id)}
 function MB(){let m=S.mb;if(!m||typeof m!=="object"||Array.isArray(m))m=S.mb={};if(!Array.isArray(m.b))m.b=[];if(!(m.seq>=0))m.seq=0;if(!MBK[m.sel])m.sel="hab";
@@ -14904,16 +14908,21 @@ function mbShip(){const why=mbShipWhy();if(why)return toast(why);const C=MBCFG.s
   toast(`👩‍🚀 Crew ship launched to Mars from ${P.c.name}: lands in ${colIn(m.ship.eta)}`);save();hud();spRefresh()}
 function mbTick(now){try{mbPay(now)}catch(e){console.warn("mbpay",e)}const m=S.mb;if(!m||!m.ship||m.ship.eta>now)return;m.crew={at:now,c:m.ship.c};m.ship=null;mbPub();const t="👩‍🚀 Your crew has landed on Mars. Your government can now build on the planet";toast(t);try{stNews(t)}catch(e){}save();spRefresh()}
 function mbWhy(k){const lic=!colGov()&&mbLicOk();if(!lic){if(!hasTech("marsciv")&&!spDev())return "Research Mars Civilization first";if(!MB().crew)return "Mars is locked until your crew ship lands there";if(!colGov()&&!spDev())return "Only a player government, or a company with a Mars licence, can build on Mars"}
-  const m=MB();if(m.b.length>=MBCFG.max)return `Mars base is full (${MBCFG.max} buildings)`;if(!(S.cash>=MBK[k][2]))return `Needs ${mbB(MBK[k][2])} in cash`;
+  const m=MB();if(m.b.length>=MBCFG.max)return `Mars base is full (${MBCFG.max} buildings)`;
+  if(k==="ics"){if(icsPlaced())return "Your government already has a Command Station";if(ICS())return "";const r=icsReady();if(r)return r;const c=icsCost(0);if(!(S.cash>=c.cash))return `Needs ${mbBig(c.cash)} in cash`;if(icsOre()<c.ore)return `Needs ${c.ore.toLocaleString("en-US")} colony ore (you have ${Math.floor(icsOre()).toLocaleString("en-US")})`;return ""}
+  if(!(S.cash>=MBK[k][2]))return `Needs ${mbB(MBK[k][2])} in cash`;
   if(k==="hab"){const L=mbLife();if(L.short.length)return `Not enough life support for another habitat: build ${L.short.map(x=>MBLS[x][2]).join(", ")} first`}return ""}
-function mbDemolish(id){const m=MB(),old=m.b.find(b=>b.id===id);if(!old)return;if(!colGov()&&!spDev()&&!mbLicOk())return toast("Only a player government or a licensed company can change Mars buildings");
+function mbDemolish(id){const m=MB(),old=m.b.find(b=>b.id===id);if(!old)return;if(old.k==="ics")return toast("The Command Station can't be demolished");if(!colGov()&&!spDev()&&!mbLicOk())return toast("Only a player government or a licensed company can change Mars buildings");
   const L0=mbLife(),keep=m.b;m.b=m.b.filter(b=>b!==old);const L1=mbLife();m.b=keep;const lost=Object.keys(MBLS).filter(x=>L1.cap[x]<L1.hab&&L1.cap[x]<L0.cap[x]);
   if(!confirm(`Demolish this ${MBK[old.k][0]}? You get ${mbBig(Math.round(mbSpent(old)*MBCFG.refund))} back (${Math.round(MBCFG.refund*100)}%).`+(lost.length?`\n\n⚠ Warning: ${lost.map(x=>MBLS[x][1].toLowerCase()).join(" and ")} would run short. Habitability drops to ${L1.pct}% and ${(L0.pop-L1.pop).toLocaleString("en-US")} colonists lose their homes.`:"")))return;
   m.b=m.b.filter(b=>b!==old);mbPub();S.cash+=Math.round(mbSpent(old)*MBCFG.refund);toast(`${MBK[old.k][1]} ${MBK[old.k][0]} demolished`);save();hud();spRefresh();mgSync()}
 // why a spot can't take a building ("" = fine); used by the build tap and the globe's ghost preview
 function mbSpot(lng,lat){if(Math.abs(lat)>80)return "Too close to the pole: the ice cap can't hold a building";const near=b=>Math.hypot((b.lng-lng)*Math.cos(lat*Math.PI/180),b.lat-lat)<MBCFG.gap;if(MBO.list.some(o=>o.b.some(near)))return "Too close to another player's building";if(MB().b.some(b=>Math.hypot((b.lng-lng)*Math.cos(lat*Math.PI/180),b.lat-lat)<MBCFG.gap))return "Too close to another building";return ""}
 function mbBuild(lng,lat){const m=MB(),k=m.sel,sp=mbSpot(lng,lat);if(sp)return toast(sp);
-  const why=mbWhy(k);if(why)return toast(why);S.cash-=MBK[k][2];
+  const why=mbWhy(k);if(why)return toast(why);
+  if(k==="ics"){const x=ICS(),now=Date.now();if(!x){const c=icsCost(0);S.cash-=c.cash;icsTake(c.ore);S.ics={lv:1,at:now,upT:now,c:colGov()};const t=`🛰️ ${colGov()} opens an Interplanetary Command Station on Mars`;try{stNews(t)}catch(e){}}
+    m.b.push({id:++m.seq,k,lng:+lng.toFixed(3),lat:+lat.toFixed(3),c:mbWho(),at:now});Object.assign(S.ics,{lng:+lng.toFixed(3),lat:+lat.toFixed(3),id:m.seq});mbPub();toast(x?"🛰️ Command Station placed on Mars":"🛰️ Command Station built on Mars");save();hud();spRefresh();mgSync();return}
+  S.cash-=MBK[k][2];
   m.b.push({id:++m.seq,k,lng:+lng.toFixed(3),lat:+lat.toFixed(3),c:mbWho(),at:Date.now()});mbPub();toast(`${MBK[k][1]} ${MBK[k][0]} built on Mars`);try{S.log.unshift(`${MBK[k][0]} built on Mars`);S.log=S.log.slice(0,3)}catch(e){}save();hud();spRefresh();mgSync()}
 function mbClick(a,k){if(a==="mbsel"&&MBK[k]){MB().sel=k;save();spRender();mgBar();return}if(a==="mbfund"){tfFund(+k);return}if(a==="mbglobe"){mgOpen();return}if(a==="mbship"){mbShip();return}if(a==="mblic"){mbLicAsk(k);return}if(a==="mblicy"||a==="mblicn"){mbLicDecide(k,a==="mblicy");return}if(a==="mbview"){mgOpen(()=>setTimeout(()=>{mgFly(+k);mgCard(+k)},300));return}}
 // Mars surface texture: equirectangular, seeded, with the big landmarks in roughly the right places
@@ -14942,7 +14951,7 @@ function mgTex(){if(CO.bg.mgTex)return CO.bg.mgTex;const W=2048,H=1024,c=documen
    so phones don't download and parse it at start-up. Until then these calls are no-ops (there is no globe on screen to update). */
 const MGP={api:null,p:null};
 function mgLoad(){if(MGP.api)return Promise.resolve(MGP.api);if(MGP.p)return MGP.p;
-  return MGP.p=fetch("parts/mars-globe.js?v=1").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(src=>MGP.api=evalPart(src))
+  return MGP.p=fetch("parts/mars-globe.js?v=2").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(src=>MGP.api=evalPart(src))
     .catch(e=>{MGP.p=null;console.warn("mars globe load",e);throw e})}
 function mgOpen(then){mgLoad().then(a=>{a.mgOpen();if(typeof then==="function")then()},()=>toast("Couldn't load the Mars globe. Check your connection and try again"))}
 function mgBar(){if(MGP.api)return MGP.api.mgBar.apply(null,arguments)}
@@ -14967,7 +14976,7 @@ function mbStore(){const st=MB().store;if(!st)return "";const ore=Object.keys(st
 function mbTab(){const E=dxE,m=MB(),g=colGov(),dev=spDev(),card=(t,b)=>`<div class="mdx-card" style="margin-bottom:16px"><div class="mdx-ch"><h3>${t}</h3></div>${b}</div>`;
   if(!hasTech("marsciv")&&!dev&&!mbLicOk())return mbShareCard()+card("🔒 Mars base",`<div class="mdx-rows"><div><span>Research <b>Mars Civilization</b> to start building on the Martian surface.</span><b></b></div></div>`);
   const pick=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">${Object.keys(MBK).map(k=>{const v=MBK[k],on=m.sel===k,no=mbWhy(k);
-    return `<button data-sp="mbsel" data-k="${k}" aria-pressed="${on}" title="${E(v[3]+(no?" · 🔒 "+no:""))}" style="opacity:${no&&!on?.55:1};text-align:left;cursor:pointer;padding:8px 10px;border-radius:12px;border:2px solid ${on?"#c2410c":"var(--dxline)"};background:${on?"var(--dxtint)":"transparent"};color:inherit"><b>${v[1]} ${E(v[0])}</b><br><small style="color:var(--dxmut)">${mbB(v[2])}</small><br><small style="color:var(--dxmut)">${E(v[3])}</small>${no&&!no.startsWith("Mars base is full")?`<br><small style="color:#dc2626">🔒 ${E(no)}</small>`:""}</button>`}).join("")}</div>`;
+    return `<button data-sp="mbsel" data-k="${k}" aria-pressed="${on}" title="${E(v[3]+(no?" · 🔒 "+no:""))}" style="opacity:${no&&!on?.55:1};text-align:left;cursor:pointer;padding:8px 10px;border-radius:12px;border:2px solid ${on?"#c2410c":"var(--dxline)"};background:${on?"var(--dxtint)":"transparent"};color:inherit"><b>${v[1]} ${E(v[0])}</b><br><small style="color:var(--dxmut)">${k==="ics"?(ICS()?"Free (you own one)":mbBig(mbCost(k))+" + "+icsCost(0).ore.toLocaleString("en-US")+" ore"):mbB(v[2])}</small><br><small style="color:var(--dxmut)">${E(v[3])}</small>${no&&!no.startsWith("Mars base is full")?`<br><small style="color:#dc2626">🔒 ${E(no)}</small>`:""}</button>`}).join("")}</div>`;
   const W=tfRemote()&&TFW?TFW:{feed:S.tf?TF().feed:[],top:S.tf?TF().top:{}},feed=(W.feed||[]).slice(0,12);
   const log=feed.length?`<table class="mdx-tbl"><tr><th>When</th><th>Funder</th><th>Type</th></tr>${feed.map(f=>{const co=/^🏢/.test(f.x);return `<tr><td>${f.t?new Date(f.t).toLocaleDateString():""}</td><td>${E(f.x)}</td><td>${co?"Company":"Government"}</td></tr>`}).join("")}</table>`:`<div class="mdx-rows"><div><span>No contributions yet.</span><b></b></div></div>`;
   const tfC=card("🌱 Mars terraforming",tfCard(g,(a,k,t,dis,bg,tip)=>`<button class="mdx-pill" data-sp="mbfund" data-k="${k}" ${dis?"disabled":""} ${tip?`title="${E(tip)}"`:""} style="border:0;cursor:pointer;color:#fff;background:${bg||"#15803d"};opacity:${dis?.5:1}">${t}</button>`)+`<div class="mdx-rows"><div><span>You fund as</span><b>${g?E(g)+" (government)":"🏢 "+E(S.name||"your company")+" (company)"}</b></div></div>
@@ -15597,7 +15606,7 @@ const ICSCFG={lvMax:10,mul:3,ore:30000,upk:2e9,upMul:.5,oreUp:10000,needB:10,awa
 function MBAI(){let a=S.mbai;if(!a||typeof a!=="object"||Array.isArray(a))a=S.mbai={};if(!Array.isArray(a.g))a.g=[];a.g=a.g.filter(x=>x&&typeof x.c==="string"&&COUNTRIES.includes(x.c)).slice(0,MBAICFG.max);if(!(a.t>=0))a.t=0;return a}
 function mbAiTop(){let d;try{d=dip()}catch(e){return[]}const l=COUNTRIES.slice().sort((x,y)=>(+d.gdp[y]||0)-(+d.gdp[x]||0));return l.slice(0,Math.ceil(l.length/4))}
 const MBAIC={sig:"",obs:[]};
-function mbAiObs(){if(!S.mbai)return[];const now=Date.now(),ks=Object.keys(MBK),out=[];
+function mbAiObs(){if(!S.mbai)return[];const now=Date.now(),ks=Object.keys(MBK).filter(k=>k!=="ics"),out=[];
   for(const x of MBAI().g){const n=Math.min(MBAICFG.bMax,MBAICFG.b0+Math.floor((now-x.at)/(MBAICFG.grow*DAYMS))),h=spH("mbai:"+x.c),lng0=h%300-150,lat0=(h>>>9)%100-50,b=[];
     for(let i=0;i<n;i++){const q=spH(x.c+":"+i),r=2.2*Math.sqrt(i+1),t=i*2.4+(q%100)/100;b.push({id:"ai"+x.c+i,k:i<2?(i?"lander":"hab"):ks[q%ks.length],lng:+(lng0+r*Math.cos(t)/Math.max(.3,Math.cos(lat0*Math.PI/180))).toFixed(3),lat:+Math.max(-78,Math.min(78,lat0+r*Math.sin(t))).toFixed(3),at:x.at+Math.max(0,i-MBAICFG.b0+1)*MBAICFG.grow*DAYMS})}
     out.push({ai:1,uid:"",name:"AI government",c:x.c,b})}
@@ -15608,7 +15617,7 @@ function mbAiTick(now){const a=MBAI();if(a.g.length<MBAICFG.max&&now-a.t>=MBAICF
   mbAiMerge()}
 // ── Interplanetary Command Station ──
 function ICS(){let x=S.ics;if(!x||typeof x!=="object"||Array.isArray(x))return null;x.lv=Math.max(1,Math.min(ICSCFG.lvMax,Math.floor(+x.lv)||1));if(!isFinite(+x.upT))x.upT=Date.now();if(typeof x.c!=="string")x.c="";return x}
-function icsFull(){return ICSCFG.mul*Object.values(MBK).reduce((t,v)=>t+v[2],0)}   // a "finished" Mars base = one of every Mars building
+function icsFull(){return ICSCFG.mul*Object.keys(MBK).filter(k=>k!=="ics").reduce((t,k)=>t+MBK[k][2],0)}   // a "finished" Mars base = one of every Mars building
 function icsReady(){const g=colGov();if(!g)return "Only a player government can run a command station";
   const col=S.col&&COLS().list.some(x=>x.p==="mars"&&x.c===g&&x.lv>=COLCFG.lvMax),m=S.mb,base=m&&m.crew&&Array.isArray(m.b)&&m.b.length>=ICSCFG.needB&&mbLife().hab>0;
   return col||base?"":`Needs a finished Mars colony (level ${COLCFG.lvMax}) or a Mars base with ${ICSCFG.needB}+ buildings and a habitat`}
@@ -15619,16 +15628,21 @@ function icsUpk(lv){return ICSCFG.upk*lv}
 function icsBuild(){const why=icsReady();if(why)return toast(why);const x=ICS(),lv=x?x.lv:0;if(lv>=ICSCFG.lvMax)return toast("Already at the top level");const c=icsCost(lv);
   if(!(S.cash>=c.cash))return toast(`Needs ${mbBig(c.cash)} in cash`);if(icsOre()<c.ore)return toast(`Needs ${c.ore.toLocaleString("en-US")} colony ore (you have ${Math.floor(icsOre()).toLocaleString("en-US")})`);
   S.cash-=c.cash;icsTake(c.ore);if(x)x.lv++;else S.ics={lv:1,at:Date.now(),upT:Date.now(),c:colGov()};const t=x?`🛰️ Interplanetary Command Station upgraded to level ${S.ics.lv}`:`🛰️ ${colGov()} opens an Interplanetary Command Station`;toast(t);try{stNews(t)}catch(e){}save();hud();spRefresh()}
-function icsTick(now){const x=ICS();if(!x)return;const dt=Math.min(ICSCFG.away*DAYMS,now-x.upT);if(dt<6e4)return;x.upT=now;if(!colGov())return;const c=Math.round(icsUpk(x.lv)*dt/DAYMS);S.cash-=c;x.paid=(x.paid||0)+c}
+function icsTick(now){const x=ICS();if(!x)return;const dt=Math.min(ICSCFG.away*DAYMS,now-x.upT);if(dt<6e4)return;x.upT=now;if(!colGov())return;const c=Math.min(Math.round(icsUpk(x.lv)*dt/DAYMS),Math.max(0,Math.floor(S.cash)));S.cash-=c;   // upkeep stops at $0, never pushes cash negative
+x.paid=(x.paid||0)+c}
 function icsTab(){const E=dxE,x=ICS(),why=icsReady(),lv=x?x.lv:0,c=icsCost(lv),card=(t,b)=>`<div class="mdx-card" style="margin-bottom:16px"><div class="mdx-ch"><h3>${t}</h3></div>${b}</div>`,
     btn=(a,t,dis,bg)=>`<button class="mdx-pill" data-sp="${a}" data-k="" ${dis?"disabled":""} style="border:0;cursor:pointer;color:#fff;background:${bg};opacity:${dis?.5:1}">${t}</button>`;
   const ai=MBAI().g.map(g=>`<div><span>🔴 ${E(g.c)} <small style="color:var(--dxmut)">AI government · since ${new Date(g.at).toLocaleDateString()}</small></span><b>${g.ics?"Station":"No station yet"}</b></div>`).join("");
   const st=x?`<div class="mdx-rows"><div><span>Owner</span><b>${E(x.c||colGov()||"")} (government)</b></div><div><span>Level</span><b>${lv} / ${ICSCFG.lvMax}</b></div><div><span>Upkeep</span><b style="color:#dc2626">${mbBig(icsUpk(lv))} / day</b></div><div><span>Systems charted</span><b>${GLX().seen.length}</b></div></div>`
     :`<div class="mdx-rows"><div><span>${why?"🔒 "+E(why):"Ready to build: your government can open a station."}</span><b></b></div><div><span>Build cost</span><b>${mbBig(c.cash)} + ${c.ore.toLocaleString("en-US")} colony ore</b></div><div><span>Upkeep</span><b>${mbBig(icsUpk(1))} / day per level</b></div></div>`;
-  const up=lv>=ICSCFG.lvMax?"":`<div style="margin-top:10px">${btn("icsbuild",x?`⬆ Upgrade to level ${lv+1} · ${mbBig(c.cash)} + ${c.ore.toLocaleString("en-US")} ore`:`🛰️ Build station · ${mbBig(c.cash)} + ${c.ore.toLocaleString("en-US")} ore`,!!why,"#4338ca")} <small style="color:var(--dxmut)">Colony ore on hand: ${Math.floor(icsOre()).toLocaleString("en-US")}</small></div>`;
+  const pl=icsPlaced(),place=pl?"":`<div style="margin-top:10px">${btn("icsplace",x?"🔴 Place on Mars · free":`🔴 Place on Mars · ${mbBig(c.cash)} + ${c.ore.toLocaleString("en-US")} ore`,!x&&!!why,"#c2410c")} <small style="color:var(--dxmut)">${x?"Your station isn't on the Mars map yet. Pick a spot in your base, no charge.":"Opens the Mars globe: tap a spot in your base to build the station there."}</small></div>`;
+  const up=!x||lv>=ICSCFG.lvMax?place:place+`<div style="margin-top:10px">${btn("icsbuild",x?`⬆ Upgrade to level ${lv+1} · ${mbBig(c.cash)} + ${c.ore.toLocaleString("en-US")} ore`:`🛰️ Build station · ${mbBig(c.cash)} + ${c.ore.toLocaleString("en-US")} ore`,!!why,"#4338ca")} <small style="color:var(--dxmut)">Colony ore on hand: ${Math.floor(icsOre()).toLocaleString("en-US")}</small></div>`;
   return card("🛰️ Interplanetary Command Station",st+up+`<div style="margin-top:10px">${btn("icsmap","🌌 Galaxy map",0,"#0f172a")}</div><div class="mdx-note" style="color:var(--dxmut)">The station looks past the solar system. The galaxy map is the same for every player; probes to scout new systems are coming next.</div>`)
     +card("🔴 Governments on Mars",ai?`<div class="mdx-rows">${ai}</div>`:`<div class="mdx-rows"><div><span>No AI government has reached Mars yet.</span><b></b></div></div>`)}
-function icsClick(a){if(a==="icsbuild")icsBuild();else if(a==="icsmap")glxOpen()}
+function icsBuild2(){if(!ICS())return icsPlace();icsBuild()}
+function icsPlace(){if(icsPlaced())return toast("Your Command Station is already on Mars");const why=mbWhy("ics");if(why&&ICS()==null)return toast(why);MB().sel="ics";save();mgOpen(()=>{MG.pick="ics";mgBar()})}
+function icsOpenTab(){try{SP().tab="ics";spOpen();spRender()}catch(e){}}
+function icsClick(a){if(a==="icsbuild")icsBuild2();else if(a==="icsplace")icsPlace();else if(a==="icsmap")glxOpen()}
 // ── Galaxy map ──
 function GLX(){let g=S.gal;if(!g||typeof g!=="object"||Array.isArray(g))g=S.gal={};if(!Array.isArray(g.seen))g.seen=[];g.seen=g.seen.filter(x=>typeof x==="string").slice(0,5000);if(!g.seen.includes("0:0"))g.seen.unshift("0:0");return g}
 const GLXN=["Andromeda Reach","Cygnus Veil","Hydra Wheel","Orion Drift"],GLXCL=[["O","#9bb0ff",2],["B","#aabfff",5],["A","#cad7ff",9],["F","#f8f7ff",14],["G","#fff4ea",20],["K","#ffd2a1",24],["M","#ffad6b",26]],
@@ -15644,7 +15658,7 @@ function glxGen(gi){if(GLXC[gi])return GLXC[gi];const r=glxRnd(7700417+gi*1013),
     sys.push({id:gi+":"+i,name:gi===0&&i===0?"Sol":name.trim(),cl:gi===0&&i===0?4:k,x:p[0],y:p[1],z:p[2],pl:gi===0&&i===0?[["Venus",5],["Earth",1],["Mars",4],["Jupiter",2],["Saturn",2]].map(q=>({n:q[0],t:q[1],res:q[0]==="Mars"?"Iron":q[0]==="Earth"?"Water ice":"Helium-3"})):pl})}
   for(let i=0;i<1800;i++)dust.push(pos(i<500));return GLXC[gi]={sys,dust,arms}}
 const GLXV={el:null,cv:null,gi:0,yaw:.6,pitch:.9,zoom:1,sel:null,f:"all",res:"",pts:new Map(),pinch:0,moved:0,raf:0};
-function glxOpen(){const g=GLX();if(!GLXV.el){const el=GLXV.el=document.createElement("div");el.style.cssText="position:fixed;inset:0;z-index:10050;background:#03040a;color:#e2e8f0;font:13px Figtree,sans-serif;touch-action:none";
+function glxOpen(){const g=GLX();if(!GLXV.el){const el=GLXV.el=document.createElement("div");el.style.cssText="position:fixed;inset:0;z-index:2147483100;background:#03040a;color:#e2e8f0;font:13px Figtree,sans-serif;touch-action:none";
     const b="border:1px solid #334155;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:6px 10px;cursor:pointer";
     el.innerHTML=`<canvas style="position:absolute;inset:0;width:100%;height:100%"></canvas><div style="position:absolute;top:8px;left:8px;right:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
       <button data-gx="x" style="${b}">✕ Close</button>${GLXN.map((n,i)=>`<button data-gx="g" data-k="${i}" style="${b}">${i?"🔒 ":""}${n}</button>`).join("")}
