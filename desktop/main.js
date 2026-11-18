@@ -64,6 +64,13 @@ const menu = [
   { label: 'View', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'toggleDevTools' }] },
 ];
 
+// Google refuses sign-in from browsers that say "Electron" in their user agent
+// ("This browser or app may not be secure"). Present as plain Chrome instead.
+app.userAgentFallback = app.userAgentFallback
+  .replace(/\sElectron\/\S+/, '')
+  .replace(/\smeridian-desktop\/\S+/i, '')
+  .replace(/\sMeridian\/\S+/, '');
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
   createWindow();
