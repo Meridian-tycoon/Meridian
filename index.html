@@ -10331,6 +10331,14 @@ function popApp(){let P=0,b=0,d=0,bt=0,dt=0;const ct=[0,0,0,0],T=S.day||0,M=S.po
     <div class="ph-sub" style="margin-top:8px">By country · net change today</div>
     <div class="ph-list">${rows.map(r=>`<div><b style="display:block">${r.n} · ${fmtPop(r.p.p)}</b><span style="color:${r.net<0?"#fca5a5":"#86efac"}">${r.net<0?"−":"+"}${fmtPop(Math.abs(r.net))}</span> today${r.p.c[3]?` · ${fmtPop(r.p.c[3])} war dead`:""}${r.w}</div>`).join("")}</div>`}
 /* ---------- online: other players on the globe (Firebase; off while FIREBASE_CONFIG is empty) ---------- */
+/* Google sign-in. In the desktop app Google blocks its sign-in page, so the app opens the player's normal
+   browser (desktop-signin.html), which sends the Google token back to the app; we sign in with it here. */
+function gSignIn(link){const fb=window.firebase,D=window.meridianDesktop;
+  if(!(D&&D.googleSignIn)){const pv=new fb.auth.GoogleAuthProvider();return link?ON.user.linkWithPopup(pv):ON.auth.signInWithPopup(pv)}
+  return new Promise((res,rej)=>{const t=setTimeout(()=>{window.__merGCred=null;rej(new Error("Google sign-in timed out. Try again."))},300000);
+    window.__merGCred=async(id,at)=>{clearTimeout(t);window.__merGCred=null;
+      try{const c=fb.auth.GoogleAuthProvider.credential(id||null,at||null);res(link?await ON.user.linkWithCredential(c):await ON.auth.signInWithCredential(c))}catch(e){rej(e)}};
+    D.googleSignIn()})}
 const ONV="10.12.2",ON={ready:false,loading:false,err:"",user:null,players:[],db:null,auth:null,unsub:null,lastPub:0,lastSig:"",draft:{e:"",p:"",n:""},busy:false};
 const onEnabled=()=>!!(FIREBASE_CONFIG&&FIREBASE_CONFIG.apiKey&&FIREBASE_CONFIG.projectId);
 const onEsc=s=>String(s==null?"":s).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
@@ -10435,12 +10443,12 @@ function onlineWire(){if(!onEnabled())return;csWire();const v=s=>{const e=$(s);r
         toast(ok?"Player ID copied":"Select the ID and copy it")}
       else if(a==="out"){setGuest(false);if(ON.user&&ON.user.isAnonymous&&!confirm("Sign out of this guest session? You can keep playing, but your online guest identity (player ID, cartel, trades) will not come back. Create an account to keep it.")){ON.busy=false;return}await ON.auth.signOut()}
       else if(a==="link"||a==="linkg"){if(nm)onProf().name=nm;
-        if(a==="linkg")await ON.user.linkWithPopup(new window.firebase.auth.GoogleAuthProvider());
+        if(a==="linkg")await gSignIn(true);
         else{const e=v("#onemail").trim(),pw=$("#onpass")?$("#onpass").value:"";if(!e||pw.length<6){ON.err="Enter an email and a password of 6+ characters";ON.busy=false;onRefresh();return}
           await ON.user.linkWithCredential(window.firebase.auth.EmailAuthProvider.credential(e,pw))}
         ON.user=ON.auth.currentUser;ON.draft={e:"",p:"",n:""};save();onPublish(true);toast("Account created: your game and player ID are now yours for good")}
       else{if(nm)onProf().name=nm;
-        if(a==="g")await ON.auth.signInWithPopup(new window.firebase.auth.GoogleAuthProvider());
+        if(a==="g")await gSignIn();
         else{const e=v("#onemail").trim(),pw=$("#onpass")?$("#onpass").value:"";if(!e||pw.length<6){ON.err="Enter an email and a password of 6+ characters";ON.busy=false;onRefresh();return}
           if(a==="up")await ON.auth.createUserWithEmailAndPassword(e,pw);else await ON.auth.signInWithEmailAndPassword(e,pw)}
         ON.draft={e:"",p:"",n:""};save()}
@@ -10523,7 +10531,7 @@ function gateSync(){const need=onEnabled()&&!ON.user&&!isGuest();let ov=document
       toast(anon?"Playing as guest. Other players can see you; create an account any time in Saves > Online to keep this game for good.":"Playing as guest: saved on this device only. Create an account any time in Saves > Online.");return}
     const e=keep("gemail").trim(),p=keep("gpass");
     try{GATE.busy=true;
-      if(a==="g")await ON.auth.signInWithPopup(new window.firebase.auth.GoogleAuthProvider());
+      if(a==="g")await gSignIn();
       else if(a==="reset"){if(!e)throw new Error("Enter your email first, then tap Forgot password");await ON.auth.sendPasswordResetEmail(e);GATE.msg="Password reset email sent to "+e}
       else{if(!e||p.length<6)throw new Error("Enter an email and a password of 6+ characters");
         if(a==="up"){const n=keep("gname").trim().slice(0,20);if(n)onProf().name=n;await ON.auth.createUserWithEmailAndPassword(e,p)}
