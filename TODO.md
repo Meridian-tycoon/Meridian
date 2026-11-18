@@ -73,3 +73,4 @@ Format: `- [ ] [agent-name] (priority, area) task`
 - [ ] [meridian-builder] (low, space) Mars globe Command Station marker label stays "L1" after upgrading from the station card (marker not rebuilt; call mgSync after icsup).
 - [ ] [meridian-builder] (low, space) icsOre() reads only S.col.list, but colMarsMove moves a player government's own Mars colonies (and their ore) into S.mb.store, so Mars ore never counts toward the Command Station; only Moon colony ore does. Confirm intended.
 - [ ] [meridian-builder] (high, aliens) Station-tab daily gift button throws "k is not defined": icsClick(a) at index.html:15670 has no k param but calls alGift(+k); change to icsClick(a,k) (caller already passes k)
+- [ ] [meridian-balance] (medium, Space) Check space phase 4 numbers: Deep Space research (600k RP, $15T), Scout $3.4T / Freighter $10T, exotic matter $4B/unit base, trade-run margin 20-80% of cargo cost
