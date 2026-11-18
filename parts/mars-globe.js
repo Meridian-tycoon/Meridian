@@ -114,14 +114,22 @@ const MG3={z:4.6,maxZ:11,r:26,seg:MGLOW?16:40,
     oxy:[["r",0,0,[1.6,1],0,.1,"#94a3b8"],["r",-.4,0,[.7,.8],.1,.6,"#e2e8f0"],["c",.45,.25,.25,.1,1.1,"#38bdf8"],["c",.45,-.25,.25,.1,1.1,"#38bdf8"],["c",.45,.25,.27,1.1,1.15,"#e0f2fe"],["c",.45,-.25,.27,1.1,1.15,"#e0f2fe"],["r",-.6,.2,[.12,.12],.6,1.2,"#64748b"]],
     food:[["r",0,0,[1.6,1.1],0,.1,"#94a3b8"],["r",0,0,[1.3,.8],.1,.55,"#fde68a"],["r",0,0,[1.3,.3],.55,.7,"#d97706"],["c",.5,.55,.18,0,.8,"#cbd5e1"],["c",-.5,.55,.18,0,.8,"#cbd5e1"]],
     rover:[["r",0,0,[1.5,1],0,.5,"#cbd5e1"],["r",0,.48,[1.1,.08],0,.4,"#475569"],["r",0,0,[1.5,1],.5,.58,"#64748b"],["r",.2,.9,[.5,.3],0,.18,"#f59e0b"],["c",-.05,.82,.07,0,.07,"#111827"],["c",.45,.82,.07,0,.07,"#111827"]]}};
+// Interplanetary Command Station: wide platform, central tower, two masts and a tilted deep-space dish that slowly turns (built per frame from the time)
+function mg3Ics(now){const a=(now/24000)%(Math.PI*2),c=Math.cos(a),s=Math.sin(a),out=[["c",0,0,1.15,0,.12,"#475569"],["c",0,0,1.18,.1,.14,"#6366f1"],["c",0,0,1.02,.12,.18,"#334155"],
+  ...[0,1,2,3].map(i=>{const q=i*Math.PI/2+Math.PI/4;return["r",Math.cos(q)*.72,Math.sin(q)*.72,[.42,.42],.18,.45,"#94a3b8"]}),
+  ...[0,1,2,3,4,5,6,7].map(i=>{const q=i*Math.PI/4;return["c",Math.cos(q)*1.08,Math.sin(q)*1.08,.06,.14,.2,"#a78bfa"]}),
+  ["c",0,0,.34,.18,1.3,"#cbd5e1"],["c",0,0,.36,.7,.78,"#818cf8"],["c",0,0,.36,1.05,1.1,"#60a5fa"],["c",0,0,.46,1.3,1.42,"#e2e8f0"],["c",0,0,.09,1.42,1.62,"#94a3b8"],
+  ...[[-.78,.5],[.78,-.5]].flatMap(([x,y],j)=>[["r",x,y,[.07,.07],.18,j?1.7:2.1,"#cbd5e1"],["r",x,y,[.3,.04],j?1.3:1.6,j?1.35:1.65,"#e2e8f0"],["c",x,y,.08,j?1.7:2.1,j?1.8:2.2,"#c084fc"]])];
+  for(let i=0;i<6;i++){const o=i*.07;out.push(["c",c*o,s*o,.16+i*.1,1.6+i*.08,1.68+i*.08,i===5?"#c7d2fe":"#f1f5f9"])}
+  out.push(["c",c*.12,s*.12,.04,1.68,2.25,"#94a3b8"],["c",c*.12,s*.12,.08,2.25,2.33,"#818cf8"]);return out}
 function mg3Poly(lng,lat,p,rt,sc){const R=MG3.r*(sc||1),[sh,ox,oy,sz]=p,co=Math.cos(rt||0),si=Math.sin(rt||0),dx=ox*co-oy*si,dy=ox*si+oy*co,kx=1/(111.32*Math.max(.05,Math.cos(lat*Math.PI/180))),ky=1/110.57,cx=lng+dx*R*kx,cy=lat+dy*R*ky,ring=[];
   if(sh==="c"){const N=MG3.seg;for(let i=0;i<=N;i++){const a=i/N*Math.PI*2;ring.push([cx+Math.cos(a)*sz*R*kx,cy+Math.sin(a)*sz*R*ky])}}
   else{const w=sz[0]/2*R,d=sz[1]/2*R,co=Math.cos(rt||0),si=Math.sin(rt||0);for(const [x,y] of [[-w,-d],[w,-d],[w,d],[-w,d],[-w,-d]])ring.push([cx+(x*co-y*si)*kx,cy+(x*si+y*co)*ky])}return[ring]}
 // building variety: each building gets its own turn, size, height, tint and sometimes a side module or tank, fixed by its id so it never changes
 function mg3Var(b){const h=Math.imul(((b.id||0)+1)^(Math.round((b.lng||0)*100)),2654435761)>>>0,v=(h>>>5)%3;
-  return{rt:b.k==="solar"?((h%4)*Math.PI/2):(h%360)*Math.PI/180,sc:.88+((h>>>9)%25)/100,hs:.88+((h>>>13)%25)/100,tint:["#fef3c7","#e0e7ff","#fde2d4"][(h>>>17)%3],tt:((h>>>19)%10)/100,
-    ex:b.k==="solar"||b.k==="lander"?[]:v===1?[["r",1.15,0,[.35,.55],0,.32,"#cbd5e1"],["r",1.15,0,[.37,.57],.32,.36,"#94a3b8"]]:v===2?[["c",-.95,.75,.2,0,.45,"#e2e8f0"],["c",-.95,.75,.21,.45,.5,"#f8fafc"]]:[]}}
-function mg3Feats(){const out=[],R=MG3.r*1000,now=Date.now(),st=mbFlags(),w=mgWind(now),add=(b,props,dim,o)=>{const g=mgGrow(b,now),V=mg3Var(b),pp=[["c",0,0,1.3,0,.01+((b.id||0)%7)*.002,"#c9a083"]].concat(MG3.parts[b.k]||[],V.ex,dim?[]:mgExtra(b,st,w,now));
+  return{rt:b.k==="solar"?((h%4)*Math.PI/2):(h%360)*Math.PI/180,sc:(b.k==="ics"?2.1:.88+((h>>>9)%25)/100),hs:.88+((h>>>13)%25)/100,tint:["#fef3c7","#e0e7ff","#fde2d4"][(h>>>17)%3],tt:((h>>>19)%10)/100,
+    ex:b.k==="solar"||b.k==="lander"||b.k==="ics"?[]:v===1?[["r",1.15,0,[.35,.55],0,.32,"#cbd5e1"],["r",1.15,0,[.37,.57],.32,.36,"#94a3b8"]]:v===2?[["c",-.95,.75,.2,0,.45,"#e2e8f0"],["c",-.95,.75,.21,.45,.5,"#f8fafc"]]:[]}}
+function mg3Feats(){const out=[],R=MG3.r*1000,now=Date.now(),st=mbFlags(),w=mgWind(now),add=(b,props,dim,o)=>{const g=mgGrow(b,now),V=mg3Var(b),pp=[["c",0,0,1.3,0,.01+((b.id||0)%7)*.002,"#c9a083"]].concat((b.k==="ics"?mg3Ics(now):MG3.parts[b.k])||[],V.ex,dim?[]:mgExtra(b,st,w,now));
     for(let p of pp){let col=dim?mg3Dim(p[6]):p[6];if(V.tt&&p[6]!=="#c9a083")col=mgMix(col,V.tint,V.tt);if(b.k==="solar"&&p[6]==="#1e3a8a")col=mgMix(col,"#b8693c",mbDust(b,now));if(!dim&&b.k==="mast"&&p[5]>1.5&&w)p=[p[0],p[1]+w*.05*p[5]/2.6,p[2]].concat(p.slice(3));
       const k=R*g*V.sc*V.hs;(o||out).push({type:"Feature",properties:Object.assign({b:p[4]*k,h:Math.max(p[4]*k+1,p[5]*k),col},props),geometry:{type:"Polygon",coordinates:mg3Poly(b.lng,b.lat,p,V.rt,V.sc)}})}};
   // other players' bases never animate, so keep their models until their buildings change (big saving with many bases)
