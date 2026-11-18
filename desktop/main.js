@@ -1,7 +1,7 @@
 // Meridian desktop shell. Online only: it loads the live game site and keeps
 // no local copy of the game or the world. If there is no connection it shows
 // a "you're offline" page with a Retry button.
-const { app, BrowserWindow, shell, Menu } = require('electron');
+const { app, BrowserWindow, shell, Menu, ipcMain } = require('electron');
 const path = require('path');
 
 const GAME_URL = 'https://meridian-tycoon.github.io/Meridian/';
@@ -10,6 +10,26 @@ const GAME_ORIGIN = new URL(GAME_URL).origin;
 const AUTH_HOSTS = ['accounts.google.com', 'meridian-world-players.firebaseapp.com'];
 
 let win;
+
+// Google sign-in happens in the player's normal browser (desktop-signin.html on the
+// live site), which hands the Google token back through a meridian:// link.
+const SIGNIN_URL = GAME_URL + 'desktop-signin.html';
+if (process.defaultApp) app.setAsDefaultProtocolClient('meridian', process.execPath, [path.resolve(process.argv[1] || '.')]);
+else app.setAsDefaultProtocolClient('meridian');
+if (!app.requestSingleInstanceLock()) app.quit();
+
+function handleLink(link) {
+  if (!link || !link.startsWith('meridian://auth') || !win) return;
+  const q = new URL(link).searchParams;
+  const id = q.get('id') || '', at = q.get('at') || '';
+  if (win.isMinimized()) win.restore();
+  win.focus();
+  win.webContents.executeJavaScript(
+    `window.__merGCred && window.__merGCred(${JSON.stringify(id)}, ${JSON.stringify(at)})`).catch(() => {});
+}
+app.on('open-url', (e, link) => { e.preventDefault(); handleLink(link); });           // Mac
+app.on('second-instance', (_e, argv) => handleLink(argv.find(a => a.startsWith('meridian://')))); // Windows
+ipcMain.on('google-signin', () => shell.openExternal(SIGNIN_URL));
 
 function isGame(url) {
   try { const u = new URL(url); return u.origin === GAME_ORIGIN && u.pathname.startsWith('/Meridian'); }

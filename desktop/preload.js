@@ -1,3 +1,7 @@
-// Lets the game know it runs in the desktop app (optional for the page to use).
-const { contextBridge } = require('electron');
-contextBridge.exposeInMainWorld('meridianDesktop', { platform: process.platform, version: '1.0.0' });
+// Lets the game know it runs in the desktop app, and start Google sign-in in the normal browser.
+const { contextBridge, ipcRenderer } = require('electron');
+contextBridge.exposeInMainWorld('meridianDesktop', {
+  platform: process.platform,
+  version: '1.0.1',
+  googleSignIn: () => ipcRenderer.send('google-signin'),
+});
