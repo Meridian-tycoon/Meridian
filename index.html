@@ -15464,7 +15464,7 @@ function smFill(c,t,g,buy){const k=smKeepT(c,t,g);let need=k-(t.sh[g]||0);if(nee
   if(!buy||!t.ab[g])return 0;let q=Math.floor(need);if(q<1)return 0;if(t.abd.d!==S.day)t.abd={d:S.day,v:0};const left=Math.min(t.cap-t.abd.v,S.cash);if(left<=0)return 0;
   let b=buyGood(c,g,q),v=b.v*(1+SM_CT_FEE);if(v>left){q=Math.floor(q*left/v);if(q<1)return 0;b=buyGood(c,g,q);v=b.v*(1+SM_CT_FEE);if(v>left)return 0}
   S.cash-=v;b.commit();t.sh[g]=(t.sh[g]||0)+q;t.abd.v+=v;return v}
-function smHour(quiet){if(!S.smkt)return;for(const id in S.smkt){const c=CITIES[id];if(!c)continue;const lv=smLv(c);if(!lv)continue;if(typeof unhOn==="function"&&unhOn(c))continue;const t=smS(c),tr=SM_TIER[t.tier];
+function smHour(quiet){if(!S.smkt)return;for(const id in S.smkt){const c=CITIES[id];if(!c)continue;const lv=smLv(c);if(!lv)continue;if(typeof unhOn==="function"&&unhOn(c))continue;const t=smS(c),tr=SM_TIER[t.tier];if(t.alc)try{smAutoLco(c,t)}catch(e){}
     let ctSp=0;for(const g of t.ls)ctSp+=smFill(c,t,g,1);
     const inS=smIn(t),fav=smFav(c),cu=smCust(t)*(.35+.65*smStaffF(t))*(1-t.rv)*(1+.15*t.mem),q0=.5*(1+.55*(lv-1))*Math.sqrt(tr.m)*cu;let units=0,top="",tq=0;
     for(const g of inS){const q=Math.min(t.sh[g],q0*(fav.includes(g)?1.3:1)*smGF(t,g));t.sh[g]-=q;units+=q;if(q>tq){tq=q;top=g}}
@@ -15477,8 +15477,14 @@ function smHour(quiet){if(!S.smkt)return;for(const id in S.smkt){const c=CITIES[
 /* empty on-sale goods: ticked but no shelf stock */
 /* order stock from owned logistics centers in other cities (Mark, 2026-11-18): reuses center orders (lcoNew) with an idle truck/plane parked at the source;
    o.sm=1 delivers into this city's depot (never its own center), then keep-stocked fills the shelves. Normal fuel cost, no new fees. */
+/* keep stocked from centers (Mark, 2026-11-18): t.alc=1 -> each game hour, every on-sale good below its keep target (or shelf max)
+   counting shelf + depot + goods already on the way gets one order from an owned center that has it and an idle vehicle. Max 3 new orders an hour per store. */
+function smLcSrcs(c){return Object.keys(S.lc||{}).map(Number).filter(id=>id!==c.id&&CITIES[id]&&LCO(id)).map(id=>CITIES[id])}
+function smAutoLco(c,t){const cap=smCap(c,t),inv=S.inv[c.id]||{},run=lcoList().filter(o=>o.to===c.id&&o.st==="run"&&o.sm);let n=0;
+  for(const g of t.ls){if(n>=3)break;if(run.some(o=>o.g===g))continue;const tg=Math.min(cap,+t.keep[g]||cap),sh=Math.floor(tg-(t.sh[g]||0)-(inv[g]||0));if(sh<1)continue;
+    for(const src of smLcSrcs(c)){const L=LCO(src.id),hv=L.inv[g]||0;if(hv<1)continue;const v=lcoVehicles(src,c)[0];if(!v)continue;if(!lcoNew(c,src.id,g,Math.min(sh,Math.floor(hv)),v.id,1)){n++;break}}}}
 function smLcoTile(c,t,cap){const srcs=Object.keys(S.lc||{}).map(Number).filter(id=>id!==c.id&&CITIES[id]&&LCO(id)).map(id=>CITIES[id]);
-  let h=`<div class="tile s1" style="margin-top:10px"><h4>🏭 Order from my logistics centers</h4>`;
+  let h=`<div class="tile s1" style="margin-top:10px"><h4>🏭 Order from my logistics centers</h4><div class="smrow"><button class="${t.alc?"g":""}" data-sm="alc">${t.alc?"✓ Keep stocked from centers: ON":"Keep stocked from centers: OFF"}</button><small>When on, every hour each on-sale good below its Keep at (or shelf max) is ordered from a center that has it and an idle vehicle parked there. Fuel as normal.</small></div>`;
   if(!srcs.length)return h+`<small>Own a logistics center in another city to ship its stock here.</small></div>`;
   if(!srcs.some(s=>s.id===SMW.of))SMW.of=srcs[0].id;const src=CITIES[SMW.of],L=LCO(src.id),gs=Object.keys(L.inv).filter(g=>G[g]&&L.inv[g]>=.01).sort((a,b)=>t.ls.includes(b)-t.ls.includes(a)||G[a][0].localeCompare(G[b][0]));
   if(!gs.includes(SMW.og))SMW.og=gs[0]||"";const have=SMW.og?L.inv[SMW.og]:0;if(!(SMW.oq>0))SMW.oq=Math.max(1,Math.min(Math.floor(have),cap));const vs=lcoVehicles(src,c);
@@ -15548,6 +15554,7 @@ function smAct(a,g,el){const c=SMW.c;if(!c)return;const t=smS(c),tr=SM_TIER[t.ti
   else if(a==="lcog"){SMW.og=el.value;return smRender()}
   else if(a==="lcoq"){SMW.oq=+el.value||0;return}
   else if(a==="lco"){const L=LCO(SMW.of),src=CITIES[SMW.of],v=src&&lcoVehicles(src,c)[0];const e=lcoNew(c,SMW.of,SMW.og,Math.min(+SMW.oq||0,L&&L.inv[SMW.og]||0),v?v.id:0,1);m=e||`Order placed: ${gq(+SMW.oq)} ${G[SMW.og][0].toLowerCase()} from ${src.name}. It goes to your depot here, then onto the shelves.`;if(!e)SMW.oq=0}
+  else if(a==="alc"){t.alc=t.alc?0:1;if(t.alc){const b=lcoList().length;smAutoLco(c,t);const k=lcoList().length-b;m=`Keep stocked from centers is on${k?`: ${k} order${k>1?"s":""} placed`:""}`}else m="Keep stocked from centers is off"}
   else if(a==="lcox"){lcoCancel(+g);m="Order cancelled"}
   else if(a==="mk")t.mk=Math.max(0,Math.min(4,+el.value));
   else if(a==="hire"||a==="fire"){const k=g;const mx=k==="mgr"?1:k==="sec"?6:tr[k]*2+2;t.st[k]=Math.max(0,Math.min(mx,(+t.st[k]||0)+(a==="hire"?1:-1)))}
