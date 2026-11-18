@@ -15123,17 +15123,17 @@ function lcPin(c,g,row,bay){const L=LCO(c.id);if(!L||!(L.inv[g]>0))return "Nothi
 function lcoList(){if(!Array.isArray(S.lco))S.lco=[];return S.lco}
 const lcoIdle=v=>v.city!=null&&!v.arr&&!v.route&&!v.job&&!v.lco&&!v.cargo&&!v.al&&v.hm==null;
 function lcoVehicles(src,dst){return (S.fleet||[]).filter(v=>v.city===src.id&&lcoIdle(v)&&VEH[v.type]&&(vcls(v.type)==="plane"||vcls(v.type)==="truck"&&landmass(src)===landmass(dst)))}
-function lcoNew(dst,srcId,g,q,vid){const src=CITIES[srcId],Ls=src&&LCO(src.id);if(!dst)return "Pick a destination";if(!LCO(dst.id)&&!hasWh(dst))return "Pick a city with a warehouse or logistics center";if(!Ls||src===dst)return "Pick another city with a logistics center";
+function lcoNew(dst,srcId,g,q,vid,sm){const src=CITIES[srcId],Ls=src&&LCO(src.id);if(!dst)return "Pick a destination";if(!(sm&&smLv(dst))&&!LCO(dst.id)&&!hasWh(dst))return "Pick a city with a warehouse or logistics center";if(!Ls||src===dst)return "Pick another city with a logistics center";
   if(!G[g]||!(Ls.inv[g]>0))return `That center has no ${G[g]?G[g][0].toLowerCase():"stock"}`;q=+q||0;if(!(q>=.01))return "Enter an amount";
   const v=(S.fleet||[]).find(x=>x.id===+vid);if(!v||!lcoVehicles(src,dst).includes(v))return `Pick an idle vehicle parked in ${src.name}`;
-  S.lcoN=(S.lcoN||0)+1;const o={id:S.lcoN,from:src.id,to:dst.id,g,q:Math.round(q*100)/100,done:0,v:v.id,st:"run",at:Date.now(),trips:0,why:""};lcoList().unshift(o);S.lco=S.lco.filter((x,i)=>x.st==="run"||i<40);v.lco=o.id;
-  lcLog(dst,`Order #${o.id}: ${gq(o.q)} ${G[g][0].toLowerCase()} requested from ${src.name}`);lcLog(src,`Order #${o.id}: ${gq(o.q)} ${G[g][0].toLowerCase()} to ship to ${dst.name}`);lcoStep(v,Date.now());save();return ""}
+  S.lcoN=(S.lcoN||0)+1;const o={id:S.lcoN,from:src.id,to:dst.id,g,q:Math.round(q*100)/100,done:0,v:v.id,st:"run",at:Date.now(),trips:0,why:"",sm:sm?1:0};lcoList().unshift(o);S.lco=S.lco.filter((x,i)=>x.st==="run"||i<40);v.lco=o.id;
+  if(LCO(dst.id))lcLog(dst,`Order #${o.id}: ${gq(o.q)} ${G[g][0].toLowerCase()} requested from ${src.name}${sm?" for the supermarket":""}`);lcLog(src,`Order #${o.id}: ${gq(o.q)} ${G[g][0].toLowerCase()} to ship to ${sm?"the supermarket in ":""}${dst.name}`);lcoStep(v,Date.now());save();return ""}
 function lcoEnd(o,st){o.st=st;o.end=Date.now();const msg=st==="done"?"filled":st==="short"?`closed: ${CITIES[o.from].name} ran out (${gq(o.done)} of ${gq(o.q)} delivered)`:"cancelled";
-  lcLog(CITIES[o.to],`Order #${o.id} ${msg}`);toast(`📦 Order #${o.id} ${msg}`)}
+  if(LCO(o.to))lcLog(CITIES[o.to],`Order #${o.id} ${msg}`);toast(`📦 Order #${o.id} ${msg}`)}
 function lcoCancel(id){const o=lcoList().find(x=>x.id===id);if(!o||o.st!=="run")return;lcoEnd(o,"cancel");const v=(S.fleet||[]).find(x=>x.lco===id);if(v&&!v.arr)lcoStep(v,Date.now());save()}
 /* called whenever the order's vehicle is parked */
 function lcoStep(v,t){const o=lcoList().find(x=>x.id===v.lco);if(!o){v.lco=0;return}const A=CITIES[o.from],B=CITIES[o.to];if(v.arr||!A||!B)return;
-  if(o.st==="run"&&!(LCO(o.from)&&(LCO(o.to)||hasWh(B))))lcoEnd(o,"cancel");
+  if(o.st==="run"&&!(LCO(o.from)&&(LCO(o.to)||hasWh(B)||o.sm&&smLv(B))))lcoEnd(o,"cancel");
   const left=o.q-o.done,src=LCO(o.from),have=src?src.inv[o.g]||0:0;
   if(v.city===o.from){if(o.st!=="run"){v.lco=0;return}if(left<.01){lcoEnd(o,"done");v.lco=0;return}
     /* Mark: never close early; wait at the source until a full load (or the last bit of the order) is in stock */
@@ -15142,8 +15142,8 @@ function lcoStep(v,t){const o=lcoList().find(x=>x.id===v.lco);if(!o){v.lco=0;ret
   if(o.st==="run"&&left<.01)lcoEnd(o,"done");
   /* at the destination (or anywhere else): drive back empty to the source depot, which is the vehicle's home */
   if(!depart(v,CITIES[v.city]||B,A,null,t))o.why="Waiting for fuel money";else o.why=""}
-function lcoDrop(v,d){const o=lcoList().find(x=>x.id===v.cargo.lco),g=v.cargo.g,q=v.cargo.q;let fit=0;if(LCO(d.id)){fit=Math.min(q,Math.floor(lcRoom(d)/tpu(g)*100)/100);if(fit>0)lcAdd(d,g,fit)}
-  if(q-fit>0){ensureWh(d);S.inv[d.id][g]=(S.inv[d.id][g]||0)+q-fit}if(o){o.done+=q;lcLog(d,`Order #${o.id}: ${gq(q)} ${G[g][0].toLowerCase()} arrived${q-fit>0?` (${gq(q-fit)} to the warehouse: center full)`:""} · ${gq(Math.min(o.done,o.q))}/${gq(o.q)}`)}}
+function lcoDrop(v,d){const o=lcoList().find(x=>x.id===v.cargo.lco),g=v.cargo.g,q=v.cargo.q;let fit=0;if(LCO(d.id)&&!(o&&o.sm)){fit=Math.min(q,Math.floor(lcRoom(d)/tpu(g)*100)/100);if(fit>0)lcAdd(d,g,fit)}
+  if(q-fit>0){ensureWh(d);S.inv[d.id][g]=(S.inv[d.id][g]||0)+q-fit}if(o&&o.sm&&smLv(d)){try{const t=smS(d);smFill(d,t,g,0);if(SMW.c===d)smRender()}catch(e){}}if(o){o.done+=q;if(LCO(d.id))lcLog(d,`Order #${o.id}: ${gq(q)} ${G[g][0].toLowerCase()} arrived${q-fit>0?` (${gq(q-fit)} to the warehouse: center full)`:""} · ${gq(Math.min(o.done,o.q))}/${gq(o.q)}`)}}
 /* staff (Mark, 2026-11-05): warehouse workers and a manager, paid by the hour like other upkeep.
    L.staff = workers, L.mgr = 1 when a manager is hired, L.jobs = forklift jobs the player finished by hand.
    Workers make center orders turn around faster; the manager adds to that, allows a bigger crew and pays more for hands-on jobs. */
@@ -15464,7 +15464,7 @@ function smFill(c,t,g,buy){const k=smKeepT(c,t,g);let need=k-(t.sh[g]||0);if(nee
   if(!buy||!t.ab[g])return 0;let q=Math.floor(need);if(q<1)return 0;if(t.abd.d!==S.day)t.abd={d:S.day,v:0};const left=Math.min(t.cap-t.abd.v,S.cash);if(left<=0)return 0;
   let b=buyGood(c,g,q),v=b.v*(1+SM_CT_FEE);if(v>left){q=Math.floor(q*left/v);if(q<1)return 0;b=buyGood(c,g,q);v=b.v*(1+SM_CT_FEE);if(v>left)return 0}
   S.cash-=v;b.commit();t.sh[g]=(t.sh[g]||0)+q;t.abd.v+=v;return v}
-function smHour(quiet){if(!S.smkt)return;for(const id in S.smkt){const c=CITIES[id];if(!c)continue;const lv=smLv(c);if(!lv)continue;if(typeof unhOn==="function"&&unhOn(c))continue;const t=smS(c),tr=SM_TIER[t.tier];
+function smHour(quiet){if(!S.smkt)return;for(const id in S.smkt){const c=CITIES[id];if(!c)continue;const lv=smLv(c);if(!lv)continue;if(typeof unhOn==="function"&&unhOn(c))continue;const t=smS(c),tr=SM_TIER[t.tier];if(t.alc)try{smAutoLco(c,t)}catch(e){}
     let ctSp=0;for(const g of t.ls)ctSp+=smFill(c,t,g,1);
     const inS=smIn(t),fav=smFav(c),cu=smCust(t)*(.35+.65*smStaffF(t))*(1-t.rv)*(1+.15*t.mem),q0=.5*(1+.55*(lv-1))*Math.sqrt(tr.m)*cu;let units=0,top="",tq=0;
     for(const g of inS){const q=Math.min(t.sh[g],q0*(fav.includes(g)?1.3:1)*smGF(t,g));t.sh[g]-=q;units+=q;if(q>tq){tq=q;top=g}}
@@ -15475,6 +15475,25 @@ function smHour(quiet){if(!S.smkt)return;for(const id in S.smkt){const c=CITIES[
     for(const g in t.sh)if(t.sh[g]<.01)delete t.sh[g];
     const b=BIZ.find(x=>x.k==="smkt");t.rep.unshift({d:S.day,p:Math.round(profit(b,c,lv)),u:Math.round(units*10)/10,top,th,ct:Math.round(ctSp),ab:Math.round(ctSp),n:inS.length});t.rep=t.rep.slice(0,7)}}
 /* empty on-sale goods: ticked but no shelf stock */
+/* order stock from owned logistics centers in other cities (Mark, 2026-11-18): reuses center orders (lcoNew) with an idle truck/plane parked at the source;
+   o.sm=1 delivers into this city's depot (never its own center), then keep-stocked fills the shelves. Normal fuel cost, no new fees. */
+/* keep stocked from centers (Mark, 2026-11-18): t.alc=1 -> each game hour, every on-sale good below its keep target (or shelf max)
+   counting shelf + depot + goods already on the way gets one order from an owned center that has it and an idle vehicle. Max 3 new orders an hour per store. */
+function smLcSrcs(c){return Object.keys(S.lc||{}).map(Number).filter(id=>id!==c.id&&CITIES[id]&&LCO(id)).map(id=>CITIES[id])}
+function smAutoLco(c,t){const cap=smCap(c,t),inv=S.inv[c.id]||{},run=lcoList().filter(o=>o.to===c.id&&o.st==="run"&&o.sm);let n=0;
+  for(const g of t.ls){if(n>=3)break;if(run.some(o=>o.g===g))continue;const tg=Math.min(cap,+t.keep[g]||cap),sh=Math.floor(tg-(t.sh[g]||0)-(inv[g]||0));if(sh<1)continue;
+    for(const src of smLcSrcs(c)){const L=LCO(src.id),hv=L.inv[g]||0;if(hv<1)continue;const v=lcoVehicles(src,c)[0];if(!v)continue;if(!lcoNew(c,src.id,g,Math.min(sh,Math.floor(hv)),v.id,1)){n++;break}}}}
+function smLcoTile(c,t,cap){const srcs=Object.keys(S.lc||{}).map(Number).filter(id=>id!==c.id&&CITIES[id]&&LCO(id)).map(id=>CITIES[id]);
+  let h=`<div class="tile s1" style="margin-top:10px"><h4>🏭 Order from my logistics centers</h4><div class="smrow"><button class="${t.alc?"g":""}" data-sm="alc">${t.alc?"✓ Keep stocked from centers: ON":"Keep stocked from centers: OFF"}</button><small>When on, every hour each on-sale good below its Keep at (or shelf max) is ordered from a center that has it and an idle vehicle parked there. Fuel as normal.</small></div>`;
+  if(!srcs.length)return h+`<small>Own a logistics center in another city to ship its stock here.</small></div>`;
+  if(!srcs.some(s=>s.id===SMW.of))SMW.of=srcs[0].id;const src=CITIES[SMW.of],L=LCO(src.id),gs=Object.keys(L.inv).filter(g=>G[g]&&L.inv[g]>=.01).sort((a,b)=>t.ls.includes(b)-t.ls.includes(a)||G[a][0].localeCompare(G[b][0]));
+  if(!gs.includes(SMW.og))SMW.og=gs[0]||"";const have=SMW.og?L.inv[SMW.og]:0;if(!(SMW.oq>0))SMW.oq=Math.max(1,Math.min(Math.floor(have),cap));const vs=lcoVehicles(src,c);
+  h+=`<div class="smrow"><label class="mut">From <select data-smc="lcof" aria-label="Source center">${srcs.map(s=>`<option value="${s.id}"${s.id===src.id?" selected":""}>${smEsc(s.name)}</option>`).join("")}</select></label>`;
+  h+=gs.length?`<label class="mut">Good <select data-smc="lcog" aria-label="Good">${gs.map(g=>`<option value="${g}"${g===SMW.og?" selected":""}>${smEsc(G[g][0])}${t.ls.includes(g)?" ★":""} (${gq(L.inv[g])})</option>`).join("")}</select></label><label class="mut">Amount <input class="smkeep" type="number" min="1" step="1" data-smc="lcoq" value="${Math.floor(SMW.oq)}" aria-label="Amount"></label><button class="g" data-sm="lco"${vs.length?"":" disabled"}>🚚 Order</button>`:`<small>${smEsc(src.name)} center is empty.</small>`;
+  h+=`</div><small>${vs.length?`${vs.length} idle vehicle${vs.length>1?"s":""} parked in ${smEsc(src.name)}. Uses the first one; you pay its fuel.`:`No idle plane, or truck on the same continent, parked in ${smEsc(src.name)}. Park one there to order.`} ★ = on sale here. Goods land in your depot here and fill the shelves.</small>`;
+  const run=lcoList().filter(o=>o.to===c.id&&o.st==="run"&&o.sm);
+  if(run.length)h+=`<div style="margin-top:6px">${run.map(o=>`<div class="smrow"><span>#${o.id} ${gq(o.q)} ${smEsc(G[o.g][0].toLowerCase())} from ${smEsc(CITIES[o.from].name)} · ${gq(o.done)} delivered${o.why?` · <span class="mut">${smEsc(o.why)}</span>`:""}</span><button data-sm="lcox" data-g="${o.id}">Cancel</button></div>`).join("")}</div>`;
+  return h+`</div>`}
 function smEmpty(t){return (t.ls||[]).filter(g=>!((t.sh||{})[g]>=1))}
 function smEmptyLoss(t){const tr=SM_TIER[t.tier],e=smEmpty(t).length;if(!e)return 0;const n=smIn(t).length,vf=k=>{const v=k/tr.slots;return .35+.85*v+(v>=1?.25:0)};return Math.max(1,Math.round((1-vf(n)/vf(n+e))*100))}
 /* Business tab row */
@@ -15531,6 +15550,12 @@ function smAct(a,g,el){const c=SMW.c;if(!c)return;const t=smS(c),tr=SM_TIER[t.ti
   else if(a==="buyE"){let v=0,short=0;for(const x of smEmpty(t)){const r=smBuy(c,t,x,0);if(r<0)short=1;else v+=r}m=v?`Filled empty shelves for ${fmt(v)}`:short?"Not enough cash":"Nothing to buy"}
   else if(a==="untickE"){const e=smEmpty(t);for(const f of t.lay)f.g=f.g.map(x=>e.includes(x)?null:x);m=smDrop(c,t,e)||`Took ${e.length} empty goods off sale`}
   else if(a==="buy"){let v=0,short=0;for(const x of (g?[g]:t.ls)){const r=smBuy(c,t,x,0);if(r<0)short=1;else v+=r}m=v?`Bought stock for ${fmt(v)}`:short?"Not enough cash":"Shelves are already full"}
+  else if(a==="lcof"){SMW.of=+el.value;SMW.og="";return smRender()}
+  else if(a==="lcog"){SMW.og=el.value;return smRender()}
+  else if(a==="lcoq"){SMW.oq=+el.value||0;return}
+  else if(a==="lco"){const L=LCO(SMW.of),src=CITIES[SMW.of],v=src&&lcoVehicles(src,c)[0];const e=lcoNew(c,SMW.of,SMW.og,Math.min(+SMW.oq||0,L&&L.inv[SMW.og]||0),v?v.id:0,1);m=e||`Order placed: ${gq(+SMW.oq)} ${G[SMW.og][0].toLowerCase()} from ${src.name}. It goes to your depot here, then onto the shelves.`;if(!e)SMW.oq=0}
+  else if(a==="alc"){t.alc=t.alc?0:1;if(t.alc){const b=lcoList().length;smAutoLco(c,t);const k=lcoList().length-b;m=`Keep stocked from centers is on${k?`: ${k} order${k>1?"s":""} placed`:""}`}else m="Keep stocked from centers is off"}
+  else if(a==="lcox"){lcoCancel(+g);m="Order cancelled"}
   else if(a==="mk")t.mk=Math.max(0,Math.min(4,+el.value));
   else if(a==="hire"||a==="fire"){const k=g;const mx=k==="mgr"?1:k==="sec"?6:tr[k]*2+2;t.st[k]=Math.max(0,Math.min(mx,(+t.st[k]||0)+(a==="hire"?1:-1)))}
   else if(a==="train"){const k=g,l=smSL(t,k);if(!SM_JOB[k])return;if(l>=SM_SLMAX)m="Already fully trained";else if(!(t.st[k]>0))m="Hire someone first";else{const f=smTrainFee(t,k,P);if(S.cash<f)m="Not enough cash";else{S.cash-=f;t.sl[k]=l+1;m=`${SM_JOB[k].n} trained to level ${l+1} for ${fmt(f)}. Pay now ${fmt(smPay(t,k,P))}/day each.`}}}
@@ -15582,7 +15607,7 @@ function smRender(){const c=SMW.c,el=SMW.el;if(!c||!el)return;const t=smS(c),tr=
       <div class="smrow"><button class="g" data-sm="pull">📦 Restock all from depot</button><button data-sm="buy">🛒 Buy all from market</button></div>
       <div class="smrow"><b>Keep stocked</b><button data-sm="kmax">Set all to max (${cap})</button><button data-sm="kclr">Clear all</button><button data-sm="aball">Auto-buy all on-sale</button><label class="mut">Auto-buy limit $/day <input class="smkeep" type="number" min="0" step="100" data-smc="cap" value="${Math.round(t.cap)}" aria-label="Daily auto-buy limit" style="width:110px"></label><small>Spent today: ${fmt(t.abd.v)} of ${fmt(t.cap)}</small></div>
       <small>Keep at = each day the shelf is topped up to this amount (max ${cap}), first from your depot in ${smEsc(c.name)} (free). If you don't have enough and Auto-buy is ticked, the rest is bought at market price +${SM_CT_FEE*100}%, until the daily limit is reached. ⭐ = ${smEsc(c.name)} shoppers love it (+5% sales each, sell 30% faster).</small>
-      <div class="chips" style="margin-top:10px">${Object.entries(flt).map(([k,[n,f]])=>`<button data-sm="flt" data-g="${k}" class="${k===F?"on":""}">${n} (${SMG.filter(f).length})</button>`).join("")}</div>${list.length?shTable(list,1):"<small>No goods match this filter.</small>"}</div>`}
+      ${smLcoTile(c,t,cap)}<div class="chips" style="margin-top:10px">${Object.entries(flt).map(([k,[n,f]])=>`<button data-sm="flt" data-g="${k}" class="${k===F?"on":""}">${n} (${SMG.filter(f).length})</button>`).join("")}</div>${list.length?shTable(list,1):"<small>No goods match this filter.</small>"}</div>`}
   else if(tab==="st"){h+=`<div class="tile s2">${Object.keys(SM_JOB).map(k=>staffCard(k,1)).join("")}</div><div class="tile s2"><h4>How staff work</h4><div class="f"><span>Staffing</span><b class="${r.staff<1?"rd":"gn"}">${pct(r.staff)}</b></div><div class="f"><span>Staff training</span><b class="${r.skill>1?"gn":"mut"}">${pct(r.skill)}</b></div><div class="f"><span>Daily wages</span><b>${fmt(smWage(c))}</b></div><p><small>Too few cashiers or stockers caps sales. Guards and a Security firm in ${smEsc(c.name)} cut shoplifting. Training raises pay 25% per level (max ${SM_SLMAX}) and makes that role work better. Hover a card for the exact effect.</small></p></div>`}
   else if(tab==="up"){const pb=(cost,gain)=>gain>0?`pays back in about ${Math.max(1,Math.ceil(cost/gain))} day${Math.ceil(cost/gain)>1?"s":""}`:"no payback estimate while profit is not positive";
     h+=`<div class="tile s2"><h4>Store size</h4>${SM_TIER.map((x,i)=>`<div class="f"><span>${i===t.tier?"▶ ":""}${x.n} <span class="mut">· ${x.fx} fixtures · ${x.slots}+ goods · sales ×${x.m} · ${x.cash} cashiers, ${x.stock} stockers</span></span><b class="${i<=t.tier?"gn":"mut"}">${i<=t.tier?"✓":fmt(x.up*P)}</b></div>`).join("")}
