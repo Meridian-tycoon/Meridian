@@ -412,8 +412,29 @@ service cloud.firestore {
       // Each signed-in user may only write their own profile, with checked fields.
       allow create, update: if request.auth != null
         && request.auth.uid == uid
+        && !banned()
         && validProfile(request.resource.data);
       allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+    // Anti-cheat: acflags written only by Cloud Functions (admin). Read by Mark and the Desk watchdog
+    // (uids listed in config/anticheat.readers, set by hand in the console). Mark marks a suspect ok/banned.
+    match /acflags/{uid} {
+      allow read: if isDev() || acReader();
+      allow update: if isDev() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st'])
+        && request.resource.data.st in ['new', 'ok', 'banned'];
+      allow delete: if isDev();
+    }
+    match /config/anticheat {
+      allow read: if isDev() || acReader();
+    }
+    // Bans: only Mark writes them. A banned player can read their own ban (the game shows it) and can't write profile or save.
+    match /bans/{uid} {
+      allow read: if request.auth != null && (request.auth.uid == uid || isDev());
+      allow create, update: if isDev() && uid != 'BRGRStgYLlbkVbrBTagBrDbpVyg1'
+        && request.resource.data.keys().hasOnly(['why', 'at', 'name'])
+        && request.resource.data.why is string && request.resource.data.why.size() <= 200
+        && request.resource.data.at is number;
+      allow delete: if isDev();
     }
     // Private cloud saves: only the owner can read or write their own save.
     function validSave(d) {
@@ -433,6 +454,7 @@ service cloud.firestore {
     match /saves/{uid} {
       allow read, delete: if request.auth != null && request.auth.uid == uid;
       allow create, update: if request.auth != null && request.auth.uid == uid
+        && !banned()
         && validSave(request.resource.data);
       match /parts/{part} {
         allow read, delete: if request.auth != null && request.auth.uid == uid;
@@ -1332,6 +1354,13 @@ service cloud.firestore {
     }
     function msSince(t) {
       return request.time.toMillis() - t.toMillis();
+    }
+    function banned() {
+      return exists(/databases/$(database)/documents/bans/$(request.auth.uid));
+    }
+    function acReader() {
+      return request.auth != null && exists(/databases/$(database)/documents/config/anticheat)
+        && request.auth.uid in get(/databases/$(database)/documents/config/anticheat).data.get('readers', []);
     }
     function isDev() {
       return request.auth != null && request.auth.uid == 'BRGRStgYLlbkVbrBTagBrDbpVyg1';
