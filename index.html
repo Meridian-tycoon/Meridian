@@ -16168,7 +16168,7 @@ setTimeout(()=>{try{if(S.gal&&Array.isArray(S.gal.pc)&&S.gal.pc.length)alPop()}c
    S.gal.op={sysId:{at,t,paid}} government outposts (pay their system's best resource daily, capped at ICSCFG.away days while away; hostile owner = blockaded).
    S.gal.rt={"a|b":trips} known routes: each completed jump cuts that route's loss/fail/drift risk by RTCFG.cut, down to RTCFG.min of base.
    Ship fields rp (repeat on) and rt (last trade target). AI governments open a station AISCFG.st days after landing and scout one galaxy-0 system a day (seeded, local only, no Firestore). */
-const OPCFG={cost:4e12,day:1e11,per:2,rv:{Iron:1,"Water ice":1.1,"Helium-3":1.6,"Rare earths":1.4,Deuterium:1.3,Crystals:1.8}},RTCFG={cut:.1,min:.4},AISCFG={st:10,max:40,gap:1};
+const OPCFG={cost:4e12,day:1e11,per:2,rv:{Iron:1,"Water ice":1.1,"Helium-3":1.6,"Rare earths":1.4,Deuterium:1.3,Crystals:1.8}},RTCFG={cut:.1,min:.4},AISCFG={st:10,max:40,gap:1,from:Date.UTC(2026,10,19,5)};   // from = AI scouting starts no earlier than this release, so old AI govs don't appear far out at once
 function OPG(){const g=GAL();if(!g.op||typeof g.op!=="object"||Array.isArray(g.op))g.op={};for(const k of Object.keys(g.op)){const o=g.op[k];if(!o||typeof o!=="object"||k==="0:0"||!glxSys(k)){delete g.op[k];continue}if(!isFinite(+o.t))o.t=Date.now();if(!isFinite(+o.at))o.at=o.t;o.paid=+o.paid||0}return g.op}
 function opCap(){const x=ICS();return x?x.lv*OPCFG.per:0}
 function opRes(s){return s.pl.map(p=>p.res).sort((a,b)=>(OPCFG.rv[b]||1)-(OPCFG.rv[a]||1))[0]}
@@ -16197,9 +16197,9 @@ function shpRep(sh,now,msg){const g=SHG(),b=shpSys(sh.rt),a=shpSys(sh.loc),p=b&&
   else{const f=shpFuel(a,b,sh.c)+shpFuel(b,a,sh.c);if(g.fuel<f)w=`needs ${f} fuel for the round trip (have ${Math.floor(g.fuel)})`;else if(!(S.cash>=SHPCFG.px*1e3))w=`needs at least ${mbBig(SHPCFG.px*1e3)} cash for cargo`}
   if(w){sh.rp=0;msg.push(`🔁 ${sh.n} stopped repeating: ${w}`);return}const f=shpFuel(a,b,sh.c),d=shpDays(a,b,sh.c);g.fuel-=f;Object.assign(sh,{st:"go",from:sh.loc,to:b.id,at:now,arr:now+d*DAYMS,tr:1,r:0,ew:null,esc:null});msg.push(`🔁 ${sh.n} heads back to ${b.name} (${d.toFixed(1)} days)`)}
 const AISC={k:"",m:{},sh:[]};
-function aiSt(g){return (+g.at||0)+AISCFG.st*DAYMS}
+function aiSt(g){return Math.max(AISCFG.from,(+g.at||0)+AISCFG.st*DAYMS)}
 function aiScout(){const now=Date.now(),G=MBAI().g,k=Math.floor(now/DAYMS)+":"+G.map(g=>g.c+g.at).join();if(AISC.k===k)return AISC;const m={},sh=[];
-  for(const g of G){const t0=aiSt(g);if(now<t0)continue;const n=Math.min(AISCFG.max,1+Math.floor((now-t0)/(AISCFG.gap*DAYMS))),ids=[];
+  for(const g of G){if(g.c===colGov())continue;const t0=aiSt(g);if(now<t0)continue;const n=Math.min(AISCFG.max,1+Math.floor((now-t0)/(AISCFG.gap*DAYMS))),ids=[];
     for(let i=0;i<n*3&&ids.length<n;i++){const id="0:"+(1+spH(g.c+":sc:"+i)%149);if(ids.includes(id))continue;const t=t0+ids.length*AISCFG.gap*DAYMS;ids.push(id);if(!m[id]||m[id].t>t)m[id]={c:g.c,t}}
     if(ids.length>1)sh.push({c:g.c,ids})}
   return Object.assign(AISC,{k,m,sh})}
