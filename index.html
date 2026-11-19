@@ -16086,20 +16086,20 @@ function shpBuild(c){if(!SHP[c])return;const why=shpWhy(c);if(why)return toast(w
 function shpSend(sid,to,tr,esc){const g=SHG(),sh=g.ships.find(x=>x.id===sid),b=shpSys(to);if(!sh||!b)return toast("Pick a system in your home galaxy");if(sh.st!=="dock")return toast(`${sh.n} is in transit`);if(sh.loc===to)return toast(`${sh.n} is already there`);if(gxOf(sh.loc)!==gxOf(to))return toast(`${sh.n} must jump through the galaxy gate first`);
   if(tr){const p=alOf(to),v=p&&alSt(p.i);if(sh.c==="w")return toast("Warships carry no cargo");if(!p||v==null||v<-20||alHost(p.i))return toast("Trade needs a contacted, non-hostile species at Neutral or better")}
   const a=shpSys(sh.loc),w=esc&&g.ships.find(x=>x.id===esc&&x.c==="w"&&x.st==="dock"&&x.loc===sh.loc),f=shpFuel(a,b,sh.c)+(w?shpFuel(a,b,"w"):0);if(esc&&!w)return toast("That warship isn't docked here");if(g.fuel<f)return toast(`Needs ${f} exotic matter (you have ${Math.floor(g.fuel)}); buy it from a friendly species`);
-  const d=shpDays(a,b,sh.c),now=Date.now();g.fuel-=f;if(tr)sh.rt=to;Object.assign(sh,{st:"go",from:sh.loc,to,at:now,arr:now+d*DAYMS,tr:tr?1:0,r:0,ew:null,esc:w?w.id:null});if(w)Object.assign(w,{st:"go",from:w.loc,to,at:now,arr:sh.arr,tr:0,r:0,ew:sh.id});toast(`${SHP[sh.c].e} ${sh.n}${w?" + escort "+w.n:""} jumps to ${b.name} · ${f} fuel · ${d.toFixed(1)} days`);save();try{spRefresh()}catch(e){}if(GLXV.el)glxCard();shpPopR()}
+  const d=shpDays(a,b,sh.c)/abdSpd(sh),now=Date.now();g.fuel-=f;if(tr)sh.rt=to;Object.assign(sh,{st:"go",from:sh.loc,to,at:now,arr:now+d*DAYMS,tr:tr?1:0,r:0,ew:null,esc:w?w.id:null});if(w)Object.assign(w,{st:"go",from:w.loc,to,at:now,arr:sh.arr,tr:0,r:0,ew:sh.id});toast(`${SHP[sh.c].e} ${sh.n}${w?" + escort "+w.n:""} jumps to ${b.name} · ${f} fuel · ${d.toFixed(1)} days`);save();try{spRefresh()}catch(e){}if(GLXV.el)glxCard();shpPopR()}
 function shpArrive(sh,s,now){const g=SHG(),hp=shpPort(s.id),gi=gxOf(s.id);rtAdd(sh.from,s.id);sh.st="dock";sh.loc=s.id;const msg=[];
   if(sh.gj){delete sh.gj;const G=GLX();if(gi&&!G.rc.includes(gi))G.rc.push(gi);GAL().sv[s.id]={l:2,t:now};if(!G.seen.includes(s.id))G.seen.push(s.id);msg.push(`🌀 ${sh.n} came through the gate into ${GLXN[gi]}`)}
   if(sh.c==="s"&&glxLv(s.id)<2)prbFind(s,now,`${SHP.s.e} Scout ${sh.n}`);
   if(sh.cg&&s.id===hp){S.cash+=sh.cg.v;const t=`${SHP[sh.c].e} ${sh.n} sold ${sh.cg.q.toLocaleString("en-US")} t of alien ${sh.cg.g.toLowerCase()} ${gi?"through the gate relay":"on Earth"} for ${mbBig(sh.cg.v)} (profit ${mbBig(sh.cg.v-sh.cg.c)})`;S.log.unshift(t);S.log=S.log.slice(0,3);stNews(t);toast(t);delete sh.cg;if(sh.rp&&sh.rt)shpRep(sh,Math.max(now,Date.now()-ICSCFG.away*DAYMS),msg)}
   if(sh.tr&&s.id!==hp){sh.tr=0;const p=alOf(s.id),v=p&&alSt(p.i),x=p&&ALS().sp[p.i];
-    if(p&&v!=null&&v>=-20&&!sh.cg){const ec=prbEcon(s.id),px=SHPCFG.px*{Low:.8,Normal:1,High:1.2}[ec.pr],q=Math.min(SHP[sh.c].cap,Math.floor(Math.max(0,S.cash)/px));
+    if(p&&v!=null&&v>=-20&&!sh.cg){const ec=prbEcon(s.id),px=SHPCFG.px*{Low:.8,Normal:1,High:1.2}[ec.pr],q=Math.min(Math.floor(SHP[sh.c].cap*abdCap(sh)),Math.floor(Math.max(0,S.cash)/px));
       if(q<1){msg.push(`${sh.n} reached the ${p.n} but you can't afford any cargo`);if(sh.rp){sh.rp=0;msg.push("🔁 repeat stopped")}}else{const c=Math.round(q*px),dn=Math.min(1,shpD(s,shpSys(hp))/PRBCFG.dMax);S.cash-=c;x.st=Math.min(100,(+x.st||0)+SHPCFG.st);
-        sh.cg={g:ec.ex,q,c,v:Math.round(c*(SHPCFG.sm+.4*dn+.2*v/100)*GXT[gi].cv)};msg.push(`${p.e} ${sh.n} bought ${q.toLocaleString("en-US")} t of ${ec.ex.toLowerCase()} from the ${p.n} for ${mbBig(c)} · standing +${SHPCFG.st}`)}}
-    if(sh.cg){const f=shpFuel(s,shpSys(hp),sh.c);if(g.fuel>=f){const d=shpDays(s,shpSys(hp),sh.c);g.fuel-=f;Object.assign(sh,{st:"go",from:s.id,to:hp,at:now,arr:now+d*DAYMS,r:0});const w=sh.esc&&g.ships.find(x=>x.id===sh.esc&&x.st==="dock"&&x.loc===s.id),fw=w?shpFuel(s,shpSys(hp),"w"):0;if(w&&g.fuel>=fw){g.fuel-=fw;Object.assign(w,{st:"go",from:s.id,to:hp,at:now,arr:sh.arr,r:0,ew:sh.id})}msg.push(`heading home${w&&w.st==="go"?" with escort":""} (${d.toFixed(1)} days)`)}else msg.push(`waiting at ${s.name}: needs ${f} fuel to fly home`)}}
+        sh.cg={g:ec.ex,q,c,v:Math.round(c*(SHPCFG.sm+.4*dn+.2*v/100)*GXT[gi].cv*abdPay(sh))};msg.push(`${p.e} ${sh.n} bought ${q.toLocaleString("en-US")} t of ${ec.ex.toLowerCase()} from the ${p.n} for ${mbBig(c)} · standing +${SHPCFG.st}`)}}
+    if(sh.cg){const f=shpFuel(s,shpSys(hp),sh.c);if(g.fuel>=f){const d=shpDays(s,shpSys(hp),sh.c)/abdSpd(sh);g.fuel-=f;Object.assign(sh,{st:"go",from:s.id,to:hp,at:now,arr:now+d*DAYMS,r:0});const w=sh.esc&&g.ships.find(x=>x.id===sh.esc&&x.st==="dock"&&x.loc===s.id),fw=w?shpFuel(s,shpSys(hp),"w"):0;if(w&&g.fuel>=fw){g.fuel-=fw;Object.assign(w,{st:"go",from:s.id,to:hp,at:now,arr:sh.arr,r:0,ew:sh.id})}msg.push(`heading home${w&&w.st==="go"?" with escort":""} (${d.toFixed(1)} days)`)}else msg.push(`waiting at ${s.name}: needs ${f} fuel to fly home`)}}
   if(msg.length){const t=msg.join(", ");stNews(t);toast(t)}}
 function shpTick(now){const g=S.gal&&Array.isArray(S.gal.ships)&&S.gal.ships.some(x=>x&&x.st==="go")?SHG():null;if(!g)return;let ch=0;
   for(const sh of g.ships.slice()){if(sh.st!=="go"||now<sh.arr)continue;const s=shpSys(sh.to);ch=1;if(!s){sh.st="dock";continue}
-    if(!sh.r){sh.r=1;const R=shpRisk(s,sh.from),u=Math.random(),rc=shpRaid(sh,s,now);
+    if(!sh.r){sh.r=1;const R=abdRisk(sh,shpRisk(s,sh.from)),u=Math.random(),rc=shpRaid(sh,s,now)*abdRk(sh);
       if(rc&&Math.random()<rc&&alRaidHit(sh,s,g))continue;
       if(u<R.loss&&!devGod()){g.ships=g.ships.filter(x=>x!==sh);const t=`${SHP[sh.c].e} ${sh.n} was lost on the jump to ${s.name}`;stNews(t);toast(t);continue}
       if(u<R.loss+R.fail){const dl=1+Math.random()*2,c=Math.min(Math.round(SHP[sh.c].cost*SHPCFG.rep),Math.max(0,Math.floor(S.cash)));S.cash-=c;sh.arr+=dl*DAYMS;const t=`${SHP[sh.c].e} ${sh.n}: drive failure near ${s.name}, ${dl.toFixed(1)} days late, repairs ${mbBig(c)}`;stNews(t);toast(t);continue}
@@ -16129,42 +16129,129 @@ function shpPopR(force){let el=document.getElementById("shppop");if(!el&&!force)
     <small style="color:#94a3b8;display:block;margin-top:6px">The ship buys their ${ec.ex.toLowerCase()} with your cash, flies home if it has fuel for the way back, and sells it on Earth as alien goods. Each run +${SHPCFG.st} standing.</small></div></div></div>`}
 function shpFuelBuy(i,q){const px=alFuelPx(i),p=alP(i);if(!px||!p)return toast("They won't sell fuel right now");const c=q*px;if(!(S.cash>=c))return toast(`Needs ${mbBig(c)} in cash`);S.cash-=c;SHG().fuel+=q;toast(`${p.e} Bought ${q} exotic matter from the ${p.n} for ${mbBig(c)}`);save();hud();try{spRefresh()}catch(e){}shpPopR()}
 /* BOARDING (local save). A player may board one docked ship at the Command Station (loc "0:0") and fly with it. Once it leaves, the player is locked in
-   the cockpit view until the ship docks back at the Command Station. S.gal.abd={id,t,left}. Ship lost -> escape pod brings the player home. Cockpit view:
-   original warp starfield + HUD (no-man's-sky-style feel: seated in the cockpit, star streaks while jumping, calm drift while docked). */
-const ABDV={el:null,raf:0,st:null};
+   the cockpit until the ship docks back at the Command Station. S.gal.abd={id,t,left,et}. Ship lost -> escape pod brings the player home.
+   Aboard: crew bonus (safer jumps, better trade pay), scanner pulse (surveys a system), online-only encounters, free flight around the system's planets,
+   landing on solid planets to gather resources (once per planet per day, S.gal.lnd). Ship upgrades sh.up={e,s,c} (engine/shield/cargo, 0-3, paid in
+   exotic matter) and hull colour sh.col work with or without boarding. All art is original canvas drawing. */
+const ABDCFG={risk:.6,pay:1.1,upFu:[10,25,50],scanCd:6*36e5,encEvery:6e5,encP:.35,pirW:2e10,salv:5e9,trPx:.7,landCd:864e5,node:[2e9,5e9],
+  col:["#f59e0b","#22d3ee","#a78bfa","#f43f5e","#4ade80","#e2e8f0"],UP:{e:["Engine","🔥","+15% speed per level"],s:["Shield","🛡️","−15% jump and raid risk per level"],c:["Cargo hold","📦","+25% cargo per level"]}};
+const ABDV={el:null,raf:0,st:null,m:"cab",yaw:0,pit:0,ev:null,k:{},fly:null,land:null,drag:null,n:0};
 function abdG(){const g=GAL();const a=g.abd;if(a&&(typeof a!=="object"||typeof a.id!=="string"))delete g.abd;return g.abd||null}
 function abdShip(){const a=abdG();return a?SHG().ships.find(x=>x.id===a.id)||null:null}
 function abdOn(){return !!(S.gal&&S.gal.abd)}
+function abdIs(sh){return !!(sh&&S.gal&&S.gal.abd&&S.gal.abd.id===sh.id)}
+function abdUp(sh,k){const u=sh&&sh.up;return u&&u[k]>0?Math.min(3,u[k]|0):0}
+function abdRk(sh){return (abdIs(sh)?ABDCFG.risk:1)*(1-.15*abdUp(sh,"s"))}
+function abdRisk(sh,R){const k=abdRk(sh);return{fail:R.fail*k,drift:R.drift*k,loss:R.loss*k}}
+function abdSpd(sh){return 1+.15*abdUp(sh,"e")}
+function abdCap(sh){return 1+.25*abdUp(sh,"c")}
+function abdPay(sh){return abdIs(sh)?ABDCFG.pay:1}
+function abdCol(sh){return ABDCFG.col[(sh&&sh.col|0)%ABDCFG.col.length]}
+function abdUpgrade(sh,k){if(!sh||!ABDCFG.UP[k])return;if(sh.st!=="dock"||sh.loc!=="0:0")return toast("Upgrade ships docked at the Command Station");const l=abdUp(sh,k);if(l>=3)return toast("Top level");const f=ABDCFG.upFu[l],g=SHG();
+  if(g.fuel<f)return toast(`Needs ${f} exotic matter (you have ${Math.floor(g.fuel)})`);g.fuel-=f;sh.up=Object.assign({},sh.up,{[k]:l+1});toast(`${ABDCFG.UP[k][1]} ${sh.n}: ${ABDCFG.UP[k][0]} level ${l+1}`);save();try{spRefresh()}catch(e){}abdHud()}
+function abdPaint(sh){if(!sh)return;sh.col=((sh.col|0)+1)%ABDCFG.col.length;save();abdHud()}
 function abdBoard(id){const g=SHG(),sh=g.ships.find(x=>x.id===id);if(!sh)return;if(abdOn())return S.gal.abd.id===id?abdShow():toast("You're already aboard a ship");if(sh.st!=="dock"||sh.loc!=="0:0")return toast("Board ships docked at the Command Station");
   GAL().abd={id,t:Date.now(),left:0};toast(`🧑‍🚀 You boarded ${sh.n}. Once it leaves, you stay aboard until it docks back at the Command Station.`);save();try{spRefresh()}catch(e){}abdShow()}
 function abdLeave(){const a=abdG(),sh=abdShip();if(!a)return;if(a.left&&sh)return toast("You must stay aboard until the ship docks back at the Command Station");delete GAL().abd;abdHide();toast("🧑‍🚀 You stepped off the ship");save();try{spRefresh()}catch(e){}}
-function abdTick(){const a=S.gal&&S.gal.abd;if(!a)return;const sh=abdShip();
+function abdTick(){const a=S.gal&&S.gal.abd;if(!a)return;const sh=abdShip(),now=Date.now();
   if(!sh){delete GAL().abd;abdHide();const t="🛟 Your ship was lost, but an escape pod brought you safely back to the Command Station";stNews(t);toast(t);save();return}
   if(sh.st==="go"&&!a.left){a.left=1;save()}
   if(a.left&&sh.st==="dock"&&sh.loc==="0:0"){delete GAL().abd;abdHide();const t=`🧑‍🚀 ${sh.n} docked at the Command Station. Mission over, you're back on Earth.`;stNews(t);toast(t);save();try{spRefresh()}catch(e){}return}
+  if(sh.st!=="go"&&ABDV.ev)ABDV.ev=null;
+  if(sh.st==="go"&&!ABDV.ev&&!document.hidden&&ABDV.el){if(!(a.et>0))a.et=now;if(now-a.et>=ABDCFG.encEvery){a.et=now;if(Math.random()<ABDCFG.encP)abdEnc(sh)}}   // online only, cockpit open
   if(a.left&&!ABDV.el)abdShow();if(ABDV.el)abdHud()}
-function abdShow(){if(ABDV.el){abdHud();return}const el=ABDV.el=document.createElement("div");el.id="abdview";
-  el.style.cssText="position:fixed;inset:0;z-index:2147483000;background:#02030a;color:#e2e8f0;font:13px Figtree,sans-serif;overflow:hidden";
+/* encounters (online only, choices in the HUD) */
+function abdEnc(sh){const r=Math.random();ABDV.ev=r<.4?"pir":r<.75?"der":"tra";const t={pir:"☠️ Pirates are closing in on",der:"🛰️ A drifting derelict near",tra:"👽 A wandering alien trader hails"}[ABDV.ev];stNews(`${t} ${sh.n}`);abdHud()}
+function abdEncDo(k){const sh=abdShip(),g=SHG(),ev=ABDV.ev;if(!sh||!ev)return;let t="";const god=devGod();
+  if(ev==="pir"&&k==="fight"){const p=.5+.1*abdUp(sh,"s")+(sh.c==="w"?.3:0)+(g.ships.some(w=>w.ew===sh.id)?.2:0);
+    if(Math.random()<p){S.cash+=ABDCFG.pirW;t=`⚔️ ${sh.n} drove the pirates off and claimed a ${mbBig(ABDCFG.pirW)} bounty`}
+    else if(god)t="⚔️ The pirates got away (dev account: no losses)";
+    else if(sh.cg){const q=Math.floor(sh.cg.q*.2);sh.cg.q-=q;sh.cg.v=Math.round(sh.cg.v*.8);sh.cg.c=Math.round(sh.cg.c*.8);t=`☠️ Pirates stole ${q.toLocaleString("en-US")} t of cargo from ${sh.n}`}
+    else{const f=Math.min(5,Math.floor(g.fuel));g.fuel-=f;t=`☠️ Pirates siphoned ${f} exotic matter from ${sh.n}`}}
+  else if(ev==="pir"&&k==="flee"){const f=Math.min(3,Math.floor(g.fuel));g.fuel-=f;sh.arr+=.3*DAYMS;t=`💨 ${sh.n} burned ${f} fuel and slipped away, 0.3 days late`}
+  else if(ev==="der"&&k==="salv"){const f=1+Math.floor(Math.random()*3);g.fuel+=f;S.cash+=ABDCFG.salv;t=`🛰️ Salvaged ${f} exotic matter and ${mbBig(ABDCFG.salv)} of parts`}
+  else if(ev==="tra"&&k==="buy"){const c=10*SHPCFG.fuel*ABDCFG.trPx;if(!(S.cash>=c))return toast(`Needs ${mbBig(c)} in cash`);S.cash-=c;g.fuel+=10;t=`👽 Bought 10 exotic matter from the trader for ${mbBig(c)}`}
+  ABDV.ev=null;if(t){stNews(t);toast(t)}save();hud();abdHud()}
+/* scanner pulse */
+function abdScan(){const sh=abdShip(),now=Date.now();if(!sh||sh.st!=="dock")return;if(now-(sh.sc||0)<ABDCFG.scanCd)return toast(`Scanner recharging · ${((ABDCFG.scanCd-(now-sh.sc))/36e5).toFixed(1)} h`);sh.sc=now;const s=shpSys(sh.loc);if(!s)return;
+  let t;if(glxLv(s.id)<2){const G=GAL();G.sv[s.id]={l:2,t:now};try{const X=GLX();if(Array.isArray(X.seen)&&!X.seen.includes(s.id))X.seen.push(s.id)}catch(e){}t=`📡 Scanner pulse: ${s.name} is now surveyed (${s.pl.length} planets mapped)`}
+  else{const f=1+Math.floor(Math.random()*2);SHG().fuel+=f;t=`📡 Scanner pulse found ${f} exotic matter in a nearby asteroid field`}
+  ABDV.pulse=now;stNews(t);toast(t);save();try{spRefresh()}catch(e){}abdHud()}
+/* system scene for free flight: sun at origin, planets on orbits */
+function abdScene(sh){const s=shpSys(sh.loc);if(!s)return null;return{s,pl:s.pl.map((p,j)=>{const a=spH("pl:"+s.id+j)%628/100,r=40+j*28;return{p,x:r*Math.cos(a),y:((spH("py"+s.id+j)%9)-4),z:r*Math.sin(a),rad:GLXPT[p.t][0]==="Gas giant"?7:3+(spH("pr"+s.id+j)%3)}})}}
+function abdFly(){const sh=abdShip();if(!sh||sh.st!=="dock")return;const sc=abdScene(sh);if(!sc)return;ABDV.m="fly";ABDV.fly={sc,x:0,y:6,z:-30,yaw:0,pit:-.1,v:6};abdHud()}
+function abdLandGo(i){const f=ABDV.fly,q=f&&f.sc.pl[i];if(!q)return;if(GLXPT[q.p.t][0]==="Gas giant")return toast("No solid surface to land on");const L=GAL().lnd=GAL().lnd&&typeof GAL().lnd==="object"?GAL().lnd:{},k=f.sc.s.id+":"+i,used=Date.now()-(+L[k]||0)<ABDCFG.landCd;
+  const h=spH("ln"+k),nodes=used?[]:Array.from({length:4},(_,j)=>({x:.12+((h>>>(j*5))%76)/100,y:.2+((h>>>(j*5+3))%60)/100,v:ABDCFG.node[0]+(((h>>>(j*4))%100)/100)*(ABDCFG.node[1]-ABDCFG.node[0])}));
+  ABDV.land={i,k,q,x:.5,y:.85,tx:null,ty:null,nodes,got:0,used};ABDV.m="land";if(!used)L[k]=Date.now();save();abdHud()}
+function abdBack(){if(ABDV.m==="land"){const L=ABDV.land;if(L&&L.got){const t=`🪐 Gathered ${mbBig(L.got)} of ${L.q.p.res.toLowerCase()} on ${L.q.p.n}`;stNews(t);toast(t)}ABDV.m="fly";ABDV.land=null}else{ABDV.m="cab";ABDV.fly=null}abdHud()}
+function abdKey(e){if(!ABDV.el||ABDV.m==="cab")return;const k=e.key.toLowerCase(),M={arrowleft:"l",a:"l",arrowright:"r",d:"r",arrowup:"u",w:"u",arrowdown:"d",s:"d",shift:"b"," ":"b"}[k];if(!M)return;ABDV.k[M]=e.type==="keydown";e.preventDefault();e.stopPropagation()}
+window.addEventListener("keydown",abdKey,true);window.addEventListener("keyup",abdKey,true);
+function abdShow(){if(ABDV.el){abdHud();return}const el=ABDV.el=document.createElement("div");el.id="abdview";ABDV.m="cab";ABDV.yaw=ABDV.pit=0;
+  el.style.cssText="position:fixed;inset:0;z-index:2147483000;background:#02030a;color:#e2e8f0;font:13px Figtree,sans-serif;overflow:hidden;touch-action:none;user-select:none";
   el.innerHTML=`<canvas style="position:absolute;inset:0;width:100%;height:100%"></canvas>
-  <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"><path d="M0 100 L0 70 Q50 58 100 70 L100 100Z" fill="#1e293b"/><path d="M0 70 Q50 58 100 70" stroke="#f59e0b" stroke-width=".4" fill="none"/><path d="M0 0 L14 0 L4 70 L0 72Z M100 0 L86 0 L96 70 L100 72Z" fill="#0f172a"/><path d="M0 0 L100 0 L100 6 Q50 12 0 6Z" fill="#0f172a"/></svg>
-  <div data-hud style="position:absolute;left:50%;bottom:4%;transform:translateX(-50%);width:min(92vw,520px);background:rgba(15,23,42,.85);border:1px solid #f59e0b;border-radius:14px;padding:12px 14px"></div>`;
-  el.addEventListener("click",e=>{const b=e.target.closest("[data-ab]");if(!b||b.disabled)return;const k=b.dataset.ab,sh=abdShip();
-    if(k==="off")abdLeave();else if(k==="map")glxOpen();else if(k==="home"&&sh)shpSend(sh.id,shpPort(sh.loc),0)});
-  document.body.appendChild(el);ABDV.st=Array.from({length:260},()=>({x:Math.random()*2-1,y:Math.random()*2-1,z:Math.random()}));abdHud();abdLoop()}
-function abdHide(){if(ABDV.el){ABDV.el.remove();ABDV.el=null}cancelAnimationFrame(ABDV.raf)}
-function abdHud(){const el=ABDV.el,sh=abdShip(),a=abdG();if(!el||!sh||!a)return;const E=dxE,now=Date.now(),nm=id=>{const s=shpSys(id);return s?s.name+(gxOf(id)?` · ${GLXN[gxOf(id)]}`:""):id};
-  const go=sh.st==="go",home=sh.loc==="0:0",bt=(k,t,bg,dis)=>`<button data-ab="${k}" ${dis?"disabled":""} style="border:0;border-radius:999px;padding:8px 12px;color:#fff;font-weight:700;cursor:pointer;background:${bg};opacity:${dis?.5:1}">${t}</button>`;
-  const stat=go?`Jumping to <b>${E(nm(sh.to))}</b> · ${Math.max(0,(sh.arr-now)/DAYMS).toFixed(2)} days`:`Docked at <b>${E(home?"Command Station":nm(sh.loc))}</b>`;
-  el.querySelector("[data-hud]").innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b style="color:#fbbf24">${SHP[sh.c].e} ${E(sh.n)} · cockpit</b><small style="color:#94a3b8">exotic matter ${Math.floor(SHG().fuel)}${sh.cg?` · cargo ${sh.cg.q.toLocaleString("en-US")} t`:""}</small></div>
-  <div style="margin:6px 0">${stat}</div><small style="color:#94a3b8;display:block;margin-bottom:8px">${a.left?"You're on this mission. You can leave the ship only when it docks back at the Command Station.":"You're aboard. Send the ship from the galaxy map to start the mission, or step off now."}</small>
-  <div style="display:flex;gap:6px;flex-wrap:wrap">${go?"":bt("map","🌌 Galaxy map","#4338ca")}${!go&&!home&&gxOf(sh.loc)===0?bt("home","🏠 Fly home","#0369a1"):""}${a.left?"":bt("off","🚪 Step off","#475569")}</div>`}
-function abdLoop(){const el=ABDV.el;if(!el)return;const c=el.querySelector("canvas"),w=c.width=c.clientWidth,h=c.height=c.clientHeight,x=c.getContext("2d"),sh=abdShip(),go=sh&&sh.st==="go",v=go?.018:.0012;
-  x.fillStyle=go?"rgba(2,3,10,.35)":"#02030a";x.fillRect(0,0,w,h);const cx=w/2,cy=h*.38,k=Math.max(w,h)*.5;
-  if(!go){const gr=x.createRadialGradient(w*.7,h*.3,0,w*.7,h*.3,k*.6);gr.addColorStop(0,"rgba(124,58,237,.25)");gr.addColorStop(1,"rgba(0,0,0,0)");x.fillStyle=gr;x.fillRect(0,0,w,h)}
-  for(const s of ABDV.st){const z0=s.z;s.z-=v;if(s.z<=.02){s.x=Math.random()*2-1;s.y=Math.random()*2-1;s.z=1;continue}
-    const px=cx+s.x/s.z*k*.5,py=cy+s.y/s.z*k*.5;x.strokeStyle=go?"#bae6fd":"#e2e8f0";x.lineWidth=go?1.5:1;x.beginPath();x.moveTo(px,py);
-    if(go)x.lineTo(cx+s.x/z0*k*.5-(px-cx)*.08,cy+s.y/z0*k*.5-(py-cy)*.08);else x.lineTo(px+1,py);x.stroke()}
-  ABDV.raf=requestAnimationFrame(()=>{if(document.hidden)setTimeout(abdLoop,500);else abdLoop()});if((ABDV.n=(ABDV.n||0)+1)%30===0)abdHud()}
+  <svg data-cab viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"><path d="M0 100 L0 70 Q50 58 100 70 L100 100Z" fill="#1e293b"/><path data-trim d="M0 70 Q50 58 100 70" stroke="#f59e0b" stroke-width=".4" fill="none"/><path d="M0 0 L14 0 L4 70 L0 72Z M100 0 L86 0 L96 70 L100 72Z" fill="#0f172a"/><path d="M0 0 L100 0 L100 6 Q50 12 0 6Z" fill="#0f172a"/><circle cx="30" cy="80" r="3" fill="#0f172a" stroke="#334155" stroke-width=".3"/><circle cx="70" cy="80" r="3" fill="#0f172a" stroke="#334155" stroke-width=".3"/></svg>
+  <div data-hud style="position:absolute;left:50%;bottom:3%;transform:translateX(-50%);width:min(94vw,540px);max-height:46vh;overflow:auto;background:rgba(15,23,42,.88);border:1px solid #f59e0b;border-radius:14px;padding:12px 14px"></div>`;
+  const cv=el.querySelector("canvas");
+  cv.addEventListener("pointerdown",e=>{ABDV.drag={x:e.clientX,y:e.clientY,t:Date.now()};try{cv.setPointerCapture(e.pointerId)}catch(_){}});
+  cv.addEventListener("pointermove",e=>{const d=ABDV.drag;if(!d)return;const dx=e.clientX-d.x,dy=e.clientY-d.y;
+    if(ABDV.m==="cab"){ABDV.yaw=Math.max(-1.2,Math.min(1.2,ABDV.yaw+dx*.004));ABDV.pit=Math.max(-.6,Math.min(.6,ABDV.pit+dy*.004));d.x=e.clientX;d.y=e.clientY}
+    else if(ABDV.m==="fly"){ABDV.k.l=dx<-15;ABDV.k.r=dx>15;ABDV.k.u=dy<-15;ABDV.k.d=dy>15}});
+  const up=e=>{const d=ABDV.drag;ABDV.drag=null;if(ABDV.m==="fly"){ABDV.k.l=ABDV.k.r=ABDV.k.u=ABDV.k.d=false}
+    if(ABDV.m==="land"&&d&&Date.now()-d.t<400){const r=cv.getBoundingClientRect(),L=ABDV.land;if(L){L.tx=(e.clientX-r.left)/r.width;L.ty=(e.clientY-r.top)/r.height}}};
+  cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);
+  el.addEventListener("click",e=>{const b=e.target.closest("[data-ab]");if(!b||b.disabled)return;const k=b.dataset.ab,v=b.dataset.v,sh=abdShip();
+    if(k==="off")abdLeave();else if(k==="map")glxOpen();else if(k==="home"&&sh)shpSend(sh.id,shpPort(sh.loc),0);else if(k==="scan")abdScan();else if(k==="fly")abdFly();else if(k==="back")abdBack();
+    else if(k==="land")abdLandGo(+v);else if(k==="up")abdUpgrade(sh,v);else if(k==="paint")abdPaint(sh);else if(k==="enc")abdEncDo(v);else if(k==="look"){ABDV.yaw=ABDV.pit=0}});
+  el.querySelector("[data-hud]").addEventListener("pointerdown",e=>{if(e.target.closest("[data-ab='boost']"))ABDV.k.b=true});
+  el.querySelector("[data-hud]").addEventListener("pointerup",()=>{ABDV.k.b=false});
+  document.body.appendChild(el);ABDV.st=Array.from({length:320},()=>{const u=Math.random()*2-1,a=Math.random()*6.283,r=Math.sqrt(1-u*u);return{x:r*Math.cos(a),y:u,z:r*Math.sin(a),w:Math.random()}});abdHud();abdLoop()}
+function abdHide(){if(ABDV.el){ABDV.el.remove();ABDV.el=null}cancelAnimationFrame(ABDV.raf);ABDV.m="cab";ABDV.ev=null;ABDV.fly=ABDV.land=null;ABDV.k={}}
+function abdHud(){const el=ABDV.el,sh=abdShip(),a=abdG();if(!el||!sh||!a)return;const E=dxE,now=Date.now(),g=SHG(),nm=id=>{const s=shpSys(id);return s?s.name+(gxOf(id)?` · ${GLXN[gxOf(id)]}`:""):id};
+  const go=sh.st==="go",home=sh.loc==="0:0",bt=(k,t,bg,dis,v)=>`<button data-ab="${k}" ${v!=null?`data-v="${v}"`:""} ${dis?"disabled":""} title="${dis&&typeof dis==="string"?E(dis):""}" style="border:0;border-radius:999px;padding:8px 12px;color:#fff;font-weight:700;cursor:pointer;background:${bg};opacity:${dis?.5:1};touch-action:none">${t}</button>`;
+  const cab=el.querySelector("[data-cab]");cab.style.display=ABDV.m==="land"?"none":"";const tr=el.querySelector("[data-trim]");if(tr)tr.setAttribute("stroke",abdCol(sh));el.querySelector("[data-hud]").style.borderColor=abdCol(sh);
+  const head=`<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b style="color:${abdCol(sh)}">${SHP[sh.c].e} ${E(sh.n)} · ${ABDV.m==="fly"?"flight":ABDV.m==="land"?"on foot":"cockpit"}</b><small style="color:#94a3b8">exotic matter ${Math.floor(g.fuel)}${sh.cg?` · cargo ${sh.cg.q.toLocaleString("en-US")} t`:""} · 🧑‍🚀 crew bonus</small></div>`;
+  let body="";
+  if(ABDV.m==="fly"){const f=ABDV.fly,ds=f.sc.pl.map((q,i)=>({i,q,d:Math.hypot(q.x-f.x,q.y-f.y,q.z-f.z)-q.rad})).sort((u,v)=>u.d-v.d),n=ds[0];
+    body=`<div style="margin:6px 0">Flying in <b>${E(f.sc.s.name)}</b>. Nearest: <b>${E(n.q.p.n)}</b> (${GLXPT[n.q.p.t][0]}, ${E(n.q.p.res)}) · ${Math.max(0,n.d).toFixed(0)} u</div><small style="color:#94a3b8;display:block;margin-bottom:8px">Steer with arrows/WASD or drag. Hold Shift or Boost to speed up. Get close to a planet to land.</small>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${bt("boost","🚀 Boost","#b45309")}${n.d<12?bt("land",`🪂 Land on ${E(n.q.p.n)}`,"#15803d",GLXPT[n.q.p.t][0]==="Gas giant"?"No solid surface":0,n.i):""}${bt("back","↩ Cockpit","#475569")}</div>`}
+  else if(ABDV.m==="land"){const L=ABDV.land;body=`<div style="margin:6px 0">On <b>${E(L.q.p.n)}</b> · ${GLXPT[L.q.p.t][0]} · ${E(L.q.p.res)}</div><small style="color:#94a3b8;display:block;margin-bottom:8px">${L.used?"You already gathered here today. Come back tomorrow.":`Tap the ground (or use arrows/WASD) to walk. Reach the glowing deposits to gather them. ${L.nodes.filter(x=>!x.d).length} left · gathered ${mbBig(L.got)}`}</small>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${bt("back","🚀 Take off","#475569")}</div>`}
+  else{const stat=go?`Jumping to <b>${E(nm(sh.to))}</b> · ${Math.max(0,(sh.arr-now)/DAYMS).toFixed(2)} days`:`Docked at <b>${E(home?"Command Station":nm(sh.loc))}</b>`,sc=now-(sh.sc||0)<ABDCFG.scanCd;
+    const ev=ABDV.ev,evh=ev?`<div style="margin:6px 0;padding:8px;border-radius:10px;background:rgba(220,38,38,.12);border:1px solid #7f1d1d">${{pir:"☠️ <b>Pirates</b> are closing in!",der:"🛰️ A <b>derelict ship</b> drifts nearby.",tra:`👽 An <b>alien trader</b> offers 10 exotic matter for ${mbBig(10*SHPCFG.fuel*ABDCFG.trPx)}.`}[ev]}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${
+      ev==="pir"?bt("enc","⚔️ Fight","#b91c1c",0,"fight")+bt("enc","💨 Flee · 3 fuel","#475569",0,"flee"):ev==="der"?bt("enc","🔧 Salvage","#15803d",0,"salv")+bt("enc","Ignore","#475569",0,"x"):bt("enc","Buy fuel","#7c3aed",S.cash>=10*SHPCFG.fuel*ABDCFG.trPx?0:"Not enough cash","buy")+bt("enc","No thanks","#475569",0,"x")}</div></div>`:"";
+    const ups=home&&!go?`<div style="margin-top:8px"><small style="color:#94a3b8">Upgrades (exotic matter):</small><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${Object.keys(ABDCFG.UP).map(k=>{const l=abdUp(sh,k),U=ABDCFG.UP[k];return bt("up",`${U[1]} ${U[0]} ${l}/3${l<3?" · "+ABDCFG.UP_F(l):""}`,"#0f766e",l>=3?"Top level":g.fuel<ABDCFG.upFu[l]?`Needs ${ABDCFG.upFu[l]} exotic matter`:0,k)}).join("")}${bt("paint","🎨 Hull colour","#334155")}</div></div>`:"";
+    body=`<div style="margin:6px 0">${stat}</div>${evh}<small style="color:#94a3b8;display:block;margin-bottom:8px">${a.left?"You're on this mission. You can leave the ship only when it docks back at the Command Station.":"You're aboard. Send the ship from the galaxy map to start the mission, or step off now."} Flying aboard makes jumps ${Math.round((1-ABDCFG.risk)*100)}% safer and trade pays ${Math.round((ABDCFG.pay-1)*100)}% more. Drag to look around.</small>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${go?"":bt("map","🌌 Galaxy map","#4338ca")}${go?"":bt("fly","🕹️ Fly around","#b45309")}${go?"":bt("scan",sc?`📡 Scan · ${((ABDCFG.scanCd-(now-(sh.sc||0)))/36e5).toFixed(1)} h`:"📡 Scan","#0369a1",sc?"Recharging":0)}${!go&&!home&&gxOf(sh.loc)===0?bt("home","🏠 Fly home","#0369a1"):""}${ABDV.yaw||ABDV.pit?bt("look","🎯 Look ahead","#334155"):""}${a.left?"":bt("off","🚪 Step off","#475569")}</div>${ups}`}
+  el.querySelector("[data-hud]").innerHTML=head+body}
+ABDCFG.UP_F=l=>ABDCFG.upFu[l]+" fuel";
+function abdLoop(){const el=ABDV.el;if(!el)return;const c=el.querySelector("canvas"),W=c.clientWidth,H=c.clientHeight;if(c.width!==W||c.height!==H){c.width=W;c.height=H}const x=c.getContext("2d"),sh=abdShip();
+  try{if(ABDV.m==="fly")abdDrawFly(x,W,H);else if(ABDV.m==="land")abdDrawLand(x,W,H);else abdDrawCab(x,W,H,sh)}catch(e){console.warn("abd",e)}
+  ABDV.raf=requestAnimationFrame(()=>{if(document.hidden)setTimeout(abdLoop,500);else abdLoop()});if(++ABDV.n%30===0&&ABDV.m!=="cab")abdHud();else if(ABDV.n%60===0)abdHud()}
+function abdDrawCab(x,w,h,sh){const go=sh&&sh.st==="go",cx=w/2+(-ABDV.yaw)*w*.5,cy=h*.38+(-ABDV.pit)*h*.5,k=Math.max(w,h)*.5;
+  x.fillStyle=go?"rgba(2,3,10,.35)":"#02030a";x.fillRect(0,0,w,h);
+  if(!go){const gr=x.createRadialGradient(cx+w*.2,cy-h*.08,0,cx+w*.2,cy-h*.08,k*.6);gr.addColorStop(0,"rgba(124,58,237,.25)");gr.addColorStop(1,"rgba(0,0,0,0)");x.fillStyle=gr;x.fillRect(0,0,w,h);
+    const sc=sh&&abdScene(sh);if(sc&&sh.loc!=="0:0"){const q=sc.pl[0],col=GLXPT[q.p.t][1],px=cx-w*.18,py=cy+h*.06,r=Math.min(w,h)*.09;const pg=x.createRadialGradient(px-r*.4,py-r*.4,r*.1,px,py,r);pg.addColorStop(0,col);pg.addColorStop(1,"#020617");x.fillStyle=pg;x.beginPath();x.arc(px,py,r,0,7);x.fill()}
+    if(ABDV.pulse&&Date.now()-ABDV.pulse<1500){const t=(Date.now()-ABDV.pulse)/1500;x.strokeStyle=`rgba(56,189,248,${1-t})`;x.lineWidth=3;x.beginPath();x.arc(w/2,h*.38,t*k,0,7);x.stroke()}}
+  for(const s of ABDV.st){if(go){s.w-=.018;if(s.w<=.02){s.w=1}const px=cx+s.x/s.w*k*.25,py=cy+s.y/s.w*k*.25,qx=cx+s.x/(s.w+.02)*k*.25,qy=cy+s.y/(s.w+.02)*k*.25;x.strokeStyle="#bae6fd";x.lineWidth=1.5;x.beginPath();x.moveTo(px,py);x.lineTo(qx,qy);x.stroke()}
+    else{const px=cx+s.x*k*1.4,py=cy+s.y*k*1.4;x.fillStyle="#e2e8f0";x.fillRect(px,py,s.w>.8?2:1,s.w>.8?2:1)}}}
+function abdDrawFly(x,w,h){const f=ABDV.fly,K=ABDV.k,dt=1/60;f.yaw+=((K.r?1:0)-(K.l?1:0))*1.4*dt;f.pit=Math.max(-1.2,Math.min(1.2,f.pit+((K.u?1:0)-(K.d?1:0))*1.0*dt));const sp=(K.b?40:12)*dt;
+  const fx=Math.sin(f.yaw)*Math.cos(f.pit),fy=Math.sin(f.pit),fz=Math.cos(f.yaw)*Math.cos(f.pit);f.x+=fx*sp;f.y+=fy*sp;f.z+=fz*sp;const R=Math.hypot(f.x,f.y,f.z);if(R>260){f.x*=260/R;f.y*=260/R;f.z*=260/R}
+  x.fillStyle="#02030a";x.fillRect(0,0,w,h);const foc=Math.min(w,h)*.9,cx=w/2,cy=h*.42;
+  const P=(X,Y,Z)=>{const dx=X-f.x,dy=Y-f.y,dz=Z-f.z,cy_=Math.cos(-f.yaw),sy=Math.sin(-f.yaw),x1=dx*cy_+dz*sy,z1=-dx*sy+dz*cy_,cp=Math.cos(f.pit),sp_=Math.sin(f.pit),y2=dy*cp-z1*sp_,z2=dy*sp_+z1*cp;return z2>.5?{x:cx+x1/z2*foc,y:cy-y2/z2*foc,z:z2}:null};
+  for(const s of ABDV.st){const p=P(f.x+s.x*900,f.y+s.y*900,f.z+s.z*900);if(p){x.fillStyle="#cbd5e1";x.fillRect(p.x,p.y,1,1)}}
+  const objs=[{x:0,y:0,z:0,rad:14,col:"#fde68a",sun:1}].concat(f.sc.pl.map(q=>({x:q.x,y:q.y,z:q.z,rad:q.rad,col:GLXPT[q.p.t][1],n:q.p.n}))).map(o=>({o,p:P(o.x,o.y,o.z)})).filter(v=>v.p).sort((a,b)=>b.p.z-a.p.z);
+  for(const {o,p} of objs){const r=Math.max(1.5,o.rad/p.z*foc);if(o.sun){const g=x.createRadialGradient(p.x,p.y,0,p.x,p.y,r*3);g.addColorStop(0,"#fff7ed");g.addColorStop(.3,o.col);g.addColorStop(1,"rgba(0,0,0,0)");x.fillStyle=g;x.beginPath();x.arc(p.x,p.y,r*3,0,7);x.fill();continue}
+    const g=x.createRadialGradient(p.x-r*.35,p.y-r*.35,r*.1,p.x,p.y,r);g.addColorStop(0,o.col);g.addColorStop(1,"#020617");x.fillStyle=g;x.beginPath();x.arc(p.x,p.y,r,0,7);x.fill();if(r<60){x.fillStyle="#94a3b8";x.font="11px Figtree,sans-serif";x.fillText(o.n,p.x+r+4,p.y+3)}}
+  x.strokeStyle=abdCol(abdShip());x.lineWidth=1.5;x.beginPath();x.arc(cx,cy,10,0,7);x.moveTo(cx-18,cy);x.lineTo(cx-12,cy);x.moveTo(cx+12,cy);x.lineTo(cx+18,cy);x.stroke()}
+function abdDrawLand(x,w,h){const L=ABDV.land,K=ABDV.k,col=GLXPT[L.q.p.t][1],sp=.25/60;
+  if(K.l||K.r||K.u||K.d){L.tx=null;L.x+=((K.r?1:0)-(K.l?1:0))*sp;L.y+=((K.d?1:0)-(K.u?1:0))*sp}else if(L.tx!=null){const dx=L.tx-L.x,dy=L.ty-L.y,d=Math.hypot(dx,dy);if(d<.01)L.tx=null;else{L.x+=dx/d*Math.min(d,sp);L.y+=dy/d*Math.min(d,sp)}}
+  L.x=Math.max(.03,Math.min(.97,L.x));L.y=Math.max(.15,Math.min(.95,L.y));
+  const sky=x.createLinearGradient(0,0,0,h*.3);sky.addColorStop(0,"#020617");sky.addColorStop(1,col);x.fillStyle=sky;x.fillRect(0,0,w,h*.3);x.fillStyle=col;x.fillRect(0,h*.3,w,h*.7);x.fillStyle="rgba(0,0,0,.35)";x.fillRect(0,h*.3,w,h*.7);
+  const hs=spH("lt"+L.k);for(let i=0;i<40;i++){const rx=((hs*(i+3))%997)/997*w,ry=h*.32+((hs*(i+7))%991)/991*h*.66;x.fillStyle="rgba(0,0,0,.25)";x.beginPath();x.ellipse(rx,ry,8+i%5*4,3+i%3*2,0,0,7);x.fill()}
+  x.fillStyle="#475569";x.beginPath();x.moveTo(w*.5-30,h*.95);x.lineTo(w*.5,h*.86);x.lineTo(w*.5+30,h*.95);x.fill();
+  for(const n of L.nodes){if(n.d)continue;const px=n.x*w,py=n.y*h,t=Date.now()/300;x.fillStyle=`rgba(253,224,71,${.5+.3*Math.sin(t+n.x*9)})`;x.beginPath();x.moveTo(px,py-12);x.lineTo(px+7,py);x.lineTo(px,py+6);x.lineTo(px-7,py);x.fill();
+    if(Math.hypot((n.x-L.x)*w,(n.y-L.y)*h)<24){n.d=1;S.cash+=n.v;L.got+=n.v;toast(`⛏️ +${mbBig(n.v)} ${L.q.p.res.toLowerCase()}`);save();hud();abdHud()}}
+  x.font="22px serif";x.textAlign="center";x.fillText("🧑‍🚀",L.x*w,L.y*h+8);x.textAlign="start"}
 /* ALIEN WARFARE (phase 5, local save only). Species turn hostile only through player aggression (attack, or standing <= -60). Raids and hostile probe risk
    resolve only while the player is online (no offline combat, no catch-up). Earth is never raided. Dev account (devGod) takes no losses.
    S.gal.sp[i] gains h (hostile flag), agT (last aggression), ad (attack day); S.gal.tech={key:species idx}; S.gal.cd = last calm-drift day. */
@@ -16232,7 +16319,7 @@ function shpRepT(id){const sh=SHG().ships.find(x=>x.id===id);if(!sh||sh.c==="w")
 function shpRep(sh,now,msg){const g=SHG(),b=shpSys(sh.rt),a=shpSys(sh.loc),p=b&&alOf(b.id),v=p?alSt(p.i):null;let w="";
   if(!a||!b||gxOf(b.id)!==gxOf(sh.loc))w="the route is in another galaxy";else if(!p||v==null||v<-20||alHost(p.i))w=`the ${p?p.n:"species"} won't trade`;
   else{const f=shpFuel(a,b,sh.c)+shpFuel(b,a,sh.c);if(g.fuel<f)w=`needs ${f} fuel for the round trip (have ${Math.floor(g.fuel)})`;else if(!(S.cash>=SHPCFG.px*1e3))w=`needs at least ${mbBig(SHPCFG.px*1e3)} cash for cargo`}
-  if(w){sh.rp=0;msg.push(`🔁 ${sh.n} stopped repeating: ${w}`);return}const f=shpFuel(a,b,sh.c),d=shpDays(a,b,sh.c);g.fuel-=f;Object.assign(sh,{st:"go",from:sh.loc,to:b.id,at:now,arr:now+d*DAYMS,tr:1,r:0,ew:null,esc:null});msg.push(`🔁 ${sh.n} heads back to ${b.name} (${d.toFixed(1)} days)`)}
+  if(w){sh.rp=0;msg.push(`🔁 ${sh.n} stopped repeating: ${w}`);return}const f=shpFuel(a,b,sh.c),d=shpDays(a,b,sh.c)/abdSpd(sh);g.fuel-=f;Object.assign(sh,{st:"go",from:sh.loc,to:b.id,at:now,arr:now+d*DAYMS,tr:1,r:0,ew:null,esc:null});msg.push(`🔁 ${sh.n} heads back to ${b.name} (${d.toFixed(1)} days)`)}
 const AISC={k:"",m:{},sh:[]};
 function aiSt(g){return Math.max(AISCFG.from,(+g.at||0)+AISCFG.st*DAYMS)}
 function aiScout(){const now=Date.now(),G=MBAI().g,k=Math.floor(now/DAYMS)+":"+G.map(g=>g.c+g.at).join();if(AISC.k===k)return AISC;const m={},sh=[];
