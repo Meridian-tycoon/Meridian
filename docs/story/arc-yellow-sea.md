@@ -94,3 +94,7 @@ side (`wfSend k:"w"`), or fund talks. `PEACE`: any Leader of a combatant can `pe
 - Never blame the player's country as aggressor unless `w.att` really is the player's country.
 - Offline catch-up (`quiet`): skip toasts; write beats 1-5 as one summary line in `S.log`.
 - Online/shared worlds (`wwShared()`): only the authority (`wfAuth()`) advances `ys.st`.
+
+## Part 2
+
+What happens after beat 5: [arc-yellow-sea-2.md](arc-yellow-sea-2.md) (leaks, reporter calls, closing lines).
